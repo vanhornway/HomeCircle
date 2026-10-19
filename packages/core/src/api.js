@@ -76,21 +76,42 @@ export class Api {
 
   /**
    * Live connection while the app is open. Reconnects with backoff.
+   * The server sends a heartbeat every ~25 s; if nothing arrives for
+   * `staleMs` the socket is treated as dead (proxies and tunnels can drop a
+   * connection without either side seeing a close) and replaced.
    * Returns { close() }.
    */
-  connect({ onEvent, onStatus = () => {} }) {
+  connect({ onEvent, onStatus = () => {}, staleMs = 70000, checkMs = 10000 }) {
     const wsUrl = `${this.baseUrl.replace(/^http/, 'ws')}/api/v1/ws`;
     let ws = null;
     let closed = false;
     let attempt = 0;
     let timer = null;
+    let lastHeard = 0;
+
+    const scheduleReconnect = (delay) => {
+      clearTimeout(timer);
+      timer = setTimeout(open, delay);
+    };
+
+    const drop = (socket) => {
+      socket.onopen = socket.onmessage = socket.onclose = socket.onerror = null;
+      try {
+        socket.close();
+      } catch {
+        /* already closed */
+      }
+    };
 
     const open = () => {
       if (closed) return;
       onStatus('connecting');
-      ws = new this.WebSocket(wsUrl);
-      ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token: this.token }));
-      ws.onmessage = (e) => {
+      const socket = new this.WebSocket(wsUrl);
+      ws = socket;
+      lastHeard = Date.now();
+      socket.onopen = () => socket.send(JSON.stringify({ type: 'auth', token: this.token }));
+      socket.onmessage = (e) => {
+        lastHeard = Date.now();
         let msg;
         try {
           msg = JSON.parse(typeof e.data === 'string' ? e.data : String(e.data));
@@ -101,30 +122,41 @@ export class Api {
           attempt = 0;
           onStatus('online');
         } else if (msg.type === 'ping') {
-          ws.send(JSON.stringify({ type: 'pong' }));
+          socket.send(JSON.stringify({ type: 'pong' }));
         } else {
           onEvent(msg);
         }
       };
-      ws.onclose = (e) => {
-        ws = null;
+      socket.onclose = (e) => {
+        if (ws === socket) ws = null;
         if (closed) return;
         if (e && e.code === 4001) {
           onStatus('unauthorized');
           return;
         }
         onStatus('offline');
-        const delay = Math.min(30000, 1000 * 2 ** attempt++) * (0.75 + Math.random() / 2);
-        timer = setTimeout(open, delay);
+        scheduleReconnect(Math.min(30000, 1000 * 2 ** attempt++) * (0.75 + Math.random() / 2));
       };
-      ws.onerror = () => {};
+      socket.onerror = () => {};
     };
+
+    const watchdog = setInterval(() => {
+      if (closed || !ws || Date.now() - lastHeard < staleMs) return;
+      // Silent connection: replace it now rather than waiting for a close that may never come.
+      drop(ws);
+      ws = null;
+      onStatus('offline');
+      scheduleReconnect(1000);
+    }, checkMs);
+
     open();
     return {
       close() {
         closed = true;
         clearTimeout(timer);
-        if (ws) ws.close();
+        clearInterval(watchdog);
+        if (ws) drop(ws);
+        ws = null;
       },
     };
   }

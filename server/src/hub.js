@@ -4,13 +4,13 @@ import { WebSocketServer } from 'ws';
 import { sha256 } from './http.js';
 
 export class Hub {
-  constructor({ store, log }) {
+  constructor({ store, log, heartbeatMs = 25000 }) {
     this.store = store;
     this.log = log;
     this.sockets = new Map(); // memberId -> Set<WebSocket>
     this.wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
     this.wss.on('connection', (ws) => this._onConnection(ws));
-    this.heartbeat = setInterval(() => this._heartbeat(), 25000);
+    this.heartbeat = setInterval(() => this._heartbeat(), heartbeatMs);
   }
 
   attach(server) {
@@ -26,10 +26,15 @@ export class Hub {
 
   _onConnection(ws) {
     ws.isAlive = true;
-    ws.on('pong', () => (ws.isAlive = true));
+    // Before auth, protocol pongs count. After auth only the app's own replies do,
+    // since a proxy in the middle can answer protocol pings for a dead client.
+    ws.on('pong', () => {
+      if (!ws.memberId) ws.isAlive = true;
+    });
     const authTimer = setTimeout(() => ws.close(4001, 'auth timeout'), 10000);
     ws.on('message', (data) => {
-      if (ws.memberId) return; // clients only ever send the auth frame
+      ws.isAlive = true;
+      if (ws.memberId) return; // after auth, clients only send heartbeat replies
       clearTimeout(authTimer);
       let msg;
       try {
@@ -64,6 +69,9 @@ export class Hub {
       }
       ws.isAlive = false;
       ws.ping();
+      // App-level heartbeat too: clients can't see protocol pings, and proxies or
+      // tunnels may answer those themselves while the real path is dead.
+      if (ws.memberId && ws.readyState === 1) ws.send('{"type":"ping"}');
     }
   }
 

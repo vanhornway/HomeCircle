@@ -74,10 +74,8 @@ function useCircleLifecycle() {
       // catch up on anything missed while it was down.
       client.on('status', (s) => {
         if (s === 'online') {
-          if (!getServerState().reachable) {
-            setServerState({ reachable: true, error: null, retrying: false });
-            Promise.all([client.refresh(), client.fetchLocations(), client.fetchMessages(), client.fetchPlaces()]).catch(() => {});
-          }
+          // CircleClient catches up on missed data itself after a reconnect.
+          if (!getServerState().reachable) setServerState({ reachable: true, error: null, retrying: false });
         } else if (s === 'offline' && AppState.currentState === 'active') {
           setServerState({ reachable: false, retrying: true });
         }

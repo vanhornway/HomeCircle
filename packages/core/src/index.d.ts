@@ -184,6 +184,8 @@ export class CircleClient {
   rotateKey(): Promise<void>;
   start(): Promise<void>;
   connect(): void;
+  /** Fetch whatever changed while the live connection was down. */
+  catchUp(): Promise<void>;
   disconnect(): void;
 }
 

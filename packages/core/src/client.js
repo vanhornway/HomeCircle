@@ -628,14 +628,26 @@ export class CircleClient {
 
   connect() {
     if (this.connection) return;
+    let connectedBefore = false;
     this.connection = this.api.connect({
       onStatus: (s) => {
         this.status = s;
         this.emit('status', s);
         if (s === 'unauthorized') this._handleRemoved();
+        if (s === 'online') {
+          // Anything sent while we were disconnected never reached us live.
+          if (connectedBefore) this.catchUp().catch(this.onError);
+          connectedBefore = true;
+        }
       },
       onEvent: (e) => this._onEvent(e).catch(this.onError),
     });
+  }
+
+  /** Fetch whatever changed while the live connection was down. */
+  async catchUp() {
+    await this.refresh();
+    await Promise.all([this.fetchMessages(), this.fetchLocations(), this.fetchPlaces()]);
   }
 
   disconnect() {
