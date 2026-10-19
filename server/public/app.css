@@ -129,6 +129,27 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 .bubble { background: var(--surface-2); padding: 8px 12px; border-radius: 16px; white-space: pre-wrap; word-break: break-word; }
 .bubble-row.mine .bubble { background: var(--brand); color: var(--brand-ink); }
 .bubble-time { font-size: 11px; color: var(--muted); margin: 2px 6px 0; }
+.bubble-line { display: flex; align-items: center; gap: 4px; }
+.bubble-row.mine .bubble-line { flex-direction: row-reverse; }
+.bubble.big { background: none !important; font-size: 44px; line-height: 1.15; padding: 0 2px; }
+.react-btn { border: 0; background: none; cursor: pointer; font-size: 18px; color: var(--muted); opacity: 0; width: 30px; height: 30px; border-radius: 50%; transition: opacity 0.15s; }
+.bubble-row:hover .react-btn, .react-btn:focus-visible { opacity: 1; }
+.react-btn:hover { background: var(--surface-2); }
+@media (hover: none) { .react-btn { opacity: 0.6; } }
+.react-bar { display: flex; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 3px; box-shadow: var(--shadow); margin-top: 4px; }
+.react-bar button { border: 0; background: none; font-size: 22px; width: 38px; height: 38px; border-radius: 50%; cursor: pointer; }
+.react-bar button:hover, .react-bar button.on { background: var(--brand-soft); }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.chip { display: inline-flex; align-items: center; gap: 3px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 1px 8px; font-size: 14px; cursor: pointer; color: var(--muted); }
+.chip span { font-size: 12px; font-weight: 600; }
+.chip.mine { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
+.chat-form { position: relative; }
+.emoji-toggle { padding: 0 10px; font-size: 20px; }
+.emoji-picker { position: absolute; bottom: calc(100% + 6px); left: 8px; right: 8px; max-height: 280px; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 4px 10px 10px; z-index: 5; }
+.emoji-group { font-size: 12px; font-weight: 700; color: var(--muted); margin: 8px 2px 4px; }
+.emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); }
+.emoji-grid button { border: 0; background: none; font-size: 22px; height: 38px; border-radius: 8px; cursor: pointer; }
+.emoji-grid button:hover { background: var(--surface-2); }
 .event-line { align-self: center; font-size: 13px; color: var(--muted); background: var(--surface-2); padding: 4px 10px; border-radius: 999px; }
 .chat-form { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); }
 .chat-form .input { flex: 1; }

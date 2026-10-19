@@ -3,7 +3,7 @@ import nacl from 'tweetnacl';
 import { toB64, fromB64, utf8Encode, utf8Decode, concat } from './encoding.js';
 
 export const PROTOCOL_VERSION = 1;
-export const KINDS = ['profile', 'location', 'chat', 'event', 'place', 'circle'];
+export const KINDS = ['profile', 'location', 'chat', 'event', 'reaction', 'place', 'circle'];
 
 export class CryptoError extends Error {
   constructor(reason) {

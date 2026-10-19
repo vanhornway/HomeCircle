@@ -345,7 +345,10 @@ export function buildRoutes({ config, store, hub, push, log }) {
     const seq = store.insertMessage({ id, fromId: me.id, env, now });
     const message = { seq, id, from: me.id, env, createdAt: now };
     hub.broadcast({ type: 'message', message }, me.id);
-    push.activity(store.activeMembers().filter((m) => m.id !== me.id && m.pushToken && !hub.isOnline(m.id)));
+    // Clients mark reactions "silent": stored and relayed live, but no push.
+    if (body.silent !== true) {
+      push.activity(store.activeMembers().filter((m) => m.id !== me.id && m.pushToken && !hub.isOnline(m.id)));
+    }
     return { seq, createdAt: now };
   });
 

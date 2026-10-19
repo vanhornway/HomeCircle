@@ -33,7 +33,10 @@ client.on('locationRequest', ({ from }) => {
 client.on('newMessage', (m) => {
   const who = client.members.get(m.from)?.name;
   console.log(`${who}: ${m.body?.text ?? JSON.stringify(m.body)}`);
-  if (m.kind === 'chat') setTimeout(() => client.sendChat(`👍 got it, ${who}`), 800);
+  if (m.kind === 'chat') {
+    setTimeout(() => client.react(m.id, '❤️'), 400);
+    setTimeout(() => client.sendChat(`👍 got it, ${who}`), 800);
+  }
 });
 client.on('removed', () => {
   console.log('removed from the circle');

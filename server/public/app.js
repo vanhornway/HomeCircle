@@ -2,7 +2,7 @@
 // server only ever hands us ciphertext.
 import * as L from '/vendor/leaflet/leaflet-src.esm.js';
 import qrcode from '/vendor/qrcode.mjs';
-import { CircleClient } from '/core/index.js';
+import { CircleClient, EMOJI_GROUPS, QUICK_REACTIONS, isEmojiOnly } from '/core/index.js';
 
 const root = document.getElementById('root');
 const SERVER = location.origin;
@@ -341,12 +341,15 @@ function renderTabs() {
 function renderPanel() {
   const panel = ui.els.panel;
   const scroll = panel.scrollTop;
+  const oldLog = panel.querySelector('.chat-log');
+  ui.chatFromBottom = oldLog ? oldLog.scrollHeight - oldLog.clientHeight - oldLog.scrollTop : 0;
   panel.style.padding = ui.tab === 'chat' ? '0' : '';
   const view = { people: peopleView, chat: chatView, places: placesView, settings: settingsView }[ui.tab]();
   panel.replaceChildren(view);
   if (ui.tab === 'chat') {
     const log = panel.querySelector('.chat-log');
-    if (log) log.scrollTop = log.scrollHeight;
+    // Stay put if the reader scrolled up (e.g. to react); otherwise follow new messages.
+    if (log) log.scrollTop = ui.chatFromBottom > 120 ? log.scrollHeight - log.clientHeight - ui.chatFromBottom : log.scrollHeight;
   } else {
     panel.scrollTop = scroll;
   }
@@ -495,12 +498,59 @@ function chatView() {
       log.append(h('div', { class: 'event-line' }, `${name} ${verb} ${b.placeName || 'a place'} · ${clock(m.ts)}`));
     } else if (m.kind === 'chat') {
       const mine = m.from === me;
+      const big = isEmojiOnly(m.body.text);
+      const reactions = client.reactionsFor(m.id);
+      const react = (emoji) => {
+        ui.reactingTo = null;
+        client.react(m.id, emoji).catch((ex) => toast(errorText(ex)));
+      };
       log.append(
         h(
           'div',
           { class: `bubble-row${mine ? ' mine' : ''}` },
           mine ? null : h('div', { class: 'bubble-from', style: `color:${who?.color || 'inherit'}` }, name),
-          h('div', { class: 'bubble' }, m.body.text),
+          h(
+            'div',
+            { class: 'bubble-line' },
+            h('div', { class: `bubble${big ? ' big' : ''}` }, m.body.text),
+            h(
+              'button',
+              {
+                class: 'react-btn',
+                type: 'button',
+                title: 'React',
+                'aria-label': 'React to this message',
+                onclick: () => {
+                  ui.reactingTo = ui.reactingTo === m.id ? null : m.id;
+                  renderPanel();
+                },
+              },
+              '☺',
+            ),
+          ),
+          ui.reactingTo === m.id
+            ? h(
+                'div',
+                { class: 'react-bar', role: 'group', 'aria-label': 'Reactions' },
+                QUICK_REACTIONS.map((e) =>
+                  h('button', { type: 'button', class: reactions.some((r) => r.emoji === e && r.mine) ? 'on' : '', onclick: () => react(e), 'aria-label': `React ${e}` }, e),
+                ),
+              )
+            : null,
+          reactions.length
+            ? h(
+                'div',
+                { class: 'chips' },
+                reactions.map((r) =>
+                  h(
+                    'button',
+                    { type: 'button', class: `chip${r.mine ? ' mine' : ''}`, title: r.names.join(', '), onclick: () => react(r.emoji) },
+                    r.emoji,
+                    r.count > 1 ? h('span', {}, r.count) : null,
+                  ),
+                ),
+              )
+            : null,
           h('div', { class: 'bubble-time' }, clock(m.ts)),
         ),
       );
@@ -529,9 +579,52 @@ function chatView() {
           input.focus();
         },
       },
+      h(
+        'button',
+        {
+          class: 'btn emoji-toggle',
+          type: 'button',
+          title: 'Emoji',
+          'aria-label': 'Emoji',
+          onclick: () => picker.classList.toggle('hidden'),
+        },
+        '😊',
+      ),
       input,
       h('button', { class: 'btn primary', type: 'submit' }, 'Send'),
     );
+    // Emoji picker: inserts at the cursor and keeps the draft.
+    const picker = h(
+      'div',
+      { class: 'emoji-picker hidden', role: 'dialog', 'aria-label': 'Emoji' },
+      EMOJI_GROUPS.map((g) =>
+        h(
+          'div',
+          {},
+          h('div', { class: 'emoji-group' }, g.name),
+          h(
+            'div',
+            { class: 'emoji-grid' },
+            g.emojis.map((e) =>
+              h(
+                'button',
+                {
+                  type: 'button',
+                  'aria-label': `Insert ${e}`,
+                  onclick: () => {
+                    const at = input.selectionStart ?? input.value.length;
+                    input.setRangeText(e, at, input.selectionEnd ?? at, 'end');
+                    input.focus();
+                  },
+                },
+                e,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    ui.chatForm.prepend(picker);
   }
   const form = ui.chatForm;
   const input = form.querySelector('input');

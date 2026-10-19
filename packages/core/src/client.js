@@ -22,6 +22,7 @@ import {
   inviteLink,
   appInviteLink,
 } from './crypto.js';
+import { isValidReaction } from './emoji.js';
 
 const ACCOUNT_KEY = 'homecircle.account';
 export const MEMBER_COLORS = ['#2f7d6d', '#d9644a', '#4a6fd9', '#b0479c', '#c79a1e', '#3c8fb5', '#7a5bd6', '#5d8a2e'];
@@ -49,6 +50,9 @@ export class CircleClient {
     this.members = new Map();
     this.locations = new Map();
     this.messages = [];
+    this.seenMessageIds = new Set();
+    // messageId -> emoji -> memberId -> { on, seq }
+    this.reactions = new Map();
     this.places = new Map();
     this.lastSeq = 0;
     this.connection = null;
@@ -450,8 +454,14 @@ export class CircleClient {
   // --- messages ----------------------------------------------------------
 
   _addMessage(m) {
-    if (this.messages.some((x) => x.id === m.id)) return false;
-    const msg = this._open(m.env, m.from, ['chat', 'event']);
+    if (this.seenMessageIds.has(m.id)) return false;
+    this.seenMessageIds.add(m.id);
+    this.lastSeq = Math.max(this.lastSeq, m.seq);
+    const msg = this._open(m.env, m.from, ['chat', 'event', 'reaction']);
+    if (msg?.kind === 'reaction') {
+      this._applyReaction(m.from, m.seq, msg.body);
+      return { kind: 'reaction', id: m.id, from: m.from, seq: m.seq, body: msg.body };
+    }
     const entry = {
       seq: m.seq,
       id: m.id,
@@ -463,8 +473,45 @@ export class CircleClient {
     };
     this.messages.push(entry);
     this.messages.sort((a, b) => a.seq - b.seq);
-    this.lastSeq = Math.max(this.lastSeq, m.seq);
     return entry;
+  }
+
+  _applyReaction(from, seq, body) {
+    if (!body || typeof body.target !== 'string' || !isValidReaction(body.emoji)) return;
+    let byEmoji = this.reactions.get(body.target);
+    if (!byEmoji) this.reactions.set(body.target, (byEmoji = new Map()));
+    let byMember = byEmoji.get(body.emoji);
+    if (!byMember) byEmoji.set(body.emoji, (byMember = new Map()));
+    const prev = byMember.get(from);
+    // Reactions can arrive out of order (live vs. fetched); the latest wins.
+    if (prev && prev.seq > seq) return;
+    byMember.set(from, { on: body.on !== false, seq });
+  }
+
+  /** [{ emoji, count, mine, names }] for a message, most popular first. */
+  reactionsFor(messageId) {
+    const byEmoji = this.reactions.get(messageId);
+    if (!byEmoji) return [];
+    const out = [];
+    for (const [emoji, byMember] of byEmoji) {
+      const ids = [...byMember].filter(([, r]) => r.on).map(([id]) => id);
+      if (!ids.length) continue;
+      out.push({
+        emoji,
+        count: ids.length,
+        mine: ids.includes(this.account?.memberId),
+        names: ids.map((id) => this.members.get(id)?.name || 'Former member'),
+        first: Math.min(...ids.map((id) => byMember.get(id).seq)),
+      });
+    }
+    return out.sort((a, b) => b.count - a.count || a.first - b.first).map(({ first, ...r }) => r);
+  }
+
+  /** Add or remove this person's reaction. Doesn't trigger a notification. */
+  react(messageId, emoji) {
+    if (!isValidReaction(emoji)) return Promise.reject(new Error('Not a reaction emoji'));
+    const mine = this.reactions.get(messageId)?.get(emoji)?.get(this.account.memberId);
+    return this._post('reaction', { target: messageId, emoji, on: !mine?.on }, { silent: true });
   }
 
   async fetchMessages() {
@@ -477,12 +524,12 @@ export class CircleClient {
     return this.messages;
   }
 
-  async _post(kind, body) {
+  async _post(kind, body, { silent = false } = {}) {
     const id = randomId(12);
     let env;
     const res = await this._withEpochRetry(() => {
       env = this._seal(kind, body);
-      return this.api.postMessage(id, env);
+      return this.api.postMessage(id, env, { silent });
     });
     this._addMessage({ seq: res.seq, id, from: this.account.memberId, createdAt: res.createdAt, env });
     this.emit('messages', this.messages);
@@ -675,7 +722,7 @@ export class CircleClient {
         const m = this._addMessage(e.message);
         if (m) {
           this.emit('messages', this.messages);
-          if (m.from !== this.account.memberId) this.emit('newMessage', m);
+          if (m.from !== this.account.memberId && m.kind !== 'reaction') this.emit('newMessage', m);
         }
         break;
       }

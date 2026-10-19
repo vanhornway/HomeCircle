@@ -152,11 +152,39 @@ test('chat and places', async () => {
   assert.equal(bob.messages.at(-1).kind, 'event');
 });
 
+test('reactions: encrypted, aggregated, toggle, never shown as messages', async () => {
+  const target = bob.messages.find((m) => m.kind === 'chat');
+  const live = waitFor(bob, 'messages', () => bob.reactionsFor(target.id).length === 1);
+  await owner.react(target.id, '❤️');
+  await live;
+  await carol.fetchMessages();
+  await carol.react(target.id, '❤️');
+  await carol.react(target.id, '😂');
+  await bob.fetchMessages();
+  assert.deepEqual(
+    bob.reactionsFor(target.id).map((r) => [r.emoji, r.count, r.mine]),
+    [['❤️', 2, false], ['😂', 1, false]],
+  );
+  assert.deepEqual(bob.reactionsFor(target.id)[0].names.sort(), ['Carol', 'Mom']);
+  // Toggling off removes it everywhere.
+  await carol.react(target.id, '😂');
+  await bob.fetchMessages();
+  assert.deepEqual(bob.reactionsFor(target.id).map((r) => r.emoji), ['❤️']);
+  // Reactions never appear as chat entries, and non-emoji input is refused.
+  assert.ok(bob.messages.every((m) => m.kind !== 'reaction' && m.kind !== 'unreadable'));
+  await assert.rejects(() => bob.react(target.id, 'lol'));
+  // A fresh client rebuilds the same state from history.
+  const fresh = client();
+  Object.assign(fresh, { account: bob.account, api: bob.api, members: bob.members });
+  await fresh.fetchMessages();
+  assert.deepEqual(fresh.reactionsFor(target.id).map((r) => [r.emoji, r.count]), [['❤️', 2]]);
+});
+
 test('server cannot read anything', () => {
   const files = readdirSync(dir).filter((f) => f.startsWith('homecircle.db'));
-  const raw = files.map((f) => readFileSync(join(dir, f)).toString('latin1')).join('');
-  for (const secret of ['Mom', 'Bob', 'Carol', 'The Parkers', '40.712776', '74.005974', 'milk', 'Home']) {
-    assert.ok(!raw.includes(secret), `database contains plaintext "${secret}"`);
+  const raw = Buffer.concat(files.map((f) => readFileSync(join(dir, f))));
+  for (const secret of ['Mom', 'Bob', 'Carol', 'The Parkers', '40.712776', '74.005974', 'milk', 'Home', '❤️', '😂']) {
+    assert.ok(!raw.includes(Buffer.from(secret, 'utf8')), `database contains plaintext "${secret}"`);
   }
 });
 

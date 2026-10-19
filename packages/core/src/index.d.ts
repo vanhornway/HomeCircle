@@ -63,6 +63,13 @@ export interface Message {
   body: any;
 }
 
+export interface Reaction {
+  emoji: string;
+  count: number;
+  mine: boolean;
+  names: string[];
+}
+
 export interface Account {
   server: string;
   token: string;
@@ -172,6 +179,9 @@ export class CircleClient {
   fetchMessages(): Promise<Message[]>;
   sendChat(text: string): Promise<void>;
   sendEvent(body: Record<string, unknown>): Promise<void>;
+  /** Add or remove this person's reaction. Doesn't trigger a notification. */
+  react(messageId: string, emoji: string): Promise<void>;
+  reactionsFor(messageId: string): Reaction[];
   fetchPlaces(): Promise<Map<string, Place>>;
   savePlace(p: { id?: string; name: string; lat: number; lng: number; radius?: number; icon?: string }): Promise<string>;
   deletePlace(id: string): Promise<void>;
@@ -193,3 +203,8 @@ export const MEMBER_COLORS: string[];
 export function normalizeServerUrl(input: string): string;
 export function parseInviteLink(link: string): { serverUrl: string; inviteId: string; secret: string };
 export function safetyNumber(signPub: string, boxPub: string): string;
+
+export const QUICK_REACTIONS: string[];
+export const EMOJI_GROUPS: { name: string; emojis: string[] }[];
+export function isEmojiOnly(text: string, max?: number): boolean;
+export function isValidReaction(emoji: string): boolean;
