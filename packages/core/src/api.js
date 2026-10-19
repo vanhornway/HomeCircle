@@ -41,7 +41,11 @@ export class Api {
       /* non-JSON error page from a proxy */
     }
     if (!res.ok) {
-      throw new ApiError(res.status, data?.error, data?.message || `Server error ${res.status}`, data || {});
+      // 502/503/504 without our JSON body come from a proxy or tunnel in front of a stopped server.
+      const fallback = [502, 503, 504].includes(res.status)
+        ? "The server isn't responding right now. It may be down or restarting."
+        : `Server error ${res.status}`;
+      throw new ApiError(res.status, data?.error, data?.message || fallback, data || {});
     }
     return data;
   }
