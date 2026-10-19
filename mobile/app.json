@@ -30,7 +30,15 @@
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION",
         "CAMERA",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.CAMERA"
       ]
     },
     "plugins": [
@@ -68,8 +76,14 @@
     },
     "extra": {
       "eas": {
-        "projectId": ""
+        "projectId": "c1728dfb-99dc-4ea1-92b4-e69ee944c7a5"
+      },
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
       }
-    }
+    },
+    "owner": "vanhornway"
   }
 }
