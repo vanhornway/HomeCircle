@@ -22,12 +22,17 @@ export function getClient(): CircleClient {
 
 /** Loads the account from secure storage once. Returns whether one exists. */
 export function ensureLoaded(): Promise<boolean> {
+  const client = getClient();
+  // Set up or joined during this session: already in memory.
+  if (client.account) return Promise.resolve(true);
   if (!loaded) {
-    loaded = getClient()
-      .load()
-      .catch(() => false);
+    loaded = client.load().catch(() => false);
   }
-  return loaded.then((ok) => ok && !!getClient().account);
+  return loaded.then((ok) => {
+    // Never cache "no account": the user may set up or join a circle next.
+    if (!ok) loaded = null;
+    return !!client.account;
+  });
 }
 
 /** For background tasks: a loaded client, or null if this phone isn't in a circle. */
