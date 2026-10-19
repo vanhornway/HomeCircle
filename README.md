@@ -61,8 +61,8 @@ npx eas-cli@latest init            # sets extra.eas.projectId (needed for push)
 npx eas-cli@latest build --profile development --platform ios
 ```
 
-Before release, change `ios.bundleIdentifier` / `android.package` in
-`mobile/app.json`. Also set `LANDING_URL` in `mobile/src/theme.ts`.
+App IDs are `us.umair.homecircle` (in
+`mobile/app.json`); the landing page lives at https://homecircle.umair.us.
 
 ## Before you publish
 

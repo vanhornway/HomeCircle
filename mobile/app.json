@@ -9,13 +9,13 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "app.homecircle.mobile",
+      "bundleIdentifier": "us.umair.homecircle",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "app.homecircle.mobile",
+      "package": "us.umair.homecircle",
       "adaptiveIcon": {
         "backgroundColor": "#2F7D6D",
         "foregroundImage": "./assets/android-icon-foreground.png",

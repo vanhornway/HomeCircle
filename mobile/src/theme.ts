@@ -42,4 +42,4 @@ export function useTheme(): Theme {
   return useColorScheme() === 'dark' ? dark : light;
 }
 
-export const LANDING_URL = 'https://homecircle.app';
+export const LANDING_URL = 'https://homecircle.umair.us';
