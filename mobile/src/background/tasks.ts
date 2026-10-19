@@ -45,12 +45,17 @@ TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Locati
     const placeId = data.region.identifier;
     const action = data.eventType === Location.GeofencingEventType.Enter ? 'arrived' : 'left';
     try {
-      // Ignore GPS jitter: the same event for the same place within 3 minutes.
-      const recent = JSON.parse((await AsyncStorage.getItem(GEOFENCE_EVENTS_KEY)) || '{}');
-      const prev = recent[placeId];
-      if (prev && prev.action === action && Date.now() - prev.ts < 3 * 60_000) return;
-      recent[placeId] = { action, ts: Date.now() };
-      await AsyncStorage.setItem(GEOFENCE_EVENTS_KEY, JSON.stringify(recent));
+      // Remember whether we're inside or outside each place, and only announce
+      // real changes. Re-registering geofences (every app launch) makes the OS
+      // report the current state again, which isn't an arrival or departure.
+      // Also ignore GPS jitter: flipping back within 3 minutes.
+      const state = JSON.parse((await AsyncStorage.getItem(GEOFENCE_EVENTS_KEY)) || '{}');
+      const prev = state[placeId];
+      if (prev?.action === action) return; // same state reported again
+      state[placeId] = { action, ts: Date.now() };
+      await AsyncStorage.setItem(GEOFENCE_EVENTS_KEY, JSON.stringify(state));
+      if (!prev) return; // first report for this place: just record it
+      if (Date.now() - prev.ts < 3 * 60_000) return;
 
       const client = await loadedClient();
       if (!client) return;
