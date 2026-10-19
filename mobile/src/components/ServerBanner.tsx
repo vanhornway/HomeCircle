@@ -1,5 +1,5 @@
 import { Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Button } from './ui';
 import { retryServer, useServerState } from '../lib/connection';
 import { getClient } from '../lib/circle';
@@ -9,6 +9,7 @@ import { useTheme } from '../theme';
 export function ServerBanner({ style }: { style?: object }) {
   const t = useTheme();
   const server = useServerState();
+  const router = useRouter();
   if (server.reachable) return null;
   const address = getClient().serverUrl?.replace(/^https?:\/\//, '') || 'your server';
   return (
