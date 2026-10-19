@@ -22,7 +22,7 @@ export async function notificationPermission(): Promise<'granted' | 'denied' | '
 
 /** Ask for permission (if needed) and register this phone's push token with the server. */
 export async function registerPush({ ask = false } = {}): Promise<string | null> {
-  if (!Device.isDevice) return null;
+  // Android 13+ only shows the permission prompt once a channel exists.
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('activity', {
       name: 'Circle activity',
@@ -32,6 +32,8 @@ export async function registerPush({ ask = false } = {}): Promise<string | null>
   let perm = await Notifications.getPermissionsAsync();
   if (!perm.granted && ask && perm.canAskAgain) perm = await Notifications.requestPermissionsAsync();
   if (!perm.granted) return null;
+  // Emulators and simulators can't get push tokens; permission still applies.
+  if (!Device.isDevice) return null;
   const projectId = Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
   if (!projectId) {
     if (__DEV__) console.warn('[homecircle] No EAS projectId: run `npx eas-cli init` to enable push notifications');

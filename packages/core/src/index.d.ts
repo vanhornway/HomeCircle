@@ -107,6 +107,8 @@ export class ApiError extends Error {
   status: number;
   code?: string;
   retryAfter?: number;
+  /** Underlying network error, for diagnostics. */
+  detail?: string;
 }
 
 export class Api {

@@ -29,7 +29,9 @@ export class Api {
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch (e) {
-      throw new ApiError(0, 'network', `Can't reach your HomeCircle server (${e.message})`);
+      throw new ApiError(0, 'network', "Can't reach the server. Check the address and your internet connection.", {
+        detail: e.message,
+      });
     }
     const text = await res.text();
     let data = null;

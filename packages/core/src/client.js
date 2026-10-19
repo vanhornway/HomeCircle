@@ -641,7 +641,10 @@ export class CircleClient {
   disconnect() {
     if (this.connection) this.connection.close();
     this.connection = null;
-    this.status = 'offline';
+    if (this.status !== 'offline') {
+      this.status = 'offline';
+      this.emit('status', 'offline');
+    }
   }
 
   async _handleRemoved() {

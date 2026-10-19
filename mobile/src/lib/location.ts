@@ -80,7 +80,7 @@ export async function upload(
 export async function freshFix(timeoutMs = 20_000): Promise<Location.LocationObject | null> {
   const timeout = new Promise<null>((r) => setTimeout(() => r(null), timeoutMs));
   try {
-    const fix = await Promise.race([Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }), timeout]);
+    const fix = await Promise.race([Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High, mayShowUserSettingsDialog: false }), timeout]);
     if (fix) return fix;
   } catch {
     /* fall through */
@@ -116,6 +116,9 @@ export async function startBackgroundUpdates(): Promise<SharingMode> {
   }
   await Location.startLocationUpdatesAsync(LOCATION_TASK, {
     accuracy: Location.Accuracy.Balanced,
+    // Never prompt users to turn on Google's "Location Accuracy" (it shares
+    // Wi-Fi/sensor data with Google). GPS and network location work without it.
+    mayShowUserSettingsDialog: false,
     distanceInterval: 250,
     timeInterval: intervalMs, // Android
     deferredUpdatesInterval: intervalMs,
