@@ -313,5 +313,9 @@ fly secrets list   # remember the SETUP_TOKEN you set`,
     href
       ? `<a class="btn primary" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${label}</a>`
       : `<span class="btn" aria-disabled="true" title="Coming soon">${label} · soon</span>`;
-  stores.innerHTML = link(cfg.appStore, 'App Store') + link(cfg.playStore, '▶ Google Play');
+  stores.innerHTML =
+    (cfg.androidApk ? `<a class="btn primary" href="${esc(cfg.androidApk)}">⬇ Android app (APK)</a>` : '') +
+    link(cfg.appStore, 'App Store') +
+    link(cfg.playStore, '▶ Google Play') +
+    (cfg.setupGuide ? `<a class="btn" href="${esc(cfg.setupGuide)}" target="_blank" rel="noopener noreferrer">Step-by-step guide</a>` : '');
 })();

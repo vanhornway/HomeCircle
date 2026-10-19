@@ -18,6 +18,20 @@ deploy/           Docker Compose, Caddy, installer, cloud-init, hosting guide
 docs/PROTOCOL.md  Encryption design and threat model
 ```
 
+## Get started
+
+**New here? Follow the [step-by-step setup guide](docs/SETUP.md).** It covers
+running a server, installing the Android app and inviting your family.
+
+**Or let Claude set it up.** Paste this into [Claude Code](https://claude.com/claude-code) or any Claude chat:
+
+```
+Read https://raw.githubusercontent.com/vanhornway/HomeCircle/main/docs/CLAUDE-SETUP.md and follow it to set up HomeCircle for my family.
+```
+
+- **Android app:** [download HomeCircle.apk](https://github.com/vanhornway/HomeCircle/releases/latest/download/HomeCircle.apk) (latest release)
+- **Server:** `docker run -d -p 8080:8080 -v homecircle-data:/data ghcr.io/vanhornway/homecircle:latest`, or one of the [hosting options](deploy/README.md)
+
 ## How it works
 
 1. **Deploy a server.** See [deploy/README.md](deploy/README.md) or open `landing/index.html`.
