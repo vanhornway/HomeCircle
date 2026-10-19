@@ -7,6 +7,7 @@ import * as BackgroundTask from 'expo-background-task';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { loadedClient } from '../lib/circle';
 import { upload, freshFix, shareNow, LOCATION_TASK, GEOFENCE_TASK, HEARTBEAT_TASK, PUSH_TASK } from '../lib/location';
+import { ensureNotificationChannels, notifyNewMessages } from '../lib/notify';
 
 const log = (...a: unknown[]) => {
   if (__DEV__) console.log('[homecircle:bg]', ...a);
@@ -70,14 +71,24 @@ TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Locati
   },
 );
 
-// Silent push from the server: someone tapped "Locate". Payloads carry no
-// content beyond { t: 'loc_req' }.
+// Silent pushes from the server carry no content, only what to do:
+// { t: 'loc_req' } someone tapped "Locate"; { t: 'msg' } there's a new
+// message to fetch, decrypt and show.
 TaskManager.defineTask<Notifications.NotificationTaskPayload>(PUSH_TASK, async ({ data, error }) => {
   if (error) return;
+  const raw = JSON.stringify(data ?? {});
   try {
-    if (JSON.stringify(data ?? {}).includes('loc_req')) await shareNow('requested');
+    if (raw.includes('loc_req')) {
+      await shareNow('requested');
+    } else if (/\\?"t\\?"\s*:\s*\\?"msg/.test(raw)) {
+      const client = await loadedClient();
+      if (!client) return;
+      await ensureNotificationChannels();
+      await client.fetchMessages();
+      await notifyNewMessages(client, client.messages);
+    }
   } catch (e) {
-    log('location request failed', e);
+    log('push task failed', e);
   }
 });
 

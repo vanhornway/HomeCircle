@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Linking, Pressable, Switch, Text, TextInput, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import type { Member } from '@homecircle/core';
 import { Avatar, Button, Card, H1, SectionTitle, Screen, Tag } from '../../components/ui';
@@ -9,6 +9,7 @@ import { useCircle } from '../../lib/useCircle';
 import { errorText } from '../../lib/circle';
 import { clearDeviceData, getSettings, setLastUpload, updateSettings, type Settings } from '../../lib/storage';
 import { shareNow, startBackgroundUpdates, stopBackgroundUpdates, type SharingMode } from '../../lib/location';
+import { notificationPermission, registerPush } from '../../lib/push';
 import { useTheme } from '../../theme';
 
 const INTERVALS = [5, 15, 30, 60];
@@ -24,8 +25,10 @@ export default function SettingsTab() {
   const [mode, setMode] = useState<SharingMode | null>(null);
   const [openMember, setOpenMember] = useState<string | null>(null);
 
+  const [notif, setNotif] = useState<'granted' | 'denied' | 'undetermined' | null>(null);
   useFocusEffect(
     useCallback(() => {
+      notificationPermission().then(setNotif).catch(() => {});
       getSettings().then(setSettings);
       startBackgroundUpdates().then(setMode).catch(() => setMode(null));
     }, []),
@@ -154,6 +157,37 @@ export default function SettingsTab() {
           </Text>
         </View>
         <Button small title="Share my location now" onPress={() => shareNow('manual').then((ok) => !ok && Alert.alert('Couldn’t get your location', 'Check that location is allowed.'))} />
+      </Card>
+
+      <SectionTitle>Notifications</SectionTitle>
+      <Card style={{ gap: 12 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Show message text</Text>
+            <Text style={{ color: t.muted, fontSize: 13, marginTop: 2 }}>
+              {settings?.showPreviews ? 'Notifications show who wrote and what they said' : 'Notifications just say “New message”'}
+            </Text>
+          </View>
+          <Switch
+            value={settings?.showPreviews ?? true}
+            onValueChange={(v) => updateSettings({ showPreviews: v }).then(setSettings)}
+            trackColor={{ true: t.brand }}
+          />
+        </View>
+        {notif && notif !== 'granted' ? (
+          <Button
+            small
+            title={notif === 'denied' ? 'Turn on notifications in system settings' : 'Allow notifications'}
+            onPress={() =>
+              notif === 'denied'
+                ? Linking.openSettings()
+                : registerPush({ ask: true }).finally(() => notificationPermission().then(setNotif))
+            }
+          />
+        ) : null}
+        <Text style={{ color: t.muted, fontSize: 13 }}>
+          Messages are decrypted on this phone before they’re shown. The push service only learns that something arrived.
+        </Text>
       </Card>
 
       <SectionTitle>Circle</SectionTitle>

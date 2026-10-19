@@ -139,6 +139,8 @@ export class CircleClient {
   members: Map<string, Member>;
   locations: Map<string, MemberLocation>;
   messages: Message[];
+  /** Highest message sequence number received. */
+  lastSeq: number;
   places: Map<string, Place>;
   status: ConnectionStatus;
   readonly me: Member | null | undefined;

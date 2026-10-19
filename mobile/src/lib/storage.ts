@@ -46,6 +46,8 @@ export interface Settings {
   sharing: boolean;
   /** Background update interval. The OS treats this as a minimum. */
   intervalMinutes: number;
+  /** Show sender and text in notifications (otherwise just "New message"). */
+  showPreviews: boolean;
   /** Map tiles, from the server's /info. */
   tileUrl: string;
   tileAttribution: string;
@@ -57,6 +59,7 @@ const LAST_UPLOAD_KEY = 'homecircle.lastUpload';
 export const DEFAULT_SETTINGS: Settings = {
   sharing: true,
   intervalMinutes: 15,
+  showPreviews: true,
   tileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   tileAttribution: '&copy; OpenStreetMap contributors',
 };
@@ -97,5 +100,5 @@ export async function setLastUpload(v: LastUpload | null) {
 }
 
 export async function clearDeviceData() {
-  await AsyncStorage.multiRemove([SETTINGS_KEY, LAST_UPLOAD_KEY, 'homecircle.geofenceEvents']);
+  await AsyncStorage.multiRemove([SETTINGS_KEY, LAST_UPLOAD_KEY, 'homecircle.geofenceEvents', 'homecircle.lastNotifiedSeq']);
 }

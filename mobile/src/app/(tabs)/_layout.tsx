@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
+import * as Notifications from 'expo-notifications';
 import { AppState } from 'react-native';
 import { Tabs } from 'expo-router/js-tabs';
-import { router } from 'expo-router';
+import { router, useRouter } from 'expo-router';
 import { errorText, getClient } from '../../lib/circle';
 import { getServerState, isUnreachable, setRetryHandler, setServerState } from '../../lib/connection';
 import { registerPush } from '../../lib/push';
+import { ensureNotificationChannels, markSeen, notifyNewMessages, useUnreadCount } from '../../lib/notify';
 import { shareNow, startBackgroundUpdates, syncGeofences } from '../../lib/location';
 import { updateSettings } from '../../lib/storage';
 import { Icon } from '../../components/ui';
@@ -42,6 +44,8 @@ function useCircleLifecycle() {
       }
       try {
         await client.start();
+        // Opening the app counts as seeing what arrived meanwhile.
+        markSeen(client.lastSeq).catch(() => {});
         attempt = 0;
         setServerState({ reachable: true, error: null, retrying: false });
         shareNow('open').catch(() => {});
@@ -70,6 +74,7 @@ function useCircleLifecycle() {
       client.on('locationRequest', () => shareNow('requested').catch(() => {})),
       client.on('places', (places) => syncGeofences(places.values()).catch(() => {})),
       client.on('removed', () => router.replace('/welcome')),
+      client.on('newMessage', (m) => notifyNewMessages(client, [m]).catch(() => {})),
       // The live socket reconnects by itself; reflect it in the banner and
       // catch up on anything missed while it was down.
       client.on('status', (s) => {
@@ -87,6 +92,7 @@ function useCircleLifecycle() {
       resume();
     });
 
+    ensureNotificationChannels().catch(() => {});
     // Location sharing doesn't depend on the server being up right now.
     startBackgroundUpdates().catch(() => {});
     resume();
@@ -109,9 +115,22 @@ function useCircleLifecycle() {
   }, []);
 }
 
+/** Tapping a message notification opens the chat. */
+function useOpenChatFromNotification() {
+  const nav = useRouter();
+  const response = Notifications.useLastNotificationResponse();
+  useEffect(() => {
+    if (response && JSON.stringify(response.notification.request.content.data ?? {}).includes('"chat"')) {
+      nav.navigate('/(tabs)/chat');
+    }
+  }, [response, nav]);
+}
+
 export default function TabsLayout() {
   const t = useTheme();
+  const unread = useUnreadCount();
   useCircleLifecycle();
+  useOpenChatFromNotification();
   return (
     <Tabs
       screenOptions={{
@@ -122,7 +141,10 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Map', tabBarIcon: ({ color }) => <Icon name="map" color={color} /> }} />
-      <Tabs.Screen name="chat" options={{ title: 'Chat', tabBarIcon: ({ color }) => <Icon name="chat" color={color} /> }} />
+      <Tabs.Screen
+        name="chat"
+        options={{ title: 'Chat', tabBarBadge: unread ? (unread > 9 ? '9+' : unread) : undefined, tabBarIcon: ({ color }) => <Icon name="chat" color={color} /> }}
+      />
       <Tabs.Screen name="places" options={{ title: 'Places', tabBarIcon: ({ color }) => <Icon name="place" color={color} /> }} />
       <Tabs.Screen name="settings" options={{ title: 'Settings', tabBarIcon: ({ color }) => <Icon name="settings" color={color} /> }} />
     </Tabs>

@@ -24,18 +24,26 @@ export class Push {
     );
   }
 
-  /** Generic "something happened" notification for chat and place events. */
+  /**
+   * A new chat message or place event. Android phones get a content-free
+   * data push that wakes the app, which fetches, decrypts and shows the
+   * message itself. Other platforms get a generic visible alert.
+   */
   activity(members) {
     return this._send(
-      members.map((m) => ({
-        to: m.pushToken,
-        title: 'HomeCircle',
-        body: 'New activity in your circle',
-        sound: 'default',
-        priority: 'high',
-        channelId: 'activity',
-        data: { t: 'msg' },
-      })),
+      members.map((m) =>
+        m.pushPlatform === 'android'
+          ? { to: m.pushToken, data: { t: 'msg' }, priority: 'high' }
+          : {
+              to: m.pushToken,
+              title: 'HomeCircle',
+              body: 'New message in your circle',
+              sound: 'default',
+              priority: 'high',
+              data: { t: 'msg' },
+              _contentAvailable: true,
+            },
+      ),
     );
   }
 

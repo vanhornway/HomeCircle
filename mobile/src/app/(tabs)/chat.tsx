@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
 import { FlatList, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { EMOJI_GROUPS, QUICK_REACTIONS, isEmojiOnly, type Message } from '@homecircle/core';
@@ -6,6 +7,7 @@ import { Icon } from '../../components/ui';
 import { ServerBanner } from '../../components/ServerBanner';
 import { useCircle } from '../../lib/useCircle';
 import { errorText } from '../../lib/circle';
+import { markSeen, setChatVisible } from '../../lib/notify';
 import { useTheme } from '../../theme';
 
 const clock = (ts: number) => new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -20,6 +22,15 @@ export default function Chat() {
   const list = useRef<FlatList<Message>>(null);
   const me = client.account?.memberId;
   const messages = [...client.messages].reverse();
+
+  // While this screen is showing, new messages are "seen": no notification or badge.
+  useFocusEffect(
+    useCallback(() => {
+      setChatVisible(true);
+      markSeen(client.lastSeq).catch(() => {});
+      return () => setChatVisible(false);
+    }, [client]),
+  );
 
   const send = async () => {
     const value = text;
