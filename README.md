@@ -66,11 +66,11 @@ Before release, change `ios.bundleIdentifier` / `android.package` in
 
 ## Before you publish
 
-Replace `YOUR_GITHUB_USERNAME` in `render.yaml`, `deploy/install.sh`,
-`deploy/cloud-init.yaml` and `landing/config.js` with your GitHub account, then
-push the repo. The deploy buttons and installers pull from it. CI
-(`.github/workflows/ci.yml`) runs the tests and publishes a multi-arch image to
-`ghcr.io/<you>/homecircle`.
+The deploy buttons and installers pull from the public GitHub repo
+`vanhornway/HomeCircle` (set in `render.yaml`, `deploy/install.sh`,
+`deploy/cloud-init.yaml` and `landing/config.js`), so it has to exist and be
+public. CI (`.github/workflows/ci.yml`) runs the tests and publishes a
+multi-arch image to `ghcr.io/vanhornway/homecircle`.
 
 ## Known limitations
 

@@ -4,9 +4,9 @@ Every option runs the same Docker image and needs **persistent storage** (a
 disk or volume at `/data`). Your circle's data is end-to-end encrypted, so the
 hosting company only ever stores ciphertext.
 
-Before the deploy buttons work, push this repository to your own GitHub
-account and replace `YOUR_GITHUB_USERNAME` in `render.yaml`, `deploy/install.sh`,
-`deploy/cloud-init.yaml` and `landing/config.js`.
+The deploy buttons and installers pull from the public GitHub repo
+`vanhornway/HomeCircle`. If you fork it, change the repo in `render.yaml`,
+`deploy/install.sh`, `deploy/cloud-init.yaml` and `landing/config.js`.
 
 | Option | Effort | Rough cost* | Good for |
 |---|---|---|---|
@@ -27,7 +27,7 @@ your circle.
 
 ## Render
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/YOUR_GITHUB_USERNAME/homecircle)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/vanhornway/HomeCircle)
 
 `render.yaml` creates a Docker web service on the Starter plan with a 1 GB disk
 and a randomly generated `SETUP_TOKEN`.
@@ -83,7 +83,7 @@ sudo bash /opt/homecircle/src/deploy/install.sh --mode public --domain family.ex
 Already have a Linux server? Run the installer directly:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/homecircle/main/deploy/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/vanhornway/HomeCircle/main/deploy/install.sh | sudo bash
 ```
 
 ## Raspberry Pi / home server
@@ -94,7 +94,7 @@ your server from anywhere, not just home Wi‑Fi, so pick one way to expose it:
 **A. Tailscale Funnel (recommended, no router changes, free)**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/homecircle/main/deploy/install.sh | sudo bash -s -- --mode tailscale
+curl -fsSL https://raw.githubusercontent.com/vanhornway/HomeCircle/main/deploy/install.sh | sudo bash -s -- --mode tailscale
 ```
 
 You'll get a stable public address like `https://homecircle.tail1234.ts.net`.

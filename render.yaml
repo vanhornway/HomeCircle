@@ -1,5 +1,5 @@
 # Render Blueprint — "Deploy to Render" button:
-#   https://render.com/deploy?repo=https://github.com/YOUR_GITHUB_USERNAME/homecircle
+#   https://render.com/deploy?repo=https://github.com/vanhornway/HomeCircle
 # A persistent disk needs a paid instance (Starter, ~$7/mo + ~$0.25/GB disk).
 # Free instances sleep and lose data, so they won't work for HomeCircle.
 services:

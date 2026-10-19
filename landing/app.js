@@ -1,6 +1,6 @@
 (() => {
   const cfg = window.HOMECIRCLE || {};
-  const repo = cfg.repo || 'YOUR_GITHUB_USERNAME/homecircle';
+  const repo = cfg.repo || 'vanhornway/HomeCircle';
   const branch = cfg.branch || 'main';
   const repoUrl = `https://github.com/${repo}`;
   const raw = `https://raw.githubusercontent.com/${repo}/${branch}`;
@@ -76,7 +76,7 @@ runcmd:
       time: '~10 minutes',
       skill: 'Comfortable with a terminal',
       action: { label: 'Install flyctl', href: 'https://fly.io/docs/flyctl/install/' },
-      code: `git clone ${repoUrl}.git && cd homecircle
+      code: `git clone ${repoUrl}.git && cd HomeCircle
 fly launch --copy-config --no-deploy --name my-family-homecircle
 fly volumes create homecircle_data --size 1
 fly secrets set SETUP_TOKEN=$(openssl rand -base64 18)

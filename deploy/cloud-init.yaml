@@ -14,4 +14,4 @@ runcmd:
   - ufw allow 443/tcp
   - ufw allow 443/udp
   - ufw --force enable
-  - curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/homecircle/main/deploy/install.sh | HOMECIRCLE_MODE=public bash
+  - curl -fsSL https://raw.githubusercontent.com/vanhornway/HomeCircle/main/deploy/install.sh | HOMECIRCLE_MODE=public bash

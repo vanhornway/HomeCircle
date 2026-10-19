@@ -2,7 +2,7 @@
 # HomeCircle installer for a Linux VPS (DigitalOcean, Hetzner, …) or a
 # Raspberry Pi (64-bit Raspberry Pi OS recommended).
 #
-#   curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/homecircle/main/deploy/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/vanhornway/HomeCircle/main/deploy/install.sh | sudo bash
 #
 # Options (env vars or flags):
 #   --mode public|tailscale|cloudflare|local   how phones reach the server (default: public)
@@ -10,7 +10,7 @@
 #   --cloudflare-token TOKEN                   tunnel token (cloudflare mode)
 set -euo pipefail
 
-REPO="${HOMECIRCLE_REPO:-https://github.com/YOUR_GITHUB_USERNAME/homecircle.git}"
+REPO="${HOMECIRCLE_REPO:-https://github.com/vanhornway/HomeCircle.git}"
 BRANCH="${HOMECIRCLE_BRANCH:-main}"
 DIR="${HOMECIRCLE_DIR:-/opt/homecircle}"
 MODE="${HOMECIRCLE_MODE:-public}"
