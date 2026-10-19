@@ -1,0 +1,55 @@
+# Self-hosting on a VPS (DigitalOcean, Hetzner, …) or a Raspberry Pi.
+# Normally started by deploy/install.sh, which writes ../.env for you.
+#
+#   docker compose --env-file .env -f deploy/docker-compose.yml --profile public up -d --build
+#
+# Profiles (choose how phones reach your server from anywhere):
+#   public      Caddy with automatic HTTPS (needs ports 80/443 reachable)
+#   cloudflare  Cloudflare Tunnel (no open ports; needs a Cloudflare domain)
+#   (none)      server only on 127.0.0.1:8080 — use with Tailscale Funnel
+services:
+  homecircle:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: homecircle:local
+    restart: unless-stopped
+    environment:
+      SETUP_TOKEN: ${SETUP_TOKEN:?run deploy/install.sh or set SETUP_TOKEN in .env}
+      PUBLIC_URL: https://${DOMAIN:-localhost}
+      TRUST_PROXY: "true"
+      MESSAGE_RETENTION_DAYS: ${MESSAGE_RETENTION_DAYS:-90}
+    volumes:
+      - homecircle-data:/data
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: [public]
+    restart: unless-stopped
+    depends_on: [homecircle]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  cloudflared:
+    image: cloudflare/cloudflared:2025.1.0
+    profiles: [cloudflare]
+    restart: unless-stopped
+    depends_on: [homecircle]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+
+volumes:
+  homecircle-data:
+  caddy-data:
+  caddy-config:

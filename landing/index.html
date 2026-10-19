@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>HomeCircle — private family location sharing</title>
+  <meta name="description" content="See where your family is, chat, and get arrival alerts — on a server you own, end-to-end encrypted.">
+  <meta name="theme-color" content="#2f7d6d">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="#top"><img src="icon.svg" alt="" width="30" height="30">HomeCircle</a>
+    <nav>
+      <a href="#how">How it works</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#servers" class="pill">Get your server</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">A private alternative to Life360</p>
+        <h1>Your family’s map,<br>on <em>your</em> server.</h1>
+        <p class="lede">See where everyone is, tap <strong>Locate</strong> for a fresh fix, chat, and get alerts when the kids get home. It all runs on a server your family owns, end-to-end encrypted, so no company can see, sell or leak it.</p>
+        <div class="cta-row">
+          <a class="btn primary" href="#servers">Choose a server</a>
+          <a class="btn" href="#how">See how it works</a>
+        </div>
+        <ul class="ticks">
+          <li>Open source</li><li>No accounts, no ads</li><li>iPhone, Android &amp; web</li>
+        </ul>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <div class="phone">
+          <div class="phone-map">
+            <svg viewBox="0 0 300 360" class="streets">
+              <path d="M-10 80 L320 40 M-10 200 L320 170 M-10 300 L320 290 M60 -10 L90 370 M190 -10 L170 370 M260 -10 L280 370" />
+              <path class="river" d="M-10 250 C 80 230, 140 280, 320 240" />
+            </svg>
+            <div class="place" style="left:58%;top:22%"><span>Home</span></div>
+            <div class="pin" style="left:62%;top:27%;--c:#d9644a">M</div>
+            <div class="pin" style="left:28%;top:58%;--c:#4a6fd9">S</div>
+            <div class="pin pulse" style="left:72%;top:68%;--c:#b0479c">J</div>
+          </div>
+          <div class="phone-sheet">
+            <div class="row"><b style="--c:#d9644a">M</b><span><strong>Mom</strong><small>At Home · just now</small></span></div>
+            <div class="row"><b style="--c:#4a6fd9">S</b><span><strong>Sam</strong><small>±20 m · 6 min ago · 64%</small></span></div>
+            <div class="row"><b style="--c:#b0479c">J</b><span><strong>Jo</strong><small>Updating…</small></span><i>Locate</i></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="how" class="section">
+      <h2>Up and running in about ten minutes</h2>
+      <ol class="steps">
+        <li>
+          <span class="num">1</span>
+          <h3>Pick a server</h3>
+          <p>Deploy HomeCircle with one click on Render or Railway, rent a small VPS, or run it on a Raspberry Pi at home. One server is one family.</p>
+        </li>
+        <li>
+          <span class="num">2</span>
+          <h3>Set up in the app</h3>
+          <p>Open the HomeCircle app, enter your server address and its one-time setup code. Your encryption keys are created on your phone.</p>
+        </li>
+        <li>
+          <span class="num">3</span>
+          <h3>Invite your family</h3>
+          <p>Show a QR code or send a private link. Only people who join your server can ever see your location or messages.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="section features">
+      <h2>Everything you’d expect, and nothing you wouldn’t</h2>
+      <div class="grid">
+        <article><h3>Live family map</h3><p>Everyone’s latest location, battery and “last seen” time, updated live while the app is open.</p></article>
+        <article><h3>Locate on demand</h3><p>Tap Locate and their phone wakes up, takes one fresh GPS fix and sends it back. No constant tracking needed.</p></article>
+        <article><h3>Easy on battery</h3><p>Updates about every 15 minutes, plus when someone moves far or arrives somewhere. You can choose 5 to 60 minutes.</p></article>
+        <article><h3>Arrival alerts</h3><p>“Jo arrived at School.” Geofences run on each phone, so the server never learns where your places are.</p></article>
+        <article><h3>Family chat</h3><p>An encrypted group chat for your circle, alongside the map.</p></article>
+        <article><h3>You stay in control</h3><p>Pause sharing anytime. Remove someone and the circle’s key changes immediately, so they can’t see anything new.</p></article>
+      </div>
+    </section>
+
+    <section id="privacy" class="section privacy">
+      <div>
+        <h2>Private by design, not by promise</h2>
+        <p class="lede small">Most location apps keep every family’s locations on their own servers. HomeCircle flips that: you own the server, and it still can’t read your data.</p>
+        <ul class="facts">
+          <li><strong>Encrypted on your phone.</strong> Locations, names, messages and places are sealed with a key only your circle holds (XSalsa20-Poly1305 + Ed25519 signatures).</li>
+          <li><strong>Your server sees ciphertext.</strong> It stores and relays sealed data, never plaintext. Your hosting provider sees the same.</li>
+          <li><strong>Only your server’s members.</strong> There is no global network and no way to find or add people outside your server.</li>
+          <li><strong>Content-free notifications.</strong> Push messages say only “new activity”. Your phone decrypts the details itself.</li>
+          <li><strong>No history on the server.</strong> Only each person’s latest location is kept. Old messages expire after 90 days by default.</li>
+        </ul>
+      </div>
+      <div class="flow" aria-label="How data flows">
+        <div class="node"><span>📱</span><b>Mom’s phone</b><small>encrypts</small></div>
+        <div class="arrow">🔒 sealed</div>
+        <div class="node server"><span>🗄️</span><b>Your server</b><small>can’t read it</small></div>
+        <div class="arrow">🔒 sealed</div>
+        <div class="node"><span>📱</span><b>Family phones</b><small>decrypt</small></div>
+      </div>
+    </section>
+
+    <section id="servers" class="section">
+      <h2>Choose where your server lives</h2>
+      <p class="lede small">Each option runs the same open-source server. Pick based on how hands-off you want to be.</p>
+      <div class="hosts" role="tablist" aria-label="Hosting options"></div>
+      <div class="host-detail" id="host-detail" role="tabpanel" aria-live="polite"></div>
+
+      <div class="check card">
+        <h3>Check your server</h3>
+        <p class="muted">Once it’s deployed, paste its address to make sure it’s reachable and ready for setup.</p>
+        <form id="check-form" class="check-row">
+          <input id="check-url" class="input" placeholder="homecircle-abc.onrender.com" autocomplete="off" spellcheck="false" aria-label="Server address">
+          <button class="btn primary" type="submit">Check</button>
+        </form>
+        <p id="check-result" class="check-result" role="status"></p>
+      </div>
+    </section>
+
+    <section id="app" class="section get-app">
+      <h2>Get the app</h2>
+      <p class="lede small">Install HomeCircle on every phone in the family, then choose <strong>Set up a new server</strong> (first person) or <strong>Join my family</strong> (everyone else).</p>
+      <div class="cta-row" id="store-links"></div>
+      <p class="muted small">On a laptop? Every server also has a web version: just open your server’s address in a browser.</p>
+    </section>
+
+    <section class="section faq">
+      <h2>Questions</h2>
+      <details><summary>Who can see my location?</summary><p>Only people who joined your HomeCircle server with an invite. The server stores your location encrypted, and only the members’ phones hold the key.</p></details>
+      <details><summary>Does it drain my battery?</summary><p>No more than necessary. By default your phone shares about every 15 minutes, and more often only when you move a long way, arrive at a saved place, or someone taps Locate. The phone’s low-power location features do the work.</p></details>
+      <details><summary>What can my hosting provider see?</summary><p>Encrypted data, how many people use the server, and when phones connect. They can’t see names, locations, places or messages.</p></details>
+      <details><summary>What if I lose my phone?</summary><p>Another admin removes the old phone from Settings, which changes the circle’s key. Then they invite you again on your new phone. Tip: make a second family member an admin.</p></details>
+      <details><summary>What does it cost?</summary><p>The software is free. Hosting costs roughly $3–7 a month, or nothing extra on a Raspberry Pi you already own.</p></details>
+      <details><summary>Can people on other servers find me?</summary><p>No. There’s no directory and no federation. Each server is its own closed circle.</p></details>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span><img src="icon.svg" alt="" width="20" height="20"> HomeCircle</span>
+    <span class="muted">Open source · Your family, your server, your data.</span>
+  </footer>
+</body>
+</html>

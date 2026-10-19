@@ -1,0 +1,48 @@
+// Push notifications via Expo's relay (works with any self-hosted server, no
+// per-server Apple/Google credentials needed). The server only ever sends
+// content-free pushes: "New activity" or a silent location request.
+import { Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
+import { AndroidImportance } from 'expo-notifications';
+import * as Device from 'expo-device';
+import Constants from 'expo-constants';
+import { getClient } from './circle';
+
+Notifications.setNotificationHandler({
+  handleNotification: async (n) => {
+    const silent = JSON.stringify(n.request.content.data ?? {}).includes('loc_req');
+    return { shouldShowBanner: !silent, shouldShowList: !silent, shouldPlaySound: !silent, shouldSetBadge: false };
+  },
+});
+
+export async function notificationPermission(): Promise<'granted' | 'denied' | 'undetermined'> {
+  const p = await Notifications.getPermissionsAsync();
+  return p.granted ? 'granted' : p.canAskAgain ? 'undetermined' : 'denied';
+}
+
+/** Ask for permission (if needed) and register this phone's push token with the server. */
+export async function registerPush({ ask = false } = {}): Promise<string | null> {
+  if (!Device.isDevice) return null;
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('activity', {
+      name: 'Circle activity',
+      importance: AndroidImportance.HIGH,
+    });
+  }
+  let perm = await Notifications.getPermissionsAsync();
+  if (!perm.granted && ask && perm.canAskAgain) perm = await Notifications.requestPermissionsAsync();
+  if (!perm.granted) return null;
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
+  if (!projectId) {
+    if (__DEV__) console.warn('[homecircle] No EAS projectId: run `npx eas-cli init` to enable push notifications');
+    return null;
+  }
+  try {
+    const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
+    await getClient().api.putPush(token, Platform.OS);
+    return token;
+  } catch (e) {
+    if (__DEV__) console.warn('[homecircle] push registration failed', e);
+    return null;
+  }
+}

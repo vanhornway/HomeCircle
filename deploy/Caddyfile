@@ -1,0 +1,11 @@
+# Automatic HTTPS via Let's Encrypt. Works with your own domain or a free
+# <your-ip>.sslip.io name that install.sh picks when you don't have one.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy homecircle:8080
+	header -Server
+	# No access logs: your server shouldn't keep a record of who connected when.
+	log {
+		output discard
+	}
+}

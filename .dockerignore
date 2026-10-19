@@ -1,0 +1,9 @@
+**/node_modules
+**/data
+.git
+mobile
+landing
+docs
+deploy
+**/test
+*.md

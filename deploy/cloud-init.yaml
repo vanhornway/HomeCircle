@@ -1,0 +1,17 @@
+#cloud-config
+# Paste into "User data" (DigitalOcean → Create Droplet → Advanced options)
+# or "Cloud config" (Hetzner Cloud → Add server). Ubuntu 24.04, smallest size is plenty.
+# After ~3 minutes: ssh root@<server-ip> and the address + setup code are shown,
+# or open the provider's web console and run: cat /opt/homecircle/SETUP-INFO.txt
+package_update: true
+packages:
+  - git
+  - curl
+  - ufw
+runcmd:
+  - ufw allow OpenSSH
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw allow 443/udp
+  - ufw --force enable
+  - curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/homecircle/main/deploy/install.sh | HOMECIRCLE_MODE=public bash

@@ -1,0 +1,11 @@
+node_modules/
+server/data/
+.env
+*.db
+*.db-wal
+*.db-shm
+.DS_Store
+mobile/.expo/
+mobile/ios/
+mobile/android/
+mobile/dist/

@@ -1,0 +1,18 @@
+{
+  "name": "@homecircle/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HomeCircle end-to-end encryption, API client and circle state (shared by web, mobile and tests)",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    }
+  },
+  "dependencies": {
+    "tweetnacl": "1.0.3"
+  },
+  "types": "src/index.d.ts"
+}
