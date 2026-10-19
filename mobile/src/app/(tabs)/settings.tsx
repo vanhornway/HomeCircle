@@ -3,6 +3,8 @@ import { Alert, Pressable, Switch, Text, TextInput, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import type { Member } from '@homecircle/core';
 import { Avatar, Button, Card, H1, SectionTitle, Screen, Tag } from '../../components/ui';
+import { ServerBanner } from '../../components/ServerBanner';
+import { useServerState } from '../../lib/connection';
 import { useCircle } from '../../lib/useCircle';
 import { errorText } from '../../lib/circle';
 import { clearDeviceData, getSettings, setLastUpload, updateSettings, type Settings } from '../../lib/storage';
@@ -15,6 +17,7 @@ export default function SettingsTab() {
   const t = useTheme();
   const client = useCircle();
   const me = client.me;
+  const server = useServerState();
   const [draft, setDraft] = useState<string | null>(null);
   const name = draft ?? me?.name ?? '';
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -103,6 +106,7 @@ export default function SettingsTab() {
   return (
     <Screen>
       <H1 style={{ marginTop: 4 }}>Settings</H1>
+      <ServerBanner style={{ marginTop: 14 }} />
 
       <SectionTitle>You</SectionTitle>
       <Card>
@@ -161,9 +165,10 @@ export default function SettingsTab() {
       <SectionTitle>Server</SectionTitle>
       <Card>
         <Text style={{ color: t.text, fontSize: 15 }}>{client.serverUrl?.replace(/^https?:\/\//, '')}</Text>
-        <Text style={{ color: t.muted, fontSize: 13, marginTop: 4 }}>
-          Key version {client.account?.epoch} · {client.status} · end-to-end encrypted
+        <Text style={{ color: server.reachable ? t.muted : t.danger, fontSize: 13, marginTop: 4 }}>
+          {server.reachable ? `Key version ${client.account?.epoch} · ${client.status} · end-to-end encrypted` : 'Not reachable right now'}
         </Text>
+        <Button small title="Change server address" style={{ marginTop: 12 }} onPress={() => router.push('/server')} />
       </Card>
 
       <SectionTitle>Leave</SectionTitle>

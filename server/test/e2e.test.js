@@ -213,6 +213,21 @@ test('new member after rotation sees re-sealed places and circle name', async ()
   dave.disconnect();
 });
 
+test('changing server address only accepts the same circle', async () => {
+  await assert.rejects(() => bob.changeServer('http://127.0.0.1:9'), (e) => e.code === 'network');
+  const before = bob.account.server;
+  const info = await bob.changeServer(url.replace('127.0.0.1', 'localhost'));
+  assert.equal(info.circleId, bob.account.circleId);
+  assert.notEqual(bob.account.server, before);
+  await bob.refresh();
+  // A server that hosts a different (or no) circle is refused.
+  const other = createApp({ ...app.config, dataDir: mkdtempSync(join(tmpdir(), 'homecircle-other-')) });
+  await new Promise((r) => other.server.listen(0, '127.0.0.1', r));
+  await assert.rejects(() => bob.changeServer(`http://127.0.0.1:${other.server.address().port}`), /hasn’t been set up/);
+  await other.close();
+  await bob.changeServer(before);
+});
+
 test('roles: members cannot invite or remove', async () => {
   await assert.rejects(() => bob.createInvite(), (e) => e.status === 403);
   await assert.rejects(() => bob.api.removeMember(owner.account.memberId), (e) => e.status === 403);

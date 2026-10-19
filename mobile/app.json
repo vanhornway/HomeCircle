@@ -3,7 +3,7 @@
     "name": "HomeCircle",
     "slug": "homecircle",
     "scheme": "homecircle",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -69,7 +69,15 @@
         }
       ],
       "expo-background-task",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraProguardRules": "# WorkManager (pulled in by expo-background-task) creates its Room database by reflection;\n# without these rules R8 strips it and the app crashes on launch.\n-keep class * extends androidx.room.RoomDatabase { <init>(); }\n-keep class androidx.work.impl.** { *; }\n"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false

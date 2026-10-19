@@ -8,6 +8,7 @@
     "expo": "~58.0.14",
     "expo-background-task": "~58.0.11",
     "expo-battery": "~58.0.3",
+    "expo-build-properties": "~58.0.11",
     "expo-camera": "~58.0.10",
     "expo-clipboard": "~58.0.3",
     "expo-constants": "~58.0.12",

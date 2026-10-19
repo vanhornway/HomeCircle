@@ -147,6 +147,7 @@ export class CircleClient {
   on(event: string, fn: (d?: any) => void): () => void;
 
   load(): Promise<boolean>;
+  changeServer(serverUrl: string): Promise<ServerInfo>;
   signOut(): Promise<void>;
   createCircle(opts: { serverUrl: string; setupToken: string; name: string; circleName: string }): Promise<void>;
   previewInvite(link: string): Promise<InvitePreview>;

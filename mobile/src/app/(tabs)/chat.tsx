@@ -3,6 +3,7 @@ import { FlatList, KeyboardAvoidingView, Platform, Pressable, Text, TextInput, V
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Message } from '@homecircle/core';
 import { Icon } from '../../components/ui';
+import { ServerBanner } from '../../components/ServerBanner';
 import { useCircle } from '../../lib/useCircle';
 import { errorText } from '../../lib/circle';
 import { useTheme } from '../../theme';
@@ -63,6 +64,7 @@ export default function Chat() {
       <View style={{ paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: t.line }}>
         <Text style={{ color: t.text, fontSize: 22, fontWeight: '700' }}>{client.circle.name}</Text>
         <Text style={{ color: t.muted, fontSize: 13 }}>End-to-end encrypted · {client.memberList().length} members</Text>
+        <ServerBanner style={{ marginTop: 10 }} />
       </View>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
         <FlatList

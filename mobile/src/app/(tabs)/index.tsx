@@ -4,6 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { MemberLocation, Place } from '@homecircle/core';
 import { FamilyMap, type MapMember } from '../../map/FamilyMap';
 import { Avatar, Button, Tag } from '../../components/ui';
+import { ServerBanner } from '../../components/ServerBanner';
+import { useServerState } from '../../lib/connection';
 import { initials, timeAgo, useCircle } from '../../lib/useCircle';
 import { distanceM } from '../../lib/location';
 import { errorText } from '../../lib/circle';
@@ -22,6 +24,7 @@ function placeAt(loc: MemberLocation | undefined, places: Map<string, Place>) {
 export default function MapTab() {
   const t = useTheme();
   const client = useCircle();
+  const server = useServerState();
   const [tiles, setTiles] = useState(DEFAULT_SETTINGS);
   const [focus, setFocus] = useState<{ lat: number; lng: number; key: number } | null>(null);
   const [cooldownUntil, setCooldownUntil] = useState(0);
@@ -107,6 +110,7 @@ export default function MapTab() {
             <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: client.status === 'online' ? t.ok : client.status === 'connecting' ? t.accent : t.muted }} />
             <Text style={{ color: t.text, fontWeight: '700', fontSize: 15 }}>{client.circle.name}</Text>
           </View>
+          <ServerBanner style={{ marginTop: 10 }} />
         </SafeAreaView>
       </View>
       <View style={{ flex: 1, backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, marginTop: -18, paddingTop: 16 }}>
@@ -118,9 +122,13 @@ export default function MapTab() {
           data={members}
           keyExtractor={(m) => m.id}
           contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 24 }}
-          ListEmptyComponent={<Text style={{ color: t.muted, padding: 8 }}>Loading your circle…</Text>}
+          ListEmptyComponent={
+            <Text style={{ color: t.muted, padding: 8, lineHeight: 20 }}>
+              {server.reachable ? 'Loading your circle…' : 'Your circle will show up here once your server is reachable again.'}
+            </Text>
+          }
           ListFooterComponent={
-            members.length < 2 ? (
+            members.length === 1 ? (
               <Text style={{ color: t.muted, padding: 8, lineHeight: 20 }}>It’s just you so far. Invite your family from Settings.</Text>
             ) : undefined
           }

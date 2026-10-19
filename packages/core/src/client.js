@@ -112,6 +112,26 @@ export class CircleClient {
     this.emit('signedOut');
   }
 
+  /**
+   * Point this device at a new address for the same server (e.g. a new
+   * domain). Only accepted if that server hosts our circle.
+   */
+  async changeServer(serverUrl) {
+    const info = await CircleClient.serverInfo(serverUrl, this.fetchImpl);
+    if (info.circleId !== this.account.circleId) {
+      throw new Error(
+        info.setup
+          ? 'That server hosts a different circle. Your circle’s data isn’t there.'
+          : 'That server hasn’t been set up, so your circle isn’t on it.',
+      );
+    }
+    this.disconnect();
+    this.account.server = info.server;
+    this.api = this._makeApi(info.server, this.account.token);
+    await this._save();
+    return info;
+  }
+
   static async serverInfo(serverUrl, fetchImpl) {
     const server = normalizeServerUrl(serverUrl);
     const info = await new Api(server, { fetchImpl }).info();
