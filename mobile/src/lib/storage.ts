@@ -1,6 +1,7 @@
 // Keys live in the iOS Keychain / Android Keystore via expo-secure-store.
 // Values are chunked because SecureStore may reject values over ~2 KB.
 import * as SecureStore from 'expo-secure-store';
+import { useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Storage } from '@homecircle/core';
 
@@ -50,6 +51,10 @@ export interface Settings {
   showPreviews: boolean;
   /** Circles (by id) this phone doesn't share its location with. */
   pausedCircles: string[];
+  /** Post "arrived at / left" messages to the group chats when this phone crosses a place. */
+  announcePlaces: boolean;
+  /** Show other people's arrived/left messages in chats (and notify for them). */
+  showPlaceAlerts: boolean;
   /** Map tiles, from the server's /info. */
   tileUrl: string;
   tileAttribution: string;
@@ -63,22 +68,52 @@ export const DEFAULT_SETTINGS: Settings = {
   intervalMinutes: 15,
   showPreviews: true,
   pausedCircles: [],
+  announcePlaces: true,
+  showPlaceAlerts: true,
   tileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   tileAttribution: '&copy; OpenStreetMap contributors',
+};
+
+// The latest settings, so screens can render them without waiting.
+let cached: Settings | null = null;
+const settingsSubs = new Set<() => void>();
+const setCached = (s: Settings) => {
+  cached = s;
+  settingsSubs.forEach((fn) => fn());
 };
 
 export async function getSettings(): Promise<Settings> {
   try {
     const raw = await AsyncStorage.getItem(SETTINGS_KEY);
-    return { ...DEFAULT_SETTINGS, ...(raw ? JSON.parse(raw) : {}) };
+    const s = { ...DEFAULT_SETTINGS, ...(raw ? JSON.parse(raw) : {}) };
+    if (JSON.stringify(s) !== JSON.stringify(cached)) setCached(s);
+    return s;
   } catch {
     return DEFAULT_SETTINGS;
   }
 }
 
+/** Settings as last loaded (defaults until then). */
+export function currentSettings(): Settings {
+  if (!cached) getSettings().catch(() => {});
+  return cached ?? DEFAULT_SETTINGS;
+}
+
+/** Re-renders when settings change. */
+export function useSettings(): Settings {
+  return useSyncExternalStore(
+    (cb) => {
+      settingsSubs.add(cb);
+      return () => settingsSubs.delete(cb);
+    },
+    currentSettings,
+  );
+}
+
 export async function updateSettings(patch: Partial<Settings>): Promise<Settings> {
   const next = { ...(await getSettings()), ...patch };
   await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+  setCached(next);
   return next;
 }
 

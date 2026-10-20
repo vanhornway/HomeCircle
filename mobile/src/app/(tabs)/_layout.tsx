@@ -11,7 +11,7 @@ import { ensureNotificationChannels, markSeen, notifyNewMessages } from '../../l
 import { ensureReadBase, unreadInCircle } from '../../lib/unread';
 import { useAllCircles } from '../../lib/useCircle';
 import { shareNow, startBackgroundUpdates, syncGeofences } from '../../lib/location';
-import { updateSettings } from '../../lib/storage';
+import { updateSettings, useSettings } from '../../lib/storage';
 import { Icon } from '../../components/ui';
 import { useTheme } from '../../theme';
 
@@ -149,6 +149,7 @@ export default function TabsLayout() {
   const t = useTheme();
   // Restart connections when circles are added or removed (not on switching).
   const { clients } = useCircles();
+  useSettings(); // place alerts on/off changes what counts as unread
   const unread = useAllCircles(['messages']).reduce((n, c) => n + unreadInCircle(c), 0);
   useCircleLifecycle(clients.map((c) => c.accountKey).join('|'));
   useOpenChatFromNotification();

@@ -9,6 +9,7 @@ import { clientForCircle, errorText, useCircles } from '../lib/circle';
 import { initials } from '../lib/useCircle';
 import { setVisibleConversation } from '../lib/notify';
 import { conversationKey, markRead } from '../lib/unread';
+import { useSettings } from '../lib/storage';
 import { useTheme } from '../theme';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -56,7 +57,8 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   const me = client.account?.memberId;
   const key = conversationKey(client.circleId!, peer);
   const other = peer ? client.members.get(peer) : null;
-  const all = client.conversation(peer);
+  const { showPlaceAlerts } = useSettings();
+  const all = client.conversation(peer).filter((m) => showPlaceAlerts || m.kind !== 'event');
   const messages = [...all].reverse();
   const lastSeq = all.at(-1)?.seq ?? 0;
 

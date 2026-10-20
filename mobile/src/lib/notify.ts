@@ -90,13 +90,17 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
   }
   const id = client.circleId!;
   const reading = AppState.currentState === 'active' ? visibleConversation : null;
+  const { showPreviews, showPlaceAlerts } = await getSettings();
   const fresh = messages.filter(
-    (m) => m.seq > last && m.from !== me && (m.kind === 'chat' || m.kind === 'event') && conversationKey(id, m.peer) !== reading,
+    (m) =>
+      m.seq > last &&
+      m.from !== me &&
+      (m.kind === 'chat' || (m.kind === 'event' && showPlaceAlerts)) &&
+      conversationKey(id, m.peer) !== reading,
   );
   await markSeen(client, maxSeq);
   if (!fresh.length) return;
 
-  const { showPreviews } = await getSettings();
   const multi = allClients().length > 1;
   const shown = fresh.slice(-4);
   for (const m of shown) {

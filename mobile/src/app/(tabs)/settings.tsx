@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Alert, Linking, Pressable, Switch, Text, TextInput, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import type { Member } from '@homecircle/core';
-import { Avatar, Button, Card, H1, SectionTitle, Screen, Tag } from '../../components/ui';
+import { Avatar, Button, Card, Checkbox, H1, SectionTitle, Screen, Tag } from '../../components/ui';
 import { ServerBanner } from '../../components/ServerBanner';
 import { useServerState } from '../../lib/connection';
 import { useCircle } from '../../lib/useCircle';
@@ -229,6 +229,30 @@ export default function SettingsTab() {
           </Text>
         </View>
         <Button small title="Share my location now" onPress={() => shareNow('manual').then((ok) => !ok && Alert.alert('Couldn’t get your location', 'Check that location is allowed.'))} />
+      </Card>
+
+      <SectionTitle>Place alerts</SectionTitle>
+      <Card style={{ gap: 6 }}>
+        <Checkbox
+          checked={settings?.announcePlaces ?? true}
+          onChange={(v) => updateSettings({ announcePlaces: v }).then(setSettings)}
+          label="Announce my arrivals and departures"
+          detail={
+            settings?.announcePlaces ?? true
+              ? 'When you arrive at or leave a place, your circles’ group chats get a message like “Umair arrived at Home”.'
+              : 'Your phone won’t post when you arrive or leave. Your location still shows on the map.'
+          }
+        />
+        <Checkbox
+          checked={settings?.showPlaceAlerts ?? true}
+          onChange={(v) => updateSettings({ showPlaceAlerts: v }).then(setSettings)}
+          label="Show place alerts in my chats"
+          detail={
+            settings?.showPlaceAlerts ?? true
+              ? 'You see and get notified when others arrive at or leave places.'
+              : 'Arrived/left messages are hidden on this phone and don’t notify you. Others still see them.'
+          }
+        />
       </Card>
 
       <SectionTitle>Notifications</SectionTitle>

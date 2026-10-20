@@ -7,6 +7,7 @@ import { Avatar, Button } from '../../components/ui';
 import { ServerBanner } from '../../components/ServerBanner';
 import { initials, useAllCircles } from '../../lib/useCircle';
 import { unreadIn } from '../../lib/unread';
+import { useSettings } from '../../lib/storage';
 import { useTheme } from '../../theme';
 
 type Row = {
@@ -42,7 +43,9 @@ function preview(client: CircleClient, m: Message | undefined, group: boolean) {
 export default function Chats() {
   const t = useTheme();
   const clients = useAllCircles();
+  const { showPlaceAlerts } = useSettings();
   const [picking, setPicking] = useState(false);
+  const lastOf = (c: CircleClient, peer: string | null) => c.conversation(peer).filter((m) => showPlaceAlerts || m.kind !== 'event').at(-1);
   const multi = clients.length > 1;
 
   const rows: Row[] = clients.flatMap((c) => {
@@ -54,7 +57,7 @@ export default function Chats() {
       title: c.circle.name,
       subtitle: `Group · ${c.memberList().length} ${c.memberList().length === 1 ? 'member' : 'members'}`,
       color: null,
-      last: c.conversation(null).at(-1),
+      last: lastOf(c, null),
       unread: unreadIn(c, null),
     };
     const dms = c.directPeers().map((peer): Row => {
@@ -66,7 +69,7 @@ export default function Chats() {
         title: m?.name || 'Former member',
         subtitle: multi ? `Direct · ${c.circle.name}` : 'Direct message',
         color: m?.color || t.muted,
-        last: c.conversation(peer).at(-1),
+        last: lastOf(c, peer),
         unread: unreadIn(c, peer),
       };
     });

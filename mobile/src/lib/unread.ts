@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { CircleClient, Message } from '@homecircle/core';
+import { currentSettings } from './storage';
 
 const READ_KEY = 'homecircle.read';
 
@@ -54,7 +55,8 @@ function lastRead(circleId: string, peer: string | null) {
   return state.read[conversationKey(circleId, peer)] ?? state.base[circleId] ?? Number.MAX_SAFE_INTEGER;
 }
 
-const counts = (m: Message, me: string | undefined) => m.from !== me && (m.kind === 'chat' || m.kind === 'event');
+const counts = (m: Message, me: string | undefined) =>
+  m.from !== me && (m.kind === 'chat' || (m.kind === 'event' && currentSettings().showPlaceAlerts));
 
 export function unreadIn(client: CircleClient, peer: string | null): number {
   const id = client.circleId;

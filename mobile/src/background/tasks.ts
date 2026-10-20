@@ -7,6 +7,7 @@ import * as BackgroundTask from 'expo-background-task';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { upload, freshFix, shareNow, placesForGeofence, sharingClients, LOCATION_TASK, GEOFENCE_TASK, HEARTBEAT_TASK, PUSH_TASK } from '../lib/location';
 import { loadedClients } from '../lib/circle';
+import { getSettings } from '../lib/storage';
 import { ensureNotificationChannels, notifyNewMessages } from '../lib/notify';
 
 const log = (...a: unknown[]) => {
@@ -59,7 +60,8 @@ TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Locati
       if (Date.now() - prev.ts < 3 * 60_000) return;
 
       // Each circle that has this place (and that we share with) gets a
-      // message in its group chat.
+      // message in its group chat, unless you turned announcing off.
+      const { announcePlaces } = await getSettings();
       const clients = await sharingClients();
       await Promise.all(clients.map((c) => c.fetchPlaces().catch(() => {})));
       const targets = placesForGeofence(regionId, clients);
@@ -68,6 +70,7 @@ TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Locati
         targets.map(async ({ client, placeId }) => {
           const place = client.places.get(placeId);
           if (action === 'arrived') placeIds[client.circleId!] = placeId;
+          if (!announcePlaces) return;
           await client.sendEvent({ type: 'place', action, placeId, placeName: place?.name || 'a place' });
         }),
       );

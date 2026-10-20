@@ -162,6 +162,40 @@ export function LockNote({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** A labelled checkbox row with a large touch target. */
+export function Checkbox({ checked, onChange, label, detail }: { checked: boolean; onChange: (v: boolean) => void; label: string; detail?: string }) {
+  const t = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      accessibilityLabel={label}
+      onPress={() => onChange(!checked)}
+      style={({ pressed }) => ({ flexDirection: 'row', gap: 12, alignItems: 'flex-start', paddingVertical: 8, opacity: pressed ? 0.7 : 1 })}
+    >
+      <View
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 8,
+          borderWidth: 2,
+          borderColor: checked ? t.brand : t.muted,
+          backgroundColor: checked ? t.brand : 'transparent',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginTop: 1,
+        }}
+      >
+        {checked ? <Text style={{ color: t.brandInk, fontWeight: '800', fontSize: 16 }}>✓</Text> : null}
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>{label}</Text>
+        {detail ? <Text style={{ color: t.muted, fontSize: 14, marginTop: 2, lineHeight: 19 }}>{detail}</Text> : null}
+      </View>
+    </Pressable>
+  );
+}
+
 export function Avatar({ name, color, size = 44 }: { name: string; color: string; size?: number }) {
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>

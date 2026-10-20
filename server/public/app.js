@@ -7,6 +7,14 @@ import { ACCOUNT_KEY, CircleClient, EMOJI_GROUPS, QUICK_REACTIONS, isEmojiOnly }
 const root = document.getElementById('root');
 const SERVER = location.origin;
 const SHARE_KEY = 'homecircle.shareBrowser';
+const PLACE_ALERTS_KEY = 'homecircle.showPlaceAlerts';
+const showPlaceAlerts = () => {
+  try {
+    return localStorage.getItem(PLACE_ALERTS_KEY) !== '0';
+  } catch {
+    return true;
+  }
+};
 const UPLOAD_EVERY_MS = 15 * 60 * 1000;
 const MOVE_THRESHOLD_M = 500;
 
@@ -390,6 +398,7 @@ async function startApp() {
     if (ui.tab === 'chat') renderPanel();
   });
   client.on('newMessage', (m) => {
+    if (m.kind === 'event' && !showPlaceAlerts()) return;
     const elsewhere = (m.peer ?? null) !== ui.peer;
     if (ui.tab !== 'chat' || elsewhere) {
       ui.unread++;
@@ -645,7 +654,7 @@ function chatView() {
     h('option', { value: '', selected: !ui.peer }, `👥 ${client.circle.name} (group)`),
     peers.map((id) => h('option', { value: id, selected: ui.peer === id }, `💬 ${client.members.get(id)?.name || 'Former member'} (direct)`)),
   );
-  const shown = client.conversation(ui.peer);
+  const shown = client.conversation(ui.peer).filter((m) => m.kind !== 'event' || showPlaceAlerts());
   const peerName = ui.peer ? client.members.get(ui.peer)?.name || 'them' : null;
   const log = h('div', { class: 'chat-log', 'aria-live': 'polite' });
   if (!shown.length) {
@@ -947,6 +956,19 @@ function settingsView() {
           onchange: (e) => (e.target.checked ? startSharing(true) : stopSharing()),
         }),
         h('span', {}, 'Share this browser’s location while it’s open'),
+      ),
+      h(
+        'label',
+        { class: 'switch row' },
+        h('input', {
+          type: 'checkbox',
+          checked: showPlaceAlerts(),
+          onchange: (e) => {
+            local.set(PLACE_ALERTS_KEY, e.target.checked ? '1' : '0');
+            toast(e.target.checked ? 'Place alerts shown in chat' : 'Place alerts hidden in this browser');
+          },
+        }),
+        h('span', {}, 'Show place alerts (“arrived at Home”) in chat'),
       ),
     ),
   );
