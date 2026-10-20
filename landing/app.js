@@ -313,9 +313,35 @@ fly secrets list   # remember the SETUP_TOKEN you set`,
     href
       ? `<a class="btn primary" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${label}</a>`
       : `<span class="btn" aria-disabled="true" title="Coming soon">${label} · soon</span>`;
+  const apkLabel = (version) => `⬇ Android app (APK)${version ? ` · v${esc(version)}` : ''}`;
   stores.innerHTML =
-    (cfg.androidApk ? `<a class="btn primary" href="${esc(cfg.androidApk)}">⬇ Android app (APK)</a>` : '') +
+    (cfg.androidApk ? `<a class="btn primary" id="apk-link" href="${esc(cfg.androidApk)}">${apkLabel(cfg.androidVersion)}</a>` : '') +
     link(cfg.appStore, 'App Store') +
     link(cfg.playStore, '▶ Google Play') +
     (cfg.setupGuide ? `<a class="btn" href="${esc(cfg.setupGuide)}" target="_blank" rel="noopener noreferrer">Step-by-step guide</a>` : '');
+
+  // The latest release's version, date and size, so the button always matches
+  // what it downloads. Falls back to cfg.androidVersion if GitHub can't be reached.
+  const releaseNote = $('#apk-release');
+  const showRelease = (version, date, bytes, url) => {
+    if (!releaseNote || !version) return;
+    const bits = [`Version ${esc(version)}`];
+    if (date) bits.push(`released ${esc(new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }))}`);
+    if (bytes) bits.push(`${Math.round(bytes / 1e6)} MB`);
+    releaseNote.innerHTML = `${bits.join(' · ')}${url ? ` · <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">What’s new</a>` : ''}`;
+  };
+  if (cfg.androidApk) {
+    showRelease(cfg.androidVersion, null, null, `https://github.com/${repo}/releases/latest`);
+    fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((rel) => {
+        const version = String(rel?.tag_name || '').replace(/^v/, '');
+        if (!version) return;
+        const apk = (rel.assets || []).find((a) => a.name === 'HomeCircle.apk');
+        const linkEl = $('#apk-link');
+        if (linkEl) linkEl.textContent = `⬇ Android app (APK) · v${version}`;
+        showRelease(version, rel.published_at, apk?.size, rel.html_url);
+      })
+      .catch(() => {});
+  }
 })();
