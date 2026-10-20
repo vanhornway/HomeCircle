@@ -40,9 +40,16 @@ TaskManager.defineTask(HEARTBEAT_TASK, async () => {
 
 // Arriving at / leaving a place: detected by the OS on this phone.
 const GEOFENCE_EVENTS_KEY = 'homecircle.geofenceEvents';
-TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Location.LocationRegion }>(
-  GEOFENCE_TASK,
-  async ({ data, error }) => {
+// The OS can deliver several reports at once; handle them one at a time so
+// two copies of the same report can't both be announced.
+let geofenceQueue: Promise<void> = Promise.resolve();
+TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Location.LocationRegion }>(GEOFENCE_TASK, (event) => {
+  geofenceQueue = geofenceQueue.then(() => handleGeofence(event)).catch(() => {});
+  return geofenceQueue;
+});
+
+async function handleGeofence({ data, error }: TaskManager.TaskManagerTaskBody<{ eventType: Location.GeofencingEventType; region: Location.LocationRegion }>) {
+  {
     if (error || !data?.region?.identifier) return;
     const regionId = data.region.identifier;
     const action = data.eventType === Location.GeofencingEventType.Enter ? 'arrived' : 'left';
@@ -79,8 +86,8 @@ TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Locati
     } catch (e) {
       log('geofence event failed', e);
     }
-  },
-);
+  }
+}
 
 // Silent pushes from the server carry no content, only what to do:
 // { t: 'loc_req' } someone tapped "Locate"; { t: 'msg' } there's a new

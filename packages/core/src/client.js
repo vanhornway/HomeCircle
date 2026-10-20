@@ -117,6 +117,8 @@ export class CircleClient {
     if (!raw) return false;
     this.account = JSON.parse(raw);
     this.api = this._makeApi(this.account.server, this.account.token);
+    // Last known name, so the circle is recognizable while its server is down.
+    if (this.account.circleName) this.circle = { name: this.account.circleName };
     return true;
   }
 
@@ -414,6 +416,7 @@ export class CircleClient {
     try {
       const msg = open(env, { key, signPub, kind: 'circle', from: st.circle.by, circle: this.account.circleId });
       this.circle = { name: cleanName(msg.body.name) || 'Our Circle' };
+      this.account.circleName = this.circle.name;
     } catch (e) {
       this.onError(e);
     }
