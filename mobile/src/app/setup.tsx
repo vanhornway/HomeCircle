@@ -50,7 +50,10 @@ export default function Setup() {
       <Field label="Circle name" value={circleName} onChangeText={setCircleName} placeholder="e.g. The Parkers" />
       <Button title="Create my circle" variant="primary" loading={busy} disabled={!server || !code || !name} onPress={submit} />
       <ErrorText>{error}</ErrorText>
-      <LockNote>Your encryption keys are created on this phone and never leave it. You’ll be the circle’s owner.</LockNote>
+      <LockNote>
+        Your encryption keys are created on this phone and never leave it. You’ll be the circle’s owner. Everyone who joins agrees that the
+        circle can see their location and ask for it at any time.
+      </LockNote>
     </Screen>
   );
 }

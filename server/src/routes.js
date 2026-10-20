@@ -23,6 +23,9 @@ const MAX_MEMBERS = 50;
 const MAX_OPEN_INVITES = 20;
 const MAX_PLACES = 100;
 const MAX_CIRCLES = 100;
+// How long a circle keeps messages: 1 day, 1 week, 1 month, 1 quarter, 1 year.
+export const RETENTION_CHOICES = [1, 7, 30, 90, 365];
+const DEFAULT_RETENTION_DAYS = 90;
 
 const isAdmin = (m) => m.role === 'owner' || m.role === 'admin';
 const requireAdmin = (m) => isAdmin(m) || fail(403, 'forbidden', 'Only circle admins can do that');
@@ -84,6 +87,7 @@ export function buildRoutes({ config, store, hub, push, log }) {
       tileUrl: config.tileUrl,
       tileAttribution: config.tileAttribution,
       locationRequestCooldown: config.locationRequestCooldown,
+      maxRetentionDays: config.maxRetentionDays,
     }),
     { auth: false, cors: true },
   );
@@ -101,7 +105,7 @@ export function buildRoutes({ config, store, hub, push, log }) {
     const { token, tokenHash } = newToken();
     const now = Date.now();
     store.tx(() => {
-      store.insertCircle({ id: circleId, env: circle, by: member.id, now });
+      store.insertCircle({ id: circleId, env: circle, by: member.id, now, retentionDays: Math.min(DEFAULT_RETENTION_DAYS, config.maxRetentionDays) });
       store.insertMember({ ...member, circleId, role: 'owner', serverAdmin: true, tokenHash, now });
     });
     return { memberId: member.id, token };
@@ -178,6 +182,8 @@ export function buildRoutes({ config, store, hub, push, log }) {
       circleId: circle.id,
       epoch: circle.epoch,
       rotationNeeded: circle.rotationNeeded,
+      retentionDays: Math.min(circle.retentionDays, config.maxRetentionDays),
+      retentionChoices: RETENTION_CHOICES.filter((d) => d <= config.maxRetentionDays),
       circle: { env: circle.env, by: circle.by },
       me: me.id,
       serverAdmin: me.serverAdmin,
@@ -202,6 +208,20 @@ export function buildRoutes({ config, store, hub, push, log }) {
     store.setCircleEnv(me.circleId, env, me.id);
     hub.broadcast(me.circleId, { type: 'circle' }, me.id);
     return { ok: true };
+  });
+
+  // Admins choose how long the circle's messages (group and direct) are kept.
+  r.add('PUT', '/circle/retention', ({ me, body }) => {
+    requireAdmin(me);
+    const days = body.days;
+    if (!RETENTION_CHOICES.includes(days) || days > config.maxRetentionDays) {
+      fail(400, 'invalid', `days must be one of ${RETENTION_CHOICES.filter((d) => d <= config.maxRetentionDays).join(', ')}`);
+    }
+    store.setRetention(me.circleId, days);
+    store.pruneMessages(Date.now(), config.maxRetentionDays);
+    hub.broadcast(me.circleId, { type: 'circle' });
+    log(`message retention set to ${days} days`);
+    return { ok: true, retentionDays: days };
   });
 
   // The owner can delete their circle and everything in it.
@@ -377,21 +397,29 @@ export function buildRoutes({ config, store, hub, push, log }) {
   r.add('GET', '/messages', ({ me, query }) => {
     const after = Math.max(0, Number.parseInt(query.get('after') || '0', 10) || 0);
     const limit = Math.min(500, Math.max(1, Number.parseInt(query.get('limit') || '200', 10) || 200));
-    return { messages: store.messagesAfter(me.circleId, after, limit) };
+    return { messages: store.messagesAfter(me.circleId, me.id, after, limit) };
   });
 
   r.add('POST', '/messages', ({ me, body }) => {
     const id = vId(body.id, 'id');
     const env = vEnvelope({ epoch: body.epoch, nonce: body.nonce, ct: body.ct }, 'message', 16 * 1024);
     currentEpoch(me.circleId, env.epoch);
+    // A direct message goes to one other member of the same circle.
+    let to = null;
+    if (body.to != null) {
+      to = store.member(me.circleId, vId(body.to, 'to'));
+      if (!to || to.removed || to.id === me.id) fail(404, 'not_found', 'No such member in this circle');
+    }
     if (store.messageExists(id)) fail(409, 'conflict', 'Duplicate message id');
     const now = Date.now();
-    const seq = store.insertMessage({ id, circleId: me.circleId, fromId: me.id, env, now });
-    const message = { seq, id, from: me.id, env, createdAt: now };
-    hub.broadcast(me.circleId, { type: 'message', message }, me.id);
+    const seq = store.insertMessage({ id, circleId: me.circleId, fromId: me.id, toId: to?.id ?? null, env, now });
+    const message = { seq, id, from: me.id, to: to?.id ?? null, env, createdAt: now };
+    if (to) hub.send(to.id, { type: 'message', message });
+    else hub.broadcast(me.circleId, { type: 'message', message }, me.id);
     // Clients mark reactions "silent": stored and relayed live, but no push.
     if (body.silent !== true) {
-      push.activity(store.activeMembers(me.circleId).filter((m) => m.id !== me.id && m.pushToken && !hub.isOnline(m.id)));
+      const recipients = to ? [to] : store.activeMembers(me.circleId).filter((m) => m.id !== me.id);
+      push.activity(recipients.filter((m) => m.pushToken && !hub.isOnline(m.id)));
     }
     return { seq, createdAt: now };
   });

@@ -15,6 +15,7 @@ import {
   wrapInvite,
   unwrapInvite,
   boxCircleKey,
+  directKey,
   openCircleKeyBox,
   safetyNumber,
   normalizeServerUrl,
@@ -53,6 +54,8 @@ export class CircleClient {
     this.circle = { name: 'HomeCircle' };
     this.members = new Map();
     this.locations = new Map();
+    // memberId -> when they paused sharing with this circle
+    this.paused = new Map();
     this.messages = [];
     this.seenMessageIds = new Set();
     // messageId -> emoji -> memberId -> { on, seq }
@@ -167,17 +170,35 @@ export class CircleClient {
     return { server, ...info };
   }
 
-  _seal(kind, body, epoch = this.account.epoch) {
+  _seal(kind, body, epoch = this.account.epoch, { to = null } = {}) {
     const a = this.account;
     return seal({
       kind,
       from: a.memberId,
+      to,
       circle: a.circleId,
       epoch,
-      key: a.keyring[epoch],
+      key: to ? this._directKey(to) : a.keyring[epoch],
       signSecret: a.identity.signSecret,
       body,
     });
+  }
+
+  /** Key shared only with one other member, from their verified identity key. */
+  _directKey(peerId) {
+    const peer = this.account.known[peerId];
+    if (!peer) throw new Error('Can’t message someone whose keys haven’t been verified yet');
+    return directKey(this.account.identity.boxSecret, peer.boxPub);
+  }
+
+  /** Days this circle keeps messages, and the choices an admin has. */
+  get retention() {
+    return { days: this.state?.retentionDays ?? null, choices: this.state?.retentionChoices ?? [] };
+  }
+
+  async setRetention(days) {
+    await this.api.putRetention(days);
+    await this.refresh();
   }
 
   _profileBody() {
@@ -404,13 +425,19 @@ export class CircleClient {
       .sort((a, b) => (a.isMe ? -1 : b.isMe ? 1 : a.name.localeCompare(b.name)));
   }
 
-  /** Open any envelope from a member, using their pinned signing key. */
-  _open(env, from, kinds) {
+  /** Open any envelope from a member, using their pinned signing key. Pass `to` for a direct message. */
+  _open(env, from, kinds, to = null) {
     const signPub = this.account.known[from]?.signPub;
-    const key = this.account.keyring[env.epoch];
-    if (!signPub || !key) return null;
+    if (!signPub) return null;
+    let key;
     try {
-      const msg = open(env, { key, signPub, from, circle: this.account.circleId });
+      key = to ? this._directKey(from === this.account.memberId ? to : from) : this.account.keyring[env.epoch];
+    } catch {
+      return null;
+    }
+    if (!key) return null;
+    try {
+      const msg = open(env, { key, signPub, from, to, circle: this.account.circleId });
       if (!kinds.includes(msg.kind)) return null;
       return msg;
     } catch (e) {
@@ -438,6 +465,12 @@ export class CircleClient {
     const msg = this._open(env, memberId, ['location']);
     if (!msg) return null;
     const b = msg.body;
+    // They stopped sharing with this circle: show that, never an old position.
+    if (b?.paused === true) {
+      this.locations.delete(memberId);
+      this.paused.set(memberId, msg.ts);
+      return null;
+    }
     if (typeof b.lat !== 'number' || typeof b.lng !== 'number') return null;
     const loc = {
       lat: b.lat,
@@ -454,11 +487,13 @@ export class CircleClient {
     const prev = this.locations.get(memberId);
     if (prev && prev.ts > loc.ts) return prev;
     this.locations.set(memberId, loc);
+    this.paused.delete(memberId);
     return loc;
   }
 
   async fetchLocations() {
     const { locations } = await this.api.locations();
+    this.paused = new Map();
     for (const l of locations) this._decodeLocation(l.memberId, l.env, l.updatedAt);
     this.emit('locations', this.locations);
     return this.locations;
@@ -472,6 +507,19 @@ export class CircleClient {
       return this.api.putLocation(env);
     });
     this.locations.set(this.account.memberId, { ...body, ts: ts || Date.now(), receivedAt: Date.now() });
+    this.paused.delete(this.account.memberId);
+    this.emit('locations', this.locations);
+  }
+
+  /**
+   * Stop sharing with this circle. Replaces your last location with an
+   * encrypted "paused" marker, so the circle sees you paused rather than a
+   * stale position.
+   */
+  async pauseSharing() {
+    await this._withEpochRetry(() => this.api.putLocation(this._seal('location', { paused: true })));
+    this.locations.delete(this.account.memberId);
+    this.paused.set(this.account.memberId, Date.now());
     this.emit('locations', this.locations);
   }
 
@@ -493,15 +541,20 @@ export class CircleClient {
     if (this.seenMessageIds.has(m.id)) return false;
     this.seenMessageIds.add(m.id);
     this.lastSeq = Math.max(this.lastSeq, m.seq);
-    const msg = this._open(m.env, m.from, ['chat', 'event', 'reaction']);
+    const to = m.to ?? null;
+    // Direct messages: the other person in the conversation. null = the group.
+    const peer = to ? (m.from === this.account.memberId ? to : m.from) : null;
+    const msg = this._open(m.env, m.from, to ? ['chat', 'reaction'] : ['chat', 'event', 'reaction'], to);
     if (msg?.kind === 'reaction') {
       this._applyReaction(m.from, m.seq, msg.body);
-      return { kind: 'reaction', id: m.id, from: m.from, seq: m.seq, body: msg.body };
+      return { kind: 'reaction', id: m.id, from: m.from, to, peer, seq: m.seq, body: msg.body };
     }
     const entry = {
       seq: m.seq,
       id: m.id,
       from: m.from,
+      to,
+      peer,
       createdAt: m.createdAt,
       kind: msg?.kind || 'unreadable',
       ts: msg?.ts || m.createdAt,
@@ -547,7 +600,21 @@ export class CircleClient {
   react(messageId, emoji) {
     if (!isValidReaction(emoji)) return Promise.reject(new Error('Not a reaction emoji'));
     const mine = this.reactions.get(messageId)?.get(emoji)?.get(this.account.memberId);
-    return this._post('reaction', { target: messageId, emoji, on: !mine?.on }, { silent: true });
+    // Reactions to a direct message stay between the same two people.
+    const to = this.messages.find((m) => m.id === messageId)?.peer ?? null;
+    return this._post('reaction', { target: messageId, emoji, on: !mine?.on }, { silent: true, to });
+  }
+
+  /** Messages in one conversation: the group (peer null) or a direct chat with `peer`. */
+  conversation(peer = null) {
+    return this.messages.filter((m) => (m.peer ?? null) === peer);
+  }
+
+  /** Direct-message partners, most recent conversation first. */
+  directPeers() {
+    const last = new Map();
+    for (const m of this.messages) if (m.peer) last.set(m.peer, m.seq);
+    return [...last].sort((a, b) => b[1] - a[1]).map(([id]) => id);
   }
 
   async fetchMessages() {
@@ -560,21 +627,22 @@ export class CircleClient {
     return this.messages;
   }
 
-  async _post(kind, body, { silent = false } = {}) {
+  async _post(kind, body, { silent = false, to = null } = {}) {
     const id = randomId(12);
     let env;
     const res = await this._withEpochRetry(() => {
-      env = this._seal(kind, body);
-      return this.api.postMessage(id, env, { silent });
+      env = this._seal(kind, body, this.account.epoch, { to });
+      return this.api.postMessage(id, env, { silent, to });
     });
-    this._addMessage({ seq: res.seq, id, from: this.account.memberId, createdAt: res.createdAt, env });
+    this._addMessage({ seq: res.seq, id, from: this.account.memberId, to, createdAt: res.createdAt, env });
     this.emit('messages', this.messages);
   }
 
-  sendChat(text) {
+  /** Send to the whole circle, or only to `to` (a direct message). */
+  sendChat(text, { to = null } = {}) {
     const t = String(text || '').trim().slice(0, 4000);
     if (!t) return Promise.resolve();
-    return this._post('chat', { text: t });
+    return this._post('chat', { text: t }, { to });
   }
 
   /** e.g. { type: 'place', action: 'arrived' | 'left', placeId, placeName } */
@@ -595,6 +663,10 @@ export class CircleClient {
       lng: b.lng,
       radius: Math.min(5000, Math.max(50, num(b.radius) || 150)),
       icon: typeof b.icon === 'string' ? b.icon.slice(0, 16) : 'pin',
+      // Street address it was added from, if any.
+      address: typeof b.address === 'string' ? b.address.slice(0, 200) : null,
+      // The same place added to several circles shares a group id.
+      group: typeof b.group === 'string' ? b.group.slice(0, 40) : null,
       updatedBy: p.updatedBy,
     };
     this.places.set(p.id, place);
@@ -609,8 +681,8 @@ export class CircleClient {
     return this.places;
   }
 
-  async savePlace({ id = randomId(9), name, lat, lng, radius = 150, icon = 'pin' }) {
-    const body = { id, name: cleanName(name), lat, lng, radius, icon };
+  async savePlace({ id = randomId(9), name, lat, lng, radius = 150, icon = 'pin', address = null, group = null }) {
+    const body = { id, name: cleanName(name), lat, lng, radius, icon, address, group };
     await this._withEpochRetry(() => this.api.putPlace(id, this._seal('place', body)));
     this.places.set(id, { ...body, updatedBy: this.account.memberId });
     this.emit('places', this.places);
@@ -756,8 +828,9 @@ export class CircleClient {
   async _onEvent(e) {
     switch (e.type) {
       case 'location': {
+        const wasPaused = this.paused.has(e.memberId);
         const loc = this._decodeLocation(e.memberId, e.env, e.updatedAt);
-        if (loc) this.emit('locations', this.locations);
+        if (loc || wasPaused !== this.paused.has(e.memberId)) this.emit('locations', this.locations);
         break;
       }
       case 'message': {

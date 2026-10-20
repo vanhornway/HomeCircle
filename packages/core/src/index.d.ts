@@ -50,6 +50,10 @@ export interface Place {
   lng: number;
   radius: number;
   icon: string;
+  /** Street address it was added from, if any. */
+  address: string | null;
+  /** Shared by copies of the same place in several circles. */
+  group: string | null;
   updatedBy: string;
 }
 
@@ -57,6 +61,10 @@ export interface Message {
   seq: number;
   id: string;
   from: string;
+  /** Recipient of a direct message; null for the group chat. */
+  to: string | null;
+  /** The other person in a direct conversation; null for the group chat. */
+  peer: string | null;
   createdAt: number;
   kind: 'chat' | 'event' | 'unreadable';
   ts: number;
@@ -146,6 +154,8 @@ export class CircleClient {
   circle: { name: string };
   members: Map<string, Member>;
   locations: Map<string, MemberLocation>;
+  /** Members who paused sharing with this circle, and since when. */
+  paused: Map<string, number>;
   messages: Message[];
   /** Highest message sequence number received. */
   lastSeq: number;
@@ -195,13 +205,24 @@ export class CircleClient {
   clearLocation(): Promise<void>;
   requestLocations(targets?: string[]): Promise<{ requested: number; online: number; pushed: number; cooldown: number }>;
   fetchMessages(): Promise<Message[]>;
-  sendChat(text: string): Promise<void>;
+  /** Group chat, or a direct message when `to` is set. */
+  sendChat(text: string, opts?: { to?: string | null }): Promise<void>;
+  /** Messages of the group (peer null) or of a direct chat. */
+  conversation(peer?: string | null): Message[];
+  /** People you have direct conversations with, most recent first. */
+  directPeers(): string[];
+  /** How long this circle keeps messages (days) and the allowed choices. */
+  readonly retention: { days: number | null; choices: number[] };
+  /** Admins: change how long messages are kept. */
+  setRetention(days: number): Promise<void>;
+  /** Stop sharing with this circle; it sees that you paused. */
+  pauseSharing(): Promise<void>;
   sendEvent(body: Record<string, unknown>): Promise<void>;
   /** Add or remove this person's reaction. Doesn't trigger a notification. */
   react(messageId: string, emoji: string): Promise<void>;
   reactionsFor(messageId: string): Reaction[];
   fetchPlaces(): Promise<Map<string, Place>>;
-  savePlace(p: { id?: string; name: string; lat: number; lng: number; radius?: number; icon?: string }): Promise<string>;
+  savePlace(p: { id?: string; name: string; lat: number; lng: number; radius?: number; icon?: string; address?: string | null; group?: string | null }): Promise<string>;
   deletePlace(id: string): Promise<void>;
   createInvite(opts?: { hours?: number }): Promise<Invite>;
   setName(name: string): Promise<void>;
@@ -220,6 +241,8 @@ export class CircleClient {
 }
 
 export const MEMBER_COLORS: string[];
+/** Random URL-safe id (base64url of `bytes` random bytes). */
+export function randomId(bytes?: number): string;
 export function normalizeServerUrl(input: string): string;
 export function parseInviteLink(link: string): { serverUrl: string; inviteId: string; secret: string };
 export function safetyNumber(signPub: string, boxPub: string): string;

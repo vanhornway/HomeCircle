@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Linking, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { CircleClient, type InvitePreview } from '@homecircle/core';
@@ -16,6 +16,7 @@ export default function Join() {
   const [pasted, setPasted] = useState('');
   const [preview, setPreview] = useState<InvitePreview | null>(null);
   const [name, setName] = useState('');
+  const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -80,7 +81,23 @@ export default function Join() {
           {preview.serverUrl.replace(/^https?:\/\//, '')}.
         </P>
         <Field label="Your name" value={name} onChangeText={setName} placeholder="What your family calls you" autoComplete="given-name" autoFocus />
-        <Button title="Join circle" variant="primary" loading={busy} disabled={!name.trim()} onPress={join} />
+        <Pressable
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: agreed }}
+          onPress={() => setAgreed((v) => !v)}
+          style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: agreed ? t.brand : t.line, backgroundColor: agreed ? t.brandSoft : t.surface, marginBottom: 16 }}
+        >
+          <View
+            style={{ width: 28, height: 28, borderRadius: 8, borderWidth: 2, borderColor: agreed ? t.brand : t.muted, backgroundColor: agreed ? t.brand : 'transparent', alignItems: 'center', justifyContent: 'center', marginTop: 1 }}
+          >
+            {agreed ? <Text style={{ color: t.brandInk, fontWeight: '800', fontSize: 16 }}>✓</Text> : null}
+          </View>
+          <Text style={{ flex: 1, color: t.text, fontSize: 15, lineHeight: 21 }}>
+            I agree that everyone in {preview.circleName || 'this circle'} can see where I am and can ask my phone for my current location at any
+            time. If I pause sharing, they’ll see that I paused.
+          </Text>
+        </Pressable>
+        <Button title="Join circle" variant="primary" loading={busy} disabled={!name.trim() || !agreed} onPress={join} />
         <ErrorText>{error}</ErrorText>
         <LockNote>Your keys are created on this phone. Only people in this circle can see your location or messages.</LockNote>
       </Screen>

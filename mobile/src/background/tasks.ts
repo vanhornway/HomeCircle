@@ -5,8 +5,8 @@ import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import * as BackgroundTask from 'expo-background-task';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { upload, freshFix, shareNow, placesForGeofence, sharingClients, LOCATION_TASK, GEOFENCE_TASK, HEARTBEAT_TASK, PUSH_TASK } from '../lib/location';
 import { loadedClients } from '../lib/circle';
-import { upload, freshFix, shareNow, parseGeofenceId, LOCATION_TASK, GEOFENCE_TASK, HEARTBEAT_TASK, PUSH_TASK } from '../lib/location';
 import { ensureNotificationChannels, notifyNewMessages } from '../lib/notify';
 
 const log = (...a: unknown[]) => {
@@ -58,18 +58,21 @@ TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Locati
       if (!prev) return; // first report for this place: just record it
       if (Date.now() - prev.ts < 3 * 60_000) return;
 
-      // The place belongs to one circle; only that circle hears about it.
-      const { circleId, placeId } = parseGeofenceId(regionId);
-      const clients = await loadedClients();
-      const client = circleId ? clients.find((c) => c.circleId === circleId) : clients[0];
-      if (!client) return;
-      await client.fetchPlaces().catch(() => {});
-      const place = client.places.get(placeId);
-      await client.sendEvent({ type: 'place', action, placeId, placeName: place?.name || 'a place' });
+      // Each circle that has this place (and that we share with) gets a
+      // message in its group chat.
+      const clients = await sharingClients();
+      await Promise.all(clients.map((c) => c.fetchPlaces().catch(() => {})));
+      const targets = placesForGeofence(regionId, clients);
+      const placeIds: Record<string, string> = {};
+      await Promise.allSettled(
+        targets.map(async ({ client, placeId }) => {
+          const place = client.places.get(placeId);
+          if (action === 'arrived') placeIds[client.circleId!] = placeId;
+          await client.sendEvent({ type: 'place', action, placeId, placeName: place?.name || 'a place' });
+        }),
+      );
       const loc = (await Location.getLastKnownPositionAsync().catch(() => null)) || (await freshFix(15_000));
-      if (loc) {
-        await upload(loc, action, { force: true, placeId: action === 'arrived' ? placeId : null, placeCircle: client.circleId });
-      }
+      if (loc) await upload(loc, action, { force: true, placeIds });
     } catch (e) {
       log('geofence event failed', e);
     }

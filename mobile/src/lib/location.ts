@@ -52,12 +52,12 @@ export async function sharingClients(): Promise<CircleClient[]> {
  * Encrypt and upload a location to each circle if it's due (interval passed
  * or moved far), or always when `force` is set. Each circle gets its own copy,
  * sealed with that circle's key. Returns true if any circle got it.
- * `placeId` belongs to `placeCircle` and is only sent there.
+ * `placeIds` says which place you're at, per circle id.
  */
 export async function upload(
   loc: Location.LocationObject,
   trigger: string,
-  { force = false, placeId = null, placeCircle = null }: { force?: boolean; placeId?: string | null; placeCircle?: string | null } = {},
+  { force = false, placeIds = {} }: { force?: boolean; placeIds?: Record<string, string> } = {},
 ): Promise<boolean> {
   const settings = await getSettings();
   const targets = await sharingClients();
@@ -80,7 +80,7 @@ export async function upload(
         speed: loc.coords.speed,
         ...battery,
         trigger,
-        placeId: client.circleId === placeCircle ? placeId : null,
+        placeId: placeIds[client.circleId!] ?? null,
         ts: loc.timestamp,
       }),
     ),
@@ -169,13 +169,25 @@ export async function stopBackgroundUpdates() {
   }
 }
 
-/** A geofence id says which circle the place belongs to: "<circleId>:<placeId>". */
-export function geofenceId(circleId: string, placeId: string) {
-  return `${circleId}:${placeId}`;
+/**
+ * A geofence id: "g:<group>" for a place added to several circles (watched
+ * once), or "<circleId>:<placeId>" for a place in one circle.
+ */
+export function geofenceId(circleId: string, place: { id: string; group: string | null }) {
+  return place.group ? `g:${place.group}` : `${circleId}:${place.id}`;
 }
-export function parseGeofenceId(id: string): { circleId: string | null; placeId: string } {
+
+/** The circles (and their place ids) a geofence belongs to. */
+export function placesForGeofence(id: string, clients: CircleClient[]): { client: CircleClient; placeId: string }[] {
+  if (id.startsWith('g:')) {
+    const group = id.slice(2);
+    return clients.flatMap((client) => [...client.places.values()].filter((p) => p.group === group).map((p) => ({ client, placeId: p.id })));
+  }
   const i = id.indexOf(':');
-  return i < 0 ? { circleId: null, placeId: id } : { circleId: id.slice(0, i), placeId: id.slice(i + 1) };
+  // Before circles had ids in geofences, the id was just the place id.
+  if (i < 0) return clients.slice(0, 1).map((client) => ({ client, placeId: id }));
+  const client = clients.find((c) => c.circleId === id.slice(0, i));
+  return client ? [{ client, placeId: id.slice(i + 1) }] : [];
 }
 
 /** Register the places of every circle you share with as OS geofences. */
@@ -183,9 +195,16 @@ export async function syncGeofences() {
   const settings = await getSettings();
   const bg = await Location.getBackgroundPermissionsAsync().catch(() => null);
   const clients = await sharingClients();
-  const places = clients.flatMap((c) => [...c.places.values()].map((p) => ({ ...p, circleId: c.circleId! })));
+  const unique = new Map<string, { identifier: string; lat: number; lng: number; radius: number }>();
+  for (const c of clients) {
+    for (const p of c.places.values()) {
+      const identifier = geofenceId(c.circleId!, p);
+      if (!unique.has(identifier)) unique.set(identifier, { identifier, lat: p.lat, lng: p.lng, radius: p.radius });
+    }
+  }
+  const places = [...unique.values()];
   const regions = places.slice(0, MAX_GEOFENCES).map((p) => ({
-    identifier: geofenceId(p.circleId, p.id),
+    identifier: p.identifier,
     latitude: p.lat,
     longitude: p.lng,
     radius: Math.max(100, p.radius),

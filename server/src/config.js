@@ -26,7 +26,9 @@ export function loadConfig() {
     setupTokenGenerated: false,
     publicUrl: (process.env.PUBLIC_URL || '').replace(/\/+$/, ''),
     trustProxy: bool('TRUST_PROXY', false),
-    messageRetentionDays: int('MESSAGE_RETENTION_DAYS', 90),
+    // Longest any circle may keep messages; each circle's admin picks up to this.
+    // Never more than a year: older messages are always deleted from the server.
+    maxRetentionDays: Math.min(365, Math.max(1, int('MESSAGE_RETENTION_DAYS', 365) || 365)),
     locationRequestCooldown: int('LOCATION_REQUEST_COOLDOWN_SECONDS', 60),
     inviteMaxHours: int('INVITE_MAX_HOURS', 168),
     push: process.env.PUSH_PROVIDER || 'expo',

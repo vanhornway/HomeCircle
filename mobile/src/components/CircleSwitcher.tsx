@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { Modal, Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useRouter } from 'expo-router';
 import { setActiveCircle, useCircles } from '../lib/circle';
-import { useUnread } from '../lib/notify';
-import { useCircle } from '../lib/useCircle';
+import { unreadInCircle } from '../lib/unread';
+import { useAllCircles, useCircle } from '../lib/useCircle';
 import { Button, Icon } from './ui';
 import { useTheme } from '../theme';
 
@@ -15,10 +15,10 @@ export function CircleSwitcher({ style, large }: { style?: StyleProp<ViewStyle>;
   const t = useTheme();
   const client = useCircle(['circle', 'status']);
   const { clients } = useCircles();
-  const unread = useUnread();
+  useAllCircles(['messages', 'circle']);
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const otherUnread = clients.some((c) => c !== client && (unread[c.circleId!] || 0) > 0);
+  const otherUnread = clients.some((c) => c !== client && unreadInCircle(c) > 0);
   const canCreate = clients.some((c) => c.isServerAdmin);
 
   const go = (path: '/new-circle' | '/join') => {
@@ -58,7 +58,7 @@ export function CircleSwitcher({ style, large }: { style?: StyleProp<ViewStyle>;
             <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700', marginHorizontal: 12, marginTop: 8, marginBottom: 4 }}>YOUR CIRCLES</Text>
             {clients.map((c) => {
               const isActive = c === client;
-              const n = unread[c.circleId!] || 0;
+              const n = unreadInCircle(c);
               return (
                 <Pressable
                   key={c.accountKey}

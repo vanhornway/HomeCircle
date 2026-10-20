@@ -90,9 +90,10 @@ export function Button({
           backgroundColor: bg,
           borderColor: variant === 'primary' ? t.brand : variant === 'ghost' ? 'transparent' : t.line,
           borderWidth: 1,
-          borderRadius: small ? 10 : 14,
-          minHeight: small ? 36 : 52,
-          paddingHorizontal: small ? 12 : 18,
+          // Comfortable touch targets: 44pt+ even for small buttons.
+          borderRadius: small ? 12 : 16,
+          minHeight: small ? 44 : 56,
+          paddingHorizontal: small ? 16 : 20,
           alignItems: 'center',
           justifyContent: 'center',
           opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
@@ -104,7 +105,7 @@ export function Button({
       {loading ? (
         <ActivityIndicator color={fg} />
       ) : (
-        <Text style={{ color: fg, fontWeight: '600', fontSize: small ? 14 : 16 }}>{title}</Text>
+        <Text style={{ color: fg, fontWeight: '600', fontSize: small ? 15 : 17 }}>{title}</Text>
       )}
     </Pressable>
   );
@@ -124,8 +125,8 @@ export function Field({ label, style, ...props }: { label: string } & TextInputP
             borderWidth: 1,
             borderRadius: 12,
             paddingHorizontal: 14,
-            minHeight: 50,
-            fontSize: 16,
+            minHeight: 54,
+            fontSize: 17,
             color: t.text,
           },
           style,

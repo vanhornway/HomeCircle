@@ -14,16 +14,21 @@ export default function RootLayout() {
       <Stack
         screenOptions={{
           headerShown: false,
+          // Standard back navigation: swipe from the left edge on iOS, the
+          // system back gesture or button on Android.
+          gestureEnabled: true,
+          animation: 'slide_from_right',
           contentStyle: { backgroundColor: t.bg },
           headerStyle: { backgroundColor: t.surface },
           headerTintColor: t.brand,
           headerTitleStyle: { color: t.text },
         }}
       >
-        <Stack.Screen name="invite" options={{ presentation: 'modal', headerShown: true, title: 'Invite someone' }} />
-        <Stack.Screen name="add-place" options={{ presentation: 'modal', headerShown: true, title: 'New place' }} />
-        <Stack.Screen name="server" options={{ presentation: 'modal', headerShown: true, title: 'Server address' }} />
-        <Stack.Screen name="new-circle" options={{ presentation: 'modal', headerShown: true, title: 'New circle' }} />
+        <Stack.Screen name="invite" options={{ headerShown: true, title: 'Invite someone' }} />
+        <Stack.Screen name="add-place" options={{ headerShown: true, title: 'New place' }} />
+        <Stack.Screen name="server" options={{ headerShown: true, title: 'Server address' }} />
+        <Stack.Screen name="new-circle" options={{ headerShown: true, title: 'New circle' }} />
+        <Stack.Screen name="conversation" options={{ headerShown: false }} />
       </Stack>
     </SafeAreaProvider>
   );

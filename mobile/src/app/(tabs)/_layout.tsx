@@ -4,10 +4,12 @@ import { AppState } from 'react-native';
 import { Tabs } from 'expo-router/js-tabs';
 import { router, useRouter } from 'expo-router';
 import { CircleClient } from '@homecircle/core';
-import { allClients, clientForCircle, errorText, getClient, setActiveCircle, useCircles } from '../../lib/circle';
+import { allClients, clientForCircle, errorText, getClient, useCircles } from '../../lib/circle';
 import { getServerState, isUnreachable, setRetryHandler, setServerState } from '../../lib/connection';
 import { registerPush } from '../../lib/push';
-import { ensureNotificationChannels, markSeen, notifyNewMessages, useUnread } from '../../lib/notify';
+import { ensureNotificationChannels, markSeen, notifyNewMessages } from '../../lib/notify';
+import { ensureReadBase, unreadInCircle } from '../../lib/unread';
+import { useAllCircles } from '../../lib/useCircle';
 import { shareNow, startBackgroundUpdates, syncGeofences } from '../../lib/location';
 import { updateSettings } from '../../lib/storage';
 import { Icon } from '../../components/ui';
@@ -45,8 +47,9 @@ function useCircleLifecycle(circlesKey: string) {
     const startOne = async (client: CircleClient) => {
       try {
         await client.start();
-        // Opening the app counts as seeing what arrived meanwhile.
+        // What arrived meanwhile shows as unread in Chats, but isn't notified again.
         markSeen(client, client.lastSeq).catch(() => {});
+        ensureReadBase(client).catch(() => {});
         if (!started.has(client)) {
           started.add(client);
           if (client === clients[0] && client.serverUrl) {
@@ -129,42 +132,47 @@ function useCircleLifecycle(circlesKey: string) {
   }, [circlesKey]);
 }
 
-/** Tapping a message notification opens that circle's chat. */
+/** Tapping a message notification opens that conversation. */
 function useOpenChatFromNotification() {
   const nav = useRouter();
   const response = Notifications.useLastNotificationResponse();
   useEffect(() => {
-    const data = response?.notification.request.content.data as { t?: string; circle?: string } | undefined;
+    const data = response?.notification.request.content.data as { t?: string; circle?: string; peer?: string } | undefined;
     if (data?.t !== 'chat') return;
     const client = clientForCircle(data.circle);
-    (client ? setActiveCircle(client.accountKey) : Promise.resolve()).finally(() => nav.navigate('/(tabs)/chat'));
+    nav.navigate('/(tabs)/chat');
+    if (client) nav.push({ pathname: '/conversation', params: { circle: client.circleId!, peer: data.peer || '' } });
   }, [response, nav]);
 }
 
 export default function TabsLayout() {
   const t = useTheme();
   // Restart connections when circles are added or removed (not on switching).
-  const { clients, active } = useCircles();
-  const unreadByCircle = useUnread();
-  const unread = active?.circleId ? unreadByCircle[active.circleId] || 0 : 0;
+  const { clients } = useCircles();
+  const unread = useAllCircles(['messages']).reduce((n, c) => n + unreadInCircle(c), 0);
   useCircleLifecycle(clients.map((c) => c.accountKey).join('|'));
   useOpenChatFromNotification();
   return (
     <Tabs
+      // Back from a tab returns to the tab you came from.
+      backBehavior="history"
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: t.brand,
         tabBarInactiveTintColor: t.muted,
         tabBarStyle: { backgroundColor: t.surface, borderTopColor: t.line },
+        // Bigger targets: larger icons and labels, more padding per tab.
+        tabBarLabelStyle: { fontSize: 13, fontWeight: '600' },
+        tabBarItemStyle: { paddingTop: 6 },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Map', tabBarIcon: ({ color }) => <Icon name="map" color={color} /> }} />
+      <Tabs.Screen name="index" options={{ title: 'Map', tabBarIcon: ({ color }) => <Icon name="map" color={color} size={28} /> }} />
       <Tabs.Screen
         name="chat"
-        options={{ title: 'Chat', tabBarBadge: unread ? (unread > 9 ? '9+' : unread) : undefined, tabBarIcon: ({ color }) => <Icon name="chat" color={color} /> }}
+        options={{ title: 'Chats', tabBarBadge: unread ? (unread > 9 ? '9+' : unread) : undefined, tabBarIcon: ({ color }) => <Icon name="chat" color={color} size={28} /> }}
       />
-      <Tabs.Screen name="places" options={{ title: 'Places', tabBarIcon: ({ color }) => <Icon name="place" color={color} /> }} />
-      <Tabs.Screen name="settings" options={{ title: 'Settings', tabBarIcon: ({ color }) => <Icon name="settings" color={color} /> }} />
+      <Tabs.Screen name="places" options={{ title: 'Places', tabBarIcon: ({ color }) => <Icon name="place" color={color} size={28} /> }} />
+      <Tabs.Screen name="settings" options={{ title: 'Settings', tabBarIcon: ({ color }) => <Icon name="settings" color={color} size={28} /> }} />
     </Tabs>
   );
 }

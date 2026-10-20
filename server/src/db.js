@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS circles (
   id TEXT PRIMARY KEY,
   epoch INTEGER NOT NULL,
   rotation_needed INTEGER NOT NULL DEFAULT 0,
+  retention_days INTEGER NOT NULL DEFAULT 90,
   env TEXT NOT NULL,
   env_by TEXT NOT NULL,
   created_at INTEGER NOT NULL
@@ -64,6 +65,7 @@ CREATE TABLE IF NOT EXISTS messages (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
   id TEXT NOT NULL UNIQUE,
   circle_id TEXT,
+  to_id TEXT,
   from_id TEXT NOT NULL,
   env TEXT NOT NULL,
   created_at INTEGER NOT NULL
@@ -108,6 +110,8 @@ function migrateToMultiCircle(db) {
   add('invites', 'circle_id', 'TEXT');
   add('messages', 'circle_id', 'TEXT');
   add('places', 'circle_id', 'TEXT');
+  add('circles', 'retention_days', 'INTEGER NOT NULL DEFAULT 90');
+  add('messages', 'to_id', 'TEXT');
 
   const meta = (k) => db.prepare('SELECT v FROM meta WHERE k = ?').get(k)?.v ?? null;
   const circleId = meta('circle_id');
@@ -195,17 +199,31 @@ export class Store {
     const rows = this.q('SELECT id FROM circles LIMIT 2').all();
     return rows.length === 1 ? rows[0].id : null;
   }
-  insertCircle({ id, env, by, now }) {
-    this.q('INSERT INTO circles (id, epoch, rotation_needed, env, env_by, created_at) VALUES (?, 1, 0, ?, ?, ?)').run(
+  insertCircle({ id, env, by, now, retentionDays }) {
+    this.q('INSERT INTO circles (id, epoch, rotation_needed, retention_days, env, env_by, created_at) VALUES (?, 1, 0, ?, ?, ?, ?)').run(
       id,
+      retentionDays,
       JSON.stringify(env),
       by,
       now,
     );
   }
+  setRetention(id, days) {
+    this.q('UPDATE circles SET retention_days = ? WHERE id = ?').run(days, id);
+  }
   circle(id) {
     const r = this.q('SELECT * FROM circles WHERE id = ?').get(id);
-    return r && { id: r.id, epoch: r.epoch, rotationNeeded: r.rotation_needed === 1, env: parse(r.env), by: r.env_by, createdAt: r.created_at };
+    return (
+      r && {
+        id: r.id,
+        epoch: r.epoch,
+        rotationNeeded: r.rotation_needed === 1,
+        retentionDays: r.retention_days,
+        env: parse(r.env),
+        by: r.env_by,
+        createdAt: r.created_at,
+      }
+    );
   }
   circleExists(id) {
     return !!this.q('SELECT 1 FROM circles WHERE id = ?').get(id);
@@ -350,27 +368,41 @@ export class Store {
       .map((r) => ({ memberId: r.member_id, env: parse(r.env), updatedAt: r.updated_at }));
   }
 
-  // messages (seq is server-wide; each circle sees an increasing subset)
-  insertMessage({ id, circleId, fromId, env, now }) {
-    const r = this.q('INSERT INTO messages (id, circle_id, from_id, env, created_at) VALUES (?, ?, ?, ?, ?)').run(
+  // messages (seq is server-wide; each circle sees an increasing subset).
+  // Direct messages have to_id set and are only ever returned to their two members.
+  insertMessage({ id, circleId, fromId, toId = null, env, now }) {
+    const r = this.q('INSERT INTO messages (id, circle_id, from_id, to_id, env, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
       id,
       circleId,
       fromId,
+      toId,
       JSON.stringify(env),
       now,
     );
     return Number(r.lastInsertRowid);
   }
-  messagesAfter(circleId, after, limit) {
-    return this.q('SELECT * FROM messages WHERE circle_id = ? AND seq > ? ORDER BY seq LIMIT ?')
-      .all(circleId, after, limit)
+  /** Group messages plus this member's own direct messages. */
+  messagesAfter(circleId, memberId, after, limit) {
+    return this.q(
+      `SELECT * FROM messages WHERE circle_id = ? AND seq > ? AND (to_id IS NULL OR to_id = ? OR from_id = ?)
+       ORDER BY seq LIMIT ?`,
+    )
+      .all(circleId, after, memberId, memberId, limit)
       .map(messageRow);
   }
   messageExists(id) {
     return !!this.q('SELECT 1 FROM messages WHERE id = ?').get(id);
   }
-  pruneMessages(before) {
-    return this.q('DELETE FROM messages WHERE created_at < ?').run(before).changes;
+  /** Delete each circle's messages older than its retention (and never keep more than `maxDays`). */
+  pruneMessages(now, maxDays) {
+    let n = 0;
+    for (const c of this.q('SELECT id, retention_days FROM circles').all()) {
+      const days = Math.min(maxDays, Math.max(1, c.retention_days));
+      n += this.q('DELETE FROM messages WHERE circle_id = ? AND created_at < ?').run(c.id, now - days * 86400_000).changes;
+    }
+    // Anything not tied to a circle (shouldn't exist) goes after the maximum too.
+    n += this.q('DELETE FROM messages WHERE circle_id IS NULL AND created_at < ?').run(now - maxDays * 86400_000).changes;
+    return n;
   }
   pruneInvites(before) {
     return this.q('DELETE FROM invites WHERE expires_at < ?').run(before).changes;
@@ -404,7 +436,7 @@ export class Store {
 }
 
 export function messageRow(r) {
-  return { seq: r.seq, id: r.id, from: r.from_id, env: parse(r.env), createdAt: r.created_at };
+  return { seq: r.seq, id: r.id, from: r.from_id, to: r.to_id ?? null, env: parse(r.env), createdAt: r.created_at };
 }
 
 function placeRow(r) {

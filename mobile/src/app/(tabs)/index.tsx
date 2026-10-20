@@ -9,6 +9,8 @@ import { CircleSwitcher } from '../../components/CircleSwitcher';
 import { useServerState } from '../../lib/connection';
 import { initials, timeAgo, useCircle } from '../../lib/useCircle';
 import { distanceM } from '../../lib/location';
+import { formatFeet } from '../../lib/units';
+import { router } from 'expo-router';
 import { errorText } from '../../lib/circle';
 import { DEFAULT_SETTINGS, getSettings } from '../../lib/storage';
 import { useTheme } from '../../theme';
@@ -131,10 +133,13 @@ export default function MapTab() {
           }
           renderItem={({ item: m }) => {
             const loc = client.locations.get(m.id);
+            const pausedAt = client.paused.get(m.id);
             const place = placeAt(loc, client.places);
             const bits: string[] = [];
-            if (loc) {
-              bits.push(place ? `At ${place.name}` : `±${Math.round(loc.accuracy || 0)} m`);
+            if (pausedAt) {
+              bits.push(`Paused sharing · ${timeAgo(pausedAt)}`);
+            } else if (loc) {
+              bits.push(place ? `At ${place.name}` : `±${formatFeet(loc.accuracy || 0)}`);
               bits.push(timeAgo(loc.ts));
               if (loc.battery != null) bits.push(`${Math.round(loc.battery * 100)}%${loc.charging ? ' ⚡' : ''}`);
             } else {
@@ -158,7 +163,17 @@ export default function MapTab() {
                     {bits.join(' · ')}
                   </Text>
                 </View>
-                {!m.isMe ? <Button title="Locate" small disabled={cooling} onPress={() => locate([m.id])} /> : null}
+                {!m.isMe ? (
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <Button
+                      title="Message"
+                      small
+                      accessibilityLabel={`Message ${m.name}`}
+                      onPress={() => router.push({ pathname: '/conversation', params: { circle: client.circleId!, peer: m.id } })}
+                    />
+                    <Button title="Locate" small disabled={cooling || !!pausedAt} accessibilityLabel={`Locate ${m.name}`} onPress={() => locate([m.id])} />
+                  </View>
+                ) : null}
               </Pressable>
             );
           }}

@@ -7,19 +7,19 @@ import { ServerBanner } from '../../components/ServerBanner';
 import { useServerState } from '../../lib/connection';
 import { useCircle } from '../../lib/useCircle';
 import { errorText, setActiveCircle, useCircles } from '../../lib/circle';
-import { useUnread } from '../../lib/notify';
+import { unreadInCircle } from '../../lib/unread';
 import { clearDeviceData, getSettings, setLastUpload, updateSettings, type Settings } from '../../lib/storage';
 import { shareNow, startBackgroundUpdates, stopBackgroundUpdates, syncGeofences, type SharingMode } from '../../lib/location';
 import { notificationPermission, registerPush } from '../../lib/push';
 import { useTheme } from '../../theme';
 
 const INTERVALS = [5, 15, 30, 60];
+const RETENTION_LABELS: Record<number, string> = { 1: '1 day', 7: '1 week', 30: '1 month', 90: '3 months', 365: '1 year' };
 
 export default function SettingsTab() {
   const t = useTheme();
   const client = useCircle();
   const { clients } = useCircles();
-  const unread = useUnread();
   const me = client.me;
   const server = useServerState();
   // Your name is per circle: an unsaved edit only applies to the circle it was typed in.
@@ -47,6 +47,12 @@ export default function SettingsTab() {
     else {
       await stopBackgroundUpdates();
       setMode('off');
+    }
+    // Turning sharing off tells each circle you paused; turning it on shares now.
+    if (patch.sharing === false) {
+      await Promise.allSettled(clients.filter((c) => !next.pausedCircles.includes(c.circleId!)).map((c) => c.pauseSharing()));
+    } else if (patch.sharing === true) {
+      shareNow('manual').catch(() => {});
     }
   };
 
@@ -79,7 +85,7 @@ export default function SettingsTab() {
     setSettings(await updateSettings({ pausedCircles: [...paused] }));
     syncGeofences().catch(() => {});
     if (on) shareNow('open').catch(() => {});
-    else target.clearLocation().catch((e) => Alert.alert('Couldn’t remove your location', errorText(e)));
+    else target.pauseSharing().catch((e) => Alert.alert('Couldn’t pause sharing', errorText(e)));
   };
   const circleName = client.circle.name;
 
@@ -87,7 +93,7 @@ export default function SettingsTab() {
     background: 'Sharing in the background',
     'foreground-only': 'Only while the app is open — allow “Always” for background updates',
     'no-permission': 'Location permission is off',
-    off: 'Paused — your circle sees your last shared location',
+    off: 'Paused — your circles see that you paused',
   };
 
   const memberRow = (m: Member) => {
@@ -143,7 +149,7 @@ export default function SettingsTab() {
         {clients.map((c) => {
           const isActive = c === client;
           const sharingHere = !(settings?.pausedCircles ?? []).includes(c.circleId!);
-          const n = unread[c.circleId!] || 0;
+          const n = unreadInCircle(c);
           return (
             <View key={c.accountKey} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: t.line }}>
               <Pressable accessibilityRole="button" onPress={() => setActiveCircle(c.accountKey)} style={{ flex: 1 }}>
@@ -153,7 +159,7 @@ export default function SettingsTab() {
                   {n ? `  (${n} new)` : ''}
                 </Text>
                 <Text style={{ color: t.muted, fontSize: 13 }} numberOfLines={1}>
-                  {clients.length > 1 ? (sharingHere ? 'Sees your location' : 'Doesn’t see your location') : `${c.memberList().length} members`}
+                  {clients.length > 1 ? (sharingHere ? 'Sees your location' : 'Paused: they see that you paused') : `${c.memberList().length} members`}
                   {isActive ? '' : ' · tap to open'}
                 </Text>
               </Pressable>
@@ -260,6 +266,46 @@ export default function SettingsTab() {
       <Card>
         {client.memberList().map(memberRow)}
         {client.isAdmin ? <Button title="Invite someone" variant="primary" style={{ marginTop: 14 }} onPress={() => router.push('/invite')} /> : null}
+        <Text style={{ color: t.muted, fontSize: 13, marginTop: 12 }}>
+          Everyone here can see each other’s location and tap Locate to ask for it. Joining means agreeing to that.
+        </Text>
+      </Card>
+
+      <SectionTitle>Message history</SectionTitle>
+      <Card style={{ gap: 10 }}>
+        <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Delete messages after</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {client.retention.choices.map((d) => {
+            const on = client.retention.days === d;
+            return (
+              <Pressable
+                key={d}
+                disabled={!client.isAdmin}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on, disabled: !client.isAdmin }}
+                onPress={() => client.setRetention(d).catch((e) => Alert.alert('Couldn’t change it', errorText(e)))}
+                style={{
+                  minHeight: 44,
+                  paddingHorizontal: 16,
+                  justifyContent: 'center',
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: on ? t.brand : t.line,
+                  backgroundColor: on ? t.brandSoft : 'transparent',
+                  opacity: client.isAdmin || on ? 1 : 0.5,
+                }}
+              >
+                <Text style={{ color: on ? t.brand : t.text, fontWeight: '600', fontSize: 15 }}>{RETENTION_LABELS[d] ?? `${d} days`}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={{ color: t.muted, fontSize: 13 }}>
+          {client.isAdmin
+            ? 'Applies to the group chat and direct messages in this circle. Older messages are deleted from the server.'
+            : 'Set by the circle’s admins. Older messages, including direct messages, are deleted from the server.'}{' '}
+          Nothing is kept longer than a year.
+        </Text>
       </Card>
 
       <SectionTitle>Server</SectionTitle>

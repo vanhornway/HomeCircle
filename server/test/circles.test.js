@@ -242,7 +242,7 @@ test('a single-circle database from an older server is upgraded in place', () =>
   assert.equal(store.memberByToken('h1').circleId, 'oldcircle1');
   assert.equal(store.memberByToken('h1').serverAdmin, true);
   assert.equal(store.memberByToken('h2').serverAdmin, false);
-  assert.equal(store.messagesAfter('oldcircle1', 0, 10).length, 1);
+  assert.equal(store.messagesAfter('oldcircle1', 'kid1', 0, 10).length, 1);
   assert.equal(store.places('oldcircle1').length, 1);
   assert.equal(store.getMeta('circle_id'), null);
   store.close();

@@ -13,6 +13,7 @@ import { HttpError, sendJson, readJson, sha256, clientIp } from './http.js';
 const log = (...args) => console.log(new Date().toISOString(), ...args);
 
 export function createApp(config) {
+  config = { maxRetentionDays: 365, ...config };
   const store = openDb(config.dataDir);
   if (!store.isSetup) ensureSetupToken(config);
   const hub = new Hub({ store, log });
@@ -72,7 +73,7 @@ export function createApp(config) {
 
   const prune = () => {
     const now = Date.now();
-    if (config.messageRetentionDays > 0) store.pruneMessages(now - config.messageRetentionDays * 86400_000);
+    store.pruneMessages(now, config.maxRetentionDays);
     store.pruneInvites(now - 7 * 86400_000);
   };
   prune();

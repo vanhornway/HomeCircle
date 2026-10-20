@@ -34,12 +34,24 @@ export function generateIdentity() {
 export const newCircleKey = () => toB64(nacl.randomBytes(nacl.secretbox.keyLength));
 
 /**
- * Sign-then-encrypt a payload with the circle key. The server only ever sees
+ * The key for direct messages between two members: X25519 between their
+ * identity keys, so only those two phones can derive it (not the server, not
+ * the rest of the circle). Both sides get the same key.
+ */
+export function directKey(myBoxSecret, peerBoxPub) {
+  return toB64(kdf('homecircle/direct-v1', nacl.box.before(fromB64(peerBoxPub), fromB64(myBoxSecret))));
+}
+
+/**
+ * Sign-then-encrypt a payload with the circle key (or, for a direct message,
+ * the pair's direct key and the recipient in `to`). The server only ever sees
  * { epoch, nonce, ct }.
  */
-export function seal({ kind, from, circle, epoch, key, signSecret, body, ts = Date.now() }) {
+export function seal({ kind, from, to, circle, epoch, key, signSecret, body, ts = Date.now() }) {
   if (!KINDS.includes(kind)) throw new Error(`unknown kind ${kind}`);
-  const plaintext = utf8Encode(JSON.stringify({ v: PROTOCOL_VERSION, kind, from, circle, epoch, ts, body }));
+  const inner = { v: PROTOCOL_VERSION, kind, from, circle, epoch, ts, body };
+  if (to) inner.to = to;
+  const plaintext = utf8Encode(JSON.stringify(inner));
   const signed = nacl.sign(plaintext, fromB64(signSecret));
   const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
   const ct = nacl.secretbox(signed, nonce, fromB64(key));
@@ -50,7 +62,7 @@ export function seal({ kind, from, circle, epoch, key, signSecret, body, ts = Da
  * Decrypt and verify an envelope. Checks that the sender, kind, circle and
  * epoch inside the ciphertext match what we expected from the outer metadata.
  */
-export function open(envelope, { key, signPub, kind, from, circle }) {
+export function open(envelope, { key, signPub, kind, from, to, circle }) {
   let signed;
   try {
     signed = nacl.secretbox.open(fromB64(envelope.ct), fromB64(envelope.nonce), fromB64(key));
@@ -70,6 +82,8 @@ export function open(envelope, { key, signPub, kind, from, circle }) {
   if (kind && msg.kind !== kind) throw new CryptoError('kind');
   if (from && msg.from !== from) throw new CryptoError('sender');
   if (circle && msg.circle !== circle) throw new CryptoError('circle');
+  // A direct message can't be passed off as a group one, or redirected.
+  if ((msg.to ?? null) !== (to ?? null)) throw new CryptoError('recipient');
   if (msg.epoch !== envelope.epoch) throw new CryptoError('epoch');
   return msg;
 }

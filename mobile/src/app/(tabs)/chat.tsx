@@ -1,222 +1,195 @@
-import { useCallback, useRef, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
-import { FlatList, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { useState } from 'react';
+import { FlatList, Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { EMOJI_GROUPS, QUICK_REACTIONS, isEmojiOnly, type Message } from '@homecircle/core';
-import { Icon } from '../../components/ui';
+import type { CircleClient, Message } from '@homecircle/core';
+import { Avatar, Button } from '../../components/ui';
 import { ServerBanner } from '../../components/ServerBanner';
-import { CircleSwitcher } from '../../components/CircleSwitcher';
-import { useCircle } from '../../lib/useCircle';
-import { errorText } from '../../lib/circle';
-import { markSeen, setChatVisible } from '../../lib/notify';
+import { initials, useAllCircles } from '../../lib/useCircle';
+import { unreadIn } from '../../lib/unread';
 import { useTheme } from '../../theme';
 
-const clock = (ts: number) => new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+type Row = {
+  key: string;
+  client: CircleClient;
+  peer: string | null;
+  title: string;
+  subtitle: string;
+  color: string | null;
+  last: Message | undefined;
+  unread: number;
+};
 
-export default function Chat() {
+function when(ts: number) {
+  const d = new Date(ts);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  if (now.getTime() - ts < 6 * 86400_000) return d.toLocaleDateString(undefined, { weekday: 'short' });
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function preview(client: CircleClient, m: Message | undefined, group: boolean) {
+  if (!m) return group ? 'No messages yet' : 'Say hello';
+  const mine = m.from === client.account?.memberId;
+  const name = mine ? 'You' : client.members.get(m.from)?.name || 'Someone';
+  if (m.kind === 'event') return `${name} ${m.body?.action === 'left' ? 'left' : 'arrived at'} ${m.body?.placeName || 'a place'}`;
+  if (m.kind !== 'chat') return '🔒 Encrypted message';
+  const text = String(m.body?.text ?? '').replace(/\s+/g, ' ');
+  return group || mine ? `${name}: ${text}` : text;
+}
+
+/** Every conversation on this phone: each circle's group chat and your direct chats. */
+export default function Chats() {
   const t = useTheme();
-  const client = useCircle();
-  const [text, setText] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [reactingTo, setReactingTo] = useState<Message | null>(null);
-  const list = useRef<FlatList<Message>>(null);
-  const me = client.account?.memberId;
-  const messages = [...client.messages].reverse();
+  const clients = useAllCircles();
+  const [picking, setPicking] = useState(false);
+  const multi = clients.length > 1;
 
-  // While this screen is showing, new messages are "seen": no notification or badge.
-  useFocusEffect(
-    useCallback(() => {
-      setChatVisible(true);
-      markSeen(client, client.lastSeq).catch(() => {});
-      return () => setChatVisible(false);
-    }, [client]),
-  );
+  const rows: Row[] = clients.flatMap((c) => {
+    if (!c.circleId) return [];
+    const group: Row = {
+      key: c.circleId,
+      client: c,
+      peer: null,
+      title: c.circle.name,
+      subtitle: `Group · ${c.memberList().length} members`,
+      color: null,
+      last: c.conversation(null).at(-1),
+      unread: unreadIn(c, null),
+    };
+    const dms = c.directPeers().map((peer): Row => {
+      const m = c.members.get(peer);
+      return {
+        key: `${c.circleId}:${peer}`,
+        client: c,
+        peer,
+        title: m?.name || 'Former member',
+        subtitle: multi ? `Direct · ${c.circle.name}` : 'Direct message',
+        color: m?.color || t.muted,
+        last: c.conversation(peer).at(-1),
+        unread: unreadIn(c, peer),
+      };
+    });
+    return [group, ...dms];
+  });
+  rows.sort((a, b) => (b.last?.seq ?? 0) - (a.last?.seq ?? 0));
 
-  const send = async () => {
-    const value = text;
-    if (!value.trim()) return;
-    setText('');
-    setError(null);
-    try {
-      await client.sendChat(value);
-      list.current?.scrollToOffset({ offset: 0, animated: true });
-    } catch (e) {
-      setText(value);
-      setError(errorText(e));
-    }
-  };
-
-  const react = (messageId: string, emoji: string) => {
-    setReactingTo(null);
-    client.react(messageId, emoji).catch((e) => setError(errorText(e)));
-  };
-
-  const render = ({ item: m }: { item: Message }) => {
-    const who = client.members.get(m.from);
-    const name = who?.name || 'Former member';
-    if (m.kind !== 'chat') {
-      const label =
-        m.kind === 'event'
-          ? `${name} ${m.body?.action === 'left' ? 'left' : 'arrived at'} ${m.body?.placeName || 'a place'} · ${clock(m.ts)}`
-          : '🔒 Sent before you joined';
-      return (
-        <Text style={{ alignSelf: 'center', color: t.muted, backgroundColor: t.surface2, fontSize: 13, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, overflow: 'hidden', marginVertical: 4 }}>
-          {label}
-        </Text>
-      );
-    }
-    const mine = m.from === me;
-    const big = isEmojiOnly(m.body?.text);
-    const reactions = client.reactionsFor(m.id);
-    return (
-      <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', alignItems: mine ? 'flex-end' : 'flex-start', maxWidth: '82%', marginVertical: 3 }}>
-        {!mine ? <Text style={{ color: who?.color || t.muted, fontSize: 12, fontWeight: '700', marginLeft: 4, marginBottom: 2 }}>{name}</Text> : null}
-        <Pressable
-          onLongPress={() => {
-            Keyboard.dismiss();
-            setReactingTo(m);
-          }}
-          delayLongPress={300}
-          accessibilityHint="Long-press to react"
-          style={({ pressed }) => ({
-            backgroundColor: big ? 'transparent' : mine ? t.brand : t.surface,
-            borderRadius: 18,
-            paddingHorizontal: big ? 2 : 14,
-            paddingVertical: big ? 0 : 9,
-            opacity: pressed ? 0.75 : 1,
-          })}
-        >
-          <Text style={big ? { fontSize: 44, lineHeight: 54 } : { color: mine ? t.brandInk : t.text, fontSize: 16, lineHeight: 21 }}>{m.body?.text}</Text>
-        </Pressable>
-        {reactions.length ? (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 3, justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-            {reactions.map((r) => (
-              <Pressable
-                key={r.emoji}
-                onPress={() => react(m.id, r.emoji)}
-                accessibilityLabel={`${r.emoji} from ${r.names.join(', ')}${r.mine ? '. Tap to remove yours' : '. Tap to add yours'}`}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 3,
-                  paddingHorizontal: 8,
-                  paddingVertical: 2,
-                  borderRadius: 999,
-                  borderWidth: 1,
-                  borderColor: r.mine ? t.brand : t.line,
-                  backgroundColor: r.mine ? t.brandSoft : t.surface,
-                }}
-              >
-                <Text style={{ fontSize: 14 }}>{r.emoji}</Text>
-                {r.count > 1 ? <Text style={{ fontSize: 12, color: r.mine ? t.brand : t.muted, fontWeight: '600' }}>{r.count}</Text> : null}
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-        <Text style={{ color: t.muted, fontSize: 11, marginTop: 2, marginHorizontal: 6 }}>{clock(m.ts)}</Text>
-      </View>
-    );
+  const open = (client: CircleClient, peer: string | null) => {
+    setPicking(false);
+    router.push({ pathname: '/conversation', params: { circle: client.circleId!, peer: peer ?? '' } });
   };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }} edges={['top']}>
-      <View style={{ paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: t.line }}>
-        <CircleSwitcher large />
-        <Text style={{ color: t.muted, fontSize: 13 }}>End-to-end encrypted · {client.memberList().length} members</Text>
-        <ServerBanner style={{ marginTop: 10 }} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 6 }}>
+        <Text style={{ flex: 1, color: t.text, fontSize: 30, fontWeight: '800' }}>Chats</Text>
+        <Button title="New message" variant="primary" small onPress={() => setPicking(true)} />
       </View>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
-        <FlatList
-          ref={list}
-          inverted
-          data={messages}
-          keyExtractor={(m) => m.id}
-          renderItem={render}
-          contentContainerStyle={{ padding: 14 }}
-          keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={<Text style={{ color: t.muted, textAlign: 'center', transform: [{ scaleY: -1 }] }}>No messages yet. Say hi 👋</Text>}
-        />
-        {error ? <Text style={{ color: t.danger, paddingHorizontal: 16 }}>{error}</Text> : null}
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 10, borderTopWidth: 1, borderTopColor: t.line, backgroundColor: t.surface }}>
+      <ServerBanner style={{ marginHorizontal: 16, marginBottom: 6 }} />
+      <FlatList
+        data={rows}
+        keyExtractor={(r) => r.key}
+        contentContainerStyle={{ paddingBottom: 24 }}
+        renderItem={({ item: r }) => (
           <Pressable
-            accessibilityLabel={pickerOpen ? 'Hide emoji' : 'Emoji'}
-            onPress={() => {
-              if (!pickerOpen) Keyboard.dismiss();
-              setPickerOpen((v) => !v);
-            }}
-            style={{ width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: pickerOpen ? t.brandSoft : 'transparent' }}
+            onPress={() => open(r.client, r.peer)}
+            accessibilityRole="button"
+            accessibilityLabel={`${r.title}, ${r.subtitle}${r.unread ? `, ${r.unread} unread` : ''}`}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 14,
+              paddingHorizontal: 16,
+              paddingVertical: 12,
+              minHeight: 80,
+              backgroundColor: pressed ? t.surface2 : 'transparent',
+            })}
           >
-            <Text style={{ fontSize: 24 }}>😊</Text>
-          </Pressable>
-          <TextInput
-            value={text}
-            onChangeText={setText}
-            onFocus={() => setPickerOpen(false)}
-            placeholder="Message your circle"
-            placeholderTextColor={t.muted}
-            multiline
-            maxLength={4000}
-            style={{ flex: 1, minHeight: 42, maxHeight: 120, backgroundColor: t.bg, borderRadius: 21, paddingHorizontal: 16, paddingTop: 11, paddingBottom: 11, fontSize: 16, color: t.text }}
-          />
-          <Pressable
-            accessibilityLabel="Send"
-            onPress={send}
-            disabled={!text.trim()}
-            style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: t.brand, alignItems: 'center', justifyContent: 'center', opacity: text.trim() ? 1 : 0.5 }}
-          >
-            <Icon name="send" color={t.brandInk} size={20} />
-          </Pressable>
-        </View>
-        {pickerOpen ? (
-          <ScrollView style={{ maxHeight: 260, backgroundColor: t.surface }} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
-            {EMOJI_GROUPS.map((g) => (
-              <View key={g.name}>
-                <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700', marginTop: 10, marginBottom: 4, marginLeft: 4 }}>{g.name}</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-                  {g.emojis.map((e) => (
-                    <Pressable
-                      key={e}
-                      accessibilityLabel={`Insert ${e}`}
-                      onPress={() => setText((v) => v + e)}
-                      style={({ pressed }) => ({ width: '12.5%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: pressed ? t.surface2 : 'transparent' })}
-                    >
-                      <Text style={{ fontSize: 26 }}>{e}</Text>
-                    </Pressable>
-                  ))}
-                </View>
+            {r.peer ? (
+              <Avatar name={r.title} color={r.color!} size={52} />
+            ) : (
+              <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: t.brandSoft, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: t.brand, fontWeight: '800', fontSize: 18 }}>{initials(r.title)}</Text>
               </View>
-            ))}
-          </ScrollView>
-        ) : null}
-      </KeyboardAvoidingView>
-
-      <Modal visible={!!reactingTo} transparent animationType="fade" onRequestClose={() => setReactingTo(null)}>
-        <Pressable onPress={() => setReactingTo(null)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-          {reactingTo ? (
-            <View style={{ backgroundColor: t.surface, borderRadius: 20, padding: 16, alignItems: 'center', gap: 12, maxWidth: 360 }}>
-              <Text style={{ color: t.muted, fontSize: 14 }} numberOfLines={2}>
-                React to “{reactingTo.body?.text}”
+            )}
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ flex: 1, color: t.text, fontSize: 17, fontWeight: '700' }} numberOfLines={1}>
+                  {r.title}
+                </Text>
+                {r.last ? <Text style={{ color: r.unread ? t.brand : t.muted, fontSize: 13 }}>{when(r.last.createdAt)}</Text> : null}
+              </View>
+              <Text style={{ color: t.muted, fontSize: 12, marginTop: 1 }} numberOfLines={1}>
+                {r.subtitle}
               </Text>
-              <View style={{ flexDirection: 'row', gap: 6 }}>
-                {QUICK_REACTIONS.map((e) => {
-                  const mine = client.reactionsFor(reactingTo.id).some((r) => r.emoji === e && r.mine);
-                  return (
-                    <Pressable
-                      key={e}
-                      accessibilityLabel={mine ? `Remove ${e}` : `React ${e}`}
-                      onPress={() => react(reactingTo.id, e)}
-                      style={{ width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: mine ? t.brandSoft : t.surface2 }}
-                    >
-                      <Text style={{ fontSize: 26 }}>{e}</Text>
-                    </Pressable>
-                  );
-                })}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 }}>
+                <Text style={{ flex: 1, color: r.unread ? t.text : t.muted, fontSize: 15, fontWeight: r.unread ? '600' : '400' }} numberOfLines={1}>
+                  {preview(r.client, r.last, !r.peer)}
+                </Text>
+                {r.unread ? (
+                  <View style={{ minWidth: 24, height: 24, borderRadius: 12, backgroundColor: t.brand, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7 }}>
+                    <Text style={{ color: t.brandInk, fontSize: 13, fontWeight: '700' }}>{r.unread > 99 ? '99+' : r.unread}</Text>
+                  </View>
+                ) : null}
               </View>
             </View>
-          ) : null}
+          </Pressable>
+        )}
+        ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: t.line, marginLeft: 82 }} />}
+      />
+
+      <Modal visible={picking} animationType="slide" transparent onRequestClose={() => setPicking(false)}>
+        <Pressable onPress={() => setPicking(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '80%' }}>
+            <SafeAreaView edges={['bottom']}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', padding: 18, paddingBottom: 8 }}>
+                <Text style={{ flex: 1, color: t.text, fontSize: 20, fontWeight: '700' }}>New message</Text>
+                <Button small title="Cancel" onPress={() => setPicking(false)} />
+              </View>
+              <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
+                {clients.map((c) => {
+                  const others = c.memberList().filter((m) => !m.isMe);
+                  return (
+                    <View key={c.accountKey}>
+                      <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700', marginHorizontal: 18, marginTop: 12, marginBottom: 4 }}>
+                        {c.circle.name.toUpperCase()}
+                      </Text>
+                      <PickRow title={`Everyone in ${c.circle.name}`} subtitle="Group chat" onPress={() => open(c, null)} />
+                      {others.map((m) => (
+                        <PickRow key={m.id} title={m.name} subtitle="Direct message" color={m.color} onPress={() => open(c, m.id)} />
+                      ))}
+                      {others.length ? null : <Text style={{ color: t.muted, marginHorizontal: 18, fontSize: 14 }}>No one else here yet.</Text>}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </SafeAreaView>
+          </Pressable>
         </Pressable>
       </Modal>
     </SafeAreaView>
+  );
+}
+
+function PickRow({ title, subtitle, color, onPress }: { title: string; subtitle: string; color?: string; onPress: () => void }) {
+  const t = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 18, minHeight: 64, backgroundColor: pressed ? t.surface2 : 'transparent' })}
+    >
+      {color ? (
+        <Avatar name={title} color={color} size={44} />
+      ) : (
+        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: t.brandSoft, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: t.brand, fontWeight: '800' }}>#</Text>
+        </View>
+      )}
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: t.text, fontSize: 17, fontWeight: '600' }}>{title}</Text>
+        <Text style={{ color: t.muted, fontSize: 13 }}>{subtitle}</Text>
+      </View>
+    </Pressable>
   );
 }

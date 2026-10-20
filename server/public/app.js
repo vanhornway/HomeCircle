@@ -227,7 +227,8 @@ async function renderJoin(link) {
   const appLink = `homecircle://join?server=${encodeURIComponent(SERVER)}&i=${parsed[1]}&s=${parsed[2]}`;
   const err = h('p', { class: 'error', role: 'alert' });
   const name = h('input', { class: 'input', id: 'name', required: true, maxlength: '40', autocomplete: 'given-name', placeholder: 'Your name' });
-  const btn = h('button', { class: 'btn block', type: 'submit' }, 'Join in this browser');
+  const btn = h('button', { class: 'btn block', type: 'submit', disabled: true }, 'Join in this browser');
+  const agree = h('input', { type: 'checkbox', id: 'agree', onchange: () => (btn.disabled = !agree.checked) });
   card.replaceChildren(
     brandRow(),
     h('h1', {}, `Join ${preview.circleName || 'this circle'}`),
@@ -239,6 +240,7 @@ async function renderJoin(link) {
       {
         onsubmit: async (e) => {
           e.preventDefault();
+          if (!agree.checked) return;
           btn.disabled = true;
           err.textContent = '';
           try {
@@ -251,6 +253,16 @@ async function renderJoin(link) {
         },
       },
       h('div', { class: 'field' }, h('label', { for: 'name' }, 'Your name'), name),
+      h(
+        'label',
+        { class: 'consent', for: 'agree' },
+        agree,
+        h(
+          'span',
+          {},
+          `I agree that everyone in ${preview.circleName || 'this circle'} can see where I am and can ask for my current location at any time. If I pause sharing, they’ll see that I paused.`,
+        ),
+      ),
       btn,
       err,
     ),
@@ -281,7 +293,14 @@ function renderMessage(title, text) {
 
 // --- main app ------------------------------------------------------------
 
-const ui = { tab: 'people', unread: 0, pickPlace: false, invite: null, cooldownUntil: 0 };
+// peer: the open conversation in Chat (null = the circle's group chat).
+const ui = { tab: 'people', unread: 0, pickPlace: false, invite: null, cooldownUntil: 0, peer: null };
+const FEET_PER_METER = 3.28084;
+const feet = (m) => {
+  const ft = m * FEET_PER_METER;
+  return ft >= 5280 ? `${(ft / 5280).toFixed(1)} mi` : `${(Math.round(ft / 10) * 10).toLocaleString()} ft`;
+};
+const RETENTION_LABELS = { 1: '1 day', 7: '1 week', 30: '1 month', 90: '3 months', 365: '1 year' };
 let map;
 const markers = new Map();
 const placeLayers = new Map();
@@ -355,7 +374,10 @@ async function startApp() {
     renderPanel();
     renderMarkers();
   });
-  client.on('circle', showTitle);
+  client.on('circle', () => {
+    showTitle();
+    if (ui.tab === 'settings') renderPanel();
+  });
   client.on('locations', () => {
     renderMarkers();
     if (ui.tab === 'people') renderPanel();
@@ -367,10 +389,15 @@ async function startApp() {
   client.on('messages', () => {
     if (ui.tab === 'chat') renderPanel();
   });
-  client.on('newMessage', () => {
-    if (ui.tab !== 'chat') {
+  client.on('newMessage', (m) => {
+    const elsewhere = (m.peer ?? null) !== ui.peer;
+    if (ui.tab !== 'chat' || elsewhere) {
       ui.unread++;
       renderTabs();
+    }
+    if (ui.tab === 'chat' && elsewhere) {
+      const name = client.members.get(m.from)?.name || 'Someone';
+      toast(m.peer ? `New direct message from ${name}` : `New message in ${client.circle.name}`);
     }
   });
   client.on('locationRequest', () => {
@@ -389,8 +416,13 @@ async function startApp() {
     await client.start();
   } catch (e) {
     if (e.status === 401) {
+      // This circle is gone (removed, or deleted): go to the next one, or start over.
       await client.signOut();
-      return renderMessage('Signed out', 'This browser is no longer part of the circle.');
+      circles = circles.filter((c) => c !== client);
+      toast('This browser is no longer part of that circle');
+      if (circles.length) return switchCircle(circles[0].accountKey);
+      local.set(LIST_KEY, '[]');
+      return setTimeout(() => location.reload(), 1200);
     }
     toast(errorText(e));
   }
@@ -461,10 +493,13 @@ function peopleView() {
   const cooling = Date.now() < ui.cooldownUntil;
   const list = members.map((m) => {
     const loc = client.locations.get(m.id);
+    const pausedAt = client.paused.get(m.id);
     const place = placeAt(loc);
     const bits = [];
-    if (loc) {
-      bits.push(place ? `At ${place.name}` : `±${Math.round(loc.accuracy || 0)} m`);
+    if (pausedAt) {
+      bits.push(`Paused sharing · ${timeAgo(pausedAt)}`);
+    } else if (loc) {
+      bits.push(place ? `At ${place.name}` : `±${feet(loc.accuracy || 0)}`);
       bits.push(timeAgo(loc.ts));
       if (loc.battery != null) bits.push(`${Math.round(loc.battery * 100)}%${loc.charging ? ' ⚡' : ''}`);
     } else {
@@ -496,7 +531,22 @@ function peopleView() {
             'button',
             {
               class: 'btn small',
-              disabled: cooling,
+              title: `Send ${m.name} a direct message`,
+              onclick: (e) => {
+                e.stopPropagation();
+                ui.peer = m.id;
+                setTab('chat');
+              },
+            },
+            'Message',
+          )
+        : null,
+      !m.isMe
+        ? h(
+            'button',
+            {
+              class: 'btn small',
+              disabled: cooling || !!pausedAt,
               title: 'Ask their phone for a fresh location',
               onclick: (e) => {
                 e.stopPropagation();
@@ -575,9 +625,35 @@ function renderPlaces() {
 
 function chatView() {
   const me = client.account.memberId;
+  if (ui.peer && !client.members.get(ui.peer)) ui.peer = null;
+  // Group chat, or a direct conversation with one member.
+  const others = client.memberList().filter((m) => !m.isMe);
+  const peers = [...new Set([...client.directPeers(), ...others.map((m) => m.id)])];
+  const picker = h(
+    'select',
+    {
+      class: 'input conversation-picker',
+      'aria-label': 'Conversation',
+      onchange: () => {
+        ui.peer = picker.value || null;
+        ui.focusChat = true;
+        ui.unread = 0;
+        renderTabs();
+        renderPanel();
+      },
+    },
+    h('option', { value: '', selected: !ui.peer }, `👥 ${client.circle.name} (group)`),
+    peers.map((id) => h('option', { value: id, selected: ui.peer === id }, `💬 ${client.members.get(id)?.name || 'Former member'} (direct)`)),
+  );
+  const shown = client.conversation(ui.peer);
+  const peerName = ui.peer ? client.members.get(ui.peer)?.name || 'them' : null;
   const log = h('div', { class: 'chat-log', 'aria-live': 'polite' });
-  if (!client.messages.length) log.append(h('p', { class: 'muted small', style: 'text-align:center' }, 'No messages yet. Say hi 👋'));
-  for (const m of client.messages) {
+  if (!shown.length) {
+    log.append(
+      h('p', { class: 'muted small', style: 'text-align:center' }, ui.peer ? `Only you and ${peerName} can read this conversation.` : 'No messages yet. Say hi 👋'),
+    );
+  }
+  for (const m of shown) {
     const who = client.members.get(m.from);
     const name = who?.name || 'Former member';
     if (m.kind === 'event') {
@@ -596,7 +672,7 @@ function chatView() {
         h(
           'div',
           { class: `bubble-row${mine ? ' mine' : ''}` },
-          mine ? null : h('div', { class: 'bubble-from', style: `color:${who?.color || 'inherit'}` }, name),
+          mine || ui.peer ? null : h('div', { class: 'bubble-from', style: `color:${who?.color || 'inherit'}` }, name),
           h(
             'div',
             { class: 'bubble-line' },
@@ -659,7 +735,7 @@ function chatView() {
           if (!text.trim()) return;
           input.value = '';
           try {
-            await client.sendChat(text);
+            await client.sendChat(text, { to: ui.peer });
           } catch (ex) {
             input.value = text;
             toast(errorText(ex));
@@ -716,10 +792,11 @@ function chatView() {
   }
   const form = ui.chatForm;
   const input = form.querySelector('input');
+  input.placeholder = ui.peer ? `Message ${peerName}` : 'Message your circle';
   const refocus = document.activeElement === input || ui.focusChat;
   ui.focusChat = false;
   if (refocus) setTimeout(() => input.focus(), 0);
-  return h('div', { class: 'chat' }, log, form);
+  return h('div', { class: 'chat' }, picker, log, form);
 }
 
 // --- places --------------------------------------------------------------
@@ -731,7 +808,7 @@ function placesView() {
     const radius = h(
       'select',
       { class: 'input', id: 'pradius' },
-      [100, 150, 250, 500, 1000].map((r) => h('option', { value: String(r), selected: r === 150 }, `${r} m`)),
+      [250, 500, 1000, 2000].map((ft) => h('option', { value: String(Math.round(ft / FEET_PER_METER)), selected: ft === 500 }, `${ft.toLocaleString()} ft`)),
     );
     setTimeout(() => name.focus(), 0);
     return h(
@@ -782,7 +859,7 @@ function placesView() {
             'div',
             { class: 'person', onclick: () => map.flyTo([p.lat, p.lng], 16, { duration: 0.6 }) },
             h('div', { class: 'avatar', style: 'background:var(--brand)' }, '⌂'),
-            h('div', { class: 'info' }, h('div', { class: 'name' }, p.name), h('div', { class: 'meta' }, `${p.radius} m radius`)),
+            h('div', { class: 'info' }, h('div', { class: 'name' }, p.name), h('div', { class: 'meta' }, [`${feet(p.radius)} radius`, p.address].filter(Boolean).join(' · '))),
             h(
               'button',
               {
@@ -951,6 +1028,39 @@ function settingsView() {
       h('p', { class: 'muted small' }, 'Compare safety numbers in person to be sure no one has been swapped in.'),
     ),
   );
+
+  const retention = client.retention;
+  if (retention.choices.length) {
+    sections.push(
+      h(
+        'div',
+        { class: 'section' },
+        h('h3', {}, 'Message history'),
+        h(
+          'label',
+          { class: 'small', for: 'retention' },
+          'Delete messages after ',
+          h(
+            'select',
+            {
+              class: 'input inline',
+              id: 'retention',
+              disabled: !client.isAdmin,
+              onchange: (e) => client.setRetention(Number(e.target.value)).catch((ex) => toast(errorText(ex))),
+            },
+            retention.choices.map((d) => h('option', { value: String(d), selected: d === retention.days }, RETENTION_LABELS[d] || `${d} days`)),
+          ),
+        ),
+        h(
+          'p',
+          { class: 'muted small' },
+          client.isAdmin
+            ? 'Applies to group and direct messages in this circle. Nothing is kept longer than a year.'
+            : 'Set by the circle’s admins. Nothing is kept longer than a year.',
+        ),
+      ),
+    );
+  }
 
   sections.push(circlesSection());
 
