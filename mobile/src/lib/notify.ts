@@ -64,8 +64,10 @@ async function lastNotified(client: CircleClient): Promise<number | null> {
 /** Everything up to `seq` in this circle has been seen (or notified); don't notify for it again. */
 export async function markSeen(client: CircleClient, seq: number) {
   if (!client.circleId) return;
-  const last = (await lastNotified(client)) ?? 0;
-  if (seq > last) await AsyncStorage.setItem(`${LAST_NOTIFIED_KEY}.${client.circleId}`, String(seq));
+  // Always record a mark the first time, even 0 for a circle with no messages
+  // yet; without one, the first message would be mistaken for old history.
+  const last = await lastNotified(client);
+  if (last == null || seq > last) await AsyncStorage.setItem(`${LAST_NOTIFIED_KEY}.${client.circleId}`, String(seq));
 }
 
 function nameOf(client: CircleClient, id: string) {
