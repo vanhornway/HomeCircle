@@ -187,6 +187,9 @@ aren't in. You don't need a second server.
   radius in feet. Turn on **Add to all my circles** to share it with every
   circle you're in. When someone arrives or leaves, their circle's group chat
   gets a message.
+- **Place alerts:** in **Settings → Place alerts**, untick **Announce my
+  arrivals and departures** if you don't want your arrivals posted in chat, or
+  untick **Show place alerts in my chats** to hide other people's.
 - **Message history:** a circle's admin chooses how long messages are kept
   (Settings → Message history): 1 day, 1 week, 1 month, 3 months or 1 year.
   Nothing is kept longer than a year.

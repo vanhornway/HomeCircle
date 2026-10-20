@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Text } from 'react-native';
 import { router } from 'expo-router';
 import { Button, Card, ErrorText, Field, LockNote, P, Screen } from '../components/ui';
-import { errorText, getClient } from '../lib/circle';
+import { allClients, errorText, getClient } from '../lib/circle';
 import { retryServer, setServerState, useServerState } from '../lib/connection';
 import { useTheme } from '../theme';
 
@@ -36,7 +36,12 @@ export default function ServerScreen() {
     setError(null);
     setResult(null);
     try {
+      const old = client.serverUrl;
       await client.changeServer(address);
+      // Your other circles on the same server moved too. Each one checks the
+      // new address with its own token, so only circles really there switch.
+      const others = allClients().filter((c) => c !== client && c.serverUrl === old);
+      await Promise.allSettled(others.map((c) => c.changeServer(address)));
       setServerState({ reachable: true, error: null });
       retryServer();
       router.back();
@@ -59,7 +64,7 @@ export default function ServerScreen() {
         </Text>
       </Card>
       <P muted style={{ marginBottom: 16 }}>
-        Use this if your server moved to a new address, such as a new domain or a new Render URL. The new address must be the same server, with this circle already on it. Each circle on this phone keeps its own address.
+        Use this if your server moved to a new address, such as a new domain or a new Render URL. The new address must be the same server, with this circle already on it. Your other circles on the same server move with it.
       </P>
       <Field
         label="Server address"
