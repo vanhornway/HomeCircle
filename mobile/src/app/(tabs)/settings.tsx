@@ -159,7 +159,7 @@ export default function SettingsTab() {
                   {n ? `  (${n} new)` : ''}
                 </Text>
                 <Text style={{ color: t.muted, fontSize: 13 }} numberOfLines={1}>
-                  {clients.length > 1 ? (sharingHere ? 'Sees your location' : 'Paused: they see that you paused') : `${c.memberList().length} members`}
+                  {clients.length > 1 ? (sharingHere ? 'Sees your location' : 'Paused: they see that you paused') : `${c.memberList().length} ${c.memberList().length === 1 ? 'member' : 'members'}`}
                   {isActive ? '' : ' · tap to open'}
                 </Text>
               </Pressable>

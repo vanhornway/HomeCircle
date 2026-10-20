@@ -190,8 +190,32 @@ export function placesForGeofence(id: string, clients: CircleClient[]): { client
   return client ? [{ client, placeId: id.slice(i + 1) }] : [];
 }
 
-/** Register the places of every circle you share with as OS geofences. */
-export async function syncGeofences() {
+let syncing: Promise<void> | null = null;
+let syncAgain = false;
+
+/**
+ * Register the places of every circle you share with as OS geofences.
+ * Each circle asks for this as its places load, so calls are run one at a
+ * time and the last run sees every circle (otherwise an early run with no
+ * places could stop the geofences a later run just started).
+ */
+export function syncGeofences(): Promise<void> {
+  if (syncing) {
+    syncAgain = true;
+    return syncing;
+  }
+  syncing = (async () => {
+    do {
+      syncAgain = false;
+      await syncGeofencesNow().catch(() => {});
+    } while (syncAgain);
+  })().finally(() => {
+    syncing = null;
+  });
+  return syncing;
+}
+
+async function syncGeofencesNow() {
   const settings = await getSettings();
   const bg = await Location.getBackgroundPermissionsAsync().catch(() => null);
   const clients = await sharingClients();

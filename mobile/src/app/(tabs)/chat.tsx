@@ -52,7 +52,7 @@ export default function Chats() {
       client: c,
       peer: null,
       title: c.circle.name,
-      subtitle: `Group · ${c.memberList().length} members`,
+      subtitle: `Group · ${c.memberList().length} ${c.memberList().length === 1 ? 'member' : 'members'}`,
       color: null,
       last: c.conversation(null).at(-1),
       unread: unreadIn(c, null),

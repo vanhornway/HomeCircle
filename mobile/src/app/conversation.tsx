@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { Alert, AppState, FlatList, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, AppState, FlatList, Keyboard, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { EMOJI_GROUPS, QUICK_REACTIONS, isEmojiOnly, type CircleClient, type Message } from '@homecircle/core';
 import { Avatar, Button, Icon } from '../components/ui';
@@ -11,6 +11,7 @@ import { setVisibleConversation } from '../lib/notify';
 import { conversationKey, markRead } from '../lib/unread';
 import { useTheme } from '../theme';
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const clock = (ts: number) => new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
 /** One conversation: a circle's group chat, or a direct chat with one member (`peer`). */
@@ -103,7 +104,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   const title = peer ? other?.name || 'Former member' : client.circle.name;
   const subtitle = peer
     ? `Direct message · ${client.circle.name} · end-to-end encrypted`
-    : `Group · ${client.memberList().length} members · end-to-end encrypted`;
+    : `Group · ${plural(client.memberList().length, 'member')} · end-to-end encrypted`;
 
   const render = ({ item: m }: { item: Message }) => {
     const who = client.members.get(m.from);
@@ -197,8 +198,17 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
         {peer && other && !other.removed ? <Button small title={asked ? 'Asked' : 'Locate'} disabled={asked} onPress={locate} style={{ marginRight: 6 }} /> : null}
       </View>
       <ServerBanner style={{ marginHorizontal: 12, marginTop: 10 }} />
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}>
+      {/* Android draws edge to edge, so the window doesn't shrink for the keyboard: pad on both platforms. */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+        {messages.length ? null : (
+          <View style={{ flex: 1, justifyContent: 'center', padding: 24 }}>
+            <Text style={{ color: t.muted, textAlign: 'center', fontSize: 15 }}>
+              {peer ? `Only you and ${title} can read this conversation.` : 'No messages yet. Say hi 👋'}
+            </Text>
+          </View>
+        )}
         <FlatList
+          style={messages.length ? undefined : { display: 'none' }}
           ref={list}
           inverted
           data={messages}
@@ -206,11 +216,6 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
           renderItem={render}
           contentContainerStyle={{ padding: 14 }}
           keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={
-            <Text style={{ color: t.muted, textAlign: 'center', fontSize: 15, transform: [{ scaleY: -1 }] }}>
-              {peer ? `Only you and ${title} can read this conversation.` : 'No messages yet. Say hi 👋'}
-            </Text>
-          }
         />
         {error ? <Text style={{ color: t.danger, paddingHorizontal: 16, fontSize: 15 }}>{error}</Text> : null}
         <SafeAreaView edges={['bottom']} style={{ backgroundColor: t.surface }}>
