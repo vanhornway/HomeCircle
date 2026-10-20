@@ -174,12 +174,24 @@ aren't in. You don't need a second server.
 
 - **Map:** everyone's latest location. Updates about every 15 minutes, and
   sooner when someone moves a lot. Change the interval in **Settings**.
-- **Locate:** tap **Locate** next to a person (or **Refresh everyone**) to ask their phone for a fresh
-  location right now.
-- **Places:** add *Home*, *School* and so on, and get a message in chat when
-  someone arrives or leaves.
-- **Chat:** a private family chat with emoji and reactions (long-press a
-  message to react).
+- **Locate:** anyone in a circle can tap **Locate** next to anyone else (or
+  **Refresh everyone**) to ask their phone for a fresh location right now.
+  Agreeing to this is part of joining a circle. If someone pauses sharing,
+  everyone sees "Paused sharing" instead of an old location.
+- **Chats:** the Chats tab lists every conversation: each circle's group chat
+  and your direct messages, with unread counts. Tap **New message** to start a
+  direct message with anyone in your circles, or tap **Message** next to a
+  person on the Map. Direct messages can only be read by the two of you.
+  Long-press a message to react with an emoji.
+- **Places:** tap **Add a place**, type an address (or tap the map), and pick a
+  radius in feet. Turn on **Add to all my circles** to share it with every
+  circle you're in. When someone arrives or leaves, their circle's group chat
+  gets a message.
+- **Message history:** a circle's admin chooses how long messages are kept
+  (Settings → Message history): 1 day, 1 week, 1 month, 3 months or 1 year.
+  Nothing is kept longer than a year.
+- **Going back:** swipe from the left edge (iPhone) or use Android's back
+  gesture or button.
 - **On a laptop:** open your server address in a browser to see the map and
   chat.
 

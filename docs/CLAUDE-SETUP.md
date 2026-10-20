@@ -222,8 +222,9 @@ Tell the person:
 - Each invite works for **one person** and expires after a few days. Make a new
   one for each family member.
 - The family member installs the app (Step 4), taps **Join my family**, then
-  scans the QR code or pastes the link, enters their name, and allows location
-  and notifications.
+  scans the QR code or pastes the link, enters their name, ticks the box
+  agreeing that the circle can see and request their location, and allows
+  location and notifications.
 - The invite link contains part of the family's encryption key. Send it only to
   the person it's for (a private text is fine). Don't post it anywhere public.
 

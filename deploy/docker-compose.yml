@@ -18,7 +18,7 @@ services:
       SETUP_TOKEN: ${SETUP_TOKEN:?run deploy/install.sh or set SETUP_TOKEN in .env}
       PUBLIC_URL: https://${DOMAIN:-localhost}
       TRUST_PROXY: "true"
-      MESSAGE_RETENTION_DAYS: ${MESSAGE_RETENTION_DAYS:-90}
+      MESSAGE_RETENTION_DAYS: ${MESSAGE_RETENTION_DAYS:-365}
     volumes:
       - homecircle-data:/data
     ports:

@@ -125,20 +125,41 @@ invite and returns a device token.
   Requests are rate-limited per requester (default 60 s) to protect batteries.
 - Viewers never poll: the app fetches all latest locations once when opened and
   then listens on a WebSocket only while it's in the foreground.
+- Joining a circle means agreeing that its members can see your location and
+  request it at any time (the app asks for this consent before joining).
+- **Pausing** replaces your latest location with a sealed `location` envelope
+  whose body is `{ "paused": true }`, so the circle sees that you paused rather
+  than an old position. Phones in several circles can pause per circle.
 
 ## Chat and events
 
-`POST /messages` stores a sealed `chat` or `event` envelope (place arrivals,
-"left school"…). The server can't tell them apart. It assigns a sequence
-number, broadcasts over WebSocket, and sends a generic push ("New activity in
-HomeCircle") to members who aren't connected. Messages expire after
-`MESSAGE_RETENTION_DAYS` (default 90).
+`POST /messages` stores a sealed `chat`, `event` or `reaction` envelope (place
+arrivals, "left school"…). The server can't tell them apart. It assigns a
+sequence number, broadcasts over WebSocket, and sends a content-free push to
+members who aren't connected.
+
+**Direct messages** carry `to` (a member of the same circle). They're sealed
+like any envelope, but the secretbox key is the pair's **direct key**:
+`KDF("homecircle/direct-v1", X25519(my box secret, their box public key))`, which
+only those two phones can compute. The signed plaintext includes `to`, so a
+DM can't be passed off as a group message or redirected to someone else. The
+server stores `to_id` in the clear (it routes the message) and only returns a
+DM to its sender and recipient. Reactions to a DM are DMs too.
+
+**Retention.** Each circle keeps messages (group and direct) for 1, 7, 30, 90
+or 365 days, chosen by its admins (`PUT /circle/retention`, default 90).
+Nothing is ever kept longer than a year; `MESSAGE_RETENTION_DAYS` can only
+lower that cap. Expired messages are deleted from the server hourly.
 
 ## Places
 
 Places (Home, School…) are sealed `place` envelopes. Each phone registers them
 as OS geofences locally, so arrival/departure is detected on the device, never
-on the server.
+on the server. A place can be added to several circles at once: each circle
+gets its own sealed copy, linked by a random `group` id inside the envelope,
+and the phone watches it once and posts the arrival or departure to every
+circle that has it. Addresses are looked up with the phone's own geocoder
+(Google on Android, Apple on iOS) and stored only inside the envelope.
 
 ## API summary (`/api/v1`, Bearer device token unless noted)
 
@@ -148,7 +169,11 @@ on the server.
 | POST | `/setup` | public + setup token, once |
 | POST | `/join/preview` | public + invite auth |
 | POST | `/join` | public + invite auth |
-| GET | `/state` | circle info, members, current epoch, rotationNeeded |
+| GET | `/state` | circle info, members, current epoch, rotationNeeded, retention |
+| POST | `/circles` | server admin: create another circle |
+| DELETE | `/circle` | owner: delete the circle |
+| PUT | `/circle/retention` | admin: `{ days: 1 \| 7 \| 30 \| 90 \| 365 }` |
+| GET / POST | `/messages` | group messages + your DMs; `to` makes a DM |
 | PUT | `/members/me/profile` | re-seal profile |
 | PUT | `/members/me/push` | register push token |
 | DELETE | `/members/:id` | admin, or yourself (leave) |

@@ -127,7 +127,7 @@ on your Pi.
 | `DATA_DIR` | `/data` | SQLite database location |
 | `PORT` | `8080` | |
 | `TRUST_PROXY` | `false` | set `true` behind a proxy (all options above do) |
-| `MESSAGE_RETENTION_DAYS` | `90` | `0` keeps messages forever |
+| `MESSAGE_RETENTION_DAYS` | `365` | longest any circle may keep messages (each circle's admin picks 1 day to 1 year); can't exceed 365 |
 | `LOCATION_REQUEST_COOLDOWN_SECONDS` | `60` | how often one person can tap "Locate" |
 | `PUSH_PROVIDER` | `expo` | `none` disables push (locate requests then only reach open apps) |
 | `TILE_URL` / `TILE_ATTRIBUTION` | OpenStreetMap | map tiles the apps load |
