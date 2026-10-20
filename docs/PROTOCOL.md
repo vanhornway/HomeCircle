@@ -1,15 +1,23 @@
 # HomeCircle protocol
 
-One HomeCircle server hosts exactly **one circle** (one family). Only people who
-joined that server can see each other. The server stores and relays data it
-cannot read: every location, chat message, place and profile is end-to-end
-encrypted on the phone before it is uploaded.
+A HomeCircle server hosts one or more **circles** (for example your household,
+and your parents and siblings). Only people who joined a circle can see each
+other, and circles on the same server are isolated from one another: each has
+its own members, encryption key, invites, places, locations and messages, and
+every API request is scoped to the circle of the device that makes it. The
+server stores and relays data it cannot read: every location, chat message,
+place and profile is end-to-end encrypted on the phone before it is uploaded.
+
+The first circle is created with the server's setup code. Its owner becomes a
+**server admin**, who can create more circles (`POST /circles`) and owns each one.
+A phone in several circles holds a separate identity and key ring per circle,
+so the circles can't read each other even through a shared device account.
 
 ## Threat model
 
 | Party | Can see | Cannot see |
 |---|---|---|
-| Your server / hosting provider (Render, Railway, Hetzner, …) | number of members, IP addresses, when each phone uploads, ciphertext sizes, push tokens | names, locations, messages, places, battery |
+| Your server / hosting provider (Render, Railway, Hetzner, …) | number of circles and members, IP addresses, when each phone uploads, ciphertext sizes, push tokens (and so which members share a phone) | names, locations, messages, places, battery |
 | Network attacker | nothing beyond TLS metadata | everything else |
 | Apple / Google / Expo push relay | that a push was sent to a device, and its type (`loc_req`, `msg`) | any content |
 | Map tile provider (OpenStreetMap by default) | which map area you *view*, and your IP | who you are tracking or why |
@@ -34,7 +42,7 @@ fingerprint verification, see below).
 | Member box keypair | that member's phone | receive rotated circle keys |
 | Member signing keypair | that member's phone | sign everything they send |
 | Device token (32 random bytes) | phone; server stores SHA-256 | authenticate API calls |
-| Setup token | server env `SETUP_TOKEN` | lets the first person create the circle |
+| Setup token | server env `SETUP_TOKEN` | lets the first person create the first circle |
 
 ## Sealed envelope
 

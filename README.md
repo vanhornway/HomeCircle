@@ -4,7 +4,7 @@
 end-to-end encrypted alternative to Life360: a live family map, on-demand
 "Locate", arrival alerts for places, and a family chat.
 
-- **One server = one family.** Location and chat are shared only with people who joined your server.
+- **One server, many circles.** Run one server for your household, your parents and siblings, or anyone else. Each circle is isolated: people only see the circles they joined.
 - **End-to-end encrypted.** Phones encrypt everything before upload. The server and your hosting provider only see ciphertext.
 - **Battery-friendly.** Updates about every 15 minutes (configurable from 5 to 60), on big moves, on place arrivals, or right away when someone taps **Locate**.
 - **Host anywhere.** Render, Railway, Fly.io, DigitalOcean, Hetzner, any VPS, or a Raspberry Pi at home. They all use one Docker image.
@@ -35,7 +35,7 @@ Read https://raw.githubusercontent.com/vanhornway/HomeCircle/main/docs/CLAUDE-SE
 ## How it works
 
 1. **Deploy a server.** See [deploy/README.md](deploy/README.md) or open `landing/index.html`.
-2. **Set up.** In the app, the first person taps **Set up a new server** and enters the address and the one-time setup code. This creates the circle and its encryption key on their phone.
+2. **Set up.** In the app, the first person taps **Set up a new server** and enters the address and the one-time setup code. This creates the first circle and its encryption key on their phone. They can create more circles later from the circle switcher or Settings.
 3. **Invite.** Settings → Invite shows a QR code or link. The secret half of the link never reaches the server.
 4. **Share.** Each phone uploads its encrypted location in the background. Viewers get live updates over WebSocket while the app is open.
    **Locate** sends a content-free silent push that makes the target phone take one fresh GPS fix.

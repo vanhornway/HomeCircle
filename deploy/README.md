@@ -123,7 +123,7 @@ on your Pi.
 
 | Variable | Default | |
 |---|---|---|
-| `SETUP_TOKEN` | random, printed in logs | one-time code to create the circle |
+| `SETUP_TOKEN` | random, printed in logs | one-time code to create the first circle (more circles are created in the app) |
 | `DATA_DIR` | `/data` | SQLite database location |
 | `PORT` | `8080` | |
 | `TRUST_PROXY` | `false` | set `true` behind a proxy (all options above do) |

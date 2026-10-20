@@ -150,6 +150,26 @@ for. Make a new invite for each family member.
 
 ---
 
+## More than one group (circles)
+
+One server can hold several **circles**, for example one for your household and
+one for your parents and siblings. Each circle has its own people, map, chat,
+places and encryption key, and nobody can see anything from a circle they
+aren't in. You don't need a second server.
+
+- **Create another circle:** only the person who set up the server can. Tap
+  the circle name at the top of the Map (or go to **Settings → Your circles**),
+  then **New circle**. Give it a name, then invite people to it.
+- **Join another circle:** when someone invites you to a second circle, tap the
+  circle name, then **Join a circle**, and scan their QR code.
+- **Switch circles:** tap the circle name at the top of the Map, Chat or Places tab.
+- **Choose who sees your location:** in **Settings → Your circles**, turn a
+  circle off to stop sharing with it. That also removes your last location there.
+- **Delete a circle:** the circle's owner can delete it in **Settings**. Other
+  circles aren't affected.
+
+---
+
 ## Everyday use
 
 - **Map:** everyone's latest location. Updates about every 15 minutes, and

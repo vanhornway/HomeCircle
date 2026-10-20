@@ -227,6 +227,16 @@ Tell the person:
 - The invite link contains part of the family's encryption key. Send it only to
   the person it's for (a private text is fine). Don't post it anywhere public.
 
+### More than one group
+
+If the person wants separate groups (for example their household, and their
+parents and siblings), tell them they don't need another server. One server
+holds any number of isolated circles. After creating the first circle, they
+tap the circle name at the top of the Map (or **Settings → Your circles**), then
+**New circle**, and invite people to it. Only the person who set up the server
+can create circles. Each circle has its own members, chat, map and encryption
+key.
+
 ## Step 7. Wrap up
 
 Give the person a short summary to keep. Tell them to save it somewhere
