@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { CircleClient, type InvitePreview } from '@homecircle/core';
 import { Button, ErrorText, Field, H1, LockNote, P, Screen } from '../components/ui';
-import { errorText, getClient } from '../lib/circle';
+import { addCircle, allClients, clientForCircle, draftClient, errorText } from '../lib/circle';
 import { updateSettings } from '../lib/storage';
 import { useTheme } from '../theme';
 
@@ -26,7 +26,9 @@ export default function Join() {
     setError(null);
     setBusy(true);
     try {
-      const p = await getClient().previewInvite(value.trim());
+      const p = await draftClient().previewInvite(value.trim());
+      const existing = clientForCircle(p.circleId);
+      if (existing) throw new Error(`You’re already in ${existing.circle.name} on this phone.`);
       setLink(value.trim());
       setPreview(p);
       setScanning(false);
@@ -51,10 +53,17 @@ export default function Join() {
     setBusy(true);
     setError(null);
     try {
-      await getClient().joinWithInvite(link, { name });
-      const info = await CircleClient.serverInfo(getClient().serverUrl!).catch(() => null);
-      if (info) await updateSettings({ tileUrl: info.tileUrl, tileAttribution: info.tileAttribution });
-      router.replace('/permissions');
+      const first = allClients().length === 0;
+      const client = draftClient();
+      await client.joinWithInvite(link, { name });
+      await addCircle(client);
+      if (first) {
+        const info = await CircleClient.serverInfo(client.serverUrl!).catch(() => null);
+        if (info) await updateSettings({ tileUrl: info.tileUrl, tileAttribution: info.tileAttribution });
+        router.replace('/permissions');
+      } else {
+        router.replace('/(tabs)');
+      }
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -104,9 +113,9 @@ export default function Join() {
 
   return (
     <Screen>
-      <H1 style={{ marginTop: 12 }}>Join your family</H1>
+      <H1 style={{ marginTop: 12 }}>{allClients().length ? 'Join another circle' : 'Join your family'}</H1>
       <P muted style={{ marginTop: 8, marginBottom: 24 }}>
-        Ask someone in your circle to open Settings → Invite, then scan their QR code or paste the link they send you.
+        Ask someone in the circle to open Settings → Invite, then scan their QR code or paste the link they send you.
       </P>
       <Button
         title="Scan invite QR code"

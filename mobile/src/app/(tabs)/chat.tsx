@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { EMOJI_GROUPS, QUICK_REACTIONS, isEmojiOnly, type Message } from '@homecircle/core';
 import { Icon } from '../../components/ui';
 import { ServerBanner } from '../../components/ServerBanner';
+import { CircleSwitcher } from '../../components/CircleSwitcher';
 import { useCircle } from '../../lib/useCircle';
 import { errorText } from '../../lib/circle';
 import { markSeen, setChatVisible } from '../../lib/notify';
@@ -27,7 +28,7 @@ export default function Chat() {
   useFocusEffect(
     useCallback(() => {
       setChatVisible(true);
-      markSeen(client.lastSeq).catch(() => {});
+      markSeen(client, client.lastSeq).catch(() => {});
       return () => setChatVisible(false);
     }, [client]),
   );
@@ -121,7 +122,7 @@ export default function Chat() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }} edges={['top']}>
       <View style={{ paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: t.line }}>
-        <Text style={{ color: t.text, fontSize: 22, fontWeight: '700' }}>{client.circle.name}</Text>
+        <CircleSwitcher large />
         <Text style={{ color: t.muted, fontSize: 13 }}>End-to-end encrypted · {client.memberList().length} members</Text>
         <ServerBanner style={{ marginTop: 10 }} />
       </View>

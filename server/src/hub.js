@@ -8,6 +8,7 @@ export class Hub {
     this.store = store;
     this.log = log;
     this.sockets = new Map(); // memberId -> Set<WebSocket>
+    this.circleOf = new Map(); // memberId -> circleId, for connected members
     this.wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
     this.wss.on('connection', (ws) => this._onConnection(ws));
     this.heartbeat = setInterval(() => this._heartbeat(), heartbeatMs);
@@ -47,6 +48,7 @@ export class Hub {
       ws.memberId = member.id;
       if (!this.sockets.has(member.id)) this.sockets.set(member.id, new Set());
       this.sockets.get(member.id).add(ws);
+      this.circleOf.set(member.id, member.circleId);
       this.store.touchMember(member.id, Date.now());
       ws.send(JSON.stringify({ type: 'ready' }));
     });
@@ -55,7 +57,10 @@ export class Hub {
       const set = ws.memberId && this.sockets.get(ws.memberId);
       if (set) {
         set.delete(ws);
-        if (!set.size) this.sockets.delete(ws.memberId);
+        if (!set.size) {
+          this.sockets.delete(ws.memberId);
+          this.circleOf.delete(ws.memberId);
+        }
       }
     });
     ws.on('error', () => {});
@@ -84,13 +89,15 @@ export class Hub {
     for (const ws of this.sockets.get(memberId) || []) if (ws.readyState === 1) ws.send(data);
   }
 
-  broadcast(msg, exceptId = null) {
-    for (const id of this.sockets.keys()) if (id !== exceptId) this.send(id, msg);
+  /** Send to every connected member of one circle. */
+  broadcast(circleId, msg, exceptId = null) {
+    for (const [id, c] of this.circleOf) if (c === circleId && id !== exceptId) this.send(id, msg);
   }
 
   disconnect(memberId, code = 4001) {
     for (const ws of this.sockets.get(memberId) || []) ws.close(code, 'removed');
     this.sockets.delete(memberId);
+    this.circleOf.delete(memberId);
   }
 
   close() {

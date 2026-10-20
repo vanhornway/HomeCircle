@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Text } from 'react-native';
 import { router } from 'expo-router';
-import { CircleClient } from '@homecircle/core';
 import { Button, Card, ErrorText, Field, LockNote, P, Screen } from '../components/ui';
 import { errorText, getClient } from '../lib/circle';
 import { retryServer, setServerState, useServerState } from '../lib/connection';
@@ -23,15 +22,8 @@ export default function ServerScreen() {
     setError(null);
     setResult(null);
     try {
-      const info = await CircleClient.serverInfo(address);
-      const ours = info.circleId && info.circleId === client.account?.circleId;
-      setResult(
-        ours
-          ? `✓ Reachable: HomeCircle ${info.version}, and it hosts your circle.`
-          : info.setup
-            ? '⚠ Reachable, but it hosts a different circle.'
-            : '⚠ Reachable, but it hasn’t been set up yet.',
-      );
+      const info = await client.verifyServer(address);
+      setResult(`✓ Reachable: HomeCircle ${info.version}, and it hosts ${client.circle.name}.`);
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -67,7 +59,7 @@ export default function ServerScreen() {
         </Text>
       </Card>
       <P muted style={{ marginBottom: 16 }}>
-        Use this if your server moved to a new address, such as a new domain or a new Render URL. The new address must be the same server, with your circle already on it.
+        Use this if your server moved to a new address, such as a new domain or a new Render URL. The new address must be the same server, with this circle already on it. Each circle on this phone keeps its own address.
       </P>
       <Field
         label="Server address"

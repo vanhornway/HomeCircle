@@ -23,6 +23,7 @@ export default function RootLayout() {
         <Stack.Screen name="invite" options={{ presentation: 'modal', headerShown: true, title: 'Invite someone' }} />
         <Stack.Screen name="add-place" options={{ presentation: 'modal', headerShown: true, title: 'New place' }} />
         <Stack.Screen name="server" options={{ presentation: 'modal', headerShown: true, title: 'Server address' }} />
+        <Stack.Screen name="new-circle" options={{ presentation: 'modal', headerShown: true, title: 'New circle' }} />
       </Stack>
     </SafeAreaProvider>
   );

@@ -6,7 +6,7 @@ import * as Notifications from 'expo-notifications';
 import { AndroidImportance } from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
-import { getClient } from './circle';
+import { allClients } from './circle';
 
 Notifications.setNotificationHandler({
   handleNotification: async (n) => {
@@ -23,7 +23,7 @@ export async function notificationPermission(): Promise<'granted' | 'denied' | '
   return p.granted ? 'granted' : p.canAskAgain ? 'undetermined' : 'denied';
 }
 
-/** Ask for permission (if needed) and register this phone's push token with the server. */
+/** Ask for permission (if needed) and register this phone's push token in each circle. */
 export async function registerPush({ ask = false } = {}): Promise<string | null> {
   // Android 13+ only shows the permission prompt once a channel exists.
   if (Platform.OS === 'android') {
@@ -44,7 +44,7 @@ export async function registerPush({ ask = false } = {}): Promise<string | null>
   }
   try {
     const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
-    await getClient().api.putPush(token, Platform.OS);
+    await Promise.allSettled(allClients().map((c) => c.api.putPush(token, Platform.OS)));
     return token;
   } catch (e) {
     if (__DEV__) console.warn('[homecircle] push registration failed', e);

@@ -5,8 +5,8 @@ import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import * as BackgroundTask from 'expo-background-task';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { loadedClient } from '../lib/circle';
-import { upload, freshFix, shareNow, LOCATION_TASK, GEOFENCE_TASK, HEARTBEAT_TASK, PUSH_TASK } from '../lib/location';
+import { loadedClients } from '../lib/circle';
+import { upload, freshFix, shareNow, parseGeofenceId, LOCATION_TASK, GEOFENCE_TASK, HEARTBEAT_TASK, PUSH_TASK } from '../lib/location';
 import { ensureNotificationChannels, notifyNewMessages } from '../lib/notify';
 
 const log = (...a: unknown[]) => {
@@ -43,7 +43,7 @@ TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Locati
   GEOFENCE_TASK,
   async ({ data, error }) => {
     if (error || !data?.region?.identifier) return;
-    const placeId = data.region.identifier;
+    const regionId = data.region.identifier;
     const action = data.eventType === Location.GeofencingEventType.Enter ? 'arrived' : 'left';
     try {
       // Remember whether we're inside or outside each place, and only announce
@@ -51,20 +51,25 @@ TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Locati
       // report the current state again, which isn't an arrival or departure.
       // Also ignore GPS jitter: flipping back within 3 minutes.
       const state = JSON.parse((await AsyncStorage.getItem(GEOFENCE_EVENTS_KEY)) || '{}');
-      const prev = state[placeId];
+      const prev = state[regionId];
       if (prev?.action === action) return; // same state reported again
-      state[placeId] = { action, ts: Date.now() };
+      state[regionId] = { action, ts: Date.now() };
       await AsyncStorage.setItem(GEOFENCE_EVENTS_KEY, JSON.stringify(state));
       if (!prev) return; // first report for this place: just record it
       if (Date.now() - prev.ts < 3 * 60_000) return;
 
-      const client = await loadedClient();
+      // The place belongs to one circle; only that circle hears about it.
+      const { circleId, placeId } = parseGeofenceId(regionId);
+      const clients = await loadedClients();
+      const client = circleId ? clients.find((c) => c.circleId === circleId) : clients[0];
       if (!client) return;
       await client.fetchPlaces().catch(() => {});
       const place = client.places.get(placeId);
       await client.sendEvent({ type: 'place', action, placeId, placeName: place?.name || 'a place' });
       const loc = (await Location.getLastKnownPositionAsync().catch(() => null)) || (await freshFix(15_000));
-      if (loc) await upload(loc, action, { force: true, placeId: action === 'arrived' ? placeId : null });
+      if (loc) {
+        await upload(loc, action, { force: true, placeId: action === 'arrived' ? placeId : null, placeCircle: client.circleId });
+      }
     } catch (e) {
       log('geofence event failed', e);
     }
@@ -73,7 +78,8 @@ TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Locati
 
 // Silent pushes from the server carry no content, only what to do:
 // { t: 'loc_req' } someone tapped "Locate"; { t: 'msg' } there's a new
-// message to fetch, decrypt and show.
+// message to fetch, decrypt and show. They don't say which circle, so we
+// check them all.
 TaskManager.defineTask<Notifications.NotificationTaskPayload>(PUSH_TASK, async ({ data, error }) => {
   if (error) return;
   const raw = JSON.stringify(data ?? {});
@@ -81,11 +87,15 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(PUSH_TASK, async (
     if (raw.includes('loc_req')) {
       await shareNow('requested');
     } else if (/\\?"t\\?"\s*:\s*\\?"msg/.test(raw)) {
-      const client = await loadedClient();
-      if (!client) return;
       await ensureNotificationChannels();
-      await client.fetchMessages();
-      await notifyNewMessages(client, client.messages);
+      for (const client of await loadedClients()) {
+        try {
+          await client.fetchMessages();
+          await notifyNewMessages(client, client.messages);
+        } catch (e) {
+          log('fetch failed for a circle', e);
+        }
+      }
     }
   } catch (e) {
     log('push task failed', e);

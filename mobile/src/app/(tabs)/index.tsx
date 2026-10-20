@@ -5,6 +5,7 @@ import type { MemberLocation, Place } from '@homecircle/core';
 import { FamilyMap, type MapMember } from '../../map/FamilyMap';
 import { Avatar, Button, Tag } from '../../components/ui';
 import { ServerBanner } from '../../components/ServerBanner';
+import { CircleSwitcher } from '../../components/CircleSwitcher';
 import { useServerState } from '../../lib/connection';
 import { initials, timeAgo, useCircle } from '../../lib/useCircle';
 import { distanceM } from '../../lib/location';
@@ -92,9 +93,6 @@ export default function MapTab() {
         <SafeAreaView edges={['top']} style={{ position: 'absolute', left: 12, right: 12, top: 0 }} pointerEvents="box-none">
           <View
             style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
               alignSelf: 'flex-start',
               backgroundColor: t.surface,
               borderRadius: 999,
@@ -107,8 +105,7 @@ export default function MapTab() {
               elevation: 3,
             }}
           >
-            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: client.status === 'online' ? t.ok : client.status === 'connecting' ? t.accent : t.muted }} />
-            <Text style={{ color: t.text, fontWeight: '700', fontSize: 15 }}>{client.circle.name}</Text>
+            <CircleSwitcher />
           </View>
           <ServerBanner style={{ marginTop: 10 }} />
         </SafeAreaView>

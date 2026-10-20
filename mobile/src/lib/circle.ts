@@ -1,43 +1,159 @@
-// One CircleClient for the whole app (UI and background tasks share it).
-import { CircleClient } from '@homecircle/core';
+// The circles this phone belongs to. Each circle has its own CircleClient,
+// keys and account (stored under its own key); the UI shows one "active"
+// circle at a time, and background tasks work across all of them.
+import { useSyncExternalStore } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ACCOUNT_KEY, CircleClient } from '@homecircle/core';
 import { secureStorage } from './storage';
 
-let client: CircleClient | null = null;
-let loaded: Promise<boolean> | null = null;
+const LIST_KEY = 'homecircle.circles';
+const ACTIVE_KEY = 'homecircle.activeCircle';
 
-export function getClient(): CircleClient {
-  if (!client) {
-    client = new CircleClient({
-      storage: secureStorage,
-      onError: (e) => {
-        if (__DEV__) console.warn('[homecircle]', e.message);
-      },
-    });
-    client.on('signedOut', () => {
-      loaded = null;
-    });
-  }
+const clients = new Map<string, CircleClient>(); // accountKey -> client
+let active: string | null = null;
+let loading: Promise<void> | null = null;
+let loaded = false;
+let draft: CircleClient | null = null;
+let version = 0;
+const subs = new Set<() => void>();
+
+function changed() {
+  version++;
+  subs.forEach((fn) => fn());
+}
+
+function makeClient(accountKey: string): CircleClient {
+  const client = new CircleClient({
+    storage: secureStorage,
+    accountKey,
+    onError: (e) => {
+      if (__DEV__) console.warn('[homecircle]', e.message);
+    },
+  });
+  // Signed out, left, removed by an admin, or the circle was deleted.
+  client.on('signedOut', () => {
+    if (clients.get(accountKey) === client) forget(accountKey).catch(() => {});
+  });
   return client;
 }
 
-/** Loads the account from secure storage once. Returns whether one exists. */
-export function ensureLoaded(): Promise<boolean> {
-  const client = getClient();
-  // Set up or joined during this session: already in memory.
-  if (client.account) return Promise.resolve(true);
-  if (!loaded) {
-    loaded = client.load().catch(() => false);
-  }
-  return loaded.then((ok) => {
-    // Never cache "no account": the user may set up or join a circle next.
-    if (!ok) loaded = null;
-    return !!client.account;
-  });
+async function saveList() {
+  await AsyncStorage.setItem(LIST_KEY, JSON.stringify([...clients.keys()]));
+  if (active) await AsyncStorage.setItem(ACTIVE_KEY, active);
+  else await AsyncStorage.removeItem(ACTIVE_KEY);
 }
 
-/** For background tasks: a loaded client, or null if this phone isn't in a circle. */
-export async function loadedClient(): Promise<CircleClient | null> {
-  return (await ensureLoaded()) ? getClient() : null;
+async function forget(accountKey: string) {
+  clients.delete(accountKey);
+  if (active === accountKey) active = clients.keys().next().value ?? null;
+  await saveList();
+  changed();
+}
+
+async function loadAll() {
+  let keys: string[] = [];
+  try {
+    keys = JSON.parse((await AsyncStorage.getItem(LIST_KEY)) || '[]');
+  } catch {
+    keys = [];
+  }
+  // Phones from before multiple circles had one account under ACCOUNT_KEY.
+  if (!keys.length) keys = [ACCOUNT_KEY];
+  for (const key of keys) {
+    if (clients.has(key)) continue;
+    const client = makeClient(key);
+    if (await client.load().catch(() => false)) clients.set(key, client);
+  }
+  const saved = await AsyncStorage.getItem(ACTIVE_KEY);
+  active = saved && clients.has(saved) ? saved : (clients.keys().next().value ?? null);
+  await saveList();
+  loaded = true;
+  changed();
+}
+
+/** Loads this phone's circles once. Returns whether it's in any circle. */
+export async function ensureLoaded(): Promise<boolean> {
+  if (!loaded) {
+    if (!loading) loading = loadAll().finally(() => (loading = null));
+    await loading.catch(() => {});
+  }
+  return clients.size > 0;
+}
+
+/**
+ * The active circle's client. Before the phone is in any circle this is a
+ * fresh, unsaved client (used for previews on the welcome screens).
+ */
+export function getClient(): CircleClient {
+  if (active && clients.has(active)) return clients.get(active)!;
+  return draftClient();
+}
+
+/** All circles on this phone, in the order they were added. */
+export function allClients(): CircleClient[] {
+  return [...clients.values()];
+}
+
+/** For background tasks: every circle this phone is in (possibly none). */
+export async function loadedClients(): Promise<CircleClient[]> {
+  await ensureLoaded();
+  return allClients();
+}
+
+export function clientForCircle(circleId: string | null | undefined): CircleClient | undefined {
+  return allClients().find((c) => c.circleId === circleId);
+}
+
+/** An unsaved client for setting up or joining another circle. */
+export function draftClient(): CircleClient {
+  if (!draft || draft.account) {
+    let key = ACCOUNT_KEY;
+    for (let i = 2; clients.has(key); i++) key = `${ACCOUNT_KEY}.${Date.now().toString(36)}${i}`;
+    draft = makeClient(key);
+  }
+  return draft;
+}
+
+/** Register a client that just set up or joined a circle, and switch to it. */
+export async function addCircle(client: CircleClient) {
+  if (!client.account) throw new Error('Not in a circle yet');
+  const existing = clientForCircle(client.circleId);
+  if (existing && existing !== client) {
+    // Already in this circle (e.g. scanned an invite twice): keep the old keys.
+    await client.signOut();
+    active = existing.accountKey;
+  } else {
+    clients.set(client.accountKey, client);
+    active = client.accountKey;
+  }
+  if (draft === client) draft = null;
+  loaded = true;
+  await saveList();
+  changed();
+}
+
+export async function setActiveCircle(accountKey: string) {
+  if (!clients.has(accountKey) || active === accountKey) return;
+  active = accountKey;
+  await saveList();
+  changed();
+}
+
+/** Re-renders when circles are added, removed or switched. */
+export function useCircles(): { clients: CircleClient[]; active: CircleClient | null; version: number } {
+  const v = useSyncExternalStore(
+    (cb) => {
+      subs.add(cb);
+      return () => subs.delete(cb);
+    },
+    () => version,
+  );
+  return { clients: allClients(), active: active ? clients.get(active) ?? null : null, version: v };
+}
+
+export function onCirclesChanged(fn: () => void): () => void {
+  subs.add(fn);
+  return () => subs.delete(fn);
 }
 
 export function errorText(e: unknown): string {

@@ -24,7 +24,9 @@ import {
 } from './crypto.js';
 import { isValidReaction } from './emoji.js';
 
-const ACCOUNT_KEY = 'homecircle.account';
+// Storage key for the account. A device in several circles keeps one
+// CircleClient per circle, each with its own key (see `accountKey`).
+export const ACCOUNT_KEY = 'homecircle.account';
 export const MEMBER_COLORS = ['#2f7d6d', '#d9644a', '#4a6fd9', '#b0479c', '#c79a1e', '#3c8fb5', '#7a5bd6', '#5d8a2e'];
 const randomColor = () => MEMBER_COLORS[Math.floor(Math.random() * MEMBER_COLORS.length)];
 
@@ -32,9 +34,11 @@ export class CircleClient {
   /**
    * @param {object} opts
    * @param {{getItem(k:string):Promise<string|null>, setItem(k:string,v:string):Promise<void>, removeItem(k:string):Promise<void>}} opts.storage
+   * @param {string} [opts.accountKey] where this circle's account is stored
    */
-  constructor({ storage, fetchImpl, WebSocketImpl, onError = () => {} }) {
+  constructor({ storage, accountKey = ACCOUNT_KEY, fetchImpl, WebSocketImpl, onError = () => {} }) {
     this.storage = storage;
+    this.accountKey = accountKey;
     this.fetchImpl = fetchImpl;
     this.WebSocketImpl = WebSocketImpl;
     this.onError = onError;
@@ -92,12 +96,21 @@ export class CircleClient {
     return this.account?.server;
   }
 
+  get circleId() {
+    return this.account?.circleId ?? null;
+  }
+
+  /** Whether this device's member can create more circles on this server. */
+  get isServerAdmin() {
+    return !!this.state?.serverAdmin;
+  }
+
   _makeApi(server, token = null) {
     return new Api(server, { token, fetchImpl: this.fetchImpl, WebSocketImpl: this.WebSocketImpl });
   }
 
   async load() {
-    const raw = await this.storage.getItem(ACCOUNT_KEY);
+    const raw = await this.storage.getItem(this.accountKey);
     if (!raw) return false;
     this.account = JSON.parse(raw);
     this.api = this._makeApi(this.account.server, this.account.token);
@@ -105,13 +118,13 @@ export class CircleClient {
   }
 
   async _save() {
-    await this.storage.setItem(ACCOUNT_KEY, JSON.stringify(this.account));
+    await this.storage.setItem(this.accountKey, JSON.stringify(this.account));
   }
 
   /** Forget this device's keys locally. */
   async signOut() {
     this.disconnect();
-    await this.storage.removeItem(ACCOUNT_KEY);
+    await this.storage.removeItem(this.accountKey);
     this._reset();
     this.emit('signedOut');
   }
@@ -121,19 +134,30 @@ export class CircleClient {
    * domain). Only accepted if that server hosts our circle.
    */
   async changeServer(serverUrl) {
-    const info = await CircleClient.serverInfo(serverUrl, this.fetchImpl);
-    if (info.circleId !== this.account.circleId) {
-      throw new Error(
-        info.setup
-          ? 'That server hosts a different circle. Your circle’s data isn’t there.'
-          : 'That server hasn’t been set up, so your circle isn’t on it.',
-      );
-    }
+    const info = await this.verifyServer(serverUrl);
     this.disconnect();
     this.account.server = info.server;
     this.api = this._makeApi(info.server, this.account.token);
     await this._save();
     return info;
+  }
+
+  /** Check that an address reaches the server holding this circle, without switching. */
+  async verifyServer(serverUrl) {
+    const info = await CircleClient.serverInfo(serverUrl, this.fetchImpl);
+    if (!info.setup) throw new Error('That server hasn’t been set up, so your circle isn’t on it.');
+    // Ask the new address who we are: only the server that holds our circle
+    // knows this device's token.
+    const st = await this._makeApi(info.server, this.account.token)
+      .state()
+      .catch((e) => {
+        if (e instanceof ApiError && e.status === 401) return null;
+        throw e;
+      });
+    if (st?.circleId !== this.account.circleId || st?.me !== this.account.memberId) {
+      throw new Error('That server hosts a different circle. Your circle’s data isn’t there.');
+    }
+    return { ...info, circleId: st.circleId };
   }
 
   static async serverInfo(serverUrl, fetchImpl) {
@@ -161,8 +185,12 @@ export class CircleClient {
     return { name: a.profile.name, color: a.profile.color, boxPub: a.identity.boxPub, signPub: a.identity.signPub };
   }
 
-  /** First person on a new server: create the circle. */
-  async createCircle({ serverUrl, setupToken, name, circleName }) {
+  /**
+   * Create a circle. The first circle on a new server needs the server's
+   * `setupToken`. Later circles on the same server are created by a server
+   * admin: pass `admin`, a CircleClient already in a circle on that server.
+   */
+  async createCircle({ serverUrl, setupToken, admin, name, circleName }) {
     const server = normalizeServerUrl(serverUrl);
     const identity = generateIdentity();
     const memberId = randomId();
@@ -179,10 +207,8 @@ export class CircleClient {
       profile: { name: cleanName(name), color: randomColor() },
       known: {},
     };
-    const api = this._makeApi(server);
     try {
-      const res = await api.setup({
-        setupToken: String(setupToken || '').trim(),
+      const body = {
         circleId,
         epoch,
         member: {
@@ -192,7 +218,10 @@ export class CircleClient {
           profile: this._seal('profile', this._profileBody()),
         },
         circle: this._seal('circle', { name: cleanName(circleName) || 'Our Circle' }),
-      });
+      };
+      const res = admin
+        ? await this._makeApi(server, admin.account.token).createCircle(body)
+        : await this._makeApi(server).setup({ setupToken: String(setupToken || '').trim(), ...body });
       this.account.token = res.token;
     } catch (e) {
       this.account = null;
@@ -210,7 +239,7 @@ export class CircleClient {
     const api = this._makeApi(serverUrl);
     const res = await api.joinPreview({ inviteId, inviteAuth });
     const payload = unwrapInvite(wrapKey, res.wrapped);
-    return { serverUrl, inviteId, inviteAuth, payload, circleName: payload.circleName, invitedBy: payload.invitedByName };
+    return { serverUrl, inviteId, inviteAuth, payload, circleId: payload.circle, circleName: payload.circleName, invitedBy: payload.invitedByName };
   }
 
   async joinWithInvite(link, { name }) {
@@ -446,6 +475,13 @@ export class CircleClient {
     this.emit('locations', this.locations);
   }
 
+  /** Remove this device's location from the circle (stop sharing with it). */
+  async clearLocation() {
+    await this.api.deleteLocation();
+    this.locations.delete(this.account.memberId);
+    this.emit('locations', this.locations);
+  }
+
   /** Ask phones for a fresh location. `targets` omitted = everyone. */
   requestLocations(targets) {
     return this.api.requestLocations(targets);
@@ -636,6 +672,12 @@ export class CircleClient {
     await this.signOut();
   }
 
+  /** Owner only: delete this circle and everything in it, for everyone. */
+  async deleteCircle() {
+    await this.api.deleteCircle();
+    await this.signOut();
+  }
+
   /** New circle key for everyone still in the circle. Admin only. */
   async rotateKey() {
     const a = this.account;
@@ -726,6 +768,9 @@ export class CircleClient {
         }
         break;
       }
+      case 'location_deleted':
+        if (this.locations.delete(e.memberId)) this.emit('locations', this.locations);
+        break;
       case 'location_request':
         this.emit('locationRequest', { from: e.from });
         break;
@@ -741,6 +786,8 @@ export class CircleClient {
         this.locations.delete(e.memberId);
         await this.refresh();
         break;
+      case 'circle_deleted':
+        return this._handleRemoved();
       case 'members_changed':
       case 'key_rotated':
       case 'circle':

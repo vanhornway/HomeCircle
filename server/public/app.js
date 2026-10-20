@@ -2,7 +2,7 @@
 // server only ever hands us ciphertext.
 import * as L from '/vendor/leaflet/leaflet-src.esm.js';
 import qrcode from '/vendor/qrcode.mjs';
-import { CircleClient, EMOJI_GROUPS, QUICK_REACTIONS, isEmojiOnly } from '/core/index.js';
+import { ACCOUNT_KEY, CircleClient, EMOJI_GROUPS, QUICK_REACTIONS, isEmojiOnly } from '/core/index.js';
 
 const root = document.getElementById('root');
 const SERVER = location.origin;
@@ -30,8 +30,55 @@ const storage = {
   },
 };
 
-const client = new CircleClient({ storage, onError: (e) => console.warn('[homecircle]', e.message) });
+// A browser can be in several circles on this server. Each has its own
+// account (keys) in localStorage; the page shows one at a time and reloads
+// to switch.
+const LIST_KEY = 'homecircle.circles';
+const ACTIVE_KEY = 'homecircle.activeCircle';
+const local = {
+  get(k) {
+    try {
+      return localStorage.getItem(k);
+    } catch {
+      return null;
+    }
+  },
+  set(k, v) {
+    try {
+      localStorage.setItem(k, v);
+    } catch {
+      /* ignore */
+    }
+  },
+};
+const makeClient = (accountKey) => new CircleClient({ storage, accountKey, onError: (e) => console.warn('[homecircle]', e.message) });
+let circles = []; // loaded clients, in the order they were added
+let client = makeClient(ACCOUNT_KEY); // the circle on screen
 let info = null;
+
+function saveCircles(activeKey = client.accountKey) {
+  local.set(LIST_KEY, JSON.stringify(circles.map((c) => c.accountKey)));
+  local.set(ACTIVE_KEY, activeKey);
+}
+
+/** A client for a circle this browser isn't in yet. */
+function newCircleClient() {
+  const used = new Set(circles.map((c) => c.accountKey));
+  return makeClient(used.has(ACCOUNT_KEY) ? `${ACCOUNT_KEY}.${Date.now().toString(36)}` : ACCOUNT_KEY);
+}
+
+/** Remember a circle just created or joined, and open it. */
+function openNewCircle(c) {
+  circles.push(c);
+  saveCircles(c.accountKey);
+  history.replaceState(null, '', '/');
+  location.reload();
+}
+
+function switchCircle(accountKey) {
+  saveCircles(accountKey);
+  location.reload();
+}
 
 // --- tiny DOM helpers ----------------------------------------------------
 
@@ -126,8 +173,9 @@ function renderSetup() {
         btn.disabled = true;
         err.textContent = '';
         try {
-          await client.createCircle({ serverUrl: SERVER, setupToken: code.value, name: name.value, circleName: circleName.value });
-          startApp();
+          const c = newCircleClient();
+          await c.createCircle({ serverUrl: SERVER, setupToken: code.value, name: name.value, circleName: circleName.value });
+          openNewCircle(c);
         } catch (ex) {
           err.textContent = errorText(ex);
           btn.disabled = false;
@@ -161,12 +209,19 @@ function renderSetup() {
 async function renderJoin(link) {
   const card = h('div', { class: 'card' }, brandRow(), h('p', { class: 'muted' }, 'Checking your invite…'));
   mount(h('main', { class: 'onboard' }, card));
+  const joiner = newCircleClient();
   let preview;
   try {
-    preview = await client.previewInvite(link);
+    preview = await joiner.previewInvite(link);
   } catch (e) {
     card.replaceChildren(brandRow(), h('h1', {}, 'Invite not valid'), h('p', { class: 'muted' }, errorText(e)));
+    if (circles.length) card.append(h('a', { class: 'btn block', href: '/' }, 'Back to your circles'));
     return;
+  }
+  const already = circles.find((c) => c.circleId === preview.circleId);
+  if (already) {
+    toast(`This browser is already in ${preview.circleName || 'that circle'}`);
+    return switchCircle(already.accountKey);
   }
   const parsed = link.match(/#([\w-]+)\.([\w-]+)$/);
   const appLink = `homecircle://join?server=${encodeURIComponent(SERVER)}&i=${parsed[1]}&s=${parsed[2]}`;
@@ -187,9 +242,8 @@ async function renderJoin(link) {
           btn.disabled = true;
           err.textContent = '';
           try {
-            await client.joinWithInvite(link, { name: name.value });
-            history.replaceState(null, '', '/');
-            startApp();
+            await joiner.joinWithInvite(link, { name: name.value });
+            openNewCircle(joiner);
           } catch (ex) {
             err.textContent = errorText(ex);
             btn.disabled = false;
@@ -233,9 +287,34 @@ const markers = new Map();
 const placeLayers = new Map();
 let fitted = false;
 
+/** The circle name, or a picker when this browser can see more than one circle. */
+function circlePicker() {
+  const canCreate = circles.some((c) => c.isServerAdmin);
+  if (circles.length < 2 && !canCreate) return h('span', { class: 'title' }, client.circle.name);
+  const select = h(
+    'select',
+    {
+      class: 'title circle-picker',
+      'aria-label': 'Circle',
+      onchange: () => {
+        if (select.value === '__new') {
+          select.value = client.accountKey;
+          setTab('settings');
+          document.getElementById('new-circle-name')?.focus();
+        } else {
+          switchCircle(select.value);
+        }
+      },
+    },
+    circles.map((c) => h('option', { value: c.accountKey, selected: c === client }, c.circle.name)),
+    canCreate ? h('option', { value: '__new' }, '＋ New circle…') : null,
+  );
+  return select;
+}
+
 async function startApp() {
   const status = h('span', { class: 'dot', title: 'Connecting' });
-  const title = h('span', { class: 'title' }, 'HomeCircle');
+  const title = h('span', { class: 'title-wrap' }, h('span', { class: 'title' }, 'HomeCircle'));
   const tabs = ['people', 'chat', 'places', 'settings'].map((t) =>
     h('button', { class: 'tab', role: 'tab', 'data-tab': t, onclick: () => setTab(t) }, t[0].toUpperCase() + t.slice(1)),
   );
@@ -270,12 +349,13 @@ async function startApp() {
     status.className = `dot ${s}`;
     status.title = s === 'online' ? 'Live' : s === 'connecting' ? 'Connecting' : 'Offline';
   });
+  const showTitle = () => title.replaceChildren(circlePicker());
   client.on('members', () => {
-    title.textContent = client.circle.name;
+    showTitle();
     renderPanel();
     renderMarkers();
   });
-  client.on('circle', () => (title.textContent = client.circle.name));
+  client.on('circle', showTitle);
   client.on('locations', () => {
     renderMarkers();
     if (ui.tab === 'people') renderPanel();
@@ -296,7 +376,13 @@ async function startApp() {
   client.on('locationRequest', () => {
     if (sharingEnabled()) sendBrowserLocation('requested', true);
   });
-  client.on('removed', () => renderMessage('You were removed', 'An admin removed you from this circle, and this browser’s keys were deleted.'));
+  client.on('removed', () => {
+    if (circles.length > 1) {
+      toast(`You’re no longer in ${client.circle.name}`);
+      return setTimeout(() => switchCircle(circles.find((c) => c !== client).accountKey), 1500);
+    }
+    renderMessage('You were removed', 'You’re no longer in this circle (an admin removed you, or it was deleted), and this browser’s keys were deleted.');
+  });
 
   setTab('people');
   try {
@@ -308,7 +394,9 @@ async function startApp() {
     }
     toast(errorText(e));
   }
-  title.textContent = client.circle.name;
+  showTitle();
+  // Names for the circle picker.
+  Promise.all(circles.filter((c) => c !== client).map((c) => c.refresh().catch(() => {}))).then(showTitle);
   renderPlaces();
   renderMarkers();
   renderPanel();
@@ -864,6 +952,8 @@ function settingsView() {
     ),
   );
 
+  sections.push(circlesSection());
+
   sections.push(
     h(
       'div',
@@ -887,7 +977,7 @@ function settingsView() {
           {
             class: 'btn',
             onclick: async () => {
-              if (!confirm('Sign out of this browser? Its keys will be deleted and you’ll need a new invite to come back.')) return;
+              if (!confirm(`Sign out of ${client.circle.name} in this browser? Its keys will be deleted and you’ll need a new invite to come back.`)) return;
               stopSharing();
               await client.signOut();
               location.reload();
@@ -901,7 +991,7 @@ function settingsView() {
               {
                 class: 'btn danger',
                 onclick: async () => {
-                  if (!confirm('Leave this circle? Your location will stop being shared and your data removed.')) return;
+                  if (!confirm(`Leave ${client.circle.name}? Your location will stop being shared and your data removed.`)) return;
                   stopSharing();
                   try {
                     await client.leave();
@@ -913,11 +1003,76 @@ function settingsView() {
               },
               'Leave circle',
             )
-          : null,
+          : h(
+              'button',
+              {
+                class: 'btn danger',
+                onclick: async () => {
+                  const name = client.circle.name;
+                  if (!confirm(`Delete ${name}? Everyone is removed and its messages, places and locations are deleted. This can’t be undone. Other circles aren’t affected.`)) return;
+                  stopSharing();
+                  try {
+                    await client.deleteCircle();
+                    location.reload();
+                  } catch (ex) {
+                    toast(errorText(ex));
+                  }
+                },
+              },
+              'Delete circle',
+            ),
       ),
     ),
   );
   return h('div', {}, sections);
+}
+
+function circlesSection() {
+  const admin = circles.find((c) => c.isServerAdmin);
+  const err = h('p', { class: 'error', role: 'alert' });
+  const circleName = h('input', { class: 'input', id: 'new-circle-name', maxlength: '40', placeholder: 'e.g. Parents & siblings', required: true });
+  const name = h('input', { class: 'input', id: 'new-circle-me', maxlength: '40', value: admin?.me?.name || client.me?.name || '', required: true });
+  const btn = h('button', { class: 'btn primary', type: 'submit' }, 'Create circle');
+  return h(
+    'div',
+    { class: 'section' },
+    h('h3', {}, 'Circles'),
+    circles.map((c) =>
+      h(
+        'div',
+        { class: 'row' },
+        h('div', { class: 'grow' }, c.circle.name, c === client ? h('span', { class: 'muted small' }, ' · open now') : null),
+        c === client ? null : h('button', { class: 'btn small', onclick: () => switchCircle(c.accountKey) }, 'Open'),
+      ),
+    ),
+    h('p', { class: 'muted small' }, 'Each circle is separate: its own people, map, chat and encryption key. To join another circle, open its invite link in this browser.'),
+    admin
+      ? h(
+          'form',
+          {
+            class: 'new-circle',
+            onsubmit: async (e) => {
+              e.preventDefault();
+              btn.disabled = true;
+              err.textContent = '';
+              try {
+                const c = newCircleClient();
+                await c.createCircle({ serverUrl: SERVER, admin, name: name.value, circleName: circleName.value });
+                openNewCircle(c);
+              } catch (ex) {
+                err.textContent = errorText(ex);
+                btn.disabled = false;
+              }
+            },
+          },
+          h('h4', {}, 'New circle'),
+          h('div', { class: 'field' }, h('label', { for: 'new-circle-name' }, 'Circle name'), circleName),
+          h('div', { class: 'field' }, h('label', { for: 'new-circle-me' }, 'Your name in it'), name),
+          btn,
+          err,
+        )
+      : null,
+  );
 }
 
 // --- browser location sharing -------------------------------------------
@@ -1003,15 +1158,24 @@ async function boot() {
   } catch (e) {
     return renderMessage('Server unavailable', errorText(e));
   }
-  const invite = location.pathname.startsWith('/join') && location.hash.length > 1 ? `${SERVER}/join${location.hash}` : null;
-  if (await client.load()) {
-    if (invite) {
-      history.replaceState(null, '', '/');
-      toast('This browser is already part of the circle');
-    }
-    return startApp();
+  let keys = [];
+  try {
+    keys = JSON.parse(local.get(LIST_KEY) || '[]');
+  } catch {
+    keys = [];
   }
+  if (!keys.includes(ACCOUNT_KEY)) keys.unshift(ACCOUNT_KEY); // browsers from before multiple circles
+  for (const key of keys) {
+    const c = makeClient(key);
+    if (await c.load()) circles.push(c);
+  }
+  const active = local.get(ACTIVE_KEY);
+  client = circles.find((c) => c.accountKey === active) || circles[0] || client;
+  if (circles.length) saveCircles();
+
+  const invite = location.pathname.startsWith('/join') && location.hash.length > 1 ? `${SERVER}/join${location.hash}` : null;
   if (invite) return renderJoin(invite);
+  if (circles.length) return startApp();
   if (!info.setup) return renderSetup();
   renderNoAccount();
 }

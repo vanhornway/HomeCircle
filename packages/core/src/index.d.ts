@@ -87,7 +87,10 @@ export interface ServerInfo {
   app: 'homecircle';
   version: string;
   setup: boolean;
+  /** Set only when the server hosts exactly one circle. */
   circleId: string | null;
+  /** Server can host several circles (0.4+). */
+  multiCircle?: boolean;
   push: boolean;
   tileUrl: string;
   tileAttribution: string;
@@ -104,6 +107,7 @@ export interface Invite {
 export interface InvitePreview {
   serverUrl: string;
   inviteId: string;
+  circleId?: string;
   circleName?: string;
   invitedBy?: string;
 }
@@ -129,8 +133,12 @@ export class Api {
   [key: string]: any;
 }
 
+export const ACCOUNT_KEY: string;
+
 export class CircleClient {
-  constructor(opts: { storage: Storage; fetchImpl?: typeof fetch; WebSocketImpl?: any; onError?: (e: Error) => void });
+  constructor(opts: { storage: Storage; accountKey?: string; fetchImpl?: typeof fetch; WebSocketImpl?: any; onError?: (e: Error) => void });
+  /** Where this circle's account is stored. */
+  readonly accountKey: string;
   static serverInfo(serverUrl: string, fetchImpl?: typeof fetch): Promise<ServerInfo>;
 
   account: Account | null;
@@ -146,6 +154,9 @@ export class CircleClient {
   readonly me: Member | null | undefined;
   readonly isAdmin: boolean;
   readonly serverUrl: string | undefined;
+  readonly circleId: string | null;
+  /** Can create more circles on this server. */
+  readonly isServerAdmin: boolean;
 
   on(event: 'members', fn: (m: Member[]) => void): () => void;
   on(event: 'locations', fn: (l: Map<string, MemberLocation>) => void): () => void;
@@ -159,8 +170,11 @@ export class CircleClient {
 
   load(): Promise<boolean>;
   changeServer(serverUrl: string): Promise<ServerInfo>;
+  /** Check an address reaches the server holding this circle, without switching. */
+  verifyServer(serverUrl: string): Promise<ServerInfo>;
   signOut(): Promise<void>;
-  createCircle(opts: { serverUrl: string; setupToken: string; name: string; circleName: string }): Promise<void>;
+  /** First circle on a server: pass `setupToken`. More circles: pass `admin`, a client already on that server. */
+  createCircle(opts: { serverUrl: string; setupToken?: string; admin?: CircleClient; name: string; circleName: string }): Promise<void>;
   previewInvite(link: string): Promise<InvitePreview>;
   joinWithInvite(link: string, opts: { name: string }): Promise<void>;
   refresh(): Promise<unknown>;
@@ -177,6 +191,8 @@ export class CircleClient {
     placeId?: string | null;
     ts?: number;
   }): Promise<void>;
+  /** Remove this device's location from the circle (stop sharing with it). */
+  clearLocation(): Promise<void>;
   requestLocations(targets?: string[]): Promise<{ requested: number; online: number; pushed: number; cooldown: number }>;
   fetchMessages(): Promise<Message[]>;
   sendChat(text: string): Promise<void>;
@@ -193,6 +209,8 @@ export class CircleClient {
   removeMember(id: string): Promise<void>;
   setRole(id: string, role: 'admin' | 'member'): Promise<void>;
   leave(): Promise<void>;
+  /** Owner only: delete the circle for everyone. */
+  deleteCircle(): Promise<void>;
   rotateKey(): Promise<void>;
   start(): Promise<void>;
   connect(): void;

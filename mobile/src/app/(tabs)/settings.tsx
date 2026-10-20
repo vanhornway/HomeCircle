@@ -6,9 +6,10 @@ import { Avatar, Button, Card, H1, SectionTitle, Screen, Tag } from '../../compo
 import { ServerBanner } from '../../components/ServerBanner';
 import { useServerState } from '../../lib/connection';
 import { useCircle } from '../../lib/useCircle';
-import { errorText } from '../../lib/circle';
+import { errorText, setActiveCircle, useCircles } from '../../lib/circle';
+import { useUnread } from '../../lib/notify';
 import { clearDeviceData, getSettings, setLastUpload, updateSettings, type Settings } from '../../lib/storage';
-import { shareNow, startBackgroundUpdates, stopBackgroundUpdates, type SharingMode } from '../../lib/location';
+import { shareNow, startBackgroundUpdates, stopBackgroundUpdates, syncGeofences, type SharingMode } from '../../lib/location';
 import { notificationPermission, registerPush } from '../../lib/push';
 import { useTheme } from '../../theme';
 
@@ -17,9 +18,14 @@ const INTERVALS = [5, 15, 30, 60];
 export default function SettingsTab() {
   const t = useTheme();
   const client = useCircle();
+  const { clients } = useCircles();
+  const unread = useUnread();
   const me = client.me;
   const server = useServerState();
-  const [draft, setDraft] = useState<string | null>(null);
+  // Your name is per circle: an unsaved edit only applies to the circle it was typed in.
+  const [edit, setEdit] = useState<{ circle: string; value: string } | null>(null);
+  const draft = edit?.circle === client.accountKey ? edit.value : null;
+  const setDraft = (value: string | null) => setEdit(value == null ? null : { circle: client.accountKey, value });
   const name = draft ?? me?.name ?? '';
   const [settings, setSettings] = useState<Settings | null>(null);
   const [mode, setMode] = useState<SharingMode | null>(null);
@@ -50,11 +56,32 @@ export default function SettingsTab() {
       { text: action, style: 'destructive', onPress: () => fn().catch((e) => Alert.alert('Something went wrong', errorText(e))) },
     ]);
 
-  const signOutHere = async () => {
-    await stopBackgroundUpdates();
-    await clearDeviceData();
-    await setLastUpload(null);
+  // Leaving the phone's last circle also clears its settings and stops sharing.
+  const afterLeaving = async (fn: () => Promise<void>) => {
+    const last = clients.length <= 1;
+    await fn();
+    if (last) {
+      await stopBackgroundUpdates();
+      await clearDeviceData();
+      await setLastUpload(null);
+      router.replace('/welcome');
+    } else {
+      syncGeofences().catch(() => {});
+    }
   };
+
+  // Turning a circle off also removes your last location from it.
+  const toggleCircleSharing = async (target: (typeof clients)[number], on: boolean) => {
+    const id = target.circleId!;
+    const paused = new Set(settings?.pausedCircles ?? []);
+    if (on) paused.delete(id);
+    else paused.add(id);
+    setSettings(await updateSettings({ pausedCircles: [...paused] }));
+    syncGeofences().catch(() => {});
+    if (on) shareNow('open').catch(() => {});
+    else target.clearLocation().catch((e) => Alert.alert('Couldn’t remove your location', errorText(e)));
+  };
+  const circleName = client.circle.name;
 
   const modeText: Record<SharingMode, string> = {
     background: 'Sharing in the background',
@@ -111,7 +138,46 @@ export default function SettingsTab() {
       <H1 style={{ marginTop: 4 }}>Settings</H1>
       <ServerBanner style={{ marginTop: 14 }} />
 
-      <SectionTitle>You</SectionTitle>
+      <SectionTitle>Your circles</SectionTitle>
+      <Card style={{ gap: 4 }}>
+        {clients.map((c) => {
+          const isActive = c === client;
+          const sharingHere = !(settings?.pausedCircles ?? []).includes(c.circleId!);
+          const n = unread[c.circleId!] || 0;
+          return (
+            <View key={c.accountKey} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: t.line }}>
+              <Pressable accessibilityRole="button" onPress={() => setActiveCircle(c.accountKey)} style={{ flex: 1 }}>
+                <Text style={{ color: isActive ? t.brand : t.text, fontSize: 16, fontWeight: '600' }} numberOfLines={1}>
+                  {isActive ? '✓ ' : ''}
+                  {c.circle.name}
+                  {n ? `  (${n} new)` : ''}
+                </Text>
+                <Text style={{ color: t.muted, fontSize: 13 }} numberOfLines={1}>
+                  {clients.length > 1 ? (sharingHere ? 'Sees your location' : 'Doesn’t see your location') : `${c.memberList().length} members`}
+                  {isActive ? '' : ' · tap to open'}
+                </Text>
+              </Pressable>
+              {clients.length > 1 ? (
+                <Switch
+                  accessibilityLabel={`Share my location with ${c.circle.name}`}
+                  value={sharingHere}
+                  onValueChange={(v) => toggleCircleSharing(c, v)}
+                  trackColor={{ true: t.brand }}
+                />
+              ) : null}
+            </View>
+          );
+        })}
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+          {clients.some((c) => c.isServerAdmin) ? <Button small title="New circle" onPress={() => router.push('/new-circle')} style={{ flex: 1 }} /> : null}
+          <Button small title="Join a circle" onPress={() => router.push('/join')} style={{ flex: 1 }} />
+        </View>
+        <Text style={{ color: t.muted, fontSize: 13, marginTop: 8 }}>
+          Each circle is separate: its own people, map, chat and encryption key. Nobody sees anything from a circle they’re not in.
+        </Text>
+      </Card>
+
+      <SectionTitle>{clients.length > 1 ? `You in ${circleName}` : 'You'}</SectionTitle>
       <Card>
         <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
           <TextInput
@@ -190,7 +256,7 @@ export default function SettingsTab() {
         </Text>
       </Card>
 
-      <SectionTitle>Circle</SectionTitle>
+      <SectionTitle>{circleName}</SectionTitle>
       <Card>
         {client.memberList().map(memberRow)}
         {client.isAdmin ? <Button title="Invite someone" variant="primary" style={{ marginTop: 14 }} onPress={() => router.push('/invite')} /> : null}
@@ -208,28 +274,38 @@ export default function SettingsTab() {
       <SectionTitle>Leave</SectionTitle>
       <View style={{ gap: 10 }}>
         <Button
-          title="Sign out of this phone"
+          title={clients.length > 1 ? `Sign out of ${circleName} on this phone` : 'Sign out of this phone'}
           onPress={() =>
-            confirm('Sign out of this phone?', 'Its keys are deleted. You’ll need a new invite to come back.', 'Sign out', async () => {
-              await signOutHere();
-              await client.signOut();
-              router.replace('/welcome');
-            })
+            confirm(
+              clients.length > 1 ? `Sign out of ${circleName}?` : 'Sign out of this phone?',
+              'This phone’s keys for the circle are deleted. You’ll need a new invite to come back.',
+              'Sign out',
+              () => afterLeaving(() => client.signOut()),
+            )
           }
         />
         {me?.role !== 'owner' ? (
           <Button
-            title="Leave circle"
+            title={`Leave ${circleName}`}
             variant="danger"
             onPress={() =>
-              confirm('Leave this circle?', 'You’ll be removed and your location deleted from the server.', 'Leave', async () => {
-                await signOutHere();
-                await client.leave();
-                router.replace('/welcome');
-              })
+              confirm(`Leave ${circleName}?`, 'You’ll be removed and your location deleted from the server.', 'Leave', () => afterLeaving(() => client.leave()))
             }
           />
-        ) : null}
+        ) : (
+          <Button
+            title={`Delete ${circleName}`}
+            variant="danger"
+            onPress={() =>
+              confirm(
+                `Delete ${circleName}?`,
+                'Everyone is removed and the circle’s messages, places and locations are deleted from the server. This can’t be undone. Your other circles aren’t affected.',
+                'Delete',
+                () => afterLeaving(() => client.deleteCircle()),
+              )
+            }
+          />
+        )}
       </View>
     </Screen>
   );

@@ -52,6 +52,9 @@ export class Api {
 
   info = () => this.req('GET', '/info');
   setup = (body) => this.req('POST', '/setup', body);
+  /** Server admins only: create another circle on this server. */
+  createCircle = (body) => this.req('POST', '/circles', body);
+  deleteCircle = () => this.req('DELETE', '/circle');
   joinPreview = (body) => this.req('POST', '/join/preview', body);
   join = (body) => this.req('POST', '/join', body);
   state = () => this.req('GET', '/state');
@@ -66,6 +69,7 @@ export class Api {
   envelopes = (since = 0) => this.req('GET', `/keys/envelopes?since=${since}`);
   locations = () => this.req('GET', '/locations');
   putLocation = (env) => this.req('PUT', '/locations/me', env);
+  deleteLocation = () => this.req('DELETE', '/locations/me');
   requestLocations = (targets) => this.req('POST', '/locations/request', { targets });
   messages = (after = 0, limit = 200) => this.req('GET', `/messages?after=${after}&limit=${limit}`);
   postMessage = (id, env, { silent = false } = {}) => this.req('POST', '/messages', { id, ...env, silent });

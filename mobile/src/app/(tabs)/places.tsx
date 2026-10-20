@@ -4,6 +4,7 @@ import { Avatar, Button, Card, H1, Icon, P, Screen } from '../../components/ui';
 import { useCircle } from '../../lib/useCircle';
 import { errorText } from '../../lib/circle';
 import { useTheme } from '../../theme';
+import { CircleSwitcher } from '../../components/CircleSwitcher';
 
 export default function Places() {
   const t = useTheme();
@@ -13,7 +14,8 @@ export default function Places() {
   return (
     <Screen>
       <H1 style={{ marginTop: 4 }}>Places</H1>
-      <P muted style={{ marginTop: 6, marginBottom: 18 }}>
+      <CircleSwitcher style={{ marginTop: 6 }} />
+      <P muted style={{ marginTop: 10, marginBottom: 18 }}>
         Get an alert in chat when someone arrives at or leaves a place. Each phone detects this itself; the server never learns where your places are.
       </P>
       <Button title="Add a place" variant="primary" onPress={() => router.push('/add-place')} />

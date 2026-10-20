@@ -48,6 +48,8 @@ export interface Settings {
   intervalMinutes: number;
   /** Show sender and text in notifications (otherwise just "New message"). */
   showPreviews: boolean;
+  /** Circles (by id) this phone doesn't share its location with. */
+  pausedCircles: string[];
   /** Map tiles, from the server's /info. */
   tileUrl: string;
   tileAttribution: string;
@@ -60,6 +62,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sharing: true,
   intervalMinutes: 15,
   showPreviews: true,
+  pausedCircles: [],
   tileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   tileAttribution: '&copy; OpenStreetMap contributors',
 };
@@ -100,5 +103,11 @@ export async function setLastUpload(v: LastUpload | null) {
 }
 
 export async function clearDeviceData() {
-  await AsyncStorage.multiRemove([SETTINGS_KEY, LAST_UPLOAD_KEY, 'homecircle.geofenceEvents', 'homecircle.lastNotifiedSeq']);
+  const keys = await AsyncStorage.getAllKeys();
+  await AsyncStorage.multiRemove([
+    SETTINGS_KEY,
+    LAST_UPLOAD_KEY,
+    'homecircle.geofenceEvents',
+    ...keys.filter((k) => k.startsWith('homecircle.lastNotifiedSeq')),
+  ]);
 }

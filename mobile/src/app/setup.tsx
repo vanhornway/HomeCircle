@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { router } from 'expo-router';
 import { CircleClient } from '@homecircle/core';
 import { Button, ErrorText, Field, H1, LockNote, P, Screen } from '../components/ui';
-import { errorText, getClient } from '../lib/circle';
+import { addCircle, allClients, draftClient, errorText } from '../lib/circle';
 import { updateSettings } from '../lib/storage';
 
 export default function Setup() {
@@ -18,10 +18,19 @@ export default function Setup() {
     setError(null);
     try {
       const info = await CircleClient.serverInfo(server);
-      if (info.setup) throw new Error('This server already has a circle. Ask its admin for an invite instead.');
-      await getClient().createCircle({ serverUrl: info.server, setupToken: code, name, circleName });
-      await updateSettings({ tileUrl: info.tileUrl, tileAttribution: info.tileAttribution });
-      router.replace('/permissions');
+      if (info.setup) {
+        throw new Error('This server is already set up. Ask the person who set it up to create a circle for you, or to invite you.');
+      }
+      const first = allClients().length === 0;
+      const client = draftClient();
+      await client.createCircle({ serverUrl: info.server, setupToken: code, name, circleName });
+      await addCircle(client);
+      if (first) {
+        await updateSettings({ tileUrl: info.tileUrl, tileAttribution: info.tileAttribution });
+        router.replace('/permissions');
+      } else {
+        router.replace('/(tabs)');
+      }
     } catch (e) {
       setError(errorText(e));
     } finally {

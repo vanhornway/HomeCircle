@@ -8,8 +8,8 @@
 import * as Location from 'expo-location';
 import * as Battery from 'expo-battery';
 import * as BackgroundTask from 'expo-background-task';
-import type { Place } from '@homecircle/core';
-import { loadedClient } from './circle';
+import type { CircleClient } from '@homecircle/core';
+import { loadedClients } from './circle';
 import { getSettings, getLastUpload, setLastUpload } from './storage';
 
 export const LOCATION_TASK = 'homecircle-location';
@@ -41,19 +41,27 @@ async function batteryInfo() {
   }
 }
 
+/** The circles this phone shares its location with. */
+export async function sharingClients(): Promise<CircleClient[]> {
+  const settings = await getSettings();
+  if (!settings.sharing) return [];
+  return (await loadedClients()).filter((c) => !settings.pausedCircles.includes(c.circleId!));
+}
+
 /**
- * Encrypt and upload a location if it's due (interval passed or moved far),
- * or always when `force` is set. Returns true if uploaded.
+ * Encrypt and upload a location to each circle if it's due (interval passed
+ * or moved far), or always when `force` is set. Each circle gets its own copy,
+ * sealed with that circle's key. Returns true if any circle got it.
+ * `placeId` belongs to `placeCircle` and is only sent there.
  */
 export async function upload(
   loc: Location.LocationObject,
   trigger: string,
-  { force = false, placeId = null }: { force?: boolean; placeId?: string | null } = {},
+  { force = false, placeId = null, placeCircle = null }: { force?: boolean; placeId?: string | null; placeCircle?: string | null } = {},
 ): Promise<boolean> {
   const settings = await getSettings();
-  if (!settings.sharing) return false;
-  const client = await loadedClient();
-  if (!client) return false;
+  const targets = await sharingClients();
+  if (!targets.length) return false;
   const here = { lat: loc.coords.latitude, lng: loc.coords.longitude };
   const last = await getLastUpload();
   const intervalMs = settings.intervalMinutes * 60_000;
@@ -63,15 +71,21 @@ export async function upload(
     Date.now() - last.ts >= intervalMs - 30_000 ||
     distanceM(last, here) > MOVE_THRESHOLD_M;
   if (!due) return false;
-  await client.shareLocation({
-    ...here,
-    accuracy: loc.coords.accuracy,
-    speed: loc.coords.speed,
-    ...(await batteryInfo()),
-    trigger,
-    placeId,
-    ts: loc.timestamp,
-  });
+  const battery = await batteryInfo();
+  const results = await Promise.allSettled(
+    targets.map((client) =>
+      client.shareLocation({
+        ...here,
+        accuracy: loc.coords.accuracy,
+        speed: loc.coords.speed,
+        ...battery,
+        trigger,
+        placeId: client.circleId === placeCircle ? placeId : null,
+        ts: loc.timestamp,
+      }),
+    ),
+  );
+  if (!results.some((r) => r.status === 'fulfilled')) throw (results[0] as PromiseRejectedResult).reason;
   await setLastUpload({ ts: Date.now(), ...here });
   return true;
 }
@@ -88,12 +102,17 @@ export async function freshFix(timeoutMs = 20_000): Promise<Location.LocationObj
   return Location.getLastKnownPositionAsync({ maxAge: 10 * 60_000 }).catch(() => null);
 }
 
-/** Someone asked where we are, or the user tapped "share now". */
+/**
+ * Someone asked where we are, or the user tapped "share now". Opening the app
+ * only uploads if it's due, unless a circle doesn't have our location yet
+ * (e.g. one we just joined or turned sharing back on for).
+ */
 export async function shareNow(trigger: 'requested' | 'manual' | 'open' = 'manual'): Promise<boolean> {
   const { status } = await Location.getForegroundPermissionsAsync();
   if (status !== 'granted') return false;
+  const missing = (await sharingClients()).some((c) => c.account && !c.locations.has(c.account.memberId));
   const fix = await freshFix();
-  return fix ? upload(fix, trigger, { force: trigger !== 'open' }) : false;
+  return fix ? upload(fix, trigger, { force: trigger !== 'open' || missing }) : false;
 }
 
 export type SharingMode = 'off' | 'no-permission' | 'foreground-only' | 'background';
@@ -150,12 +169,23 @@ export async function stopBackgroundUpdates() {
   }
 }
 
-/** Register the circle's places as OS geofences on this phone. */
-export async function syncGeofences(places: Iterable<Place>) {
+/** A geofence id says which circle the place belongs to: "<circleId>:<placeId>". */
+export function geofenceId(circleId: string, placeId: string) {
+  return `${circleId}:${placeId}`;
+}
+export function parseGeofenceId(id: string): { circleId: string | null; placeId: string } {
+  const i = id.indexOf(':');
+  return i < 0 ? { circleId: null, placeId: id } : { circleId: id.slice(0, i), placeId: id.slice(i + 1) };
+}
+
+/** Register the places of every circle you share with as OS geofences. */
+export async function syncGeofences() {
   const settings = await getSettings();
   const bg = await Location.getBackgroundPermissionsAsync().catch(() => null);
-  const regions = [...places].slice(0, MAX_GEOFENCES).map((p) => ({
-    identifier: p.id,
+  const clients = await sharingClients();
+  const places = clients.flatMap((c) => [...c.places.values()].map((p) => ({ ...p, circleId: c.circleId! })));
+  const regions = places.slice(0, MAX_GEOFENCES).map((p) => ({
+    identifier: geofenceId(p.circleId, p.id),
     latitude: p.lat,
     longitude: p.lng,
     radius: Math.max(100, p.radius),

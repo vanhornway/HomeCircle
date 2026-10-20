@@ -1,11 +1,12 @@
 import { useEffect, useReducer } from 'react';
 import type { CircleClient } from '@homecircle/core';
-import { getClient } from './circle';
+import { getClient, useCircles } from './circle';
 
 const EVENTS = ['members', 'locations', 'messages', 'places', 'status', 'circle'] as const;
 
-/** Re-renders the component whenever circle data changes. */
+/** The active circle. Re-renders when its data changes or you switch circles. */
 export function useCircle(events: readonly string[] = EVENTS): CircleClient {
+  useCircles();
   const client = getClient();
   const [, bump] = useReducer((n: number) => n + 1, 0);
   useEffect(() => {
