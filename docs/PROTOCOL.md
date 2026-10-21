@@ -128,8 +128,19 @@ invite and returns a device token.
 - Joining a circle means agreeing that its members can see your location and
   request it at any time (the app asks for this consent before joining).
 - **Pausing** replaces your latest location with a sealed `location` envelope
-  whose body is `{ "paused": true }`, so the circle sees that you paused rather
-  than an old position. Phones in several circles can pause per circle.
+  whose body is `{ "paused": true, "reason"?: "…" }`, so the circle sees that you
+  paused (and why, if you said) rather than an old position. Phones in several
+  circles choose per circle.
+- **Approximate sharing** rounds the position to a ~1 km grid on the phone,
+  before sealing, and marks the body `approx: true` (no place id). The exact
+  position never leaves the phone.
+- **Low battery**: at 10% and 5% the phone sends one update with
+  `trigger: "low_battery"`.
+- **Locate cooldowns** are per requester and target, separate from "refresh
+  everyone", so asking one person never blocks asking another.
+- **Check-ins** are direct messages whose sealed body carries
+  `checkin: "request"` or `"ok"`; asking also sends a location request to that
+  one person.
 
 ## Chat and events
 
@@ -155,7 +166,10 @@ lower that cap. Expired messages are deleted from the server hourly.
 
 Places (Home, School…) are sealed `place` envelopes. Each phone registers them
 as OS geofences locally, so arrival/departure is detected on the device, never
-on the server. A place can be added to several circles at once: each circle
+on the server. A geofence report is only a hint: the phone confirms it with a
+fresh GPS fix, and needs a margin beyond the radius (scaled by the fix's
+accuracy) before counting someone as gone. Regular location updates run the
+same check, catching crossings the OS missed. A place can be added to several circles at once: each circle
 gets its own sealed copy, linked by a random `group` id inside the envelope,
 and the phone watches it once and posts the arrival or departure to every
 circle that has it. Addresses are looked up with the phone's own geocoder

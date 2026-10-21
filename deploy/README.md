@@ -138,3 +138,26 @@ on your Pi.
 - **Backup:** copy `/data/homecircle.db` (it's all ciphertext). Losing it means
   everyone has to re-join, but no one's keys are exposed.
 - **Update:** redeploy (Render/Railway/Fly), or re-run `install.sh` on a VPS or Pi.
+  Your circles, keys and messages are kept, and any database changes apply
+  themselves when the new version starts.
+- **Order:** update the server **before** people install a newer app. Older
+  apps keep working with a newer server, but a newer app may use features an
+  older server doesn't have yet.
+
+### Updating on Render
+
+The blueprint has `autoDeploy: false`, so Render only updates when you ask:
+
+1. Check the version you're on: open `https://<your-service>.onrender.com/api/v1/info`
+   and look at `"version"`.
+2. Optional safety net: Render keeps daily snapshots of the disk (service →
+   **Disks**). Make sure a recent one exists, especially when jumping several
+   versions.
+3. Dashboard → your **homecircle** service → **Manual Deploy** → **Deploy latest commit**.
+4. Wait until the deploy shows **Live** (2–4 minutes). Phones show
+   "Can't reach your server" for about a minute, then reconnect by themselves.
+5. Open `/api/v1/info` again and check that `"version"` changed.
+
+If the deploy fails, Render keeps the previous version running; open the
+deploy's logs to see why. To go back to an earlier version, use **Rollback**
+on an earlier deploy (your data stays on the disk).

@@ -174,6 +174,10 @@ aren't in. You don't need a second server.
 
 - **Map:** everyone's latest location. Updates about every 15 minutes, and
   sooner when someone moves a lot. Change the interval in **Settings**.
+- **People:** tap a person on the Map for **Directions** (opens Google Maps or
+  Apple Maps, and shows how old their location is), **Locate**, **Check in**
+  ("where are you?" with a one-tap **I'm OK** answer), **Message**, and
+  **Alert me** ("notify me when Dad leaves Work").
 - **Locate:** anyone in a circle can tap **Locate** next to anyone else (or
   **Refresh everyone**) to ask their phone for a fresh location right now.
   Agreeing to this is part of joining a circle. If someone pauses sharing,
@@ -183,6 +187,11 @@ aren't in. You don't need a second server.
   direct message with anyone in your circles, or tap **Message** next to a
   person on the Map. Direct messages can only be read by the two of you.
   Long-press a message to react with an emoji.
+- **How precisely each circle sees you:** in **Settings → Your circles**, choose
+  **Exact**, **Approximate** (about 1 km, rounded on your phone before it's
+  encrypted) or **Paused** (with an optional reason they can read).
+- **Low battery:** at 10% and again at 5%, your phone sends one last update so
+  your circle knows where you were if it dies.
 - **Places:** tap **Add a place**, type an address (or tap the map), and pick a
   radius in feet. Turn on **Add to all my circles** to share it with every
   circle you're in. When someone arrives or leaves, their circle's group chat
