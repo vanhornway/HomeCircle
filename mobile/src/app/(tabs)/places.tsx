@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import { Alert, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import type { CircleClient, Member, Place } from '@homecircle/core';
-import { Avatar, Button, Card, H1, Icon, P, Screen } from '../../components/ui';
+import { Avatar, Button, Card, Checkbox, H1, Icon, P, Screen, SectionTitle } from '../../components/ui';
+import { AlertRuleSheet } from '../../components/AlertRuleSheet';
+import { updateSettings, useSettings } from '../../lib/storage';
 import { useAllCircles } from '../../lib/useCircle';
 import { errorText } from '../../lib/circle';
 import { formatFeet } from '../../lib/units';
@@ -28,6 +31,16 @@ export default function Places() {
   const clients = useAllCircles(['places', 'locations', 'members', 'circle']);
   const places = sharedPlaces(clients);
   const multi = clients.length > 1;
+  const settings = useSettings();
+  const [adding, setAdding] = useState(false);
+  const ruleText = (r: (typeof settings.alertRules)[number]) => {
+    const c = clients.find((x) => x.circleId === r.circleId);
+    const who = c?.members.get(r.memberId)?.name ?? 'Someone';
+    const where = c?.places.get(r.placeId)?.name ?? 'a place';
+    const when = r.on === 'arrived' ? 'arrives at' : r.on === 'left' ? 'leaves' : 'arrives at or leaves';
+    return `${who} ${when} ${where}${multi && c ? ` · ${c.circle.name}` : ''}`;
+  };
+  const removeRule = (id: string) => updateSettings({ alertRules: settings.alertRules.filter((r) => r.id !== id) });
 
   const remove = (s: Shared) =>
     Alert.alert(
@@ -90,6 +103,32 @@ export default function Places() {
         })}
         {!places.length ? <P muted>No places yet. Try Home, School or Work.</P> : null}
       </View>
+
+      <SectionTitle>My alerts</SectionTitle>
+      <Card style={{ gap: 6 }}>
+        {settings.alertRules.map((r) => (
+          <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48 }}>
+            <Icon name="bell" color={t.brand} size={22} />
+            <Text style={{ flex: 1, color: t.text, fontSize: 16 }}>Notify me when {ruleText(r)}</Text>
+            <Button small title="Remove" onPress={() => removeRule(r.id)} />
+          </View>
+        ))}
+        {!settings.alertRules.length ? (
+          <Text style={{ color: t.muted, fontSize: 14, lineHeight: 20 }}>Get a notification when someone arrives at or leaves a place, like “Dad leaves Work”.</Text>
+        ) : null}
+        <Button title="Add an alert" onPress={() => setAdding(true)} style={{ marginTop: 6 }} />
+        <Checkbox
+          checked={settings.notifyAllPlaceAlerts}
+          onChange={(v) => updateSettings({ notifyAllPlaceAlerts: v })}
+          label="Also notify me about everyone else"
+          detail={
+            settings.notifyAllPlaceAlerts
+              ? 'Every arrival and departure in your circles notifies you.'
+              : 'Only the alerts above notify you. Others still show in the group chat.'
+          }
+        />
+      </Card>
+      {adding ? <AlertRuleSheet clients={clients} visible onClose={() => setAdding(false)} /> : null}
     </Screen>
   );
 }

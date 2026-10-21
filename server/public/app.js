@@ -302,7 +302,7 @@ function renderMessage(title, text) {
 // --- main app ------------------------------------------------------------
 
 // peer: the open conversation in Chat (null = the circle's group chat).
-const ui = { tab: 'people', unread: 0, pickPlace: false, invite: null, cooldownUntil: 0, peer: null };
+const ui = { tab: 'people', unread: 0, pickPlace: false, invite: null, asked: {}, peer: null };
 const FEET_PER_METER = 3.28084;
 const feet = (m) => {
   const ft = m * FEET_PER_METER;
@@ -486,39 +486,60 @@ function renderPanel() {
 
 // --- people --------------------------------------------------------------
 
+// Locate one person, or refresh everyone: each has its own cooldown.
+const LOCATE_COOLDOWN_MS = 60_000;
 async function requestLocations(targets) {
+  const key = targets ? targets[0] : '*';
+  ui.asked = { ...(ui.asked || {}), [key]: Date.now() };
+  renderPanel();
   try {
     const res = await client.requestLocations(targets);
-    ui.cooldownUntil = Date.now() + res.cooldown * 1000;
     toast(res.requested ? `Asked ${res.requested === 1 ? 'their phone' : `${res.requested} phones`} for a fresh location` : 'No one else to ask yet');
   } catch (e) {
+    delete ui.asked[key];
     toast(errorText(e));
   }
   renderPanel();
+  setTimeout(() => ui.tab === 'people' && renderPanel(), LOCATE_COOLDOWN_MS + 100);
 }
+
+/** 'idle' | 'asking' | 'cooldown' for one person (or '*' for everyone). */
+function locateState(id) {
+  const at = Math.max(ui.asked?.[id] || 0, id === '*' ? 0 : ui.asked?.['*'] || 0);
+  if (!at || Date.now() - at > LOCATE_COOLDOWN_MS) return 'idle';
+  const loc = id === '*' ? null : client.locations.get(id);
+  if (loc && loc.receivedAt >= at) return 'cooldown';
+  return 'asking';
+}
+
+const directionsUrl = (loc) => `https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}`;
 
 function peopleView() {
   const members = client.memberList();
-  const cooling = Date.now() < ui.cooldownUntil;
+  const everyone = locateState('*');
   const list = members.map((m) => {
     const loc = client.locations.get(m.id);
-    const pausedAt = client.paused.get(m.id);
-    const place = placeAt(loc);
+    const paused = client.paused.get(m.id);
+    const place = loc && !loc.approximate ? placeAt(loc) : null;
+    const state = locateState(m.id);
     const bits = [];
-    if (pausedAt) {
-      bits.push(`Paused sharing · ${timeAgo(pausedAt)}`);
+    if (paused) {
+      bits.push(`Paused${paused.reason ? `: ${paused.reason}` : ''}`, timeAgo(paused.since));
     } else if (loc) {
-      bits.push(place ? `At ${place.name}` : `±${feet(loc.accuracy || 0)}`);
+      bits.push(loc.approximate ? 'Approximate area' : place ? `At ${place.name}` : `±${feet(loc.accuracy || 0)}`);
       bits.push(timeAgo(loc.ts));
       if (loc.battery != null) bits.push(`${Math.round(loc.battery * 100)}%${loc.charging ? ' ⚡' : ''}`);
     } else {
       bits.push(m.isMe ? 'Not sharing from this browser' : 'No location yet');
     }
+    const low = loc && (loc.trigger === 'low_battery' || (loc.battery != null && loc.battery <= 0.1 && !loc.charging));
+    const iconBtn = (label, glyph, onclick, disabled) =>
+      h('button', { class: 'icon-btn', type: 'button', title: label, 'aria-label': label, disabled, onclick: (e) => (e.stopPropagation(), onclick()) }, glyph);
     return h(
       'div',
       {
         class: 'person',
-        onclick: () => loc && map.flyTo([loc.lat, loc.lng], Math.max(map.getZoom(), 15), { duration: 0.6 }),
+        onclick: () => loc && map.flyTo([loc.lat, loc.lng], Math.max(map.getZoom(), loc.approximate ? 13 : 15), { duration: 0.6 }),
       },
       h('div', { class: 'avatar', style: `background:${m.color}` }, initials(m.name)),
       h(
@@ -530,39 +551,24 @@ function peopleView() {
           m.name,
           m.isMe ? h('span', { class: 'tag' }, 'You') : null,
           m.role !== 'member' ? h('span', { class: 'tag' }, m.role) : null,
+          low ? h('span', { class: 'tag warn' }, 'Low battery') : null,
           m.keyChanged ? h('span', { class: 'tag warn', title: 'The server is showing different keys for this person than before' }, 'Keys changed') : null,
           !m.verified && !m.keyChanged ? h('span', { class: 'tag warn' }, 'Unverified') : null,
         ),
-        h('div', { class: 'meta' }, bits.join(' · ')),
+        h('div', { class: 'meta' }, state === 'asking' ? 'Asking for a fresh location…' : bits.join(' · ')),
       ),
       !m.isMe
         ? h(
-            'button',
-            {
-              class: 'btn small',
-              title: `Send ${m.name} a direct message`,
-              onclick: (e) => {
-                e.stopPropagation();
-                ui.peer = m.id;
-                setTab('chat');
-              },
-            },
-            'Message',
-          )
-        : null,
-      !m.isMe
-        ? h(
-            'button',
-            {
-              class: 'btn small',
-              disabled: cooling || !!pausedAt,
-              title: 'Ask their phone for a fresh location',
-              onclick: (e) => {
-                e.stopPropagation();
-                requestLocations([m.id]);
-              },
-            },
-            'Locate',
+            'div',
+            { class: 'person-actions' },
+            loc
+              ? h('a', { class: 'icon-btn', href: directionsUrl(loc), target: '_blank', rel: 'noopener noreferrer', title: `Directions to ${m.name}`, 'aria-label': `Directions to ${m.name}`, onclick: (e) => e.stopPropagation() }, '➤')
+              : null,
+            iconBtn(`Message ${m.name}`, '💬', () => {
+              ui.peer = m.id;
+              setTab('chat');
+            }),
+            iconBtn(state === 'asking' ? `Asking ${m.name}…` : `Locate ${m.name}`, state === 'asking' ? '…' : '⌖', () => requestLocations([m.id]), !!paused || state !== 'idle'),
           )
         : null,
     );
@@ -573,7 +579,7 @@ function peopleView() {
     h(
       'div',
       { class: 'panel-actions' },
-      h('button', { class: 'btn primary', disabled: cooling || members.length < 2, onclick: () => requestLocations() }, cooling ? 'Requested' : 'Refresh everyone'),
+      h('button', { class: 'btn primary', disabled: everyone !== 'idle' || members.length < 2, onclick: () => requestLocations() }, everyone !== 'idle' ? 'Asked everyone' : 'Refresh everyone'),
       client.isAdmin ? h('button', { class: 'btn', onclick: () => setTab('settings') }, 'Invite') : null,
     ),
     list,
@@ -724,6 +730,19 @@ function chatView() {
                 ),
               )
             : null,
+          m.body.checkin === 'request' && !mine && ui.peer
+            ? shown.some((x) => x.from === me && x.body?.checkin === 'ok' && x.seq > m.seq)
+              ? h('div', { class: 'checked-in' }, '✓ You checked in')
+              : h(
+                  'button',
+                  {
+                    class: 'btn small primary',
+                    type: 'button',
+                    onclick: () => client.checkIn(ui.peer).catch((ex) => toast(errorText(ex))),
+                  },
+                  'I’m OK',
+                )
+            : null,
           h('div', { class: 'bubble-time' }, clock(m.ts)),
         ),
       );
@@ -805,7 +824,19 @@ function chatView() {
   const refocus = document.activeElement === input || ui.focusChat;
   ui.focusChat = false;
   if (refocus) setTimeout(() => input.focus(), 0);
-  return h('div', { class: 'chat' }, picker, log, form);
+  const askBtn = ui.peer
+    ? h(
+        'button',
+        {
+          class: 'btn small',
+          type: 'button',
+          title: `Ask ${peerName} where they are`,
+          onclick: () => client.askToCheckIn(ui.peer).then(() => toast(`Asked ${peerName} to check in`), (ex) => toast(errorText(ex))),
+        },
+        '📍 Where are you?',
+      )
+    : null;
+  return h('div', { class: 'chat' }, h('div', { class: 'chat-top' }, picker, askBtn), log, form);
 }
 
 // --- places --------------------------------------------------------------

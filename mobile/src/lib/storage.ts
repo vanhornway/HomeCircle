@@ -42,6 +42,14 @@ export const secureStorage: Storage = {
 
 // --- non-secret device settings ------------------------------------------
 
+export interface AlertRule {
+  id: string;
+  circleId: string;
+  memberId: string;
+  placeId: string;
+  on: 'arrived' | 'left' | 'both';
+}
+
 export interface Settings {
   /** Share this phone's location with the circle. */
   sharing: boolean;
@@ -55,6 +63,14 @@ export interface Settings {
   announcePlaces: boolean;
   /** Show other people's arrived/left messages in chats (and notify for them). */
   showPlaceAlerts: boolean;
+  /** Notify for everyone's arrivals and departures, not only your alert rules. */
+  notifyAllPlaceAlerts: boolean;
+  /** Circles (by id) that get an approximate (~1 km) location instead of an exact one. */
+  approximateCircles: string[];
+  /** Optional reason shown to a circle while sharing with it is paused. */
+  pauseReasons: Record<string, string>;
+  /** "Notify me when <person> arrives at / leaves <place>". */
+  alertRules: AlertRule[];
   /** Map tiles, from the server's /info. */
   tileUrl: string;
   tileAttribution: string;
@@ -70,6 +86,10 @@ export const DEFAULT_SETTINGS: Settings = {
   pausedCircles: [],
   announcePlaces: true,
   showPlaceAlerts: true,
+  notifyAllPlaceAlerts: true,
+  approximateCircles: [],
+  pauseReasons: {},
+  alertRules: [],
   tileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   tileAttribution: '&copy; OpenStreetMap contributors',
 };
@@ -121,6 +141,8 @@ export interface LastUpload {
   ts: number;
   lat: number;
   lng: number;
+  /** Lowest battery warning already sent (10 or 5, in percent), until it charges. */
+  lowBattery?: number | null;
 }
 
 export async function getLastUpload(): Promise<LastUpload | null> {

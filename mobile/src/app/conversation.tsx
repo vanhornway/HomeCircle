@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { Alert, AppState, FlatList, Keyboard, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { AppState, FlatList, Keyboard, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { EMOJI_GROUPS, QUICK_REACTIONS, isEmojiOnly, type CircleClient, type Message } from '@homecircle/core';
-import { Avatar, Button, Icon } from '../components/ui';
+import { Avatar, Button, Icon, IconButton } from '../components/ui';
+import { locatePerson, locateState, openDirections, useLocateVersion } from '../lib/people';
+import { shareNow } from '../lib/location';
 import { ServerBanner } from '../components/ServerBanner';
 import { clientForCircle, errorText, useCircles } from '../lib/circle';
 import { initials } from '../lib/useCircle';
@@ -52,7 +54,8 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [reactingTo, setReactingTo] = useState<Message | null>(null);
-  const [asked, setAsked] = useState(false);
+  const [checkingIn, setCheckingIn] = useState<string | null>(null);
+  useLocateVersion();
   const list = useRef<FlatList<Message>>(null);
   const me = client.account?.memberId;
   const key = conversationKey(client.circleId!, peer);
@@ -92,16 +95,25 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     client.react(messageId, emoji).catch((e) => setError(errorText(e)));
   };
 
-  const locate = async () => {
+  // Check-ins: a "where are you?" from them that you haven't answered yet.
+  const answered = (req: Message) => all.some((x) => x.from === me && x.body?.checkin === 'ok' && x.seq > req.seq);
+  const answer = async (req: Message) => {
     if (!peer) return;
+    setCheckingIn(req.id);
     try {
-      await client.requestLocations([peer]);
-      setAsked(true);
-      setTimeout(() => setAsked(false), 60_000);
+      await client.checkIn(peer);
+      shareNow('manual').catch(() => {});
     } catch (e) {
-      Alert.alert('Couldn’t ask for their location', errorText(e));
+      setError(errorText(e));
+    } finally {
+      setCheckingIn(null);
     }
   };
+  const ask = () => {
+    if (peer) client.askToCheckIn(peer).catch((e) => setError(errorText(e)));
+  };
+  const peerLoc = peer ? client.locations.get(peer) : undefined;
+  const locState = peer ? locateState(client, peer) : 'idle';
 
   const title = peer ? other?.name || 'Former member' : client.circle.name;
   const subtitle = peer
@@ -145,6 +157,13 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
         >
           <Text style={big ? { fontSize: 44, lineHeight: 54 } : { color: mine ? t.brandInk : t.text, fontSize: 17, lineHeight: 23 }}>{m.body?.text}</Text>
         </Pressable>
+        {m.body?.checkin === 'request' && !mine && peer ? (
+          answered(m) ? (
+            <Text style={{ color: t.brand, fontSize: 14, fontWeight: '600', marginTop: 4, marginLeft: 4 }}>✓ You checked in</Text>
+          ) : (
+            <Button small variant="primary" title="I’m OK" loading={checkingIn === m.id} onPress={() => answer(m)} style={{ marginTop: 6 }} />
+          )
+        ) : null}
         {reactions.length ? (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4, justifyContent: mine ? 'flex-end' : 'flex-start' }}>
             {reactions.map((r) => (
@@ -197,7 +216,25 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             {subtitle}
           </Text>
         </View>
-        {peer && other && !other.removed ? <Button small title={asked ? 'Asked' : 'Locate'} disabled={asked} onPress={locate} style={{ marginRight: 6 }} /> : null}
+        {peer && other && !other.removed ? (
+          <View style={{ flexDirection: 'row', gap: 6, marginRight: 6 }}>
+            <IconButton
+              icon="navigate"
+              label={`Directions to ${title}`}
+              disabled={!peerLoc}
+              onPress={() => peerLoc && openDirections(title, peerLoc, () => locatePerson(client, peer))}
+            />
+            <IconButton
+              icon="locate"
+              label={`Locate ${title}`}
+              busy={locState === 'asking'}
+              done={locState === 'updated'}
+              disabled={locState === 'cooldown' || client.paused.has(peer)}
+              onPress={() => locatePerson(client, peer)}
+            />
+            <IconButton icon="checkin" label={`Ask ${title} to check in`} onPress={ask} />
+          </View>
+        ) : null}
       </View>
       <ServerBanner style={{ marginHorizontal: 12, marginTop: 10 }} />
       {/* Android draws edge to edge, so the window doesn't shrink for the keyboard: pad on both platforms. */}

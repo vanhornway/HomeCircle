@@ -234,7 +234,64 @@ const ICONS: Record<string, string> = {
   plus: 'M12 5v14M5 12h14',
   qr: 'M4 4h6v6H4V4Zm10 0h6v6h-6V4ZM4 14h6v6H4v-6Zm10 0h2v2h-2v-2Zm4 0h2v2h-2v-2Zm-4 4h2v2h-2v-2Zm4 0h2v2h-2v-2Z',
   send: 'M4 12 20 4l-6 16-3-7-7-1Z',
+  locate: 'M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Zm0-3.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z',
+  navigate: 'M3.5 10.5 20.5 3.5l-7 17-2.2-7.8-7.8-2.2Z',
+  bell: 'M6 16.5V11a6 6 0 1 1 12 0v5.5l1.5 1.5h-15L6 16.5Zm4 3.5a2 2 0 0 0 4 0',
+  checkin: 'M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Zm-3-11.5 2 2 4-4',
 };
+
+/** A round icon-only button with a 44pt touch target. */
+export function IconButton({
+  icon,
+  label,
+  onPress,
+  disabled,
+  busy,
+  done,
+  primary,
+  size = 44,
+}: {
+  icon: string;
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+  done?: boolean;
+  primary?: boolean;
+  size?: number;
+}) {
+  const t = useTheme();
+  const fg = primary ? t.brandInk : t.brand;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled, busy: !!busy }}
+      disabled={disabled || busy}
+      onPress={onPress}
+      hitSlop={4}
+      style={({ pressed }) => ({
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: primary ? t.brand : t.line,
+        backgroundColor: primary ? t.brand : done ? t.brandSoft : t.surface,
+        opacity: disabled ? 0.45 : pressed ? 0.75 : 1,
+      })}
+    >
+      {busy ? (
+        <ActivityIndicator size="small" color={fg} />
+      ) : done ? (
+        <Text style={{ color: t.brand, fontSize: 18, fontWeight: '800' }}>✓</Text>
+      ) : (
+        <Icon name={icon} color={fg} size={Math.round(size * 0.5)} />
+      )}
+    </Pressable>
+  );
+}
 
 export function Icon({ name, size = 24, color = '#000' }: { name: keyof typeof ICONS | string; size?: number; color?: ColorValue }) {
   return (

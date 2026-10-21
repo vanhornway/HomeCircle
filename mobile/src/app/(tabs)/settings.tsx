@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Alert, Linking, Pressable, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Linking, Modal, Pressable, Switch, Text, TextInput, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import type { Member } from '@homecircle/core';
 import { Avatar, Button, Card, Checkbox, H1, SectionTitle, Screen, Tag } from '../../components/ui';
@@ -77,15 +77,31 @@ export default function SettingsTab() {
   };
 
   // Turning a circle off also removes your last location from it.
-  const toggleCircleSharing = async (target: (typeof clients)[number], on: boolean) => {
+  // How much each circle sees: your exact position, a ~1 km area, or "paused"
+  // (with an optional reason they can read).
+  type Precision = 'exact' | 'approximate' | 'paused';
+  const precisionOf = (id: string): Precision =>
+    settings?.pausedCircles.includes(id) ? 'paused' : settings?.approximateCircles.includes(id) ? 'approximate' : 'exact';
+  const [pausing, setPausing] = useState<(typeof clients)[number] | null>(null);
+  const [reason, setReason] = useState('');
+  const setPrecision = async (target: (typeof clients)[number], mode: Precision, why = '') => {
     const id = target.circleId!;
-    const paused = new Set(settings?.pausedCircles ?? []);
-    if (on) paused.delete(id);
-    else paused.add(id);
-    setSettings(await updateSettings({ pausedCircles: [...paused] }));
+    const s = settings ?? (await getSettings());
+    const paused = new Set(s.pausedCircles);
+    const approx = new Set(s.approximateCircles);
+    const reasons = { ...s.pauseReasons };
+    paused.delete(id);
+    approx.delete(id);
+    delete reasons[id];
+    if (mode === 'paused') {
+      paused.add(id);
+      if (why.trim()) reasons[id] = why.trim().slice(0, 80);
+    }
+    if (mode === 'approximate') approx.add(id);
+    setSettings(await updateSettings({ pausedCircles: [...paused], approximateCircles: [...approx], pauseReasons: reasons }));
     syncGeofences().catch(() => {});
-    if (on) shareNow('open').catch(() => {});
-    else target.pauseSharing().catch((e) => Alert.alert('Couldn’t pause sharing', errorText(e)));
+    if (mode === 'paused') target.pauseSharing(why).catch((e) => Alert.alert('Couldn’t pause sharing', errorText(e)));
+    else shareNow('manual').catch(() => {});
   };
   const circleName = client.circle.name;
 
@@ -148,29 +164,51 @@ export default function SettingsTab() {
       <Card style={{ gap: 4 }}>
         {clients.map((c) => {
           const isActive = c === client;
-          const sharingHere = !(settings?.pausedCircles ?? []).includes(c.circleId!);
+          const precision = precisionOf(c.circleId!);
+          const why = settings?.pauseReasons[c.circleId!];
           const n = unreadInCircle(c);
           return (
-            <View key={c.accountKey} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: t.line }}>
-              <Pressable accessibilityRole="button" onPress={() => setActiveCircle(c.accountKey)} style={{ flex: 1 }}>
+            <View key={c.accountKey} style={{ gap: 8, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: t.line }}>
+              <Pressable accessibilityRole="button" onPress={() => setActiveCircle(c.accountKey)}>
                 <Text style={{ color: isActive ? t.brand : t.text, fontSize: 16, fontWeight: '600' }} numberOfLines={1}>
                   {isActive ? '✓ ' : ''}
                   {c.circle.name}
                   {n ? `  (${n} new)` : ''}
                 </Text>
-                <Text style={{ color: t.muted, fontSize: 13 }} numberOfLines={1}>
-                  {clients.length > 1 ? (sharingHere ? 'Sees your location' : 'Paused: they see that you paused') : `${c.memberList().length} ${c.memberList().length === 1 ? 'member' : 'members'}`}
-                  {isActive ? '' : ' · tap to open'}
+                <Text style={{ color: t.muted, fontSize: 13 }} numberOfLines={2}>
+                  {precision === 'exact'
+                    ? 'Sees your exact location'
+                    : precision === 'approximate'
+                      ? 'Sees only your approximate area (about 1 km)'
+                      : `Paused${why ? `: “${why}”` : ''}. They see that you paused`}
+                  {isActive || clients.length < 2 ? '' : ' · tap to open'}
                 </Text>
               </Pressable>
-              {clients.length > 1 ? (
-                <Switch
-                  accessibilityLabel={`Share my location with ${c.circle.name}`}
-                  value={sharingHere}
-                  onValueChange={(v) => toggleCircleSharing(c, v)}
-                  trackColor={{ true: t.brand }}
-                />
-              ) : null}
+              <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', borderRadius: 12, borderWidth: 1, borderColor: t.line, overflow: 'hidden' }}>
+                {(['exact', 'approximate', 'paused'] as const).map((mode) => {
+                  const on = precision === mode;
+                  return (
+                    <Pressable
+                      key={mode}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={`${mode} location for ${c.circle.name}`}
+                      onPress={() => {
+                        if (on) return;
+                        if (mode === 'paused') {
+                          setReason('');
+                          setPausing(c);
+                        } else setPrecision(c, mode);
+                      }}
+                      style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? t.brandSoft : 'transparent' }}
+                    >
+                      <Text style={{ color: on ? t.brand : t.text, fontWeight: on ? '700' : '500', fontSize: 15 }}>
+                        {mode === 'exact' ? 'Exact' : mode === 'approximate' ? 'Approximate' : 'Paused'}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
             </View>
           );
         })}
@@ -377,6 +415,36 @@ export default function SettingsTab() {
           />
         )}
       </View>
+      <Modal visible={!!pausing} transparent animationType="fade" onRequestClose={() => setPausing(null)}>
+        <Pressable onPress={() => setPausing(null)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 24 }}>
+          <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderRadius: 20, padding: 18, gap: 12 }}>
+            <Text style={{ color: t.text, fontSize: 18, fontWeight: '700' }}>Pause sharing with {pausing?.circle.name}?</Text>
+            <Text style={{ color: t.muted, fontSize: 14, lineHeight: 20 }}>
+              They’ll see “Paused” instead of where you are, and Locate won’t reach you. Add a reason if you like.
+            </Text>
+            <TextInput
+              value={reason}
+              onChangeText={setReason}
+              placeholder="e.g. At the doctor (optional)"
+              placeholderTextColor={t.muted}
+              maxLength={80}
+              style={{ minHeight: 52, borderRadius: 12, borderWidth: 1, borderColor: t.line, paddingHorizontal: 14, fontSize: 17, color: t.text, backgroundColor: t.bg }}
+            />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Button title="Cancel" onPress={() => setPausing(null)} style={{ flex: 1 }} />
+              <Button
+                title="Pause"
+                variant="primary"
+                onPress={() => {
+                  if (pausing) setPrecision(pausing, 'paused', reason);
+                  setPausing(null);
+                }}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Screen>
   );
 }

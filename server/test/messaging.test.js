@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/index.js';
-import { CircleClient, seal, directKey } from '../../packages/core/src/index.js';
+import { CircleClient, seal, directKey, approximate, placeState, distanceM } from '../../packages/core/src/index.js';
 
 const SETUP = 'test-setup-token-789';
 let app;
@@ -192,9 +192,71 @@ test('pausing shares "paused", not a stale location', async () => {
 
 test('anyone in the circle can ask anyone else for their location', async () => {
   const got = waitFor(mom, 'locationRequest');
+  let dadAsked = false;
+  const off = dad.on('locationRequest', () => (dadAsked = true));
   const res = await kid.requestLocations([mom.account.memberId]);
   assert.equal(res.requested, 1);
   assert.equal((await got).from, kid.account.memberId);
+  await sleep(150);
+  off();
+  assert.equal(dadAsked, false, 'Locate on one person must only reach that person');
+});
+
+test('each person has their own Locate cooldown, separate from refresh everyone', async () => {
+  // Mom was just asked: asking again waits, but Dad and "everyone" don't.
+  await assert.rejects(() => kid.requestLocations([mom.account.memberId]), (e) => e.status === 429 && e.retryAfter > 0);
+  const dadGot = waitFor(dad, 'locationRequest');
+  assert.equal((await kid.requestLocations([dad.account.memberId])).requested, 1);
+  await dadGot;
+  const all = await kid.requestLocations();
+  assert.equal(all.requested, 2);
+  await assert.rejects(() => kid.requestLocations(), (e) => e.status === 429);
+});
+
+test('check-ins: a one-tap "where are you?" between two people', async () => {
+  const asked = waitFor(dad, 'newMessage', (m) => m.body?.checkin === 'request');
+  const located = waitFor(dad, 'locationRequest');
+  await mom.askToCheckIn(dad.account.memberId);
+  const req = await asked;
+  assert.equal(req.peer, mom.account.memberId);
+  assert.match(req.body.text, /Where are you/);
+  await located;
+  const ok = waitFor(mom, 'newMessage', (m) => m.body?.checkin === 'ok');
+  await dad.checkIn(mom.account.memberId);
+  assert.equal((await ok).from, dad.account.memberId);
+  await kid.fetchMessages();
+  assert.ok(kid.messages.every((m) => !m.body?.checkin), 'check-ins are private to the two people');
+});
+
+test('approximate sharing and pause reasons reach the circle sealed', async () => {
+  const fine = { lat: 37.33467, lng: -121.88812 };
+  const rough = approximate(fine);
+  assert.ok(Math.abs(rough.lat - 37.33) < 1e-9 && Math.abs(rough.lng + 121.89) < 1e-9);
+  assert.equal(rough.accuracy, 1000);
+  await kid.shareLocation({ ...rough, approx: true });
+  await mom.fetchLocations();
+  const seen = mom.locations.get(kid.account.memberId);
+  assert.equal(seen.approximate, true);
+  assert.equal(seen.lat, rough.lat);
+  await kid.pauseSharing('At the dentist');
+  await mom.fetchLocations();
+  assert.equal(mom.paused.get(kid.account.memberId).reason, 'At the dentist');
+});
+
+test('place detection needs a margin before counting someone as gone', () => {
+  const home = { radius: 100 };
+  assert.equal(placeState({ ...home, distance: 40, accuracy: 15 }), 'inside');
+  assert.equal(placeState({ ...home, distance: 100, accuracy: 15 }), 'inside');
+  // Just past the edge with ordinary GPS: too close to call, so no false "left".
+  assert.equal(placeState({ ...home, distance: 115, accuracy: 20 }), null);
+  assert.equal(placeState({ ...home, distance: 140, accuracy: 20 }), 'outside');
+  // The margin grows with a less precise fix (capped at 100 m).
+  assert.equal(placeState({ ...home, distance: 180, accuracy: 120 }), null);
+  assert.equal(placeState({ ...home, distance: 210, accuracy: 120 }), 'outside');
+  // Very rough fixes only decide when clearly in or out.
+  assert.equal(placeState({ ...home, distance: 150, accuracy: 400 }), null);
+  assert.equal(placeState({ ...home, distance: 900, accuracy: 400 }), 'outside');
+  assert.ok(Math.abs(distanceM({ lat: 37.3382, lng: -121.8863 }, { lat: 37.4221, lng: -122.0841 }) - 19700) < 300);
 });
 
 after(() => {

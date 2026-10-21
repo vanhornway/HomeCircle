@@ -54,7 +54,7 @@ export class CircleClient {
     this.circle = { name: 'HomeCircle' };
     this.members = new Map();
     this.locations = new Map();
-    // memberId -> when they paused sharing with this circle
+    // memberId -> { since, reason } for members who paused sharing with this circle
     this.paused = new Map();
     this.messages = [];
     this.seenMessageIds = new Set();
@@ -471,7 +471,8 @@ export class CircleClient {
     // They stopped sharing with this circle: show that, never an old position.
     if (b?.paused === true) {
       this.locations.delete(memberId);
-      this.paused.set(memberId, msg.ts);
+      const reason = typeof b.reason === 'string' ? b.reason.replace(/[\u0000-\u001f]/g, '').trim().slice(0, 80) : '';
+      this.paused.set(memberId, { since: msg.ts, reason: reason || null });
       return null;
     }
     if (typeof b.lat !== 'number' || typeof b.lng !== 'number') return null;
@@ -484,6 +485,8 @@ export class CircleClient {
       speed: num(b.speed),
       trigger: typeof b.trigger === 'string' ? b.trigger : 'update',
       placeId: typeof b.placeId === 'string' ? b.placeId : null,
+      // Shared on purpose as a rough area (~1 km), not an exact pin.
+      approximate: b.approx === true,
       ts: msg.ts,
       receivedAt: updatedAt,
     };
@@ -503,13 +506,14 @@ export class CircleClient {
   }
 
   /** Upload this device's location, encrypted. */
-  async shareLocation({ lat, lng, accuracy, battery, charging, speed, trigger = 'update', placeId = null, ts }) {
+  async shareLocation({ lat, lng, accuracy, battery, charging, speed, trigger = 'update', placeId = null, approx = false, ts }) {
     const body = { lat, lng, accuracy, battery, charging, speed, trigger, placeId };
+    if (approx) body.approx = true;
     await this._withEpochRetry(() => {
       const env = this._seal('location', body);
       return this.api.putLocation(env);
     });
-    this.locations.set(this.account.memberId, { ...body, ts: ts || Date.now(), receivedAt: Date.now() });
+    this.locations.set(this.account.memberId, { ...body, approximate: !!approx, ts: ts || Date.now(), receivedAt: Date.now() });
     this.paused.delete(this.account.memberId);
     this.emit('locations', this.locations);
   }
@@ -519,10 +523,11 @@ export class CircleClient {
    * encrypted "paused" marker, so the circle sees you paused rather than a
    * stale position.
    */
-  async pauseSharing() {
-    await this._withEpochRetry(() => this.api.putLocation(this._seal('location', { paused: true })));
+  async pauseSharing(reason = '') {
+    const why = String(reason || '').trim().slice(0, 80);
+    await this._withEpochRetry(() => this.api.putLocation(this._seal('location', why ? { paused: true, reason: why } : { paused: true })));
     this.locations.delete(this.account.memberId);
-    this.paused.set(this.account.memberId, Date.now());
+    this.paused.set(this.account.memberId, { since: Date.now(), reason: why || null });
     this.emit('locations', this.locations);
   }
 
@@ -646,6 +651,21 @@ export class CircleClient {
     const t = String(text || '').trim().slice(0, 4000);
     if (!t) return Promise.resolve();
     return this._post('chat', { text: t }, { to });
+  }
+
+  /**
+   * "Where are you?": a direct message the other person can answer with one
+   * tap, plus a request for a fresh location. The text reads fine on older
+   * apps that don't know about check-ins.
+   */
+  async askToCheckIn(peer) {
+    await this._post('chat', { text: '📍 Where are you? Tap “I’m OK” to check in.', checkin: 'request' }, { to: peer });
+    await this.requestLocations([peer]).catch(() => {});
+  }
+
+  /** Answer a check-in: "I'm OK", as a direct message. */
+  checkIn(peer) {
+    return this._post('chat', { text: '✅ I’m OK', checkin: 'ok' }, { to: peer });
   }
 
   /** e.g. { type: 'place', action: 'arrived' | 'left', placeId, placeName } */

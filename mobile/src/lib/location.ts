@@ -2,15 +2,20 @@
 //
 // - Background: the OS wakes us on movement (~250 m) and a background task
 //   runs about every 15 minutes; we upload at most once per interval unless
-//   the phone moved more than 500 m.
+//   the phone moved more than 500 m, arrived somewhere or left somewhere.
 // - "Locate" requests from family: one fresh high-accuracy fix, uploaded now.
-// - Places: OS geofences (cheap, work when the app is closed on iOS).
+// - Places: OS geofences hint that a place may have been crossed; every
+//   position is checked against places too (lib/places.ts).
+// - Low battery: one last update at 10% and at 5%, so the circle knows
+//   where the phone was before it died.
 import * as Location from 'expo-location';
 import * as Battery from 'expo-battery';
 import * as BackgroundTask from 'expo-background-task';
-import type { CircleClient } from '@homecircle/core';
-import { loadedClients } from './circle';
+import { approximate, distanceM } from '@homecircle/core';
 import { getSettings, getLastUpload, setLastUpload } from './storage';
+import { checkPlaces, geofenceId, sharingClients } from './places';
+
+export { distanceM, sharingClients };
 
 export const LOCATION_TASK = 'homecircle-location';
 export const GEOFENCE_TASK = 'homecircle-geofence';
@@ -19,15 +24,6 @@ export const PUSH_TASK = 'homecircle-push';
 
 const MOVE_THRESHOLD_M = 500;
 const MAX_GEOFENCES = 20; // iOS limit per app
-
-export function distanceM(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
-  const R = 6371000;
-  const rad = (d: number) => (d * Math.PI) / 180;
-  const dLat = rad(b.lat - a.lat);
-  const dLng = rad(b.lng - a.lng);
-  const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(x));
-}
 
 async function batteryInfo() {
   try {
@@ -41,17 +37,15 @@ async function batteryInfo() {
   }
 }
 
-/** The circles this phone shares its location with. */
-export async function sharingClients(): Promise<CircleClient[]> {
-  const settings = await getSettings();
-  if (!settings.sharing) return [];
-  return (await loadedClients()).filter((c) => !settings.pausedCircles.includes(c.circleId!));
-}
+/** 10 or 5 when the battery is that low and not charging, otherwise null. */
+const lowBatteryStep = ({ battery, charging }: { battery: number | null; charging: boolean }) =>
+  battery == null || charging ? null : battery <= 0.05 ? 5 : battery <= 0.1 ? 10 : null;
 
 /**
  * Encrypt and upload a location to each circle if it's due (interval passed
  * or moved far), or always when `force` is set. Each circle gets its own copy,
- * sealed with that circle's key. Returns true if any circle got it.
+ * sealed with that circle's key: exact, or rounded to ~1 km for circles you
+ * share an approximate location with. Returns true if any circle got it.
  * `placeIds` says which place you're at, per circle id.
  */
 export async function upload(
@@ -64,30 +58,45 @@ export async function upload(
   if (!targets.length) return false;
   const here = { lat: loc.coords.latitude, lng: loc.coords.longitude };
   const last = await getLastUpload();
+  const battery = await batteryInfo();
+  // Battery about to run out: send one last position (once per step).
+  const step = lowBatteryStep(battery);
+  const lowDue = step != null && (last?.lowBattery == null || step < last.lowBattery);
   const intervalMs = settings.intervalMinutes * 60_000;
   const due =
     force ||
+    lowDue ||
     !last ||
     Date.now() - last.ts >= intervalMs - 30_000 ||
     distanceM(last, here) > MOVE_THRESHOLD_M;
   if (!due) return false;
-  const battery = await batteryInfo();
+  const approxCircles = new Set(settings.approximateCircles);
   const results = await Promise.allSettled(
-    targets.map((client) =>
-      client.shareLocation({
-        ...here,
-        accuracy: loc.coords.accuracy,
-        speed: loc.coords.speed,
+    targets.map((client) => {
+      const approx = approxCircles.has(client.circleId!);
+      const pos = approx ? approximate(here) : { ...here, accuracy: loc.coords.accuracy };
+      return client.shareLocation({
+        ...pos,
+        speed: approx ? null : loc.coords.speed,
         ...battery,
-        trigger,
-        placeId: placeIds[client.circleId!] ?? null,
+        trigger: lowDue ? 'low_battery' : trigger,
+        placeId: approx ? null : (placeIds[client.circleId!] ?? null),
+        approx,
         ts: loc.timestamp,
-      }),
-    ),
+      });
+    }),
   );
   if (!results.some((r) => r.status === 'fulfilled')) throw (results[0] as PromiseRejectedResult).reason;
-  await setLastUpload({ ts: Date.now(), ...here });
+  await setLastUpload({ ts: Date.now(), ...here, lowBattery: step ?? null });
   return true;
+}
+
+/** Check places with this position, then upload it (right away if you arrived or left somewhere). */
+export async function report(loc: Location.LocationObject, trigger: string, { force = false }: { force?: boolean } = {}) {
+  const check = await checkPlaces({ lat: loc.coords.latitude, lng: loc.coords.longitude, accuracy: loc.coords.accuracy ?? null }).catch(
+    () => ({ placeIds: {}, changed: false, action: null }),
+  );
+  return upload(loc, check.changed && check.action ? check.action : trigger, { force: force || check.changed, placeIds: check.placeIds });
 }
 
 /** A fresh fix, falling back to the last known one if GPS is slow. */
@@ -112,7 +121,7 @@ export async function shareNow(trigger: 'requested' | 'manual' | 'open' = 'manua
   if (status !== 'granted') return false;
   const missing = (await sharingClients()).some((c) => c.account && !c.locations.has(c.account.memberId));
   const fix = await freshFix();
-  return fix ? upload(fix, trigger, { force: trigger !== 'open' || missing }) : false;
+  return fix ? report(fix, trigger, { force: trigger !== 'open' || missing }) : false;
 }
 
 export type SharingMode = 'off' | 'no-permission' | 'foreground-only' | 'background';
@@ -167,27 +176,6 @@ export async function stopBackgroundUpdates() {
   if (await Location.hasStartedGeofencingAsync(GEOFENCE_TASK).catch(() => false)) {
     await Location.stopGeofencingAsync(GEOFENCE_TASK);
   }
-}
-
-/**
- * A geofence id: "g:<group>" for a place added to several circles (watched
- * once), or "<circleId>:<placeId>" for a place in one circle.
- */
-export function geofenceId(circleId: string, place: { id: string; group: string | null }) {
-  return place.group ? `g:${place.group}` : `${circleId}:${place.id}`;
-}
-
-/** The circles (and their place ids) a geofence belongs to. */
-export function placesForGeofence(id: string, clients: CircleClient[]): { client: CircleClient; placeId: string }[] {
-  if (id.startsWith('g:')) {
-    const group = id.slice(2);
-    return clients.flatMap((client) => [...client.places.values()].filter((p) => p.group === group).map((p) => ({ client, placeId: p.id })));
-  }
-  const i = id.indexOf(':');
-  // Before circles had ids in geofences, the id was just the place id.
-  if (i < 0) return clients.slice(0, 1).map((client) => ({ client, placeId: id }));
-  const client = clients.find((c) => c.circleId === id.slice(0, i));
-  return client ? [{ client, placeId: id.slice(i + 1) }] : [];
 }
 
 let syncing: Promise<void> | null = null;

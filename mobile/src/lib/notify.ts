@@ -90,12 +90,17 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
   }
   const id = client.circleId!;
   const reading = AppState.currentState === 'active' ? visibleConversation : null;
-  const { showPreviews, showPlaceAlerts } = await getSettings();
+  const { showPreviews, showPlaceAlerts, notifyAllPlaceAlerts, alertRules } = await getSettings();
+  // Your "notify me when…" rules fire even when other place alerts are off.
+  const rules = alertRules.filter((r) => r.circleId === id);
+  const ruleHit = (m: Message) =>
+    m.kind === 'event' &&
+    rules.some((r) => r.memberId === m.from && r.placeId === m.body?.placeId && (r.on === 'both' || r.on === m.body?.action));
   const fresh = messages.filter(
     (m) =>
       m.seq > last &&
       m.from !== me &&
-      (m.kind === 'chat' || (m.kind === 'event' && showPlaceAlerts)) &&
+      (m.kind === 'chat' || ruleHit(m) || (m.kind === 'event' && showPlaceAlerts && notifyAllPlaceAlerts)) &&
       conversationKey(id, m.peer) !== reading,
   );
   await markSeen(client, maxSeq);
@@ -104,8 +109,10 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
   const multi = allClients().length > 1;
   const shown = fresh.slice(-4);
   for (const m of shown) {
+    const content = describe(client, m, showPreviews, multi);
+    if (ruleHit(m)) content.title = `🔔 ${content.title}`;
     await Notifications.scheduleNotificationAsync({
-      content: { ...describe(client, m, showPreviews, multi), sound: 'default', data: { t: 'chat', circle: id, peer: m.peer ?? '' } },
+      content: { ...content, sound: 'default', data: { t: 'chat', circle: id, peer: m.peer ?? '' } },
       trigger: Platform.OS === 'android' ? { channelId: MESSAGES_CHANNEL } : null,
     });
   }

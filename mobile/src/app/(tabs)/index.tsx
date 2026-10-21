@@ -1,28 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, Text, View } from 'react-native';
+import { FlatList, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { MemberLocation, Place } from '@homecircle/core';
+import type { Place } from '@homecircle/core';
 import { FamilyMap, type MapMember } from '../../map/FamilyMap';
-import { Avatar, Button, Tag } from '../../components/ui';
+import { Avatar, Button, IconButton, Tag } from '../../components/ui';
 import { ServerBanner } from '../../components/ServerBanner';
 import { CircleSwitcher } from '../../components/CircleSwitcher';
+import { PersonSheet } from '../../components/PersonSheet';
 import { useServerState } from '../../lib/connection';
-import { initials, timeAgo, useCircle } from '../../lib/useCircle';
-import { distanceM } from '../../lib/location';
-import { formatFeet } from '../../lib/units';
-import { router } from 'expo-router';
-import { errorText } from '../../lib/circle';
+import { initials, useCircle } from '../../lib/useCircle';
+import { everyoneCoolingDown, locatePerson, locateState, lowBattery, refreshEveryone, statusLine, useLocateVersion } from '../../lib/people';
 import { DEFAULT_SETTINGS, getSettings } from '../../lib/storage';
 import { useTheme } from '../../theme';
 
 const STALE_MS = 2 * 3600_000;
-
-function placeAt(loc: MemberLocation | undefined, places: Map<string, Place>) {
-  if (!loc) return null;
-  if (loc.placeId && places.has(loc.placeId)) return places.get(loc.placeId)!;
-  for (const p of places.values()) if (distanceM(loc, p) <= p.radius) return p;
-  return null;
-}
 
 export default function MapTab() {
   const t = useTheme();
@@ -30,13 +21,14 @@ export default function MapTab() {
   const server = useServerState();
   const [tiles, setTiles] = useState(DEFAULT_SETTINGS);
   const [focus, setFocus] = useState<{ lat: number; lng: number; key: number } | null>(null);
-  const [cooldownUntil, setCooldownUntil] = useState(0);
-  // Clock for "5 min ago" labels and the Locate cooldown.
+  const [sheet, setSheet] = useState<string | null>(null);
+  // Clock for "5 min ago" labels and Locate progress.
   const [now, setNow] = useState(() => Date.now());
+  useLocateVersion();
 
   useEffect(() => {
     getSettings().then(setTiles);
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    const timer = setInterval(() => setNow(Date.now()), 15_000);
     return () => clearInterval(timer);
   }, []);
 
@@ -64,18 +56,11 @@ export default function MapTab() {
   const placesKey = JSON.stringify(placesRaw);
   const places = useMemo(() => JSON.parse(placesKey) as Place[], [placesKey]);
 
-  const locate = async (targets?: string[]) => {
-    try {
-      const res = await client.requestLocations(targets);
-      const t0 = Date.now();
-      setNow(t0);
-      setCooldownUntil(t0 + res.cooldown * 1000);
-      setTimeout(() => setNow(Date.now()), res.cooldown * 1000 + 100);
-    } catch (e) {
-      Alert.alert('Couldn’t ask for locations', errorText(e));
-    }
+  const everyoneCooling = everyoneCoolingDown(client, now);
+  const focusOn = (id: string) => {
+    const loc = client.locations.get(id);
+    if (loc) setFocus((f) => ({ lat: loc.lat, lng: loc.lng, key: (f?.key ?? 0) + 1 }));
   };
-  const cooling = now < cooldownUntil;
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
@@ -88,8 +73,8 @@ export default function MapTab() {
           focus={focus}
           dark={t.dark}
           onMemberPress={(id) => {
-            const loc = client.locations.get(id);
-            if (loc) setFocus((f) => ({ lat: loc.lat, lng: loc.lng, key: (f?.key ?? 0) + 1 }));
+            focusOn(id);
+            setSheet(id);
           }}
         />
         <SafeAreaView edges={['top']} style={{ position: 'absolute', left: 12, right: 12, top: 0 }} pointerEvents="box-none">
@@ -115,7 +100,13 @@ export default function MapTab() {
       <View style={{ flex: 1, backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, marginTop: -18, paddingTop: 16 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 6 }}>
           <Text style={{ flex: 1, color: t.text, fontSize: 20, fontWeight: '700' }}>People</Text>
-          <Button title={cooling ? 'Asked' : 'Refresh everyone'} small variant="primary" disabled={cooling || members.length < 2} onPress={() => locate()} />
+          <Button
+            title={everyoneCooling ? 'Asked everyone' : 'Refresh everyone'}
+            small
+            variant="primary"
+            disabled={everyoneCooling || members.length < 2}
+            onPress={() => refreshEveryone(client)}
+          />
         </View>
         <FlatList
           data={members}
@@ -132,53 +123,49 @@ export default function MapTab() {
             ) : undefined
           }
           renderItem={({ item: m }) => {
+            const paused = client.paused.get(m.id);
+            const state = locateState(client, m.id, now);
             const loc = client.locations.get(m.id);
-            const pausedAt = client.paused.get(m.id);
-            const place = placeAt(loc, client.places);
-            const bits: string[] = [];
-            if (pausedAt) {
-              bits.push(`Paused sharing · ${timeAgo(pausedAt)}`);
-            } else if (loc) {
-              bits.push(place ? `At ${place.name}` : `±${formatFeet(loc.accuracy || 0)}`);
-              bits.push(timeAgo(loc.ts));
-              if (loc.battery != null) bits.push(`${Math.round(loc.battery * 100)}%${loc.charging ? ' ⚡' : ''}`);
-            } else {
-              bits.push(m.isMe ? 'Not shared yet' : 'No location yet');
-            }
             return (
               <Pressable
-                onPress={() => loc && setFocus({ lat: loc.lat, lng: loc.lng, key: (focus?.key ?? 0) + 1 })}
-                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 8, borderRadius: 14, backgroundColor: pressed ? t.surface2 : 'transparent' })}
+                onPress={() => {
+                  focusOn(m.id);
+                  setSheet(m.id);
+                }}
+                accessibilityRole="button"
+                accessibilityHint="Shows directions, Locate, check in and message"
+                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 14, backgroundColor: pressed ? t.surface2 : 'transparent' })}
               >
                 <Avatar name={m.name} color={m.color} />
                 <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ color: t.text, fontWeight: '700', fontSize: 16 }} numberOfLines={1}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <Text style={{ color: t.text, fontWeight: '700', fontSize: 17 }} numberOfLines={1}>
                       {m.name}
                     </Text>
                     {m.isMe ? <Tag label="You" /> : null}
+                    {lowBattery(loc) ? <Tag label="Low battery" warn /> : null}
                     {m.keyChanged ? <Tag label="Keys changed" warn /> : !m.verified ? <Tag label="Unverified" warn /> : null}
                   </View>
-                  <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }} numberOfLines={1}>
-                    {bits.join(' · ')}
+                  <Text style={{ color: t.muted, fontSize: 14, marginTop: 2, lineHeight: 19 }} numberOfLines={2}>
+                    {state === 'asking' ? 'Asking for a fresh location…' : statusLine(client, m)}
                   </Text>
                 </View>
                 {!m.isMe ? (
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <Button
-                      title="Message"
-                      small
-                      accessibilityLabel={`Message ${m.name}`}
-                      onPress={() => router.push({ pathname: '/conversation', params: { circle: client.circleId!, peer: m.id } })}
-                    />
-                    <Button title="Locate" small disabled={cooling || !!pausedAt} accessibilityLabel={`Locate ${m.name}`} onPress={() => locate([m.id])} />
-                  </View>
+                  <IconButton
+                    icon="locate"
+                    label={`Locate ${m.name}`}
+                    busy={state === 'asking'}
+                    done={state === 'updated'}
+                    disabled={!!paused || state === 'cooldown'}
+                    onPress={() => locatePerson(client, m.id)}
+                  />
                 ) : null}
               </Pressable>
             );
           }}
         />
       </View>
+      <PersonSheet client={client} memberId={sheet} onClose={() => setSheet(null)} />
     </View>
   );
 }

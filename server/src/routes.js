@@ -372,12 +372,26 @@ export function buildRoutes({ config, store, hub, push, log }) {
     return { ok: true };
   });
 
+  // Locate one person, or "Refresh everyone" (no targets). Each has its own
+  // cooldown, so asking for one person doesn't block asking for another or
+  // refreshing everyone.
   r.add('POST', '/locations/request', ({ me, body }) => {
-    const wait = requestLimiter.take(me.id);
-    if (wait) fail(429, 'rate_limited', `You can ask again in ${wait}s`, { retryAfter: wait });
     const others = store.activeMembers(me.circleId).filter((m) => m.id !== me.id);
     const wanted = Array.isArray(body.targets) ? new Set(body.targets) : null;
-    const targets = wanted ? others.filter((m) => wanted.has(m.id)) : others;
+    let targets;
+    if (!wanted) {
+      const wait = requestLimiter.take(`${me.id}>*`);
+      if (wait) fail(429, 'rate_limited', `You can refresh everyone again in ${wait}s`, { retryAfter: wait });
+      targets = others;
+    } else {
+      const asked = others.filter((m) => wanted.has(m.id));
+      const waits = asked.map((m) => requestLimiter.take(`${me.id}>${m.id}`));
+      targets = asked.filter((_, i) => !waits[i]);
+      if (asked.length && !targets.length) {
+        const wait = Math.min(...waits);
+        fail(429, 'rate_limited', `You can ask again in ${wait}s`, { retryAfter: wait });
+      }
+    }
     const offline = [];
     let online = 0;
     for (const m of targets) {

@@ -39,6 +39,8 @@ export interface MemberLocation {
   speed: number | null;
   trigger: string;
   placeId: string | null;
+  /** Shared on purpose as a rough area (~1 km), not an exact pin. */
+  approximate: boolean;
   ts: number;
   receivedAt: number;
 }
@@ -154,8 +156,8 @@ export class CircleClient {
   circle: { name: string };
   members: Map<string, Member>;
   locations: Map<string, MemberLocation>;
-  /** Members who paused sharing with this circle, and since when. */
-  paused: Map<string, number>;
+  /** Members who paused sharing with this circle: since when, and their optional reason. */
+  paused: Map<string, { since: number; reason: string | null }>;
   messages: Message[];
   /** Highest message sequence number received. */
   lastSeq: number;
@@ -199,6 +201,8 @@ export class CircleClient {
     speed?: number | null;
     trigger?: string;
     placeId?: string | null;
+    /** Already rounded with approximate(); marks it as a rough area. */
+    approx?: boolean;
     ts?: number;
   }): Promise<void>;
   /** Remove this device's location from the circle (stop sharing with it). */
@@ -216,8 +220,12 @@ export class CircleClient {
   /** Admins: change how long messages are kept. */
   setRetention(days: number): Promise<void>;
   /** Stop sharing with this circle; it sees that you paused. */
-  pauseSharing(): Promise<void>;
+  pauseSharing(reason?: string): Promise<void>;
   sendEvent(body: Record<string, unknown>): Promise<void>;
+  /** "Where are you?": a direct message with a one-tap answer, plus a fresh location request. */
+  askToCheckIn(peer: string): Promise<void>;
+  /** Answer a check-in with "I'm OK". */
+  checkIn(peer: string): Promise<void>;
   /** Add or remove this person's reaction. Doesn't trigger a notification. */
   react(messageId: string, emoji: string): Promise<void>;
   reactionsFor(messageId: string): Reaction[];
@@ -251,3 +259,9 @@ export const QUICK_REACTIONS: string[];
 export const EMOJI_GROUPS: { name: string; emojis: string[] }[];
 export function isEmojiOnly(text: string, max?: number): boolean;
 export function isValidReaction(emoji: string): boolean;
+
+export function distanceM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number;
+/** 'inside' | 'outside' | null (too close to the edge or too imprecise to tell). */
+export function placeState(p: { distance: number; accuracy?: number | null; radius: number }): 'inside' | 'outside' | null;
+/** Round to a ~1 km grid for approximate sharing. */
+export function approximate(p: { lat: number; lng: number }): { lat: number; lng: number; accuracy: number };
