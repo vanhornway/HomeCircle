@@ -17,6 +17,8 @@ export interface MapMember {
   lng: number;
   accuracy: number;
   stale: boolean;
+  /** Shared as a rough area: draw the area's outline. */
+  approximate?: boolean;
 }
 
 export interface MapPlace {
@@ -76,11 +78,11 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
         if (!p) {
           p = people[m.id] = {
             marker: L.marker([m.lat,m.lng], {icon:icon}).addTo(map).on('click', function(){ post({type:'member', id:m.id}); }),
-            acc: L.circle([m.lat,m.lng], {radius:m.accuracy||0, stroke:false, fillColor:color(m.color), fillOpacity:.12, interactive:false}).addTo(map)
+            acc: L.circle([m.lat,m.lng], {radius:m.accuracy||0, stroke:!!m.approximate, color:color(m.color), weight:2, dashArray:'6 6', fillColor:color(m.color), fillOpacity:m.approximate?.08:.12, interactive:false}).addTo(map)
           };
         } else {
           p.marker.setLatLng([m.lat,m.lng]).setIcon(icon);
-          p.acc.setLatLng([m.lat,m.lng]).setRadius(m.accuracy||0);
+          p.acc.setLatLng([m.lat,m.lng]).setRadius(m.accuracy||0).setStyle({stroke:!!m.approximate, fillOpacity:m.approximate?.08:.12});
         }
       });
       Object.keys(people).forEach(function(id){

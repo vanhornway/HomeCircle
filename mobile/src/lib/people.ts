@@ -79,6 +79,8 @@ export type LocateState = 'idle' | 'asking' | 'updated' | 'cooldown';
 
 /** Where a Locate for this person stands. */
 export function locateState(client: CircleClient, memberId: string, now = Date.now()): LocateState {
+  // Not you, and not someone who paused (they won't answer).
+  if (memberId === client.account?.memberId || client.paused.has(memberId)) return 'idle';
   const at = Math.max(asked.get(`${client.circleId}:${memberId}`) ?? 0, asked.get(`${client.circleId}:*`) ?? 0);
   if (!at || now - at > COOLDOWN_MS) return 'idle';
   const loc = client.locations.get(memberId);

@@ -505,6 +505,8 @@ async function requestLocations(targets) {
 
 /** 'idle' | 'asking' | 'cooldown' for one person (or '*' for everyone). */
 function locateState(id) {
+  // Not you, and not someone who paused (they won't answer).
+  if (id !== '*' && (id === client.account.memberId || client.paused.has(id))) return 'idle';
   const at = Math.max(ui.asked?.[id] || 0, id === '*' ? 0 : ui.asked?.['*'] || 0);
   if (!at || Date.now() - at > LOCATE_COOLDOWN_MS) return 'idle';
   const loc = id === '*' ? null : client.locations.get(id);
@@ -601,12 +603,13 @@ function renderMarkers() {
     if (!entry) {
       entry = {
         marker: L.marker([loc.lat, loc.lng], { icon, keyboard: false }).addTo(map),
-        accuracy: L.circle([loc.lat, loc.lng], { radius: loc.accuracy || 0, stroke: false, fillColor: m.color, fillOpacity: 0.12, interactive: false }).addTo(map),
+        accuracy: L.circle([loc.lat, loc.lng], { radius: loc.accuracy || 0, stroke: !!loc.approximate, color: m.color, weight: 2, dashArray: '6 6', fillColor: m.color, fillOpacity: loc.approximate ? 0.08 : 0.12, interactive: false }).addTo(map),
       };
       markers.set(m.id, entry);
     } else {
       entry.marker.setLatLng([loc.lat, loc.lng]).setIcon(icon);
       entry.accuracy.setLatLng([loc.lat, loc.lng]).setRadius(loc.accuracy || 0);
+      entry.accuracy.setStyle({ stroke: !!loc.approximate, fillOpacity: loc.approximate ? 0.08 : 0.12 });
     }
     // Leaflet treats string tooltips as HTML; pass an element so names stay plain text.
     entry.marker.unbindTooltip().bindTooltip(h('span', {}, `${m.name} · ${timeAgo(loc.ts)}`), { direction: 'top', offset: [0, -18] });

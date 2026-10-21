@@ -47,6 +47,7 @@ export default function MapTab() {
         lng: loc.lng,
         accuracy: loc.accuracy || 0,
         stale: now - loc.ts > STALE_MS,
+        approximate: loc.approximate,
       },
     ];
   });
