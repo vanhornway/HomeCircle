@@ -24,6 +24,11 @@ export const PUSH_TASK = 'homecircle-push';
 
 const MOVE_THRESHOLD_M = 500;
 const MAX_GEOFENCES = 20; // iOS limit per app
+// Smallest radius the OS watches reliably; smaller places are still checked
+// against real positions (lib/places.ts), just not used as OS geofences.
+const MIN_GEOFENCE_RADIUS_M = 150;
+// Android: fastest the OS hands us fixes while moving (250 m apart anyway).
+const MOVING_FIX_INTERVAL_MS = 60_000;
 
 async function batteryInfo() {
   try {
@@ -138,7 +143,6 @@ export async function startBackgroundUpdates(): Promise<SharingMode> {
   const bg = await Location.getBackgroundPermissionsAsync();
   if (bg.status !== 'granted') return 'foreground-only';
 
-  const intervalMs = settings.intervalMinutes * 60_000;
   if (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK).catch(() => false)) {
     await Location.stopLocationUpdatesAsync(LOCATION_TASK);
   }
@@ -147,10 +151,16 @@ export async function startBackgroundUpdates(): Promise<SharingMode> {
     // Never prompt users to turn on Google's "Location Accuracy" (it shares
     // Wi-Fi/sensor data with Google). GPS and network location work without it.
     mayShowUserSettingsDialog: false,
+    // Hand every 250 m of movement to the task and let upload() decide what's
+    // worth sending. No native batching: expo-location only releases a batch
+    // once BOTH the deferred interval AND distance are met, so someone who
+    // drove 3 km in 8 minutes and then sat still was never reported. On
+    // Android, timeInterval is also the *minimum* gap between fixes, so a
+    // 15-minute value meant a moving phone reported at most every 15 minutes.
     distanceInterval: 250,
-    timeInterval: intervalMs, // Android
-    deferredUpdatesInterval: intervalMs,
-    deferredUpdatesDistance: MOVE_THRESHOLD_M,
+    timeInterval: MOVING_FIX_INTERVAL_MS, // Android only
+    deferredUpdatesInterval: 0,
+    deferredUpdatesDistance: 0,
     activityType: Location.ActivityType.Other,
     pausesUpdatesAutomatically: false,
     showsBackgroundLocationIndicator: false,
@@ -214,12 +224,16 @@ async function syncGeofencesNow() {
       if (!unique.has(identifier)) unique.set(identifier, { identifier, lat: p.lat, lng: p.lng, radius: p.radius });
     }
   }
+  // The OS watches at most 20 regions: keep the ones nearest to where we last
+  // were (re-picked whenever the app opens or places change).
+  const last = await getLastUpload();
   const places = [...unique.values()];
+  if (last) places.sort((a, b) => distanceM(last, a) - distanceM(last, b));
   const regions = places.slice(0, MAX_GEOFENCES).map((p) => ({
     identifier: p.identifier,
     latitude: p.lat,
     longitude: p.lng,
-    radius: Math.max(100, p.radius),
+    radius: Math.max(MIN_GEOFENCE_RADIUS_M, p.radius),
     notifyOnEnter: true,
     notifyOnExit: true,
   }));
