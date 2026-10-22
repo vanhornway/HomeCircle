@@ -14,6 +14,8 @@ import * as BackgroundTask from 'expo-background-task';
 import { approximate, distanceM } from '@homecircle/core';
 import { getSettings, getLastUpload, setLastUpload } from './storage';
 import { checkPlaces, geofenceId, sharingClients } from './places';
+import { diag } from './diagnostics';
+import { phoneHealth } from './health';
 
 export { distanceM, sharingClients };
 
@@ -76,6 +78,9 @@ export async function upload(
     distanceM(last, here) > MOVE_THRESHOLD_M;
   if (!due) return false;
   const approxCircles = new Set(settings.approximateCircles);
+  // Battery saver, permission level and precise on/off travel with every
+  // update, so the circle sees why updates may be slow.
+  const health = await phoneHealth();
   const results = await Promise.allSettled(
     targets.map((client) => {
       const approx = approxCircles.has(client.circleId!);
@@ -87,11 +92,19 @@ export async function upload(
         trigger: lowDue ? 'low_battery' : trigger,
         placeId: approx ? null : (placeIds[client.circleId!] ?? null),
         approx,
+        power: health.power,
+        perm: health.perm,
+        precise: health.precise,
         ts: loc.timestamp,
       });
     }),
   );
-  if (!results.some((r) => r.status === 'fulfilled')) throw (results[0] as PromiseRejectedResult).reason;
+  const ok = results.filter((r) => r.status === 'fulfilled').length;
+  if (!ok) {
+    diag('upload-failed', { trigger, circles: results.length, error: String((results[0] as PromiseRejectedResult).reason?.message ?? '').slice(0, 80) });
+    throw (results[0] as PromiseRejectedResult).reason;
+  }
+  diag('upload', { trigger: lowDue ? 'low_battery' : trigger, circles: `${ok}/${results.length}`, accM: Math.round(loc.coords.accuracy ?? 0), power: health.power, perm: health.perm });
   await setLastUpload({ ts: Date.now(), ...here, lowBattery: step ?? null });
   return true;
 }

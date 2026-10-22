@@ -243,6 +243,60 @@ test('approximate sharing and pause reasons reach the circle sealed', async () =
   assert.equal(mom.paused.get(kid.account.memberId).reason, 'At the dentist');
 });
 
+test('Locate says how it reached each person', async () => {
+  // Dad's app is connected, so it's "delivered" live.
+  const r1 = await dad.requestLocations([kid.account.memberId]);
+  assert.equal(r1.delivery[kid.account.memberId], 'delivered');
+});
+
+test('at most 6 Locates per person per hour, even without the 60-second cooldown', async () => {
+  const dir2 = mkdtempSync(join(tmpdir(), 'homecircle-cap-'));
+  const app2 = createApp({ ...app.config, dataDir: dir2, locationRequestCooldown: 0 });
+  await new Promise((r) => app2.server.listen(0, '127.0.0.1', r));
+  const url2 = `http://127.0.0.1:${app2.server.address().port}`;
+  const a = client();
+  const b = client();
+  await a.createCircle({ serverUrl: url2, setupToken: SETUP, name: 'A', circleName: 'Cap' });
+  await b.joinWithInvite((await a.createInvite()).link, { name: 'B' });
+  await a.refresh();
+  let ok = 0;
+  let limited = 0;
+  for (let i = 0; i < 9; i++) {
+    try {
+      await a.requestLocations([b.account.memberId]);
+      ok++;
+    } catch (e) {
+      assert.equal(e.status, 429);
+      limited++;
+    }
+  }
+  assert.equal(ok, 6);
+  assert.equal(limited, 3);
+  // Refresh everyone isn't counted against one person.
+  assert.equal((await a.requestLocations()).requested, 1);
+  await app2.close();
+  rmSync(dir2, { recursive: true, force: true });
+});
+
+test('a place event sent twice with the same id is stored once (outbox retries)', async () => {
+  const body = { type: 'place', action: 'arrived', placeId: 'p1', placeName: 'Home', at: Date.now() - 600_000 };
+  await kid.sendEvent(body, { id: 'outbox-event-0001' });
+  await kid.sendEvent(body, { id: 'outbox-event-0001' }); // retry after "no answer": counts as delivered
+  await mom.fetchMessages();
+  const events = mom.messages.filter((m) => m.kind === 'event' && m.body?.at === body.at);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].body.at, body.at, 'keeps the time the phone detected it');
+});
+
+test('phone health travels with the location', async () => {
+  await kid.shareLocation({ lat: 1, lng: 2, power: 'saver', perm: 'foreground', precise: false });
+  await mom.fetchLocations();
+  const l = mom.locations.get(kid.account.memberId);
+  assert.equal(l.power, 'saver');
+  assert.equal(l.perm, 'foreground');
+  assert.equal(l.precise, false);
+});
+
 test('place detection needs a margin before counting someone as gone', () => {
   const home = { radius: 100 };
   assert.equal(placeState({ ...home, distance: 40, accuracy: 15 }), 'inside');

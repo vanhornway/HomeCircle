@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppState, FlatList, Pressable, Text, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { needsAttention, setupChecklist } from '../../lib/health';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Place } from '@homecircle/core';
 import { FamilyMap, type MapMember } from '../../map/FamilyMap';
@@ -9,7 +11,7 @@ import { CircleSwitcher } from '../../components/CircleSwitcher';
 import { PersonSheet } from '../../components/PersonSheet';
 import { useServerState } from '../../lib/connection';
 import { initials, useCircle } from '../../lib/useCircle';
-import { everyoneCoolingDown, locatePerson, locateState, lowBattery, refreshEveryone, statusLine, useLocateVersion } from '../../lib/people';
+import { canLocate, everyoneCoolingDown, isAsking, memberState, locatePerson, locateState, lowBattery, refreshEveryone, statusLine, useLocateVersion } from '../../lib/people';
 import { DEFAULT_SETTINGS, getSettings } from '../../lib/storage';
 import { useTheme } from '../../theme';
 
@@ -25,6 +27,20 @@ export default function MapTab() {
   // Clock for "5 min ago" labels and Locate progress.
   const [now, setNow] = useState(() => Date.now());
   useLocateVersion();
+
+  // Re-check this phone's setup on every open (and when coming back to the app).
+  const [setupIssues, setSetupIssues] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      setupChecklist()
+        .then((items) => setSetupIssues(needsAttention(items).length))
+        .catch(() => {});
+      const sub = AppState.addEventListener('change', (st) => {
+        if (st === 'active') setupChecklist().then((items) => setSetupIssues(needsAttention(items).length)).catch(() => {});
+      });
+      return () => sub.remove();
+    }, []),
+  );
 
   useEffect(() => {
     getSettings().then(setTiles);
@@ -47,6 +63,7 @@ export default function MapTab() {
         lng: loc.lng,
         accuracy: loc.accuracy || 0,
         stale: now - loc.ts > STALE_MS,
+        badge: { saver: '🔋', settings: '⚠️', 'last-gasp': '🪫' }[memberState(client, m, now) as string],
         approximate: loc.approximate,
       },
     ];
@@ -96,6 +113,21 @@ export default function MapTab() {
             <CircleSwitcher />
           </View>
           <ServerBanner style={{ marginTop: 10 }} />
+          {setupIssues ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/setup-check')}
+              style={{ marginTop: 10, backgroundColor: t.warnBg, borderRadius: 14, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+            >
+              <Text style={{ fontSize: 18 }}>⚠️</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: t.warnText, fontWeight: '700', fontSize: 15 }}>Setup needs attention</Text>
+                <Text style={{ color: t.warnText, fontSize: 13 }}>
+                  {setupIssues} setting{setupIssues === 1 ? '' : 's'} may stop your location from updating. Tap to fix.
+                </Text>
+              </View>
+            </Pressable>
+          ) : null}
         </SafeAreaView>
       </View>
       <View style={{ flex: 1, backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, marginTop: -18, paddingTop: 16 }}>
@@ -148,16 +180,16 @@ export default function MapTab() {
                     {m.keyChanged ? <Tag label="Keys changed" warn /> : !m.verified ? <Tag label="Unverified" warn /> : null}
                   </View>
                   <Text style={{ color: t.muted, fontSize: 14, marginTop: 2, lineHeight: 19 }} numberOfLines={2}>
-                    {state === 'asking' ? 'Asking for a fresh location…' : statusLine(client, m)}
+                    {statusLine(client, m, now)}
                   </Text>
                 </View>
                 {!m.isMe ? (
                   <IconButton
                     icon="locate"
                     label={`Locate ${m.name}`}
-                    busy={state === 'asking'}
+                    busy={isAsking(state)}
                     done={state === 'updated'}
-                    disabled={!!paused || state === 'cooldown'}
+                    disabled={!!paused || !canLocate(state)}
                     onPress={() => locatePerson(client, m.id)}
                   />
                 ) : null}

@@ -11,6 +11,9 @@ import { ensureNotificationChannels, markSeen, notifyNewMessages } from '../../l
 import { ensureReadBase, unreadInCircle } from '../../lib/unread';
 import { useAllCircles } from '../../lib/useCircle';
 import { shareNow, startBackgroundUpdates, syncGeofences } from '../../lib/location';
+import { flushOutbox } from '../../lib/places';
+import { diag } from '../../lib/diagnostics';
+import { phoneHealth } from '../../lib/health';
 import { updateSettings, useSettings } from '../../lib/storage';
 import { Icon } from '../../components/ui';
 import { useTheme } from '../../theme';
@@ -86,10 +89,18 @@ function useCircleLifecycle(circlesKey: string) {
       shareNow('open').catch(() => {});
       registerPush().catch(() => {});
       syncGeofences().catch(() => {});
+      // Anything that couldn't be posted while offline goes out now.
+      flushOutbox().catch(() => 0);
+      phoneHealth()
+        .then((h) => diag('app-open', { ...h, circles: allClients().length, failed: failed.length }))
+        .catch(() => {});
     };
 
     const offs = clients.flatMap((client) => [
-      client.on('locationRequest', () => shareNow('requested').catch(() => {})),
+      client.on('locationRequest', () => {
+        diag('locate-request', { via: 'live' });
+        shareNow('requested').catch(() => {});
+      }),
       client.on('places', () => syncGeofences().catch(() => {})),
       client.on('newMessage', (m) => notifyNewMessages(client, [m]).catch(() => {})),
       // The live socket reconnects by itself; reflect the circle on screen in

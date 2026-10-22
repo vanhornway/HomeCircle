@@ -6,7 +6,7 @@ import type { CircleClient } from '@homecircle/core';
 import { Avatar, Icon } from './ui';
 import { AlertRuleSheet } from './AlertRuleSheet';
 import { errorText } from '../lib/circle';
-import { locatePerson, locateState, openDirections, statusLine, useLocateVersion } from '../lib/people';
+import { canLocate, locatePerson, locateState, openDirections, statusLine, useLocateVersion } from '../lib/people';
 import { timeAgo } from '../lib/useCircle';
 import { useTheme } from '../theme';
 
@@ -97,9 +97,19 @@ export function PersonSheet({ client, memberId, onClose }: { client: CircleClien
                     {tile(
                       'locate',
                       'Locate',
-                      state === 'asking' ? 'Asking their phone…' : state === 'updated' ? 'Updated just now' : state === 'cooldown' ? 'Asked recently' : 'Get a fresh location',
+                      state === 'sent'
+                        ? 'Sent · waiting for their phone…'
+                        : state === 'delivered'
+                          ? 'Delivered · locating…'
+                          : state === 'updated'
+                            ? 'Updated just now'
+                            : state === 'no-reply'
+                              ? 'No reply yet · try again'
+                              : state === 'cooldown'
+                                ? 'Asked recently'
+                                : 'Get a fresh location',
                       () => locatePerson(client, m.id),
-                      !!paused || state !== 'idle',
+                      !!paused || !canLocate(state),
                     )}
                     {tile('checkin', checking ? 'Sending…' : 'Check in', 'Ask “where are you?”', askCheckIn, checking)}
                     {tile('chat', 'Message', 'Only you two can read it', go(() => router.push({ pathname: '/conversation', params: { circle: client.circleId!, peer: m.id } })))}

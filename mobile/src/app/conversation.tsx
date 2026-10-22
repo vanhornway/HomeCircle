@@ -4,7 +4,7 @@ import { AppState, FlatList, Keyboard, KeyboardAvoidingView, Modal, Pressable, S
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { EMOJI_GROUPS, QUICK_REACTIONS, isEmojiOnly, type CircleClient, type Message } from '@homecircle/core';
 import { Avatar, Button, Icon, IconButton } from '../components/ui';
-import { locatePerson, locateState, openDirections, useLocateVersion } from '../lib/people';
+import { canLocate, isAsking, locatePerson, locateState, openDirections, useLocateVersion } from '../lib/people';
 import { shareNow } from '../lib/location';
 import { ServerBanner } from '../components/ServerBanner';
 import { clientForCircle, errorText, useCircles } from '../lib/circle';
@@ -126,7 +126,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     if (m.kind !== 'chat') {
       const label =
         m.kind === 'event'
-          ? `${name} ${m.body?.action === 'left' ? 'left' : 'arrived at'} ${m.body?.placeName || 'a place'} · ${clock(m.ts)}`
+          ? `${name} ${m.body?.action === 'left' ? 'left' : 'arrived at'} ${m.body?.placeName || 'a place'} · ${clock(typeof m.body?.at === 'number' ? m.body.at : m.ts)}`
           : '🔒 Sent before you joined';
       return (
         <Text style={{ alignSelf: 'center', color: t.muted, backgroundColor: t.surface2, fontSize: 14, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, overflow: 'hidden', marginVertical: 4 }}>
@@ -157,6 +157,9 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
         >
           <Text style={big ? { fontSize: 44, lineHeight: 54 } : { color: mine ? t.brandInk : t.text, fontSize: 17, lineHeight: 23 }}>{m.body?.text}</Text>
         </Pressable>
+        {m.body?.nudge === true && !mine ? (
+          <Button small variant="primary" title="Open setup check" onPress={() => router.push('/setup-check')} style={{ marginTop: 6 }} />
+        ) : null}
         {m.body?.checkin === 'request' && !mine && peer ? (
           answered(m) ? (
             <Text style={{ color: t.brand, fontSize: 14, fontWeight: '600', marginTop: 4, marginLeft: 4 }}>✓ You checked in</Text>
@@ -227,9 +230,9 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             <IconButton
               icon="locate"
               label={`Locate ${title}`}
-              busy={locState === 'asking'}
+              busy={isAsking(locState)}
               done={locState === 'updated'}
-              disabled={locState === 'cooldown' || client.paused.has(peer)}
+              disabled={!canLocate(locState) || client.paused.has(peer)}
               onPress={() => locatePerson(client, peer)}
             />
             <IconButton icon="checkin" label={`Ask ${title} to check in`} onPress={ask} />

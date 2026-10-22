@@ -29,6 +29,9 @@ export default function RootLayout() {
         <Stack.Screen name="server" options={{ headerShown: true, title: 'Server address' }} />
         <Stack.Screen name="new-circle" options={{ headerShown: true, title: 'New circle' }} />
         <Stack.Screen name="conversation" options={{ headerShown: false }} />
+        <Stack.Screen name="setup-check" options={{ headerShown: true, title: 'Setup check' }} />
+        <Stack.Screen name="diagnostics" options={{ headerShown: true, title: 'Diagnostics' }} />
+        <Stack.Screen name="circle-health" options={{ headerShown: true, title: 'Circle health' }} />
       </Stack>
     </SafeAreaProvider>
   );

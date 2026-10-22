@@ -34,6 +34,8 @@ export function buildRoutes({ config, store, hub, push, log }) {
   const r = new Router();
   const publicLimiter = new RateLimiter(20, 60_000);
   const requestLimiter = new RateLimiter(1, config.locationRequestCooldown * 1000);
+  // A few Locates per person per hour at most, so nobody's battery is drained.
+  const hourlyLocateLimiter = new RateLimiter(6, 3600_000);
 
   const limitPublic = (ctx) => {
     const wait = publicLimiter.take(ctx.ip);
@@ -385,7 +387,7 @@ export function buildRoutes({ config, store, hub, push, log }) {
       targets = others;
     } else {
       const asked = others.filter((m) => wanted.has(m.id));
-      const waits = asked.map((m) => requestLimiter.take(`${me.id}>${m.id}`));
+      const waits = asked.map((m) => requestLimiter.take(`${me.id}>${m.id}`) || hourlyLocateLimiter.take(`${me.id}>${m.id}`));
       targets = asked.filter((_, i) => !waits[i]);
       if (asked.length && !targets.length) {
         const wait = Math.min(...waits);
@@ -403,7 +405,11 @@ export function buildRoutes({ config, store, hub, push, log }) {
       }
     }
     push.locationRequest(offline);
-    return { requested: targets.length, online, pushed: offline.length, cooldown: config.locationRequestCooldown };
+    // Per person: delivered over the live connection, sent as a push, or unreachable.
+    const delivery = Object.fromEntries(
+      targets.map((m) => [m.id, hub.isOnline(m.id) ? 'delivered' : m.pushToken ? 'pushed' : 'unreachable']),
+    );
+    return { requested: targets.length, online, pushed: offline.length, delivery, cooldown: config.locationRequestCooldown };
   });
 
   // --- messages ----------------------------------------------------------

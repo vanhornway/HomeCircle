@@ -487,6 +487,10 @@ export class CircleClient {
       placeId: typeof b.placeId === 'string' ? b.placeId : null,
       // Shared on purpose as a rough area (~1 km), not an exact pin.
       approximate: b.approx === true,
+      // Phone health, so the circle can see why updates may be late.
+      power: b.power === 'saver' ? 'saver' : b.power === 'normal' ? 'normal' : null,
+      perm: b.perm === 'always' || b.perm === 'foreground' ? b.perm : null,
+      precise: typeof b.precise === 'boolean' ? b.precise : null,
       ts: msg.ts,
       receivedAt: updatedAt,
     };
@@ -506,9 +510,12 @@ export class CircleClient {
   }
 
   /** Upload this device's location, encrypted. */
-  async shareLocation({ lat, lng, accuracy, battery, charging, speed, trigger = 'update', placeId = null, approx = false, ts }) {
+  async shareLocation({ lat, lng, accuracy, battery, charging, speed, trigger = 'update', placeId = null, approx = false, power, perm, precise, ts }) {
     const body = { lat, lng, accuracy, battery, charging, speed, trigger, placeId };
     if (approx) body.approx = true;
+    if (power) body.power = power;
+    if (perm) body.perm = perm;
+    if (typeof precise === 'boolean') body.precise = precise;
     await this._withEpochRetry(() => {
       const env = this._seal('location', body);
       return this.api.putLocation(env);
@@ -635,8 +642,7 @@ export class CircleClient {
     return this.messages;
   }
 
-  async _post(kind, body, { silent = false, to = null } = {}) {
-    const id = randomId(12);
+  async _post(kind, body, { silent = false, to = null, id = randomId(12) } = {}) {
     let env;
     const res = await this._withEpochRetry(() => {
       env = this._seal(kind, body, this.account.epoch, { to });
@@ -663,14 +669,32 @@ export class CircleClient {
     await this.requestLocations([peer]).catch(() => {});
   }
 
+  /**
+   * Admins: ask someone to fix their setup (a direct message with a button to
+   * the setup check on newer apps; readable text on older ones).
+   */
+  nudgeSetup(peer, problem = '') {
+    const text = `⚠️ Your HomeCircle setup needs attention${problem ? `: ${problem}` : ''}. Open Settings → Setup check to fix it.`;
+    return this._post('chat', { text, nudge: true }, { to: peer });
+  }
+
   /** Answer a check-in: "I'm OK", as a direct message. */
   checkIn(peer) {
     return this._post('chat', { text: '✅ I’m OK', checkin: 'ok' }, { to: peer });
   }
 
-  /** e.g. { type: 'place', action: 'arrived' | 'left', placeId, placeName } */
-  sendEvent(body) {
-    return this._post('event', body);
+  /**
+   * e.g. { type: 'place', action: 'arrived' | 'left', placeId, placeName, at }.
+   * Pass a stable `id` to retry safely: the server keeps the first copy and
+   * refuses repeats (409), which counts as delivered.
+   */
+  async sendEvent(body, { id } = {}) {
+    try {
+      await this._post('event', body, id ? { id } : {});
+    } catch (e) {
+      if (id && e instanceof ApiError && e.status === 409 && e.code === 'conflict') return;
+      throw e;
+    }
   }
 
   // --- places ------------------------------------------------------------

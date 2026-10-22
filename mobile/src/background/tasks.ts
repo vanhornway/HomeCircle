@@ -5,7 +5,8 @@ import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import * as BackgroundTask from 'expo-background-task';
 import { upload, report, freshFix, shareNow, LOCATION_TASK, GEOFENCE_TASK, HEARTBEAT_TASK, PUSH_TASK } from '../lib/location';
-import { checkPlaces } from '../lib/places';
+import { checkPlaces, flushOutbox } from '../lib/places';
+import { diag } from '../lib/diagnostics';
 import { loadedClients } from '../lib/circle';
 import { ensureNotificationChannels, notifyNewMessages } from '../lib/notify';
 
@@ -18,10 +19,12 @@ const log = (...a: unknown[]) => {
 TaskManager.defineTask<{ locations: Location.LocationObject[] }>(LOCATION_TASK, async ({ data, error }) => {
   if (error || !data?.locations?.length) return;
   const latest = data.locations[data.locations.length - 1];
+  diag('wake:movement', { fixes: data.locations.length, accM: Math.round(latest.coords.accuracy ?? 0) });
   try {
     await report(latest, 'update');
   } catch (e) {
     log('location upload failed', e);
+    diag('error', { where: 'movement', msg: String((e as Error)?.message ?? e).slice(0, 100) });
   }
 });
 
@@ -30,10 +33,13 @@ TaskManager.defineTask(HEARTBEAT_TASK, async () => {
   try {
     const fix = await Location.getLastKnownPositionAsync({ maxAge: 5 * 60_000 }).catch(() => null);
     const loc = fix || (await freshFix(15_000));
+    diag('wake:heartbeat', { fix: fix ? 'recent' : loc ? 'fresh' : 'none' });
     if (loc) await report(loc, 'update');
+    else await flushOutbox().catch(() => 0);
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch (e) {
     log('heartbeat failed', e);
+    diag('error', { where: 'heartbeat', msg: String((e as Error)?.message ?? e).slice(0, 100) });
     return BackgroundTask.BackgroundTaskResult.Failed;
   }
 });
@@ -54,10 +60,12 @@ TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Locati
     const loc = await freshFix(GEOFENCE_FIX_TIMEOUT_MS);
     const fresh = loc && Date.now() - loc.timestamp <= GEOFENCE_FIX_MAX_AGE_MS ? loc : null;
     const fix = fresh ? { lat: fresh.coords.latitude, lng: fresh.coords.longitude, accuracy: fresh.coords.accuracy ?? null } : null;
+    diag('wake:geofence', { action, fix: fresh ? 'fresh' : loc ? 'stale' : 'none', accM: fresh ? Math.round(fresh.coords.accuracy ?? 0) : undefined });
     const check = await checkPlaces(fix, { regionId: data.region.identifier, action });
     if (loc) await upload(loc, check.changed && check.action ? check.action : 'update', { force: check.changed, placeIds: check.placeIds });
   } catch (e) {
     log('geofence event failed', e);
+    diag('error', { where: 'geofence', msg: String((e as Error)?.message ?? e).slice(0, 100) });
   }
 });
 
@@ -69,7 +77,9 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(PUSH_TASK, async (
   if (error) return;
   const raw = JSON.stringify(data ?? {});
   try {
+    diag('wake:push', { type: raw.includes('loc_req') ? 'locate' : 'message' });
     if (raw.includes('loc_req')) {
+      diag('locate-request', { via: 'push' });
       await shareNow('requested');
     } else if (/\\?"t\\?"\s*:\s*\\?"msg/.test(raw)) {
       await ensureNotificationChannels();

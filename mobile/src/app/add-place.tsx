@@ -10,8 +10,10 @@ import { DEFAULT_SETTINGS, getSettings } from '../lib/storage';
 import { feetToMeters } from '../lib/units';
 import { useTheme } from '../theme';
 
-const RADII_FT = [250, 500, 1000, 2000];
-const MIN_FT = 170; // ~50 m: smaller than GPS can reliably tell apart
+const RADII_FT = [500, 1000, 2000, 5000];
+// Phones can't reliably tell smaller areas apart (GPS drift, and the OS
+// watches geofences of at least ~150 m), so arrivals would be missed.
+const MIN_FT = 500;
 const MAX_FT = 16000; // ~5 km
 
 function formatAddress(a: Location.LocationGeocodedAddress | undefined) {
@@ -184,7 +186,11 @@ export default function AddPlace() {
           />
           <Text style={{ color: t.muted, fontSize: 16 }}>feet</Text>
         </View>
-        {!radiusOk ? <Text style={{ color: t.danger, fontSize: 14 }}>Use between {MIN_FT} and {MAX_FT.toLocaleString()} feet.</Text> : null}
+        {!radiusOk ? (
+          <Text style={{ color: t.danger, fontSize: 14 }}>Use between {MIN_FT} and {MAX_FT.toLocaleString()} feet.</Text>
+        ) : (
+          <Text style={{ color: t.muted, fontSize: 13 }}>500 ft or more: phones can’t reliably detect smaller areas, so arrivals would be missed.</Text>
+        )}
 
         {circles.length > 1 ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 }}>

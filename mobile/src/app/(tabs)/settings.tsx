@@ -293,6 +293,20 @@ export default function SettingsTab() {
         />
       </Card>
 
+      <SectionTitle>This phone</SectionTitle>
+      <Card style={{ gap: 10 }}>
+        <Button title="Setup check" onPress={() => router.push('/setup-check')} />
+        <Text style={{ color: t.muted, fontSize: 13 }}>Make sure location, battery and notifications are set so your circle always sees where you are.</Text>
+        <Button title="Diagnostics" onPress={() => router.push('/diagnostics')} />
+        <Text style={{ color: t.muted, fontSize: 13 }}>A 7-day log of what HomeCircle did in the background. Send it to an admin if updates seem late.</Text>
+        {client.isAdmin ? (
+          <>
+            <Button title={`Circle health: ${circleName}`} onPress={() => router.push('/circle-health')} />
+            <Text style={{ color: t.muted, fontSize: 13 }}>Admins: see how each member’s phone is set up, and nudge them to fix problems.</Text>
+          </>
+        ) : null}
+      </Card>
+
       <SectionTitle>Notifications</SectionTitle>
       <Card style={{ gap: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>

@@ -19,6 +19,8 @@ export interface MapMember {
   stale: boolean;
   /** Shared as a rough area: draw the area's outline. */
   approximate?: boolean;
+  /** A small emoji badge: battery saver, settings issue, battery died. */
+  badge?: string;
 }
 
 export interface MapPlace {
@@ -53,6 +55,8 @@ function buildHtml(tileUrl: string, attribution: string, dark: boolean) {
 html,body,#map{height:100%;margin:0;background:${dark ? '#1a201e' : '#ece7df'}}
 .m{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font:700 15px -apple-system,Roboto,sans-serif;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3);box-sizing:border-box}
 .m.s{filter:grayscale(.6);opacity:.85}
+.m{position:relative}
+.m .b{position:absolute;right:-7px;top:-7px;width:20px;height:20px;border-radius:50%;background:#fff;font-size:12px;line-height:20px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.3)}
 .pl{background:#fff;color:#1d2422;border-radius:8px;padding:2px 8px;font:600 12px -apple-system,Roboto,sans-serif;border:1px solid #e2ddd4;white-space:nowrap;box-shadow:none}
 .pl:before{display:none}
 ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}' : ''}
@@ -73,7 +77,7 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
       list.forEach(function(m){
         seen[m.id] = 1;
         var icon = L.divIcon({className:'', iconSize:[40,40], iconAnchor:[20,20],
-          html:'<div class="m'+(m.stale?' s':'')+'" style="background:'+color(m.color)+'">'+esc(m.label)+'</div>'});
+          html:'<div class="m'+(m.stale?' s':'')+'" style="background:'+color(m.color)+'">'+esc(m.label)+(m.badge?'<span class="b">'+esc(m.badge)+'</span>':'')+'</div>'});
         var p = people[m.id];
         if (!p) {
           p = people[m.id] = {

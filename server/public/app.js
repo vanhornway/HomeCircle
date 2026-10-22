@@ -527,10 +527,17 @@ function peopleView() {
     const bits = [];
     if (paused) {
       bits.push(`Paused${paused.reason ? `: ${paused.reason}` : ''}`, timeAgo(paused.since));
+    } else if (loc && Date.now() - loc.ts > 2 * 3600_000) {
+      // No update for two hours: say since when, rather than an old position as if current.
+      bits.push(`No signal since ${clock(loc.ts)}${Date.now() - loc.ts > 86400_000 ? ` (${timeAgo(loc.ts)})` : ''}`);
+      if (loc.trigger === 'low_battery') bits.push(`battery was ${Math.round((loc.battery ?? 0) * 100)}%`);
     } else if (loc) {
       bits.push(loc.approximate ? 'Approximate area' : place ? `At ${place.name}` : `±${feet(loc.accuracy || 0)}`);
       bits.push(timeAgo(loc.ts));
       if (loc.battery != null) bits.push(`${Math.round(loc.battery * 100)}%${loc.charging ? ' ⚡' : ''}`);
+      if (loc.perm === 'foreground') bits.push('Location set to While Using');
+      else if (loc.precise === false) bits.push('Precise location off');
+      if (loc.power === 'saver') bits.push('Battery saver on');
     } else {
       bits.push(m.isMe ? 'Not sharing from this browser' : 'No location yet');
     }

@@ -41,6 +41,12 @@ export interface MemberLocation {
   placeId: string | null;
   /** Shared on purpose as a rough area (~1 km), not an exact pin. */
   approximate: boolean;
+  /** Battery saver / Low Power Mode on the phone, if reported. */
+  power: 'saver' | 'normal' | null;
+  /** Location permission: 'always' (background) or 'foreground' (while using), if reported. */
+  perm: 'always' | 'foreground' | null;
+  /** Precise location allowed, if reported. */
+  precise: boolean | null;
   ts: number;
   receivedAt: number;
 }
@@ -203,11 +209,21 @@ export class CircleClient {
     placeId?: string | null;
     /** Already rounded with approximate(); marks it as a rough area. */
     approx?: boolean;
+    power?: 'saver' | 'normal';
+    perm?: 'always' | 'foreground';
+    precise?: boolean;
     ts?: number;
   }): Promise<void>;
   /** Remove this device's location from the circle (stop sharing with it). */
   clearLocation(): Promise<void>;
-  requestLocations(targets?: string[]): Promise<{ requested: number; online: number; pushed: number; cooldown: number }>;
+  /** `delivery` per person: 'delivered' (live connection), 'pushed', or 'unreachable' (servers 0.7+). */
+  requestLocations(targets?: string[]): Promise<{
+    requested: number;
+    online: number;
+    pushed: number;
+    delivery?: Record<string, 'delivered' | 'pushed' | 'unreachable'>;
+    cooldown: number;
+  }>;
   fetchMessages(): Promise<Message[]>;
   /** Group chat, or a direct message when `to` is set. */
   sendChat(text: string, opts?: { to?: string | null }): Promise<void>;
@@ -221,9 +237,12 @@ export class CircleClient {
   setRetention(days: number): Promise<void>;
   /** Stop sharing with this circle; it sees that you paused. */
   pauseSharing(reason?: string): Promise<void>;
-  sendEvent(body: Record<string, unknown>): Promise<void>;
+  /** Pass a stable id to retry safely; a repeat the server already has counts as delivered. */
+  sendEvent(body: Record<string, unknown>, opts?: { id?: string }): Promise<void>;
   /** "Where are you?": a direct message with a one-tap answer, plus a fresh location request. */
   askToCheckIn(peer: string): Promise<void>;
+  /** Admins: a direct message asking someone to fix their setup. */
+  nudgeSetup(peer: string, problem?: string): Promise<void>;
   /** Answer a check-in with "I'm OK". */
   checkIn(peer: string): Promise<void>;
   /** Add or remove this person's reaction. Doesn't trigger a notification. */
@@ -265,3 +284,9 @@ export function distanceM(a: { lat: number; lng: number }, b: { lat: number; lng
 export function placeState(p: { distance: number; accuracy?: number | null; radius: number }): 'inside' | 'outside' | null;
 /** Round to a ~1 km grid for approximate sharing. */
 export function approximate(p: { lat: number; lng: number }): { lat: number; lng: number; accuracy: number };
+
+/** URL-safe base64 helpers and UTF-8 codecs that work in every JS engine. */
+export function toB64(bytes: Uint8Array): string;
+export function fromB64(str: string): Uint8Array;
+export function utf8Encode(str: string): Uint8Array;
+export function utf8Decode(bytes: Uint8Array): string;
