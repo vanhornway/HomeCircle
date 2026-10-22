@@ -1,8 +1,8 @@
 # HomeCircle
 
 **Private family location sharing on a server you own.** A self-hosted,
-end-to-end encrypted alternative to Life360: a live family map, on-demand
-"Locate", arrival alerts for places, and a family chat.
+end-to-end encrypted family app: a live family map, on-demand "Locate",
+arrival alerts for places, and family chat.
 
 - **One server, many circles.** Run one server for your household, your parents and siblings, or anyone else. Each circle is isolated: people only see the circles they joined.
 - **End-to-end encrypted.** Phones encrypt everything before upload. The server and your hosting provider only see ciphertext.

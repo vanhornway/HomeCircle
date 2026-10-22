@@ -10,6 +10,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <script src="config.js" defer></script>
+  <script src="changelog.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -18,6 +19,7 @@
     <nav>
       <a href="#how">How it works</a>
       <a href="#privacy">Privacy</a>
+      <a href="#changelog">What’s new</a>
       <a href="#servers" class="pill">Get your server</a>
     </nav>
   </header>
@@ -25,7 +27,7 @@
   <main id="top">
     <section class="hero">
       <div class="hero-copy">
-        <p class="eyebrow">A private alternative to Life360</p>
+        <p class="eyebrow">Private family location sharing</p>
         <h1>Your family’s map,<br>on <em>your</em> server.</h1>
         <p class="lede">See where everyone is, tap <strong>Locate</strong> for a fresh fix, chat, and get alerts when the kids get home. It all runs on a server your family owns, end-to-end encrypted, so no company can see, sell or leak it.</p>
         <div class="cta-row">
@@ -135,6 +137,12 @@
       <div class="cta-row" id="store-links"></div>
       <p class="muted small" id="apk-release"></p>
       <p class="muted small">On a laptop? Every server also has a web version: just open your server’s address in a browser.</p>
+    </section>
+
+    <section id="changelog" class="section changelog">
+      <h2>What’s new</h2>
+      <p class="lede small">Every version and what it added. The newest is at the top.</p>
+      <div id="changelog-list"></div>
     </section>
 
     <section class="section faq">

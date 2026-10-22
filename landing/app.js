@@ -320,6 +320,20 @@ fly secrets list   # remember the SETUP_TOKEN you set`,
     link(cfg.playStore, '▶ Google Play') +
     (cfg.setupGuide ? `<a class="btn" href="${esc(cfg.setupGuide)}" target="_blank" rel="noopener noreferrer">Step-by-step guide</a>` : '');
 
+  // --- what's new ------------------------------------------------------------
+  const changelog = $('#changelog-list');
+  if (changelog && Array.isArray(window.HOMECIRCLE_CHANGELOG)) {
+    const fmt = (d) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    changelog.innerHTML = window.HOMECIRCLE_CHANGELOG.map(
+      (r, i) => `
+      <details class="release"${i === 0 ? ' open' : ''}>
+        <summary><span class="ver">v${esc(r.version)}</span><span class="rel-title">${esc(r.title)}</span><span class="rel-date">${esc(fmt(r.date))}</span></summary>
+        <ul>${r.items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+        <a class="rel-link" href="https://github.com/${esc(repo)}/releases/tag/v${esc(r.version)}" target="_blank" rel="noopener noreferrer">Release on GitHub</a>
+      </details>`,
+    ).join('');
+  }
+
   // The latest release's version, date and size, so the button always matches
   // what it downloads. Falls back to cfg.androidVersion if GitHub can't be reached.
   const releaseNote = $('#apk-release');
