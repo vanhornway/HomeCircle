@@ -101,10 +101,45 @@ Start small, watch for a few minutes, then raise one thing at a time.
 - **Speed** is how many times busier than a normal day it is: at 10×, people
   move, chat and open the app ten times as often. Change it live with the
   buttons at the top of the dashboard.
-- **Scale** adds circles. Running again with a bigger scale keeps the circles
-  you already joined and adds more.
+- **Scale** is a quick starting mix of circles. Running again with a bigger
+  scale keeps the circles you already joined and adds more.
 - `--ramp 10` brings circles online over 10 minutes, so you can watch CPU
   climb as people arrive. `--duration 60` stops after an hour.
+
+### Choose the number of circles and people
+
+On the dashboard, **Circles and people** has a row for each kind of circle
+(family, friends, coworkers, party, extended family). Use **−** and **+**, or
+type a number:
+
+- **Circles:** how many circles of that kind run. Raising it builds new
+  circles (or resumes paused ones). Lowering it **pauses** the extra circles:
+  their people stop moving and talking, and they come back as they were when
+  you raise it again.
+- **People per circle:** every circle of that kind grows or shrinks to this
+  size, from 2 to 49. New people join through invites, one by one, like real
+  sign-ups; when it shrinks, the newest people **leave** their circle (the
+  circle's key is rotated, as in real life). **Use varied** goes back to each
+  circle's own natural size.
+
+The note next to the heading shows what the swarm is doing (building circles,
+adding or removing people). Changes apply within seconds for small circles;
+building dozens of circles takes a minute or two.
+
+The same from the command line:
+
+```sh
+# 4 families of 6, 2 friend groups, one party of 40, no coworkers or grandparents
+node scripts/swarm.mjs --server … --circles family=4,friends=2,party=1,work=0,elders=0 --people family=6,party=40
+
+# 10 people in every circle
+node scripts/swarm.mjs --server … --people 10
+```
+
+Your last mix is remembered: run the swarm again without `--scale`,
+`--circles` or `--people` and it picks up where you left off. The server holds
+up to 100 circles; if you build more than that across kinds, the swarm deletes
+paused circles (ones you haven't joined first) to make room.
 
 Every 10 seconds the swarm adds a row to a CSV file in `.swarm/` (the path is
 at the bottom of the dashboard): people, requests per minute, latency, errors,

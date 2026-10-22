@@ -76,6 +76,32 @@ const DM_LINES = [
   ['Are you coming tonight?', 'Yes! 8ish', 'Great'],
 ];
 
+/** Most people the swarm puts in one circle (the server allows 50, and you may join too). */
+export const MAX_PEOPLE = 49;
+/** Most circles on one server (the server allows 100, and the HQ circle is one). */
+export const MAX_CIRCLES = 99;
+
+const EXTRA = {
+  family: () => (Math.random() < 0.7 ? { pool: 'kids', role: 'kid', travel: Math.random() < 0.6 ? 'walk' : 'drive' } : { pool: 'adults', role: 'relative', travel: 'drive' }),
+  friends: () => ({ pool: 'adults', role: 'friend', travel: 'drive' }),
+  work: () => ({ pool: 'adults', role: 'colleague', travel: 'drive' }),
+  party: () => ({ pool: Math.random() < 0.8 ? 'adults' : 'kids', role: 'guest', travel: 'drive' }),
+  elders: () => (Math.random() < 0.25 ? { pool: 'elders', role: 'elder', travel: 'drive' } : { pool: 'adults', role: 'relative', travel: 'drive' }),
+};
+
+/** Someone new for a circle of this kind, with a name nobody in it has yet. */
+export function newPerson(key, takenNames) {
+  const { pool, role, travel } = EXTRA[key]();
+  const free = FIRST[pool].filter((n) => !takenNames.has(n));
+  let name = free.length ? pick(free) : null;
+  for (let tries = 0; !name && tries < 50; tries++) {
+    const n = `${pick(FIRST[pool])} ${pick(SURNAMES)[0]}.`;
+    if (!takenNames.has(n)) name = n;
+  }
+  name ??= `${pick(FIRST[pool])} ${takenNames.size + 1}`;
+  return { name, role, travel };
+}
+
 export const SCALES = {
   small: { family: 1, friends: 1, work: 1, party: 1, elders: 1 },
   medium: { family: 3, friends: 2, work: 2, party: 1, elders: 1 },

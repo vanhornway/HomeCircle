@@ -16,7 +16,7 @@ import { join, resolve } from 'node:path';
 import { CircleClient, normalizeServerUrl } from '../../packages/core/src/index.js';
 import { Metrics } from './swarm/metrics.mjs';
 import { World, SimCircle, SimMember, offset } from './swarm/sim.mjs';
-import { SCENARIOS, SCALES } from './swarm/scenarios.mjs';
+import { SCENARIOS, SCALES, MAX_PEOPLE, MAX_CIRCLES, newPerson } from './swarm/scenarios.mjs';
 import { startDashboard } from './swarm/dashboard.mjs';
 
 const HELP = `HomeCircle swarm: simulated people using a HomeCircle server.
@@ -28,7 +28,13 @@ const HELP = `HomeCircle swarm: simulated people using a HomeCircle server.
   --invite-server <url>  address in the invite links for your phone, e.g.
                          https://homecircle.your-tailnet.ts.net:8443         (env HC_INVITE_SERVER)
   --scale <size>         small (5 circles, ~45 people), medium (~10, ~100),
-                         large (~24, ~250), xl (~50, ~500). Default small.
+                         large (~24, ~250), xl (~50, ~500). Default small, or
+                         the mix from your last run.
+  --circles <mix>        circles of each kind, e.g. family=4,friends=2,party=0
+                         (kinds: family, friends, work, party, elders)
+  --people <n | mix>     people in every circle (8), or per kind:
+                         family=5,party=40. Up to ${MAX_PEOPLE}. Default: varied sizes.
+                         Both can also be changed live on the dashboard.
   --speed <n>            how many times busier than a normal day. Default 1.
   --ramp <minutes>       bring circles online gradually over this long. Default 5.
   --duration <minutes>   stop after this long. Default: run until Ctrl+C.
@@ -45,7 +51,9 @@ const { values: opt } = parseArgs({
     server: { type: 'string', default: process.env.HC_SERVER },
     'setup-code': { type: 'string', default: process.env.HC_SETUP_CODE },
     'invite-server': { type: 'string', default: process.env.HC_INVITE_SERVER },
-    scale: { type: 'string', default: 'small' },
+    scale: { type: 'string' },
+    circles: { type: 'string' },
+    people: { type: 'string' },
     speed: { type: 'string', default: '1' },
     ramp: { type: 'string', default: '5' },
     duration: { type: 'string', default: '0' },
@@ -62,10 +70,28 @@ if (opt.help || !opt.server) {
   console.log(HELP);
   process.exit(opt.help ? 0 : 1);
 }
-if (!SCALES[opt.scale]) {
+if (opt.scale && !SCALES[opt.scale]) {
   console.error(`--scale must be one of: ${Object.keys(SCALES).join(', ')}`);
   process.exit(1);
 }
+const KINDS = Object.keys(SCENARIOS);
+/** "family=4,party=0" → { family: 4, party: 0 }; a bare number applies to every kind. */
+function parseMix(text, what, max) {
+  if (!text) return {};
+  if (/^\d+$/.test(text.trim())) return Object.fromEntries(KINDS.map((k) => [k, Math.min(max, Number(text))]));
+  const out = {};
+  for (const part of text.split(',')) {
+    const [k, v] = part.split('=').map((x) => x.trim());
+    if (!KINDS.includes(k) || !/^\d+$/.test(v ?? '')) {
+      console.error(`${what}: “${part}” isn’t kind=number. Kinds: ${KINDS.join(', ')}`);
+      process.exit(1);
+    }
+    out[k] = Math.min(max, Number(v));
+  }
+  return out;
+}
+const circlesArg = parseMix(opt.circles, '--circles', MAX_CIRCLES);
+const peopleArg = parseMix(opt.people, '--people', MAX_PEOPLE);
 
 const server = normalizeServerUrl(opt.server);
 const inviteServer = opt['invite-server'] ? normalizeServerUrl(opt['invite-server']) : null;
@@ -210,13 +236,42 @@ const hqInvite = async () => {
 };
 await hqInvite();
 
-// --- 2. build the circles this scale needs ---------------------------------
+// --- 2. the mix: how many circles of each kind, and how many people in each -
 
-const wanted = [];
-for (const [key, n] of Object.entries(SCALES[opt.scale])) for (let i = 0; i < n; i++) wanted.push({ key, i });
+// Your last mix is remembered; --scale, --circles and --people change it.
+const target = {
+  circles: { ...(opt.scale ? SCALES[opt.scale] : (state.target?.circles ?? SCALES.small)), ...circlesArg },
+  people: { ...(opt.scale || opt.circles ? {} : (state.target?.people ?? {})), ...peopleArg },
+};
+for (const k of KINDS) target.circles[k] ??= 0;
+const clampTarget = () => {
+  // The server holds at most 100 circles (HQ is one); trim the biggest kinds first.
+  while (KINDS.reduce((n, k) => n + target.circles[k], 0) > MAX_CIRCLES) {
+    const k = KINDS.reduce((a, b) => (target.circles[a] >= target.circles[b] ? a : b));
+    target.circles[k]--;
+  }
+  for (const k of KINDS) {
+    target.circles[k] = Math.max(0, Math.floor(target.circles[k] || 0));
+    if (target.people[k] != null) target.people[k] = Math.min(MAX_PEOPLE, Math.max(2, Math.floor(target.people[k])));
+  }
+  state.target = target;
+  saveSoon();
+};
+clampTarget();
 
 const takenNames = new Set(state.circles.map((c) => c.spec.circleName));
-async function buildCircle(key) {
+const personRecord = (saved, p, index) => ({
+  ...p,
+  index,
+  accountKey: `swarm:${Math.random().toString(36).slice(2, 12)}`,
+  ip: nextIp(),
+  home: saved.spec.homes ? offset(saved.center, 1 + Math.random() * 7) : null,
+  work: offset(saved.center, 4 + Math.random() * 11),
+  alwaysOpen: index === 0 || Math.random() < alwaysOpenShare,
+});
+
+/** A new circle of this kind on the server, with just its owner so far. */
+async function createSavedCircle(key) {
   const sc = SCENARIOS[key];
   // Distinct names, so you can tell circles apart in the app. Reserved
   // before any await: several circles are built at once.
@@ -235,70 +290,214 @@ async function buildCircle(key) {
     center,
     places: spec.places.map((p) => ({ key: p.key, name: p.name, radius: 150, ...(p.km ? offset(center, p.km) : center) })),
     members: [],
+    // The rest of the people build() came up with, for a "natural" size.
+    planned: spec.people.slice(1),
     userInvite: null,
   };
-  const people = spec.people.map((p, index) => ({
-    ...p,
-    index,
-    accountKey: `swarm:${Math.random().toString(36).slice(2, 12)}`,
-    ip: nextIp(),
-    home: spec.homes ? offset(center, 1 + Math.random() * 7) : null,
-    work: offset(center, 4 + Math.random() * 11),
-    alwaysOpen: index === 0 || Math.random() < alwaysOpenShare,
-  }));
-  const [first, ...rest] = people;
+  const first = personRecord(saved, spec.people[0], 0);
   const owner = makeClient(first.accountKey, first.ip);
   await patiently(() => owner.createCircle({ serverUrl: server, admin: hq, name: first.name, circleName: spec.circleName }), 'create circle');
   saved.members.push(first);
   for (const p of saved.places) p.id = await owner.savePlace({ name: p.name, lat: p.lat, lng: p.lng, radius: p.radius });
   state.circles.push(saved);
   saveSoon();
-  for (const p of rest) {
-    const inv = await patiently(() => owner.createInvite({ hours: 1 }), 'invite');
-    const c = makeClient(p.accountKey, p.ip);
-    await patiently(() => c.joinWithInvite(inv.link, { name: p.name }), 'join');
-    metrics.count('joins');
-    saved.members.push(p);
-    saveSoon();
-  }
-  log(`built “${spec.circleName}” (${sc.label}, ${saved.members.length} people)`);
   return saved;
 }
 
-const byKey = (key) => state.circles.filter((c) => c.key === key);
-const plan = [];
-const toBuild = [];
-for (const w of wanted) {
-  const have = byKey(w.key)[w.i];
-  if (have) plan.push(have);
-  else toBuild.push(w);
-}
-if (toBuild.length) log(`building ${toBuild.length} circle(s)…`);
-// A few circles at a time: realistic sign-up bursts without hammering.
-for (let i = 0; i < toBuild.length; i += 3) {
-  const built = await Promise.all(toBuild.slice(i, i + 3).map((w) => buildCircle(w.key)));
-  plan.push(...built);
-}
-saveNow();
-
-// --- 3. bring them to life --------------------------------------------------
-
-for (const saved of plan) {
+/** The running version of a saved circle (people loaded, not started yet). */
+async function hydrate(saved) {
   const members = [];
   const circle = new SimCircle({ world, key: saved.key, spec: saved.spec, center: saved.center, places: saved.places, members, owner: null });
-  circle.spec = { ...saved.spec, circleName: saved.spec.circleName };
-  for (const p of saved.members) {
-    const client = makeClient(p.accountKey, p.ip);
-    await client.load();
-    const m = new SimMember({ world, circle, person: p, index: p.index, client, ip: p.ip, home: p.home, work: p.work, alwaysOpen: p.alwaysOpen });
-    members.push(m);
-    world.simIds.add(client.account.memberId);
-  }
-  circle.owner = members[0];
   circle.saved = saved;
+  for (const p of saved.members) members.push(await loadMember(circle, p));
+  circle.owner = members[0];
   world.circles.push(circle);
+  return circle;
 }
+
+async function loadMember(circle, p) {
+  const client = makeClient(p.accountKey, p.ip);
+  await client.load();
+  const m = new SimMember({ world, circle, person: p, index: p.index, client, ip: p.ip, home: p.home, work: p.work, alwaysOpen: p.alwaysOpen });
+  world.simIds.add(client.account.memberId);
+  return m;
+}
+
+/** One more person joins through an invite, like a real sign-up. */
+async function addPerson(circle) {
+  const saved = circle.saved;
+  const names = new Set(saved.members.map((p) => p.name));
+  const next = saved.planned?.length ? saved.planned.shift() : newPerson(saved.key, names);
+  if (names.has(next.name)) Object.assign(next, newPerson(saved.key, names), { role: next.role, travel: next.travel });
+  const p = personRecord(saved, next, Math.max(...saved.members.map((x) => x.index)) + 1);
+  const owner = circle.owner;
+  const inv = await patiently(() => owner.client.createInvite({ hours: 1 }), 'invite');
+  const c = makeClient(p.accountKey, p.ip);
+  await patiently(() => c.joinWithInvite(inv.link, { name: p.name }), 'join');
+  metrics.count('joins');
+  saved.members.push(p);
+  saveSoon();
+  const m = await loadMember(circle, p);
+  circle.members.push(m);
+  if (circle.active) {
+    await m.boot();
+    world.feed(circle, m.name, 'joined the circle', 'place');
+  }
+  return m;
+}
+
+/** The newest person (never the owner) leaves the circle. */
+async function removePerson(circle) {
+  if (circle.members.length <= 1) return;
+  const m = circle.members[circle.members.length - 1];
+  circle.members.pop();
+  circle.saved.members = circle.saved.members.filter((p) => p.accountKey !== m.client.accountKey);
+  saveSoon();
+  await m.leave().catch((e) => log(`${m.name} couldn’t leave ${circle.name}: ${e.message}`));
+}
+
+/** How many people this circle should have right now. */
+function wantedSize(circle) {
+  const fixed = target.people[circle.key];
+  if (fixed != null) return fixed;
+  // Varied sizes: the size it was built with.
+  return circle.saved.members.length + (circle.saved.planned?.length ?? 0);
+}
+
+async function startCircle(circle) {
+  await userInvite(circle).catch((e) => log(`invite for ${circle.name} failed: ${e.message}`));
+  circle.stopped = false;
+  await Promise.all(
+    circle.members.map(async (m, j) => {
+      await sleep(Math.random() * Math.min(20_000, 400 * j + 1000));
+      await m.boot().catch((e) => log(`${m.name} couldn’t start: ${e.message}`));
+    }),
+  );
+  circle.activate();
+  log(`online: “${circle.name}” (${circle.members.length} people)`);
+}
+
+/** Make room for a new circle by deleting a paused one nobody outside the swarm joined. */
+async function freeACircle() {
+  const idle = world.circles.filter((c) => !c.active && !c.busy);
+  const victim = idle.find((c) => !c.userMembers().length) || idle[0];
+  if (!victim) return false;
+  await victim.owner.run(() => victim.owner.client.deleteCircle()).catch(() => {});
+  world.circles.splice(world.circles.indexOf(victim), 1);
+  state.circles.splice(state.circles.indexOf(victim.saved), 1);
+  saveSoon();
+  log(`deleted paused circle “${victim.name}” to make room`);
+  return true;
+}
+
+const status = { busy: false, note: '' };
+let reconcileAgain = false;
+let reconciling = null;
+/**
+ * Bring the running swarm to the target mix: build, resume or pause circles,
+ * then have people join or leave until each circle is the right size.
+ * Runs one at a time; a change made meanwhile triggers another pass.
+ */
+function reconcile({ rampMs = 0 } = {}) {
+  if (reconciling) {
+    reconcileAgain = true;
+    return reconciling;
+  }
+  reconciling = (async () => {
+    do {
+      reconcileAgain = false;
+      status.busy = true;
+      try {
+        await reconcileOnce(rampMs);
+      } catch (e) {
+        log(`couldn’t reach the target mix: ${e.message}`);
+        status.note = e.message;
+      }
+      rampMs = 0;
+    } while (reconcileAgain);
+    status.busy = false;
+  })().finally(() => (reconciling = null));
+  return reconciling;
+}
+
+async function reconcileOnce(rampMs) {
+  // Circles: the first N of each kind run, the rest pause (kept for later).
+  const toStart = [];
+  for (const k of KINDS) {
+    const mine = world.circles.filter((c) => c.key === k);
+    const want = target.circles[k];
+    mine.slice(want).forEach((c) => {
+      if (c.active || !c.stopped) {
+        c.deactivate();
+        log(`paused: “${c.name}”`);
+      }
+    });
+    for (const c of mine.slice(0, want)) if (!c.active) toStart.push(c);
+    for (let i = mine.length; i < want; i++) toStart.push({ build: k });
+  }
+  // Circles about to start must not be picked to make room.
+  for (const c of world.circles) c.busy = toStart.includes(c);
+  const needNew = toStart.filter((x) => x.build).length;
+  if (needNew) log(`building ${needNew} circle(s)…`);
+  status.note = needNew ? `building ${needNew} circle(s)` : '';
+  // Build the new ones a few at a time: realistic sign-up bursts.
+  for (let i = 0; i < toStart.length; i++) {
+    const x = toStart[i];
+    if (!x.build) continue;
+    if (state.circles.length >= MAX_CIRCLES && !(await freeACircle())) {
+      status.note = 'the server is full (100 circles)';
+      toStart[i] = null;
+      continue;
+    }
+    toStart[i] = await hydrate(await patiently(() => createSavedCircle(x.build), 'create circle'));
+  }
+  const starting = toStart.filter(Boolean);
+  // Fill circles to size before they start, so they come online whole.
+  await resize(starting);
+  const stagger = starting.length > 1 ? rampMs / (starting.length - 1) : 0;
+  const t0 = Date.now();
+  for (const [i, c] of starting.entries()) {
+    const at = t0 + i * stagger;
+    if (at > Date.now()) await sleep(at - Date.now());
+    status.note = `starting ${i + 1} of ${starting.length} circles`;
+    await startCircle(c);
+  }
+  // Running circles: people join or leave to match the target size.
+  await resize(world.circles.filter((c) => c.active));
+  for (const c of world.circles) c.busy = false;
+  status.note = '';
+}
+
+async function resize(circles) {
+  const jobs = [];
+  for (const c of circles) {
+    const want = wantedSize(c);
+    const diff = want - c.members.length;
+    if (!diff) continue;
+    jobs.push(async () => {
+      for (let i = 0; i < Math.abs(diff); i++) {
+        status.note = `${diff > 0 ? 'adding people to' : 'removing people from'} “${c.name}”`;
+        try {
+          if (diff > 0) await addPerson(c);
+          else await removePerson(c);
+        } catch (e) {
+          if (e?.code === 'circle_full') break;
+          log(`resizing “${c.name}”: ${e.message}`);
+          break;
+        }
+        if (reconcileAgain) return; // the target changed again; start over
+      }
+      log(`“${c.name}” now has ${c.members.length} people`);
+    });
+  }
+  // A few circles at a time.
+  for (let i = 0; i < jobs.length; i += 4) await Promise.all(jobs.slice(i, i + 4).map((j) => j()));
+}
+
+for (const saved of state.circles) await hydrate(saved);
+for (const c of world.circles) c.stopped = true;
 world.simIds.add(hq.account.memberId);
+saveNow();
 
 async function userInvite(circle) {
   const s = circle.saved;
@@ -325,7 +524,28 @@ const dashboard = await startDashboard({
     now: Date.now(),
     phase,
     speed: world.speed,
-    scale: opt.scale,
+    scale: opt.scale ?? 'custom',
+    mix: {
+      busy: status.busy,
+      note: status.note,
+      maxPeople: MAX_PEOPLE,
+      maxCircles: MAX_CIRCLES,
+      kinds: KINDS.map((k) => {
+        const running = world.circles.filter((c) => c.key === k && c.active);
+        const sizes = running.map((c) => c.members.length);
+        return {
+          key: k,
+          label: SCENARIOS[k].label,
+          circles: target.circles[k],
+          running: running.length,
+          paused: world.circles.filter((c) => c.key === k && c.stopped).length,
+          people: target.people[k] ?? null,
+          minPeople: sizes.length ? Math.min(...sizes) : null,
+          maxPeople: sizes.length ? Math.max(...sizes) : null,
+          avgPeople: sizes.length ? Math.round((sizes.reduce((a, b) => a + b, 0) / sizes.length) * 10) / 10 : null,
+        };
+      }),
+    },
     server,
     inviteServer,
     csvPath,
@@ -335,7 +555,7 @@ const dashboard = await startDashboard({
     timeline: metrics.timeline,
     ha: metrics.ha,
     hq: { name: hq.circle.name, invite: state.hqInvite?.link, joined: hq.memberList().filter((m) => !world.simIds.has(m.id)).length > 0 },
-    circles: world.circles.map((c) => ({
+    circles: world.circles.filter((c) => c.active || !c.stopped).map((c) => ({
       name: c.name,
       label: c.scenario.label,
       active: c.active,
@@ -348,6 +568,16 @@ const dashboard = await startDashboard({
     feed: feedItems.slice(-40).reverse(),
     recentErrors: metrics.recentErrors.slice(-5).reverse(),
   }),
+  setMix: ({ kind, circles, people }) => {
+    if (!KINDS.includes(kind)) return;
+    if (circles != null && Number.isFinite(Number(circles))) target.circles[kind] = Number(circles);
+    if (people === 'varied') delete target.people[kind];
+    else if (people != null && Number.isFinite(Number(people))) target.people[kind] = Number(people);
+    clampTarget();
+    const t = target.people[kind];
+    log(`mix: ${SCENARIOS[kind].label}: ${target.circles[kind]} circle(s), ${t ?? 'varied'} people each`);
+    reconcile();
+  },
   setSpeed: (s) => {
     world.speed = Math.min(500, Math.max(0.1, s));
     log(`speed is now ${world.speed}×`);
@@ -370,22 +600,11 @@ function summary() {
   return `📊 ${c.people} people in ${c.circles} circles · ${c.online} with the app open · ${m.perMin} requests/min · p95 ${m.p95 ?? '–'} ms · ${m.errorsPerMin} errors/min${ha} · speed ${world.speed}×`;
 }
 
-const stagger = world.circles.length > 1 ? rampMs / (world.circles.length - 1) : 0;
 (async () => {
   phase = 'ramping up';
-  for (const [i, circle] of world.circles.entries()) {
-    const at = startedAt + i * stagger;
-    if (at > Date.now()) await sleep(at - Date.now());
-    await userInvite(circle).catch((e) => log(`invite for ${circle.name} failed: ${e.message}`));
-    await Promise.all(
-      circle.members.map(async (m, j) => {
-        await sleep(Math.random() * Math.min(20_000, 400 * j + 1000));
-        await m.boot().catch((e) => log(`${m.name} couldn’t start: ${e.message}`));
-      }),
-    );
-    circle.activate();
-    log(`online: “${circle.name}” (${circle.members.length} people)`);
-  }
+  const mix = KINDS.map((k) => `${target.circles[k]} ${k}${target.people[k] != null ? ` × ${target.people[k]}` : ''}`).join(', ');
+  log(`mix: ${mix}`);
+  await reconcile({ rampMs });
   phase = 'running';
   const c = world.counts();
   log(`all ${c.circles} circles running, ${c.people} people`);

@@ -5,7 +5,7 @@
 import { createServer } from 'node:http';
 import qrcode from 'qrcode-generator';
 
-export async function startDashboard({ port, stats, setSpeed }) {
+export async function startDashboard({ port, stats, setSpeed, setMix }) {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     try {
@@ -16,6 +16,16 @@ export async function startDashboard({ port, stats, setSpeed }) {
       if (url.pathname === '/api/speed' && req.method === 'POST') {
         const s = Number(url.searchParams.get('x'));
         if (Number.isFinite(s) && s > 0) setSpeed(s);
+        res.writeHead(204);
+        return res.end();
+      }
+      if (url.pathname === '/api/mix' && req.method === 'POST') {
+        let body = '';
+        for await (const chunk of req) {
+          body += chunk;
+          if (body.length > 2000) break;
+        }
+        setMix(JSON.parse(body || '{}'));
         res.writeHead(204);
         return res.end();
       }
@@ -108,6 +118,18 @@ dialog::backdrop { background: rgb(0 0 0 / .45); }
 dialog img { width: 100%; background: #fff; border-radius: 10px; }
 dialog code { display: block; word-break: break-all; font-size: 11px; color: var(--muted); margin: 10px 0; }
 .foot { color: var(--muted); font-size: 12px; margin-top: 16px; }
+.mix { margin-bottom: 14px; }
+.mix-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-bottom: 4px; }
+.mix-head h2 { margin: 0; }
+.mix td, .mix th { white-space: nowrap; }
+.step { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.step button { border: 0; background: transparent; color: var(--ink); width: 30px; height: 30px; font: inherit; font-size: 16px; cursor: pointer; }
+.step button:hover { background: color-mix(in srgb, var(--brand) 12%, transparent); }
+.step input { width: 52px; height: 30px; border: 0; border-inline: 1px solid var(--line); background: var(--card); color: var(--ink); text-align: center; font: inherit; font-variant-numeric: tabular-nums; -moz-appearance: textfield; }
+.step input::-webkit-outer-spin-button, .step input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.step input::placeholder { color: var(--muted); font-size: 12px; }
+.linkish { border: 0; background: none; color: var(--brand); cursor: pointer; font: inherit; font-size: 12px; padding: 0 4px; }
+.busy { color: var(--brand); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -120,6 +142,11 @@ dialog code { display: block; word-break: break-all; font-size: 11px; color: var
   </header>
   <div id="hint" class="hint" hidden></div>
   <section class="kpis" id="kpis"></section>
+  <section class="card mix">
+    <div class="mix-head"><h2>Circles and people</h2><span class="busy" id="mix-note"></span></div>
+    <p class="sub" style="margin:0 0 6px;font-size:12px">Change how many circles of each kind run and how many people are in each. New circles and people join through invites; fewer circles pause (and come back when you raise it again); fewer people leave their circle.</p>
+    <div class="table-wrap"><table id="mix"></table></div>
+  </section>
   <section class="charts">
     <div class="card"><h2>Home Assistant CPU</h2><div class="legend" id="lg-cpu"></div><svg class="chart" id="ch-cpu"></svg></div>
     <div class="card"><h2>Home Assistant memory</h2><div class="legend" id="lg-mem"></div><svg class="chart" id="ch-mem"></svg></div>
@@ -196,6 +223,7 @@ function chart(id, legendId, tl, series, unit, fixedMax) {
 
 function render(s) {
   current = s;
+  renderMix(s.mix);
   const m = s.lastMinute, c = s.counts, v = s.ha.values || {}, t = s.totals;
   $('phase').textContent = s.phase;
   $('where').textContent = s.server + ' · ' + s.scale + ' · running ' + ago(s.now - s.startedAt);
@@ -249,6 +277,63 @@ $('qr-close').onclick = () => $('qr').close();
 $('speed').addEventListener('click', (e) => {
   const x = e.target.dataset?.x;
   if (x) fetch('/api/speed?x=' + x, { method: 'POST' }).then(tick);
+});
+
+// --- circles and people -------------------------------------------------
+const pending = {}; // kind -> { circles?, people? } typed but not yet applied
+const timers = {};
+let mixBuilt = false;
+function stepper(kind, field, value, placeholder, max) {
+  return '<span class="step"><button data-k="' + kind + '" data-f="' + field + '" data-d="-1" aria-label="fewer">−</button>' +
+    '<input type="number" min="0" max="' + max + '" data-k="' + kind + '" data-f="' + field + '" value="' + (value ?? '') + '" placeholder="' + esc(placeholder || '') + '">' +
+    '<button data-k="' + kind + '" data-f="' + field + '" data-d="1" aria-label="more">+</button></span>';
+}
+function renderMix(mix) {
+  $('mix-note').textContent = mix.busy ? (mix.note || 'working…') + ' …' : mix.note;
+  const active = document.activeElement;
+  if (mixBuilt && active && active.closest && active.closest('#mix')) return; // don't fight the typing
+  if (Object.keys(pending).length) return;
+  let total = { circles: 0, running: 0 };
+  const rows = mix.kinds.map((k) => {
+    total.circles += k.circles;
+    total.running += k.running;
+    const range = k.minPeople == null ? '' : k.minPeople === k.maxPeople ? String(k.minPeople) : k.minPeople + '–' + k.maxPeople;
+    const now = k.running + ' running' + (k.paused ? ' · ' + k.paused + ' paused' : '') + (range ? ' · ' + range + ' people each' : '');
+    return '<tr><td>' + esc(k.label) + '</td><td>' + stepper(k.key, 'circles', k.circles, '', mix.maxCircles) + '</td><td>' +
+      stepper(k.key, 'people', k.people, k.avgPeople != null ? 'varied' : 'varied', mix.maxPeople) +
+      (k.people != null ? '<button class="linkish" data-k="' + k.key + '" data-varied="1" title="Back to each circle’s own size">use varied</button>' : '') +
+      '</td><td class="sub">' + now + '</td></tr>';
+  });
+  $('mix').innerHTML = '<tr><th>Kind</th><th>Circles</th><th>People per circle</th><th>Now</th></tr>' + rows.join('') +
+    '<tr><td><b>Total</b></td><td class="sub">' + total.circles + ' of ' + mix.maxCircles + ' max</td><td class="sub">up to ' + mix.maxPeople + ' each</td><td class="sub">' + total.running + ' running</td></tr>';
+  mixBuilt = true;
+}
+function queueMix(kind, change) {
+  pending[kind] = { ...(pending[kind] || {}), ...change };
+  clearTimeout(timers[kind]);
+  timers[kind] = setTimeout(async () => {
+    const body = { kind, ...pending[kind] };
+    delete pending[kind];
+    await fetch('/api/mix', { method: 'POST', body: JSON.stringify(body) });
+    tick();
+  }, 700);
+}
+$('mix').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.varied) return queueMix(b.dataset.k, { people: 'varied' });
+  const input = b.parentElement.querySelector('input');
+  const k = current?.mix.kinds.find((x) => x.key === b.dataset.k);
+  const base = input.value !== '' ? Number(input.value) : b.dataset.f === 'people' ? Math.round(k?.avgPeople ?? 5) : 0;
+  const min = b.dataset.f === 'people' ? 2 : 0;
+  const v = Math.min(Number(input.max), Math.max(min, base + Number(b.dataset.d)));
+  input.value = v;
+  queueMix(b.dataset.k, { [b.dataset.f]: v });
+});
+$('mix').addEventListener('input', (e) => {
+  const i = e.target;
+  if (i.tagName !== 'INPUT' || i.value === '') return;
+  queueMix(i.dataset.k, { [i.dataset.f]: Math.min(Number(i.max), Math.max(0, Number(i.value))) });
 });
 
 async function tick() {

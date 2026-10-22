@@ -94,6 +94,7 @@ export class SimCircle {
     this.members = members;
     this.owner = owner;
     this.active = false;
+    this.stopped = false; // paused: nobody in it does anything
     this.messages = 0;
     this.userInvite = null;
     this.handled = new Set();
@@ -120,6 +121,7 @@ export class SimCircle {
 
   activate() {
     this.active = true;
+    this.stopped = false;
     const s = this.scenario;
     this._schedule('thread', s.threadEvery);
     this._schedule('dm', s.dmEvery);
@@ -128,10 +130,20 @@ export class SimCircle {
     this._schedule('placeChurn', 600);
   }
 
+  /** Pause the circle: everyone closes the app and stops moving and talking. */
+  deactivate() {
+    this.active = false;
+    this.stopped = true;
+    for (const m of this.members) {
+      m.appOpen = false;
+      m.client.disconnect();
+    }
+  }
+
   tick(dt) {
     const now = this.world.simMin;
     const s = this.scenario;
-    for (const m of this.members) m.tick(dt);
+    for (const m of [...this.members]) m.tick(dt);
     if (this.next.thread <= now) {
       this._schedule('thread', s.threadEvery);
       this.startThread();
@@ -276,6 +288,9 @@ export class SimMember {
     this.inside = new Set();
     this.queue = Promise.resolve();
     this.dead = false;
+    this.client.on('newMessage', (m) => this.onMessage(m, true));
+    this.client.on('locationRequest', () => setTimeout(() => this.upload('requested', { force: true }), rand(1, 4) * 1000));
+    this.client.on('removed', () => (this.dead = true));
   }
 
   get memberId() {
@@ -290,7 +305,7 @@ export class SimMember {
 
   /** One thing at a time per phone, and within the swarm's in-flight cap. */
   run(fn) {
-    const job = this.queue.then(() => (this.dead ? null : this.world.run(fn)));
+    const job = this.queue.then(() => (this.dead || this.circle.stopped ? null : this.world.run(fn)));
     this.queue = job.catch(() => {});
     return job;
   }
@@ -305,13 +320,19 @@ export class SimMember {
     this.until = this.world.simMin + rand(0, this.circle.scenario.dwell[1]);
     this.appOpen = this.alwaysOpen;
     this.nextToggle = this.world.simMin + rand(...this.circle.scenario.appOpenEvery);
+    this.inside = new Set();
     for (const pl of this.circle.places) if (distanceM(this.pos, pl) <= pl.radius) this.inside.add(pl.key);
-    this.client.on('newMessage', (m) => this.onMessage(m, true));
-    this.client.on('locationRequest', () => setTimeout(() => this.upload('requested', { force: true }), rand(1, 4) * 1000));
-    this.client.on('removed', () => (this.dead = true));
     await this.run(() => this.client.catchUp());
     if (this.appOpen) this.client.connect();
     await this.upload('update', { force: true });
+  }
+
+  /** Leave the circle for good (the circle got smaller). */
+  async leave() {
+    this.dead = true;
+    this.client.disconnect();
+    await this.world.run(() => this.client.leave());
+    this.world.feed(this.circle, this.name, 'left the circle', 'place');
   }
 
   tick(dt) {
