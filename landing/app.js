@@ -346,18 +346,30 @@ fly secrets list   # remember the SETUP_TOKEN you set`,
     (cfg.setupGuide ? `<a class="btn" href="${esc(cfg.setupGuide)}" target="_blank" rel="noopener noreferrer">Step-by-step guide</a>` : '');
 
   // --- what's new ------------------------------------------------------------
+  // Only versions that have been released, so the list never gets ahead of
+  // the download button. Re-drawn once the latest release loads from GitHub.
   const changelog = $('#changelog-list');
-  if (changelog && Array.isArray(window.HOMECIRCLE_CHANGELOG)) {
+  const newer = (a, b) => {
+    const x = a.split('.').map(Number);
+    const y = b.split('.').map(Number);
+    for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+    return false;
+  };
+  const renderChangelog = (released) => {
+    if (!changelog || !Array.isArray(window.HOMECIRCLE_CHANGELOG)) return;
     const fmt = (d) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-    changelog.innerHTML = window.HOMECIRCLE_CHANGELOG.map(
-      (r, i) => `
+    changelog.innerHTML = window.HOMECIRCLE_CHANGELOG.filter((r) => !released || !newer(r.version, released))
+      .map(
+        (r, i) => `
       <details class="release"${i === 0 ? ' open' : ''}>
         <summary><span class="ver">v${esc(r.version)}</span><span class="rel-title">${esc(r.title)}</span><span class="rel-date">${esc(fmt(r.date))}</span></summary>
         <ul>${r.items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
         <a class="rel-link" href="https://github.com/${esc(repo)}/releases/tag/v${esc(r.version)}" target="_blank" rel="noopener noreferrer">Release on GitHub</a>
       </details>`,
-    ).join('');
-  }
+      )
+      .join('');
+  };
+  renderChangelog(cfg.androidVersion);
 
   // The latest release's version, date and size, so the button always matches
   // what it downloads. Falls back to cfg.androidVersion if GitHub can't be reached.
@@ -376,6 +388,7 @@ fly secrets list   # remember the SETUP_TOKEN you set`,
       .then((rel) => {
         const version = String(rel?.tag_name || '').replace(/^v/, '');
         if (!version) return;
+        renderChangelog(version);
         const apk = (rel.assets || []).find((a) => a.name === 'HomeCircle.apk');
         const linkEl = $('#apk-link');
         if (linkEl) linkEl.textContent = `⬇ Android app (APK) · v${version}`;
