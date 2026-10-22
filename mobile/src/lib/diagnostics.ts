@@ -98,16 +98,19 @@ export function formatEntry(x: DiagEntry): string {
  * between location uploads, which is what usually explains "why was Mom's
  * pin stale".
  */
-export function summarize(entries: DiagEntry[]) {
+export function summarize(entries: DiagEntry[], now = Date.now()) {
   const count = (e: string) => entries.filter((x) => x.e === e).length;
   const uploads = entries.filter((x) => x.e === 'upload').map((x) => x.t).sort((a, b) => a - b);
+  // Longest stretch without a successful upload, including from the start of
+  // the log to the first upload and from the last upload until now.
+  const marks = entries.length ? [entries[0].t, ...uploads, now] : [];
   let longestGap = 0;
   let gapEnd = 0;
-  for (let i = 1; i < uploads.length; i++) {
-    const g = uploads[i] - uploads[i - 1];
+  for (let i = 1; i < marks.length; i++) {
+    const g = marks[i] - marks[i - 1];
     if (g > longestGap) {
       longestGap = g;
-      gapEnd = uploads[i];
+      gapEnd = marks[i];
     }
   }
   return {
@@ -122,10 +125,16 @@ export function summarize(entries: DiagEntry[]) {
     errors: entries.filter((x) => x.e.endsWith('-failed') || x.e === 'error').length,
     longestGapMin: Math.round(longestGap / 60_000),
     longestGapEnded: gapEnd || null,
+    gapOngoing: !!gapEnd && gapEnd === now,
   };
 }
 
 /** The whole log as text, for sharing or a direct message to an admin. */
+/** "45 min" or "3.5 h". */
+export function formatGap(min: number) {
+  return min < 90 ? `${min} min` : `${Math.round(min / 6) / 10} h`;
+}
+
 export function diagnosticsText(entries: DiagEntry[], header: string, maxLines?: number) {
   const s = summarize(entries);
   const lines = (maxLines ? entries.slice(-maxLines) : entries).map(formatEntry);
@@ -133,7 +142,7 @@ export function diagnosticsText(entries: DiagEntry[], header: string, maxLines?:
     header,
     `Since ${s.since ? time(s.since) : '—'}: ${s.wakeups} background wake-ups, ${s.uploads} location uploads (${s.uploadFailures} failed),`,
     `${s.arrivals} arrivals and ${s.departures} departures (${s.placeRetries} retried), ${s.locateRequests} Locate requests, ${s.errors} errors.`,
-    `Longest gap between uploads: ${s.longestGapMin} min${s.longestGapEnded ? ` (ended ${time(s.longestGapEnded)})` : ''}.`,
+    `Longest time without an upload: ${formatGap(s.longestGapMin)}${s.gapOngoing ? ' (still going on)' : s.longestGapEnded ? ` (ended ${time(s.longestGapEnded)})` : ''}.`,
     '',
     ...lines,
   ].join('\n');

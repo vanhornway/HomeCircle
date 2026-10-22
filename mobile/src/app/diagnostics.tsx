@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Alert, FlatList, Share, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Button, Card, P } from '../components/ui';
-import { clearDiagnostics, diagnosticsText, formatEntry, readDiagnostics, summarize, type DiagEntry } from '../lib/diagnostics';
+import { clearDiagnostics, diagnosticsText, formatEntry, formatGap, readDiagnostics, summarize, type DiagEntry } from '../lib/diagnostics';
 import { errorText, getClient } from '../lib/circle';
 import { useTheme } from '../theme';
 
@@ -65,7 +65,7 @@ export default function Diagnostics() {
               {stat('Location uploads', `${s.uploads}${s.uploadFailures ? ` (${s.uploadFailures} failed)` : ''}`)}
               {stat('Arrivals / departures', `${s.arrivals} / ${s.departures}`)}
               {stat('Locate requests', s.locateRequests)}
-              {stat('Longest gap', `${s.longestGapMin} min`)}
+              {stat(s.gapOngoing ? 'Since last upload' : 'Longest without an upload', formatGap(s.longestGapMin))}
               {stat('Errors', s.errors)}
             </Card>
           ) : null}
