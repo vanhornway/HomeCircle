@@ -3,7 +3,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
+import Constants from 'expo-constants';
 import { LEAFLET_CSS, LEAFLET_JS } from './leafletAssets.generated';
+
+// OpenStreetMap blocks tile requests that don't identify the app. The map page
+// gets HomeCircle's site as its origin, so tiles send that as the Referer (not
+// your server's address), and the WebView's user agent names the app.
+const MAP_BASE_URL = 'https://homecircle.umair.us/';
+const APP_NAME_FOR_USER_AGENT = `HomeCircle/${Constants.expoConfig?.version ?? 'app'}`;
 
 // react-native-webview's class typings don't line up with React 19's JSX types yet.
 const WebView = RNWebView as unknown as React.ComponentType<any>;
@@ -65,7 +72,7 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
 <script>
 (function(){
   var map = L.map('map', {zoomControl:false, worldCopyJump:true}).setView([30,0], 2);
-  L.tileLayer(${JSON.stringify(tileUrl)}, {maxZoom:19, attribution:${JSON.stringify(attribution)}}).addTo(map);
+  L.tileLayer(${JSON.stringify(tileUrl)}, {maxZoom:19, attribution:${JSON.stringify(attribution)}, referrerPolicy:'strict-origin'}).addTo(map);
   var people = {}, placeLayer = L.layerGroup().addTo(map), pickLayer = L.layerGroup().addTo(map);
   var fitted = false, pick = false;
   function post(m){ window.ReactNativeWebView.postMessage(JSON.stringify(m)); }
@@ -167,8 +174,9 @@ export function FamilyMap({
         key={html.length + (dark ? 'd' : 'l')}
         originWhitelist={['*']}
         // The map page may only ever be itself: block link taps (e.g. attribution).
-        onShouldStartLoadWithRequest={(r: { url: string }) => r.url.startsWith('about:')}
-        source={{ html }}
+        onShouldStartLoadWithRequest={(r: { url: string }) => r.url === MAP_BASE_URL || r.url.startsWith('about:')}
+        source={{ html, baseUrl: MAP_BASE_URL }}
+        applicationNameForUserAgent={APP_NAME_FOR_USER_AGENT}
         onMessage={onMessage}
         onLoadStart={() => setReady(false)}
         javaScriptEnabled
