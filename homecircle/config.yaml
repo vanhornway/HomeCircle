@@ -1,0 +1,28 @@
+name: HomeCircle
+version: "0.7.0"
+slug: homecircle
+description: Private family location sharing and chat, end-to-end encrypted, on your own Home Assistant.
+url: https://github.com/vanhornway/HomeCircle
+arch:
+  - aarch64
+  - amd64
+  - armv7
+init: false
+startup: application
+boot: auto
+# The family's phones reach HomeCircle through Tailscale Funnel (a public
+# https:// address). Port 8080 is also open on your home network.
+ports:
+  8080/tcp: 8080
+ports_description:
+  8080/tcp: HomeCircle on your home network (http)
+webui: "http://[HOST]:[PORT:8080]"
+options:
+  tailscale_auth_key: ""
+  tailscale_hostname: homecircle
+  setup_code: ""
+schema:
+  tailscale_auth_key: password?
+  tailscale_hostname: match(^[a-z0-9][a-z0-9-]{0,62}$)
+  setup_code: password?
+backup: hot

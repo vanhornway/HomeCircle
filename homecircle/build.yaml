@@ -1,0 +1,6 @@
+# The add-on is the regular HomeCircle server image (multi-arch) plus
+# Tailscale; Home Assistant builds it on your machine from the Dockerfile.
+build_from:
+  aarch64: ghcr.io/vanhornway/homecircle:latest
+  amd64: ghcr.io/vanhornway/homecircle:latest
+  armv7: ghcr.io/vanhornway/homecircle:latest

@@ -1,6 +1,22 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.7.0',
+    date: '2026-10-21',
+    title: 'Reliable background tracking, setup check and Home Assistant',
+    items: [
+      'More reliable location in the background: updates every minute while you’re moving, and arrive/leave alerts are kept and re-sent until they get through.',
+      'Setup check: everything your phone needs to share reliably, with a one-tap fix for each (Always location, precise location, notifications, battery and app-pausing settings).',
+      'Clearer status under each name: Battery saver on, Location set to While Using, Paused, Didn’t answer Locate, Battery may have died, No signal since…',
+      'Locate shows its progress: Sent, Delivered, Updated, or Didn’t answer. Each person can be located up to 6 times an hour.',
+      'Diagnostics: a private 7-day log of what your phone did in the background, which you can send to your circle’s admin.',
+      'Circle health for admins: how each phone is set up, with a Nudge to fix problems.',
+      'Places now need a radius of at least 500 ft, so arrivals aren’t missed.',
+      'Run your server as a Home Assistant add-on, with Tailscale built in.',
+      'The server log shows the one-time setup code again.',
+    ],
+  },
+  {
     version: '0.6.0',
     date: '2026-10-21',
     title: 'Directions, check-ins and more control over sharing',

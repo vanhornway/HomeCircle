@@ -18,8 +18,8 @@ walks you through the rest.
 
 - An Android phone for each person (iPhone: see [the note below](#iphone)).
 - One of these to run your server: a hosting account (Render, about $7/month),
-  a cheap cloud server (DigitalOcean or Hetzner, about $4–6/month), or a
-  computer that stays on at home (Raspberry Pi, Mac, PC).
+  a cheap cloud server (DigitalOcean or Hetzner, about $4–6/month), a
+  computer that stays on at home (Raspberry Pi, Mac, PC), or Home Assistant.
 
 ---
 
@@ -28,6 +28,9 @@ walks you through the rest.
 Your server is where your family's encrypted data lives. Everything is
 encrypted on the phones first, so the server (and whoever hosts it) can't read
 locations or messages. Pick **one** option.
+
+> **Already run Home Assistant?** Use [Option E](#option-e-home-assistant-free-data-stays-home):
+> it's free, needs no command line, and is included in your Home Assistant backups.
 
 ### Option A: Render (easiest, no command line)
 
@@ -84,6 +87,23 @@ Family phones do **not** need Tailscale installed.
    is [Tailscale Funnel](https://tailscale.com/kb/1223/funnel): install
    Tailscale on that computer, then run `tailscale funnel --bg 8080`. The
    address it prints is your **Server address**.
+
+### Option E: Home Assistant (free, data stays home)
+
+Needs Home Assistant OS or Supervised (with **Settings → Add-ons**).
+
+1. Click [Add to Home Assistant](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fvanhornway%2FHomeCircle),
+   then **Add**. Install **HomeCircle** from the Add-on Store.
+2. Get a free Tailscale auth key: sign up at <https://login.tailscale.com/start>,
+   click **Enable HTTPS** on the **DNS** page, then **Settings → Keys →
+   Generate auth key**.
+3. Paste the key in the add-on's **Configuration** tab, **Save**, then
+   **Start** it.
+4. The add-on's **Log** tab shows your **Server address** (like
+   `https://homecircle.tail1234.ts.net`) and **Setup code**.
+
+Every click, what the log should say, and fixes for common problems
+is in the [Home Assistant guide](HOME-ASSISTANT.md).
 
 More choices (Fly.io, Railway, Cloudflare Tunnel, your own domain) are in
 [deploy/README.md](../deploy/README.md).
@@ -181,7 +201,23 @@ aren't in. You don't need a second server.
 - **Locate:** anyone in a circle can tap **Locate** next to anyone else (or
   **Refresh everyone**) to ask their phone for a fresh location right now.
   Agreeing to this is part of joining a circle. If someone pauses sharing,
-  everyone sees "Paused sharing" instead of an old location.
+  everyone sees "Paused sharing" instead of an old location. Locate shows its
+  progress: **Sent**, **Delivered** (their phone got it), **Updated**, or
+  **Didn't answer** if their phone is off or out of signal. You can locate the
+  same person up to 6 times an hour.
+- **Status under each name:** tells you why a location might be old, for
+  example **Battery saver on**, **Location set to While Using**, **Battery may
+  have died** (their last update was a low-battery one) or **No signal since
+  3:40 PM**.
+- **Setup check:** **Settings → Setup check** lists everything your phone needs
+  to share reliably, with a green check or a **Fix** button for each. The Map
+  shows a banner when something needs attention.
+- **Diagnostics:** **Settings → Diagnostics** shows what your phone did in the
+  background over the last 7 days. It stays on your phone unless you tap
+  **Send to admin**.
+- **Circle health (admins):** **Settings → Circle health** shows how each
+  phone is set up. **Nudge to fix setup** sends that person a message with a
+  button that opens their Setup check.
 - **Chats:** the Chats tab lists every conversation: each circle's group chat
   and your direct messages, with unread counts. Tap **New message** to start a
   direct message with anyone in your circles, or tap **Message** next to a
@@ -193,7 +229,7 @@ aren't in. You don't need a second server.
 - **Low battery:** at 10% and again at 5%, your phone sends one last update so
   your circle knows where you were if it dies.
 - **Places:** tap **Add a place**, type an address (or tap the map), and pick a
-  radius in feet. Turn on **Add to all my circles** to share it with every
+  radius in feet (500 ft or more; smaller areas can't be detected reliably). Turn on **Add to all my circles** to share it with every
   circle you're in. When someone arrives or leaves, their circle's group chat
   gets a message.
 - **Place alerts:** in **Settings → Place alerts**, untick **Announce my
@@ -232,5 +268,6 @@ shared while that page is open.
 |---|---|
 | "Can't reach the server" | Open the server address in the phone's browser. If it doesn't load, the server is off or the address is wrong. Fix the address under **Settings → Change server address**. |
 | "Setup code is wrong" | The code works once and is case-sensitive. On Docker without `SETUP_TOKEN`, it changes each time the server restarts; run `docker logs homecircle` again. |
-| Someone's location is old | Check they chose **Allow all the time** and set Battery to **Unrestricted**. Opening the app on their phone sends a fresh update. |
+| Someone's location is old | Read the status under their name. Ask them to open **Settings → Setup check** and fix anything marked **!**. Admins can see every phone in **Settings → Circle health**. Opening the app on their phone sends a fresh update. |
+| Arrive/leave alerts are missing | On that phone, check **Setup check**, then **Settings → Diagnostics → Send to admin** so the admin can see what happened in the background. |
 | New phone | Ask the admin for a new invite. The admin can remove the old phone in **Settings**: tap **Remove** next to the person. |

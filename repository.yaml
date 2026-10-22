@@ -1,0 +1,5 @@
+# Home Assistant add-on repository. In Home Assistant: Settings → Add-ons →
+# Add-on Store → ⋮ → Repositories → add https://github.com/vanhornway/HomeCircle
+name: HomeCircle
+url: https://github.com/vanhornway/HomeCircle
+maintainer: HomeCircle

@@ -38,6 +38,31 @@ runcmd:
       tradeoff: 'Free Render instances sleep and lose their disk, so they won’t work for HomeCircle.',
     },
     {
+      id: 'homeassistant',
+      name: 'Home Assistant',
+      color: '#1f8fc9',
+      blurb: 'An add-on, with Tailscale built in.',
+      badge: 'Free',
+      cost: 'Free',
+      time: '~15 minutes',
+      skill: 'No command line',
+      action: {
+        label: 'Add to Home Assistant',
+        href: `https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=${encodeURIComponent(repoUrl)}`,
+      },
+      guide: `${repoUrl}/blob/${branch}/docs/HOME-ASSISTANT.md`,
+      code: repoUrl,
+      codeLabel: 'Or add this repository in Settings → Add-ons → Add-on Store → ⋮ → Repositories',
+      steps: [
+        '<strong>Click “Add to Home Assistant”</strong>, then <strong>Add</strong>. Install <strong>HomeCircle</strong> from the Add-on Store.',
+        'Sign up for a free <a href="https://login.tailscale.com/start" target="_blank" rel="noopener noreferrer">Tailscale</a> account. On its <strong>DNS</strong> page click <strong>Enable HTTPS</strong>, then <strong>Settings → Keys → Generate auth key</strong>.',
+        'Paste the key in the add-on’s <strong>Configuration</strong> tab, <strong>Save</strong>, then <strong>Start</strong>.',
+        'The add-on’s <strong>Log</strong> shows your address (<code>https://homecircle.….ts.net</code>) and setup code.',
+        'In the HomeCircle app, tap <strong>Set up a new server</strong>.',
+      ],
+      tradeoff: 'Needs Home Assistant OS or Supervised. Data stays in your home and in your Home Assistant backups. Phones reach it through Tailscale Funnel: no router changes, and no Tailscale on the phones.',
+    },
+    {
       id: 'railway',
       name: 'Railway',
       color: '#6b3fd4',
@@ -223,7 +248,7 @@ fly secrets list   # remember the SETUP_TOKEN you set`,
         ${h.notice ? `<p class="notice">${esc(h.notice)}</p>` : ''}
         <ol>${h.steps.map((s) => `<li>${s}</li>`).join('')}</ol>
         <div class="cta-row"><a class="btn primary" href="${esc(h.action.href)}" target="_blank" rel="noopener noreferrer">${esc(h.action.label)}</a>
-        <a class="btn" href="${repoUrl}/blob/${branch}/deploy/README.md" target="_blank" rel="noopener noreferrer">Full guide</a></div>
+        <a class="btn" href="${esc(h.guide || `${repoUrl}/blob/${branch}/deploy/README.md`)}" target="_blank" rel="noopener noreferrer">Full guide</a></div>
         <p class="tradeoff">${h.tradeoff}</p>
       </div>
       <div>${right}</div>`;

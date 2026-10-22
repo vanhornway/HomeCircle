@@ -137,7 +137,24 @@ invite and returns a device token.
 - **Low battery**: at 10% and 5% the phone sends one update with
   `trigger: "low_battery"`.
 - **Locate cooldowns** are per requester and target, separate from "refresh
-  everyone", so asking one person never blocks asking another.
+  everyone", so asking one person never blocks asking another. On top of the
+  60 s cooldown, each requester can ask the same person at most 6 times an
+  hour. The response includes `delivery: { <memberId>: "delivered" |
+  "pushed" | "unreachable" }` (open WebSocket, silent push sent, or neither),
+  which the app shows as Locate progress. It reveals nothing the server didn't
+  already know.
+- **Phone health**: the sealed location body may carry `power` (`"saver"` /
+  `"normal"`), `perm` (`"always"` / `"foreground"`) and `precise` (boolean),
+  so the circle can see why someone's updates are late. Like everything else
+  in the body, the server can't read them.
+- **Place events are retried, never duplicated**: an arrive/leave event is
+  queued on the phone with a fixed message id and re-sent until the server
+  accepts it. The server rejects a repeated id with `409`, which the phone
+  treats as delivered.
+- **Diagnostics** (what woke the phone in the background, uploads, failures)
+  are kept for 7 days on the phone only, encrypted with a key in the OS
+  keystore. They leave the phone only when the user sends them, as a direct
+  message.
 - **Check-ins** are direct messages whose sealed body carries
   `checkin: "request"` or `"ok"`; asking also sends a location request to that
   one person.

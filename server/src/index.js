@@ -94,8 +94,10 @@ export function createApp(config) {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  const config = loadConfig();
-  const app = createApp(config);
+  // createApp fills in defaults and may generate the setup code, so use the
+  // config it returns, not the one passed in.
+  const app = createApp(loadConfig());
+  const { config } = app;
   app.server.listen(config.port, config.host, () => {
     log(`HomeCircle server ${config.version} listening on ${config.host}:${config.port}`);
     if (!app.store.isSetup) {
@@ -107,7 +109,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
         log(`  and this one-time setup code:  ${config.setupToken}`);
         log('  (Set SETUP_TOKEN to choose your own code; this one changes on restart.)');
       } else {
-        log('  and the SETUP_TOKEN you configured.');
+        log('  and the setup code you chose (SETUP_TOKEN, or setup_code in Home Assistant).');
       }
       log('──────────────────────────────────────────────────────────');
     }

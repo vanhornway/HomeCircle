@@ -15,6 +15,7 @@ The deploy buttons and installers pull from the public GitHub repo
 | [Fly.io](#flyio) | 4 commands | ~$3/mo | cheap managed hosting |
 | [DigitalOcean](#digitalocean--hetzner) | paste a config | ~$4–6/mo | your own VPS |
 | [Hetzner](#digitalocean--hetzner) | paste a config | ~€4/mo | cheapest VPS, EU |
+| [Home Assistant](#home-assistant) | add-on + Tailscale key | free | you already run Home Assistant |
 | [Raspberry Pi](#raspberry-pi--home-server) | 1 command | hardware only | data never leaves your home |
 
 \*Check current pricing with each provider; free tiers that sleep or lack disks won't work.
@@ -85,6 +86,18 @@ Already have a Linux server? Run the installer directly:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/vanhornway/HomeCircle/main/deploy/install.sh | sudo bash
 ```
+
+## Home Assistant
+
+HomeCircle is a Home Assistant add-on (Home Assistant OS or Supervised). It
+includes Tailscale, so phones reach it through Tailscale Funnel with no router
+changes, and its data is part of your Home Assistant backups.
+
+[![Add the HomeCircle repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fvanhornway%2FHomeCircle)
+
+Install **HomeCircle**, paste a Tailscale auth key in its Configuration tab and
+start it. The log shows your address and setup code. Step by step:
+[docs/HOME-ASSISTANT.md](../docs/HOME-ASSISTANT.md).
 
 ## Raspberry Pi / home server
 
