@@ -90,16 +90,17 @@ Family phones do **not** need Tailscale installed.
 
 ### Option E: Home Assistant (free, data stays home)
 
-Needs Home Assistant OS or Supervised (with **Settings → Add-ons**).
+Needs Home Assistant OS or Supervised (with **Settings → Apps**, called
+**Settings → Add-ons** before Home Assistant 2026.2).
 
 1. Click [Add to Home Assistant](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fvanhornway%2FHomeCircle),
-   then **Add**. Install **HomeCircle** from the Add-on Store.
+   then **Add**. Install **HomeCircle** from **Settings → Apps → Install app**.
 2. Get a free Tailscale auth key: sign up at <https://login.tailscale.com/start>,
    click **Enable HTTPS** on the **DNS** page, then **Settings → Keys →
    Generate auth key**.
-3. Paste the key in the add-on's **Configuration** tab, **Save**, then
-   **Start** it.
-4. The add-on's **Log** tab shows your **Server address** (like
+3. In **Settings → Apps → HomeCircle**, paste the key in the
+   **Configuration** tab, **Save**, then **Start** it.
+4. HomeCircle's **Log** tab shows your **Server address** (like
    `https://homecircle.tail1234.ts.net`) and **Setup code**.
 
 Every click, what the log should say, and fixes for common problems

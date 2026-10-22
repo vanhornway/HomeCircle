@@ -30,7 +30,7 @@ Read https://raw.githubusercontent.com/vanhornway/HomeCircle/main/docs/CLAUDE-SE
 ```
 
 - **Android app:** [download HomeCircle.apk](https://github.com/vanhornway/HomeCircle/releases/latest/download/HomeCircle.apk) (latest release)
-- **Home Assistant:** [run it as an add-on](docs/HOME-ASSISTANT.md), with Tailscale built in
+- **Home Assistant:** [run it as an app](docs/HOME-ASSISTANT.md), with Tailscale built in
 - **Server:** `docker run -d -p 8080:8080 -v homecircle-data:/data ghcr.io/vanhornway/homecircle:latest`, or one of the [hosting options](deploy/README.md)
 
 ## How it works

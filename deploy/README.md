@@ -15,7 +15,7 @@ The deploy buttons and installers pull from the public GitHub repo
 | [Fly.io](#flyio) | 4 commands | ~$3/mo | cheap managed hosting |
 | [DigitalOcean](#digitalocean--hetzner) | paste a config | ~$4–6/mo | your own VPS |
 | [Hetzner](#digitalocean--hetzner) | paste a config | ~€4/mo | cheapest VPS, EU |
-| [Home Assistant](#home-assistant) | add-on + Tailscale key | free | you already run Home Assistant |
+| [Home Assistant](#home-assistant) | app + Tailscale key | free | you already run Home Assistant |
 | [Raspberry Pi](#raspberry-pi--home-server) | 1 command | hardware only | data never leaves your home |
 
 \*Check current pricing with each provider; free tiers that sleep or lack disks won't work.
@@ -89,7 +89,8 @@ curl -fsSL https://raw.githubusercontent.com/vanhornway/HomeCircle/main/deploy/i
 
 ## Home Assistant
 
-HomeCircle is a Home Assistant add-on (Home Assistant OS or Supervised). It
+HomeCircle is a Home Assistant app (Home Assistant OS or Supervised).
+Apps were called add-ons before Home Assistant 2026.2. It
 includes Tailscale, so phones reach it through Tailscale Funnel with no router
 changes, and its data is part of your Home Assistant backups.
 

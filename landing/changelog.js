@@ -12,7 +12,7 @@ window.HOMECIRCLE_CHANGELOG = [
       'Diagnostics: a private 7-day log of what your phone did in the background, which you can send to your circle’s admin.',
       'Circle health for admins: how each phone is set up, with a Nudge to fix problems.',
       'Places now need a radius of at least 500 ft, so arrivals aren’t missed.',
-      'Run your server as a Home Assistant add-on, with Tailscale built in.',
+      'Run your server as a Home Assistant app, with Tailscale built in.',
       'The server log shows the one-time setup code again.',
     ],
   },

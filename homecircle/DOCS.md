@@ -17,7 +17,7 @@ Tailscale Funnel: a free, secure `https://` address with no router changes.
 
 ### 2. Start HomeCircle
 
-1. Open the add-on's **Configuration** tab, paste the key into
+1. Open HomeCircle's **Configuration** tab, paste the key into
    **tailscale_auth_key**, and click **Save**.
 2. Open the **Info** tab and click **Start**. Turn on **Start on boot** and
    **Watchdog**.
@@ -30,7 +30,7 @@ Tailscale Funnel: a free, secure `https://` address with no router changes.
    ```
 
    If it says **Funnel … is off**, open the link it shows, click **Enable**, and
-   restart the add-on.
+   restart HomeCircle.
 4. **Keep it connected:** Tailscale signs devices out after 180 days unless
    you turn that off. At <https://login.tailscale.com/admin/machines>, click
    **⋯** next to **homecircle** → **Disable key expiry**.
@@ -54,7 +54,7 @@ Tailscale Funnel: a free, secure `https://` address with no router changes.
 ## Good to know
 
 - **Backups:** HomeCircle's data (all encrypted) and the Tailscale login are in
-  the add-on's data, which Home Assistant backups include.
+  its app data, which Home Assistant backups include.
 - **Privacy:** messages and locations are encrypted on the phones. Neither
   Home Assistant, Tailscale nor anyone else can read them.
 - **Family phones don't need Tailscale.** Funnel makes the address reachable
@@ -62,8 +62,8 @@ Tailscale Funnel: a free, secure `https://` address with no router changes.
 - **Home network only:** without a Tailscale key, HomeCircle still runs at
   `http://<your-home-assistant-ip>:8080`, but phones can't reach it away from
   home.
-- **Updating:** when a new version appears in the Add-on Store, click
-  **Update**. Your circles are kept.
+- **Updating:** when Home Assistant shows an update for HomeCircle,
+  click **Update**. Your circles are kept.
 
 Something not working? See the troubleshooting table in the
 [full guide](https://github.com/vanhornway/HomeCircle/blob/main/docs/HOME-ASSISTANT.md#troubleshooting).

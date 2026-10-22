@@ -58,10 +58,10 @@ stays on).
 | **B. Raspberry Pi or Linux box at home** | Free | One command | They have a Pi or Linux machine that's always on and want data at home. |
 | **C. Cloud server (DigitalOcean / Hetzner)** | ~$4–6/month | Paste a config | They want their own server and are OK with a little more setup. |
 | **D. This computer (Mac / Windows / Linux) with Docker** | Free | A few commands | Testing, or a desktop that's always on and never sleeps. |
-| **E. Home Assistant add-on** | Free | Clicks only | They already run Home Assistant OS or Supervised. **Recommend this whenever they do.** |
+| **E. Home Assistant app** | Free | Clicks only | They already run Home Assistant OS or Supervised. **Recommend this whenever they do.** |
 
 Ask early whether they run Home Assistant. If they do (and it has
-**Settings → Add-ons**), recommend E: it's free, needs no terminal, keeps the
+**Settings → Apps**, or **Settings → Add-ons** before 2026.2), recommend E: it's free, needs no terminal, keeps the
 data at home and in their Home Assistant backups.
 
 The server must stay on 24/7 and be reachable from the internet over HTTPS.
@@ -163,11 +163,12 @@ For a quick throwaway test only, `cloudflared tunnel --url http://localhost:8080
 gives a temporary `https://….trycloudflare.com` address, which changes every
 time it runs. Don't use that for real family use.
 
-### E. Home Assistant add-on
+### E. Home Assistant app
 
-Requirements: Home Assistant OS or Supervised. If **Settings → Add-ons** is
-missing, they run Container or Core, which can't run add-ons; use D on that
-machine instead.
+Requirements: Home Assistant OS or Supervised. Home Assistant 2026.2 renamed
+add-ons to **apps**, so the menu is **Settings → Apps** (older versions:
+**Settings → Add-ons**). If neither is there, they run Container or Core,
+which can't run apps; use D on that machine instead.
 
 The person does all of this in their browser. Walk them through it one step
 at a time, and wait for each to finish. The full guide, with a troubleshooting
@@ -176,22 +177,22 @@ table, is <https://github.com/vanhornway/HomeCircle/blob/main/docs/HOME-ASSISTAN
 1. **Add the repository:** they open
    <https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fvanhornway%2FHomeCircle>,
    enter their Home Assistant address if asked, and click **Add**. (By hand:
-   **Settings → Add-ons → Add-on Store → ⋮ → Repositories**, add
+   **Settings → Apps → Install app → ⋮ → Repositories**, add
    `https://github.com/vanhornway/HomeCircle`.)
-2. **Install:** find **HomeCircle** in the Add-on Store → **Install** (2–5 minutes).
+2. **Install:** **Settings → Apps → Install app** → search **HomeCircle** → **Install** (2–5 minutes).
 3. **Tailscale key:** they sign up at <https://login.tailscale.com/start>,
    click **Enable HTTPS** on <https://login.tailscale.com/admin/dns>, then
    **Generate auth key** at <https://login.tailscale.com/admin/settings/keys>
    with the defaults. Tell them not to paste the key to you; it goes straight
    into Home Assistant.
-4. **Start:** add-on **Configuration** tab → paste into
+4. **Start:** **Settings → Apps → HomeCircle** → **Configuration** tab → paste into
    **tailscale_auth_key** → **Save**. **Info** tab → turn on **Start on boot**
    and **Watchdog** → **Start**.
 5. **Read the log** (**Log** tab, after about a minute). Ask them to paste the
    line `Phones can reach HomeCircle at: https://….ts.net` (the address only,
    not the setup code).
    - `Funnel … is off`: they open the printed link, click **Enable**, then
-     **Restart** the add-on.
+     **Restart** HomeCircle.
    - `Tailscale login failed` or `didn't connect`: a bad or used key. They
      generate a new one, paste it, Save, Restart.
 6. **Disable key expiry** so the server doesn't go offline in 180 days:

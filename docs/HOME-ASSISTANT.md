@@ -8,10 +8,11 @@ no router changes, and nothing extra to install on the phones.
 
 **You need:**
 
-- Home Assistant **OS** or **Supervised**, the versions with an Add-on Store
-  (**Settings → Add-ons**). Home Assistant Container or Core can't run
-  add-ons; use the [Docker option](SETUP.md#option-d-any-computer-with-docker)
-  instead.
+- Home Assistant **OS** or **Supervised**, the versions that can run apps
+  (**Settings → Apps**; before Home Assistant 2026.2 this was called
+  **Settings → Add-ons**). If you don't see it, you run Home Assistant
+  Container or Core, which can't run apps; use the
+  [Docker option](SETUP.md#option-d-any-computer-with-docker) instead.
 - A free Tailscale account. You'll create it in step 2.
 - An Android phone for the app.
 
@@ -26,14 +27,14 @@ no router changes, and nothing extra to install on the phones.
 
    <details><summary>Link doesn't work? Add the repository by hand.</summary>
 
-   In Home Assistant go to **Settings → Add-ons → Add-on Store**, click **⋮**
-   (top right) → **Repositories**, paste
+   In Home Assistant go to **Settings → Apps** and click **Install app**.
+   Click **⋮** (top right) → **Repositories**, paste
    `https://github.com/vanhornway/HomeCircle`, and click **Add**.
    </details>
 
-2. In the Add-on Store, find **HomeCircle** (refresh the page if it isn't
-   there yet), open it and click **Install**. It takes 2–5 minutes, longer on
-   a Raspberry Pi 3.
+2. In **Settings → Apps → Install app**, search for **HomeCircle** (refresh
+   the page if it isn't there yet), open it and click **Install**. It takes
+   2–5 minutes, longer on a Raspberry Pi 3.
 
 ## 2. Get a Tailscale key (5 minutes)
 
@@ -50,7 +51,8 @@ Tailscale gives HomeCircle its public `https://` address.
 
 ## 3. Start HomeCircle (2 minutes)
 
-1. In Home Assistant, open the HomeCircle add-on's **Configuration** tab.
+1. In Home Assistant, go to **Settings → Apps → HomeCircle** and open the
+   **Configuration** tab.
 2. Paste the key into **tailscale_auth_key** and click **Save**.
 3. Go to the **Info** tab, turn on **Start on boot** and **Watchdog**, then
    click **Start**.
@@ -93,16 +95,16 @@ covers everyday use.
 ## Good to know
 
 - **Choose your own setup code:** set **setup_code** in the Configuration tab
-  (12+ characters). Otherwise the add-on creates a random code each time it
+  (12+ characters). Otherwise HomeCircle creates a random code each time it
   starts, until your circle exists.
 - **Address name:** **tailscale_hostname** sets the first part of the
   address. The default is `homecircle`.
 - **Backups:** HomeCircle's data (all encrypted) and its Tailscale login are
-  in the add-on's data, which Home Assistant backups include. Restore a backup
+  in its app data, which Home Assistant backups include. Restore a backup
   and everything comes back, with the same address.
 - **Updates:** when Home Assistant shows an update for HomeCircle, click
   **Update**. Your circles are kept.
-- **Already use the Tailscale add-on?** That's fine. HomeCircle runs its own
+- **Already use the Tailscale app?** That's fine. HomeCircle runs its own
   separate Tailscale connection, which shows up as its own machine.
 - **Privacy:** locations and messages are encrypted on the phones. Neither
   Home Assistant, Tailscale nor anyone else can read them.
@@ -119,4 +121,4 @@ covers everyday use.
 | `Funnel … is off` | Open the link in the log and click **Enable**, then restart. If there's no link, check that **HTTPS** is enabled (step 2.2). |
 | `No Tailscale auth key set` | Paste a key in the Configuration tab, Save, Restart. |
 | The address doesn't open on the phone | Wait 1–2 minutes after the first start (the certificate is being created), then try again. Turn off any VPN on the phone. |
-| HomeCircle isn't in the Add-on Store | Refresh the page, or **⋮ → Check for updates**. Make sure the repository URL is exactly `https://github.com/vanhornway/HomeCircle`. |
+| HomeCircle isn't listed under **Install app** | Refresh the page, or **⋮ → Check for updates**. Make sure the repository URL is exactly `https://github.com/vanhornway/HomeCircle`. |
