@@ -151,6 +151,23 @@ export function useCircles(): { clients: CircleClient[]; active: CircleClient | 
   return { clients: allClients(), active: active ? clients.get(active) ?? null : null, version: v };
 }
 
+/** A server address without the scheme or trailing slash, for showing people. */
+export function serverHost(url: string | null | undefined): string {
+  return (url || '').replace(/^https?:\/\//, '').replace(/\/+$/, '');
+}
+
+export type ServerGroup = { url: string; host: string; circles: CircleClient[] };
+
+/** The servers this phone has circles on, in the order first joined, each with its circles. */
+export function serverGroups(list: CircleClient[]): ServerGroup[] {
+  const groups = new Map<string, CircleClient[]>();
+  for (const c of list) {
+    const url = c.serverUrl || '';
+    groups.set(url, [...(groups.get(url) || []), c]);
+  }
+  return [...groups].map(([url, circles]) => ({ url, host: serverHost(url), circles }));
+}
+
 export function onCirclesChanged(fn: () => void): () => void {
   subs.add(fn);
   return () => subs.delete(fn);

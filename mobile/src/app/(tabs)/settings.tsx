@@ -4,9 +4,10 @@ import { router, useFocusEffect } from 'expo-router';
 import type { Member } from '@homecircle/core';
 import { Avatar, Button, Card, Checkbox, H1, SectionTitle, Screen, Tag } from '../../components/ui';
 import { ServerBanner } from '../../components/ServerBanner';
+import { ServerPicker } from '../../components/ServerPicker';
 import { useServerState } from '../../lib/connection';
 import { useCircle } from '../../lib/useCircle';
-import { errorText, setActiveCircle, useCircles } from '../../lib/circle';
+import { errorText, serverGroups, setActiveCircle, useCircles } from '../../lib/circle';
 import { unreadInCircle } from '../../lib/unread';
 import { clearDeviceData, getSettings, setLastUpload, updateSettings, type Settings } from '../../lib/storage';
 import { shareNow, startBackgroundUpdates, stopBackgroundUpdates, syncGeofences, type SharingMode } from '../../lib/location';
@@ -30,6 +31,12 @@ export default function SettingsTab() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [mode, setMode] = useState<SharingMode | null>(null);
   const [openMember, setOpenMember] = useState<string | null>(null);
+  // "Your circles" shows one server at a time: the one picked, else the open
+  // circle's. A pick lasts until another circle is opened.
+  const [pick, setPick] = useState<{ circle: string; server: string } | null>(null);
+  const pickedServer = pick?.circle === client.accountKey ? pick.server : null;
+  const servers = serverGroups(clients);
+  const shownServer = servers.find((g) => g.url === pickedServer) ?? servers.find((g) => g.url === client.serverUrl) ?? servers[0];
 
   const [notif, setNotif] = useState<'granted' | 'denied' | 'undetermined' | null>(null);
   useFocusEffect(
@@ -37,7 +44,7 @@ export default function SettingsTab() {
       notificationPermission().then(setNotif).catch(() => {});
       getSettings().then(setSettings);
       startBackgroundUpdates().then(setMode).catch(() => setMode(null));
-    }, []),
+    }, [setNotif]),
   );
 
   const apply = async (patch: Partial<Settings>) => {
@@ -162,7 +169,8 @@ export default function SettingsTab() {
 
       <SectionTitle>Your circles</SectionTitle>
       <Card style={{ gap: 4 }}>
-        {clients.map((c) => {
+        {shownServer ? <ServerPicker groups={servers} value={shownServer.url} onChange={(server) => setPick({ circle: client.accountKey, server })} /> : null}
+        {(shownServer?.circles ?? clients).map((c) => {
           const isActive = c === client;
           const precision = precisionOf(c.circleId!);
           const why = settings?.pauseReasons[c.circleId!];
@@ -213,7 +221,9 @@ export default function SettingsTab() {
           );
         })}
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-          {clients.some((c) => c.isServerAdmin) ? <Button small title="New circle" onPress={() => router.push('/new-circle')} style={{ flex: 1 }} /> : null}
+          {shownServer?.circles.some((c) => c.isServerAdmin) ? (
+            <Button small title="New circle" onPress={() => router.push({ pathname: '/new-circle', params: { server: shownServer.url } })} style={{ flex: 1 }} />
+          ) : null}
           <Button small title="Join a circle" onPress={() => router.push('/join')} style={{ flex: 1 }} />
         </View>
         <Text style={{ color: t.muted, fontSize: 13, marginTop: 8 }}>

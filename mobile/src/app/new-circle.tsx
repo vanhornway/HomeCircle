@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Text } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Button, ErrorText, Field, LockNote, P, Screen } from '../components/ui';
 import { addCircle, draftClient, errorText, getClient, useCircles } from '../lib/circle';
 import { useTheme } from '../theme';
@@ -9,9 +9,15 @@ import { useTheme } from '../theme';
 export default function NewCircle() {
   const t = useTheme();
   const { clients } = useCircles();
-  // Prefer the circle on screen; otherwise any circle whose server lets us create.
+  // Settings passes the server picked there. Otherwise prefer the circle on
+  // screen, then any circle whose server lets us create.
+  const { server } = useLocalSearchParams<{ server?: string }>();
   const current = getClient();
-  const admin = current.isServerAdmin ? current : clients.find((c) => c.isServerAdmin);
+  const admin = server
+    ? clients.find((c) => c.serverUrl === server && c.isServerAdmin)
+    : current.isServerAdmin
+      ? current
+      : clients.find((c) => c.isServerAdmin);
   const [circleName, setCircleName] = useState('');
   const [name, setName] = useState(admin?.me?.name || '');
   const [busy, setBusy] = useState(false);
