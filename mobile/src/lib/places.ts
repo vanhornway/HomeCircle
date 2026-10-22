@@ -82,12 +82,16 @@ async function checkNow(fix: Fix | null, hint?: { regionId: string; action: 'arr
   }
 
   const placeIds: Record<string, string> = {};
-  const posts: { client: CircleClient; placeId: string; name: string; action: 'arrived' | 'left' }[] = [];
+  const posts: { regionId: string; client: CircleClient; placeId: string; name: string; action: 'arrived' | 'left' }[] = [];
+  const previous: Record<string, { action: 'arrived' | 'left'; ts: number }> = {};
   let lastAction: 'arrived' | 'left' | null = null;
   for (const [id, r] of regions) {
     let now: 'inside' | 'outside' | null = null;
     if (fix) now = placeState({ distance: distanceM(fix, r), accuracy: fix.accuracy, radius: r.radius });
-    else if (hint?.regionId === id) now = hint.action === 'arrived' ? 'inside' : 'outside';
+    // No fix, or one too rough to tell: trust the OS report for that place.
+    // In the background another position may not come for a long time, and
+    // waiting for one is how departures went missing.
+    if (!now && hint?.regionId === id) now = hint.action === 'arrived' ? 'inside' : 'outside';
     const inside = now ? now === 'inside' : state[id]?.action === 'arrived';
     if (inside) for (const t of r.targets) placeIds[t.client.circleId!] = t.placeId;
     if (!now) continue; // too close to the edge to tell: wait for the next position
@@ -96,13 +100,24 @@ async function checkNow(fix: Fix | null, hint?: { regionId: string; action: 'arr
     if (prev?.action === action) continue;
     state[id] = { action, ts: Date.now() };
     if (!prev) continue; // first look at this place: just remember where we are
+    previous[id] = prev;
     lastAction = action;
-    for (const t of r.targets) posts.push({ ...t, action });
+    for (const t of r.targets) posts.push({ regionId: id, ...t, action });
   }
   await AsyncStorage.setItem(STATE_KEY, JSON.stringify(state));
 
   if (settings.announcePlaces && posts.length) {
-    await Promise.allSettled(posts.map((p) => p.client.sendEvent({ type: 'place', action: p.action, placeId: p.placeId, placeName: p.name || 'a place' })));
+    const results = await Promise.allSettled(
+      posts.map((p) => p.client.sendEvent({ type: 'place', action: p.action, placeId: p.placeId, placeName: p.name || 'a place' })),
+    );
+    // A crossing that didn't reach every circle (offline, server down) is
+    // forgotten so the next position detects and posts it again, instead of
+    // being lost for good. A circle that did get it may see it twice.
+    const failed = new Set(posts.filter((_, i) => results[i].status === 'rejected').map((p) => p.regionId));
+    if (failed.size) {
+      for (const id of failed) state[id] = previous[id];
+      await AsyncStorage.setItem(STATE_KEY, JSON.stringify(state));
+    }
   }
   return { placeIds, changed: posts.length > 0, action: lastAction };
 }

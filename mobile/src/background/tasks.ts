@@ -38,14 +38,22 @@ TaskManager.defineTask(HEARTBEAT_TASK, async () => {
   }
 });
 
-// The OS thinks we crossed a place. Confirm with a fresh GPS fix before
-// posting anything: geofence reports alone are often wrong near the edge.
+// iOS gives an app woken by a region crossing only about 10 seconds to run,
+// so the fix has to be quick to leave time for encrypting and uploading.
+const GEOFENCE_FIX_TIMEOUT_MS = 6_000;
+// A fallback "last known" position older than this may predate the crossing.
+const GEOFENCE_FIX_MAX_AGE_MS = 2 * 60_000;
+
+// The OS thinks we crossed a place. Confirm with a fresh fix when we can get
+// one quickly: geofence reports alone are often wrong near the edge. When the
+// fix is stale or too rough to tell, the OS report decides (lib/places.ts).
 TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Location.LocationRegion }>(GEOFENCE_TASK, async ({ data, error }) => {
   if (error || !data?.region?.identifier) return;
   const action = data.eventType === Location.GeofencingEventType.Enter ? 'arrived' : 'left';
   try {
-    const loc = await freshFix(20_000);
-    const fix = loc ? { lat: loc.coords.latitude, lng: loc.coords.longitude, accuracy: loc.coords.accuracy ?? null } : null;
+    const loc = await freshFix(GEOFENCE_FIX_TIMEOUT_MS);
+    const fresh = loc && Date.now() - loc.timestamp <= GEOFENCE_FIX_MAX_AGE_MS ? loc : null;
+    const fix = fresh ? { lat: fresh.coords.latitude, lng: fresh.coords.longitude, accuracy: fresh.coords.accuracy ?? null } : null;
     const check = await checkPlaces(fix, { regionId: data.region.identifier, action });
     if (loc) await upload(loc, check.changed && check.action ? check.action : 'update', { force: check.changed, placeIds: check.placeIds });
   } catch (e) {
