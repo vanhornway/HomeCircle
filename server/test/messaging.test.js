@@ -297,6 +297,18 @@ test('phone health travels with the location', async () => {
   assert.equal(l.precise, false);
 });
 
+test('posting while the app is closed doesn’t skip messages others sent meanwhile', async () => {
+  // Dad's app is closed (no live connection) while Mom writes...
+  dad.disconnect();
+  await mom.sendChat('Dinner at 7?');
+  // ...then his phone posts a place event from the background...
+  await dad.sendEvent({ type: 'place', action: 'arrived', placeId: 'lib1', placeName: 'Library' });
+  // ...and when he opens the app, Mom's message must still show up.
+  await dad.catchUp();
+  assert.ok(dad.messages.some((m) => m.body?.text === 'Dinner at 7?'), 'Dad missed a message sent while his app was closed');
+  assert.equal(dad.messages.filter((m) => m.body?.placeName === 'Library').length, 1);
+});
+
 test('place detection needs a margin before counting someone as gone', () => {
   const home = { radius: 100 };
   assert.equal(placeState({ ...home, distance: 40, accuracy: 15 }), 'inside');

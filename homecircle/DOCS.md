@@ -50,6 +50,9 @@ Tailscale Funnel: a free, secure `https://` address with no router changes.
 | `tailscale_auth_key` | Connects HomeCircle to your Tailscale account. Only needed the first time; the login is remembered. |
 | `tailscale_hostname` | The first part of the address (`homecircle` → `https://homecircle.<tailnet>.ts.net`). |
 | `setup_code` | Optional: choose your own setup code (12+ characters) instead of the random one in the log. |
+| `load_test_server` | Runs a second, separate HomeCircle on port 8081 (and `https://…:8443` with Tailscale) for stress tests with simulated people. Your circles aren't touched. See the [load-test guide](https://github.com/vanhornway/HomeCircle/blob/main/docs/LOAD-TEST.md). |
+| `load_test_setup_code` | Optional: your own setup code for the load-test server (12+ characters). |
+| `load_test_reset` | Deletes the load-test server's data on the next start. Turn it off again afterwards. |
 
 ## Good to know
 

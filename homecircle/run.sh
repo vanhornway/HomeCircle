@@ -53,5 +53,55 @@ else
   line
 fi
 
+# Optional load-test server: a second, separate HomeCircle on port 8081 for
+# stress tests (server/scripts/swarm.mjs). Same hardware, so CPU and memory
+# are real, but its own data, so simulated people never touch your circles.
+# No push notifications (a swarm would flood your phone), and it trusts
+# X-Forwarded-For so each simulated person counts as its own IP for rate
+# limits, like real phones.
+LT_ON="$(opt load_test_server)"
+LT_DIR=/data/homecircle-loadtest
+if [ "$LT_ON" = "true" ]; then
+  LT_CODE="$(opt load_test_setup_code)"
+  if [ "$(opt load_test_reset)" = "true" ]; then
+    rm -rf "$LT_DIR"
+    say "Load test: deleted the load-test server's data. Turn load_test_reset off again."
+  fi
+  mkdir -p "$LT_DIR"
+  chown -R node:node "$LT_DIR"
+  if [ -n "$LT_CODE" ] && [ "${#LT_CODE}" -lt 12 ]; then
+    say "Load test: load_test_setup_code must be 12+ characters; using a random code instead."
+    LT_CODE=""
+  fi
+  (
+    cd /app
+    # Invite links come from the address the swarm uses, not the family URL.
+    unset PUBLIC_URL
+    export DATA_DIR="$LT_DIR" PORT=8081 PUSH_PROVIDER=none TRUST_PROXY=true SETUP_TOKEN="$LT_CODE"
+    while true; do
+      su-exec node node --disable-warning=ExperimentalWarning server/src/index.js 2>&1 |
+        while IFS= read -r l; do echo "[load-test] $l"; done
+      echo "[load-test] server stopped; restarting in 5 s"
+      sleep 5
+    done
+  ) &
+  line
+  say "Load-test server is ON (separate data, no push notifications):"
+  say "  on your home network:  http://<your-home-assistant-ip>:8081"
+  if [ -n "${DNS:-}" ]; then
+    if $TS funnel --bg --https=8443 http://127.0.0.1:8081 >/tmp/funnel-loadtest.log 2>&1; then
+      say "  from anywhere:         https://$DNS:8443"
+    else
+      say "  (couldn't publish it on https://$DNS:8443:)"
+      cat /tmp/funnel-loadtest.log
+    fi
+  fi
+  say "Its setup code is printed below with the [load-test] prefix."
+  line
+elif [ -n "${DNS:-}" ]; then
+  # Load test switched off: stop publishing its old address, if any.
+  $TS funnel --https=8443 off >/dev/null 2>&1 || true
+fi
+
 cd /app
 exec su-exec node node --disable-warning=ExperimentalWarning server/src/index.js

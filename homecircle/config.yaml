@@ -1,5 +1,5 @@
 name: HomeCircle
-version: "0.7.1"
+version: "0.7.2"
 slug: homecircle
 description: Private family location sharing and chat, end-to-end encrypted, on your own Home Assistant.
 url: https://github.com/vanhornway/HomeCircle
@@ -14,15 +14,27 @@ boot: auto
 # https:// address). Port 8080 is also open on your home network.
 ports:
   8080/tcp: 8080
+  8081/tcp: 8081
 ports_description:
   8080/tcp: HomeCircle on your home network (http)
+  8081/tcp: Load-test server, only when load_test_server is on (http)
 webui: "http://[HOST]:[PORT:8080]"
 options:
   tailscale_auth_key: ""
   tailscale_hostname: homecircle
   setup_code: ""
+  load_test_server: false
+  load_test_setup_code: ""
+  load_test_reset: false
 schema:
   tailscale_auth_key: password?
   tailscale_hostname: match(^[a-z0-9][a-z0-9-]{0,62}$)
   setup_code: password?
+  load_test_server: bool
+  load_test_setup_code: password?
+  load_test_reset: bool
 backup: hot
+# The load-test server's simulated data stays out of Home Assistant backups.
+backup_exclude:
+  - homecircle-loadtest
+  - homecircle-loadtest/**

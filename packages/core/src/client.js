@@ -553,9 +553,11 @@ export class CircleClient {
   // --- messages ----------------------------------------------------------
 
   _addMessage(m) {
+    // Before the duplicate check: a fetch that returns our own messages
+    // (already shown) must still move past them.
+    this.lastSeq = Math.max(this.lastSeq, m.seq);
     if (this.seenMessageIds.has(m.id)) return false;
     this.seenMessageIds.add(m.id);
-    this.lastSeq = Math.max(this.lastSeq, m.seq);
     const to = m.to ?? null;
     // Direct messages: the other person in the conversation. null = the group.
     const peer = to ? (m.from === this.account.memberId ? to : m.from) : null;
@@ -648,7 +650,14 @@ export class CircleClient {
       env = this._seal(kind, body, this.account.epoch, { to });
       return this.api.postMessage(id, env, { silent, to });
     });
+    // Our own message's seq says nothing about what others posted before it:
+    // if the live connection is down (app in the background, posting a place
+    // event), moving lastSeq past their messages would make fetchMessages()
+    // skip them for good. Only received messages move lastSeq; our own copy
+    // is de-duplicated by id when it comes back in the next fetch.
+    const seenUpTo = this.lastSeq;
     this._addMessage({ seq: res.seq, id, from: this.account.memberId, to, createdAt: res.createdAt, env });
+    this.lastSeq = seenUpTo;
     this.emit('messages', this.messages);
   }
 

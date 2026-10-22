@@ -10,3 +10,6 @@ mobile/ios/
 mobile/android/
 mobile/dist/
 /dist/
+
+# Load-test swarm: simulated accounts (keys) and results
+.swarm/

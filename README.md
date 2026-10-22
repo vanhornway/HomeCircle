@@ -59,6 +59,10 @@ cd server && npm test
 
 # simulate a family member who walks around, chats and answers Locate requests
 node server/scripts/simulate-member.mjs "<invite link>" "Bob" 40.73 -73.99
+
+# load test: a swarm of simulated families, friends and coworkers, with a
+# dashboard on http://localhost:8090 (see docs/LOAD-TEST.md)
+node server/scripts/swarm.mjs --server http://localhost:8080 --setup-code dev-setup-token
 ```
 
 ### Mobile app
