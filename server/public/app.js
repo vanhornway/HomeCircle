@@ -364,7 +364,9 @@ async function startApp() {
   ui.els = { status, title, tabs, panel, hint };
 
   map = L.map('map', { zoomControl: true, worldCopyJump: true }).setView([30, 0], 2);
-  L.tileLayer(info.tileUrl, { maxZoom: 19, attribution: info.tileAttribution, referrerPolicy: 'no-referrer' }).addTo(map);
+  // OpenStreetMap blocks browser tile requests without a Referer, so tiles
+  // send this server's origin (never the page path); the rest of the page sends none.
+  L.tileLayer(info.tileUrl, { maxZoom: 19, attribution: info.tileAttribution, referrerPolicy: 'strict-origin' }).addTo(map);
   map.on('click', (e) => {
     if (!ui.pickPlace) return;
     ui.pickPlace = { lat: e.latlng.lat, lng: e.latlng.lng };
