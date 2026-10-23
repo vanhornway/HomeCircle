@@ -1701,6 +1701,9 @@ async function boot() {
   } catch (e) {
     return renderMessage('Server unavailable', errorText(e));
   }
+  if (info.loadTest) {
+    document.body.append(h('div', { class: 'loadtest-bar', role: 'note' }, 'Load-test server: simulated people only. Don’t put your family on it.'));
+  }
   let keys = [];
   try {
     keys = JSON.parse(local.get(LIST_KEY) || '[]');

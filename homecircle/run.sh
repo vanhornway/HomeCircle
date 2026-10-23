@@ -77,9 +77,13 @@ if [ "$LT_ON" = "true" ]; then
     cd /app
     # Invite links come from the address the swarm uses, not the family URL.
     unset PUBLIC_URL
-    export DATA_DIR="$LT_DIR" PORT=8081 PUSH_PROVIDER=none TRUST_PROXY=true SETUP_TOKEN="$LT_CODE"
+    # LOAD_TEST=1: the server says it's for load tests (the swarm refuses any
+    # other) and its web page shows a banner. It runs at low CPU priority with
+    # a memory cap, so a swarm can't slow down or starve the family's server
+    # on the same machine.
+    export DATA_DIR="$LT_DIR" PORT=8081 PUSH_PROVIDER=none TRUST_PROXY=true SETUP_TOKEN="$LT_CODE" LOAD_TEST=1
     while true; do
-      su-exec node node --disable-warning=ExperimentalWarning server/src/index.js 2>&1 |
+      nice -n 15 su-exec node node --max-old-space-size=384 --disable-warning=ExperimentalWarning server/src/index.js 2>&1 |
         while IFS= read -r l; do echo "[load-test] $l"; done
       echo "[load-test] server stopped; restarting in 5 s"
       sleep 5

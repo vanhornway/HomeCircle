@@ -23,6 +23,30 @@ Your family's circles are never touched. The load-test server runs on the same
 machine as your real one, so the CPU and memory numbers are real, but it keeps
 its own data, sends no push notifications, and stays out of your backups.
 
+## Safety first
+
+The first load test cost real circles: a phone that had joined many load-test
+circles reconnected all of them at once after unlocking, some connections were
+slow to log in, and the app (before 0.8) deleted those circles, the family's
+included. That bug is fixed (server and add-on 0.8.1, app 0.8), and the load
+test now has guardrails:
+
+- **The swarm only runs on a load-test server.** The add-on's load-test server
+  says so (`LOAD_TEST=1`, shown as `loadTest: true` in `/api/v1/info`, and a red
+  banner on its web page). The swarm refuses any other server, including your
+  family's, with no way to override it.
+- **No invites for your phone unless you ask.** Pass `--invite-my-phone hq`
+  for just the **Load test HQ** circle (status and findings), or
+  `--invite-my-phone all` to join any circle.
+- **Use a spare phone to join.** Every circle on a phone is another connection
+  it reopens when you unlock it. Don't join load-test circles from the phone
+  your family relies on, and leave them (**Settings → Leave**) when you're done.
+- **Your family's server keeps priority.** The load-test server runs at low CPU
+  priority with a 384 MB memory cap, so a swarm can't starve it.
+- **Separate data.** The load-test server keeps its data in
+  `homecircle-loadtest`, which stays out of backups; `load_test_reset` only
+  deletes that.
+
 **Where things run:** the load-test **server** runs on Home Assistant (as part
 of the HomeCircle add-on). The **swarm** runs on a computer on the same network,
 not on Home Assistant: if it ran there, its own work would be counted as
@@ -30,16 +54,17 @@ HomeCircle's load.
 
 ---
 
-## 0. Get HomeCircle 0.7.2 onto Home Assistant (once)
+## 0. Get HomeCircle 0.8.2 onto Home Assistant (once)
 
-The load-test server comes with add-on version 0.7.2.
+The load-test server comes with the add-on; the swarm needs version 0.8.2 or
+newer (which marks the load-test server as one).
 
 1. On your computer, in your HomeCircle repository, add the changes and push
    them to GitHub (`git am homecircle-load-test.patch`, then `git push`), or
    merge the `swarm` branch.
 2. In Home Assistant: **Settings → Apps → Install app → ⋮ (top right) → Check
    for updates**.
-3. **Settings → Apps → HomeCircle** now offers **Update** to 0.7.2. Click it.
+3. **Settings → Apps → HomeCircle** now offers **Update**. Click it.
    Your circles are kept.
 
 ## 1. Turn on the load-test server (2 minutes)
@@ -89,6 +114,7 @@ cd packages/core && npm ci && cd ../../server && npm ci
 node scripts/swarm.mjs \
   --server http://192.168.1.20:8081 \
   --setup-code k3J9-… \
+  --invite-my-phone hq \
   --invite-server https://homecircle.your-tailnet.ts.net:8443 \
   --ha-url http://192.168.1.20:8123 \
   --ha-token eyJhbGciOi… \
@@ -98,15 +124,30 @@ node scripts/swarm.mjs \
 - `--server`: your Home Assistant's IP address, port **8081**.
 - `--setup-code`: only needed the first time. The swarm keeps its keys in a
   `.swarm` folder and picks up where it left off next time.
+- `--invite-my-phone`: `hq` makes a join link for the Load test HQ circle
+  only, `all` for every circle. Leave it out for no links at all. Use a spare
+  phone (see [Safety first](#safety-first)).
 - `--invite-server`: the `https://…:8443` address from the log, used in the
   join links for your phone. Without Tailscale, leave it out; the links then
   only work while your phone is on your Wi-Fi.
 - `--ha-url`: Home Assistant itself, port **8123**.
 
+**No Home Assistant?** Run a throwaway load-test server on your computer
+instead, and point `--server` at it:
+
+```sh
+LOAD_TEST=1 DATA_DIR=/tmp/homecircle-lt PORT=8081 PUSH_PROVIDER=none TRUST_PROXY=true \
+  SETUP_TOKEN=local-test-code node server/src/index.js
+```
+
 Open **<http://localhost:8090>**. Leave the window running; **Ctrl+C** stops
 the swarm and saves the report.
 
 ## 4. Join circles from your phone
+
+With `--invite-my-phone`, the dashboard shows a **Join** button next to the
+HQ circle (`hq`) or every circle (`all`); otherwise it says **invites off**.
+Use a spare phone, not the one your family relies on.
 
 The dashboard lists every circle with where it is and a **Join** button. Click
 it, then in the HomeCircle app choose **Join my family** and scan the QR code.

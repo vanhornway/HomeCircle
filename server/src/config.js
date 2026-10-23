@@ -37,6 +37,9 @@ export function loadConfig() {
     tileUrl: process.env.TILE_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     tileAttribution: process.env.TILE_ATTRIBUTION || '&copy; OpenStreetMap contributors',
     webClient: bool('WEB_CLIENT', true),
+    // A throwaway server for the swarm (scripts/swarm.mjs): it says so in /info,
+    // its web page shows a banner, and the swarm refuses any server without it.
+    loadTest: bool('LOAD_TEST', false),
   };
   if (config.setupToken && config.setupToken.length < 12) {
     throw new Error('SETUP_TOKEN must be at least 12 characters');

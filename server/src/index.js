@@ -103,6 +103,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     log(`HomeCircle server ${config.version} listening on ${config.host}:${config.port}`);
     const where = config.publicUrl || 'your server address';
     log('──────────────────────────────────────────────────────────');
+    if (config.loadTest) {
+      log('  LOAD-TEST SERVER (LOAD_TEST=1): for simulated people only. Never put your family on it.');
+    }
     if (!app.store.isSetup) {
       log('  This server has no circle yet.');
       log(`  Open the HomeCircle app, choose "Set up a new server", enter ${where}`);

@@ -105,6 +105,8 @@ export function buildRoutes({ config, store, hub, push, log }) {
       multiCircle: true,
       // Setup-code recovery: /recover/* and rejoin requests (0.8+).
       recovery: true,
+      // A throwaway server for load tests: never put real people on it.
+      loadTest: !!config.loadTest,
       push: push.enabled,
       tileUrl: config.tileUrl,
       tileAttribution: config.tileAttribution,

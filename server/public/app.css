@@ -89,6 +89,11 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 .brand-row { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; font-weight: 700; font-size: 17px; }
 .brand-row img { width: 34px; height: 34px; }
 .card p { margin: 8px 0 18px; }
+.loadtest-bar {
+  position: fixed; left: 12px; bottom: 12px; z-index: 2000; max-width: calc(100% - 24px);
+  background: var(--danger); color: #fff; border-radius: 999px; padding: 6px 14px;
+  font-size: 13px; font-weight: 600; box-shadow: var(--shadow);
+}
 .rejoin-card { border: 1px solid var(--brand); background: var(--brand-soft); border-radius: 14px; padding: 12px 14px; margin-bottom: 14px; }
 .rejoin-card p { margin: 6px 0; }
 .lock-note { display: flex; gap: 8px; align-items: flex-start; background: var(--brand-soft); border-radius: 12px; padding: 10px 12px; font-size: 13px; margin-top: 16px; }

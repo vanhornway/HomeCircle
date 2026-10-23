@@ -27,6 +27,12 @@ const HELP = `HomeCircle swarm: simulated people using a HomeCircle server.
 
   --server <url>         the load-test server, e.g. http://192.168.1.20:8081   (env HC_SERVER)
   --setup-code <code>    its setup code, from the add-on log (first run only)  (env HC_SETUP_CODE)
+  --invite-my-phone <which>
+                         make invite links so your phone can watch: hq (only the
+                         "Load test HQ" status circle) or all (every circle).
+                         Default: none. Every circle on a phone is another
+                         connection it reopens at once after unlocking, so
+                         don't use the phone your family relies on.
   --invite-server <url>  address in the invite links for your phone, e.g.
                          https://homecircle.your-tailnet.ts.net:8443         (env HC_INVITE_SERVER)
   --scale <size>         small (7 circles, ~85 people), medium (11, ~115),
@@ -54,6 +60,7 @@ const { values: opt } = parseArgs({
   options: {
     server: { type: 'string', default: process.env.HC_SERVER },
     'setup-code': { type: 'string', default: process.env.HC_SETUP_CODE },
+    'invite-my-phone': { type: 'string', default: 'none' },
     'invite-server': { type: 'string', default: process.env.HC_INVITE_SERVER },
     scale: { type: 'string' },
     circles: { type: 'string' },
@@ -73,6 +80,11 @@ const { values: opt } = parseArgs({
 if (opt.help || !opt.server) {
   console.log(HELP);
   process.exit(opt.help ? 0 : 1);
+}
+const phoneInvites = opt['invite-my-phone'];
+if (!['none', 'hq', 'all'].includes(phoneInvites)) {
+  console.error('--invite-my-phone must be none, hq or all');
+  process.exit(1);
 }
 if (opt.scale && !SCALES[opt.scale]) {
   console.error(`--scale must be one of: ${Object.keys(SCALES).join(', ')}`);
@@ -194,6 +206,17 @@ try {
   console.error(`Can't reach ${server}: ${e.message}`);
   process.exit(1);
 }
+// Only ever on a server that says it's for load tests (LOAD_TEST=1, which the
+// add-on sets for its load-test server). A swarm on a family's server would
+// fill it with simulated people and slow it down for real phones.
+if (!info.loadTest) {
+  console.error(
+    `${server} isn't a load-test server, so the swarm won't run on it.\n` +
+      'Use the Home Assistant add-on\'s load-test server (load_test_server on, port 8081, add-on 0.8.2 or newer),\n' +
+      'or a separate local server started with LOAD_TEST=1 (see docs/LOAD-TEST.md).',
+  );
+  process.exit(1);
+}
 log(`HomeCircle ${info.version} at ${server}${nativeSignatures ? '' : ' (slow signatures: expect the swarm itself to limit the load)'}`);
 if (info.push) log('Note: this server sends push notifications. A swarm on a server with push on will notify your phone a lot; the add-on’s load-test server has push off.');
 
@@ -248,7 +271,7 @@ const hqInvite = async () => {
   }
   return state.hqInvite;
 };
-await hqInvite();
+if (phoneInvites !== 'none') await hqInvite();
 
 // --- 2. the mix: how many circles of each kind, and how many people in each -
 
@@ -389,7 +412,7 @@ function wantedSize(circle) {
 }
 
 async function startCircle(circle) {
-  await userInvite(circle).catch((e) => log(`invite for ${circle.name} failed: ${e.message}`));
+  if (phoneInvites === 'all') await userInvite(circle).catch((e) => log(`invite for ${circle.name} failed: ${e.message}`));
   circle.stopped = false;
   await Promise.all(
     circle.members.map(async (m, j) => {
@@ -578,7 +601,8 @@ const dashboard = await startDashboard({
     lastMinute: metrics.lastMinute(),
     timeline: metrics.timeline,
     ha: metrics.ha,
-    hq: { name: hq.circle.name, invite: state.hqInvite?.link, joined: hq.memberList().filter((m) => !world.simIds.has(m.id)).length > 0 },
+    phoneInvites,
+    hq: { name: hq.circle.name, invite: phoneInvites !== 'none' ? state.hqInvite?.link : undefined, joined: hq.memberList().filter((m) => !world.simIds.has(m.id)).length > 0 },
     circles: world.circles.filter((c) => c.active || !c.stopped).map((c) => ({
       name: c.name,
       label: c.scenario.label,
@@ -587,7 +611,7 @@ const dashboard = await startDashboard({
       people: c.members.length,
       online: c.members.filter((m) => m.client.status === 'online').length,
       messages: c.messages,
-      invite: c.userInvite?.link,
+      invite: phoneInvites === 'all' ? c.userInvite?.link : undefined,
       you: c.userMembers().map((m) => m.name),
     })),
     feed: feedItems.slice(-40).reverse(),
@@ -688,8 +712,8 @@ every(30_000, () => {
 });
 every(5 * 60_000, () => phase === 'running' && hq.sendChat(summary()));
 every(60_000, async () => {
-  if (!hq.memberList().some((m) => !world.simIds.has(m.id))) await hqInvite();
-  for (const c of world.circles) if (c.active && !c.userMembers().length) await userInvite(c);
+  if (phoneInvites !== 'none' && !hq.memberList().some((m) => !world.simIds.has(m.id))) await hqInvite();
+  if (phoneInvites === 'all') for (const c of world.circles) if (c.active && !c.userMembers().length) await userInvite(c);
 });
 every(60_000, () => world.circles.forEach((c) => c.members.forEach((m) => m.trim())));
 // New problems go to the HQ circle once, so you hear about them on your phone.
