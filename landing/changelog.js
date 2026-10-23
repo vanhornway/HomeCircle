@@ -1,6 +1,19 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.8.0',
+    date: '2026-10-23',
+    title: 'Get back in with your setup code, and circles that stay put',
+    items: [
+      'Lost your phone or signed out? The server’s setup code gets you back in: rejoin your circle once a member approves, start a new circle, or delete an abandoned one.',
+      'Fixed: phones could drop out of their circles for good when a connection was slow to start, for example right after unlocking. Now the app never deletes a circle unless you tell it to.',
+      'Reconnecting after unlock is gentler: the circle on screen first, the rest a couple at a time, and “Reconnecting…” instead of an error for the first few seconds.',
+      'Settings → Your circles has a Server dropdown: pick a server to see your circles on it, create a circle there, or set up a new server.',
+      'Fixed: the map showed “403 Access blocked” tiles from OpenStreetMap, in the app and on the server’s web page.',
+      'Fixed: Diagnostics counts the time since the last upload, and records why a phone ever left a circle.',
+    ],
+  },
+  {
     version: '0.7.0',
     date: '2026-10-21',
     title: 'Reliable background tracking, setup check and Home Assistant',
