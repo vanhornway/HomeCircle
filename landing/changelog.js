@@ -1,6 +1,16 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.8.1',
+    date: '2026-10-23',
+    title: 'Notifications and Locate reach closed apps',
+    items: [
+      'Locate now wakes a phone even when HomeCircle is closed, for a fresh location in seconds.',
+      'New messages, check-ins and rejoin requests notify you even when the app is closed.',
+      'Notifications still carry no names, locations or message text: the phone fetches and decrypts them itself.',
+    ],
+  },
+  {
     version: '0.8.0',
     date: '2026-10-23',
     title: 'Get back in with your setup code, and circles that stay put',
