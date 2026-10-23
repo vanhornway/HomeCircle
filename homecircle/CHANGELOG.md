@@ -2,6 +2,12 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.8.1
+
+- Fixed: phones could drop out of their circle for good when the live
+  connection was slow to log in (for example right after unlocking, or in the
+  background). The server now tells them to retry instead.
+
 ## 0.8.0
 
 - Lost your phone or signed out? The server's setup code gets you back in:
