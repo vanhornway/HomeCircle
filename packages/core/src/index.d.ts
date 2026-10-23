@@ -187,6 +187,9 @@ export class Api {
 
 export const ACCOUNT_KEY: string;
 
+/** Why a device's keys were deleted, as passed with the 'signedOut' event. */
+export type SignOutReason = 'signed_out' | 'left' | 'deleted_circle' | 'removed' | 'circle_deleted' | 'unrecognized';
+
 export class CircleClient {
   constructor(opts: { storage: Storage; accountKey?: string; fetchImpl?: typeof fetch; WebSocketImpl?: any; onError?: (e: Error) => void });
   /** Where this circle's account is stored. */
@@ -228,14 +231,16 @@ export class CircleClient {
   on(event: 'rejoinRequests', fn: () => void): () => void;
   /** The server says it doesn't know this device. Keys are kept: the app decides whether to sign out. */
   on(event: 'unrecognized', fn: () => void): () => void;
-  on(event: 'circle' | 'removed' | 'signedOut', fn: (d?: any) => void): () => void;
+  on(event: 'signedOut', fn: (d: { reason: SignOutReason }) => void): () => void;
+  on(event: 'circle' | 'removed', fn: (d?: any) => void): () => void;
   on(event: string, fn: (d?: any) => void): () => void;
 
   load(): Promise<boolean>;
   changeServer(serverUrl: string): Promise<ServerInfo>;
   /** Check an address reaches the server holding this circle, without switching. */
   verifyServer(serverUrl: string): Promise<ServerInfo>;
-  signOut(): Promise<void>;
+  /** Forget this device's keys. The reason goes with the 'signedOut' event (default 'signed_out'). */
+  signOut(reason?: SignOutReason): Promise<void>;
   /** With the server's setup code (any time), or `admin`: a client already on that server that can create circles. */
   createCircle(opts: { serverUrl: string; setupToken?: string; admin?: CircleClient; name: string; circleName: string }): Promise<void>;
   previewInvite(link: string): Promise<InvitePreview>;

@@ -4,6 +4,7 @@
 import { useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ACCOUNT_KEY, CircleClient } from '@homecircle/core';
+import { diag } from './diagnostics';
 import { secureStorage } from './storage';
 
 const LIST_KEY = 'homecircle.circles';
@@ -30,9 +31,16 @@ function makeClient(accountKey: string): CircleClient {
       if (__DEV__) console.warn('[homecircle]', e.message);
     },
   });
-  // Signed out, left, removed by an admin, or the circle was deleted.
-  client.on('signedOut', () => {
+  // Signed out, left, removed by an admin, or the circle was deleted. Keys
+  // are only ever deleted for one of these reasons; each is logged.
+  client.on('signedOut', ({ reason }) => {
+    diag('signout', { reason });
     if (clients.get(accountKey) === client) forget(accountKey).catch(() => {});
+  });
+  // The server no longer knows this phone in the circle. The keys stay until
+  // the person removes the circle (the banner offers it).
+  client.on('unrecognized', () => {
+    diag('server:unrecognized', { via: 'live' });
   });
   return client;
 }

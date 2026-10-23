@@ -168,6 +168,20 @@ test('a phone slow to log in on the live connection is told to retry, not that i
   assert.equal(code, 4000);
 });
 
+test('a stray 4001 while still a member: the phone checks, reconnects and stays in', async () => {
+  await waitOnline(wife);
+  let signedOut = false;
+  const off = wife.on('signedOut', () => (signedOut = true));
+  const rejected = waitFor(wife, 'status', (s) => s === 'unauthorized');
+  const reconnected = waitFor(wife, 'status', (s) => s === 'online');
+  app.hub.disconnect(wife.account.memberId); // closes with 4001, as for a removal
+  await rejected;
+  await reconnected;
+  off();
+  assert.equal(signedOut, false);
+  assert.ok(wife.account, 'keys kept');
+});
+
 test('a phone the server stops recognizing keeps its keys and is told', async () => {
   const memberId = wife.account.memberId;
   wife.disconnect();

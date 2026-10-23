@@ -128,12 +128,16 @@ export class CircleClient {
     await this.storage.setItem(this.accountKey, JSON.stringify(this.account));
   }
 
-  /** Forget this device's keys locally. */
-  async signOut() {
+  /**
+   * Forget this device's keys locally. `reason` is passed on with the
+   * 'signedOut' event so apps can log why: 'signed_out' (the person chose
+   * to), 'left', 'deleted_circle', 'removed' or 'circle_deleted'.
+   */
+  async signOut(reason = 'signed_out') {
     this.disconnect();
     await this.storage.removeItem(this.accountKey);
     this._reset();
-    this.emit('signedOut');
+    this.emit('signedOut', { reason });
   }
 
   /**
@@ -946,13 +950,13 @@ export class CircleClient {
 
   async leave() {
     await this.api.removeMember(this.account.memberId);
-    await this.signOut();
+    await this.signOut('left');
   }
 
   /** Owner only: delete this circle and everything in it, for everyone. */
   async deleteCircle() {
     await this.api.deleteCircle();
-    await this.signOut();
+    await this.signOut('deleted_circle');
   }
 
   /** New circle key for everyone still in the circle. Admin only. */
@@ -1053,9 +1057,10 @@ export class CircleClient {
     }
   }
 
-  async _handleRemoved() {
-    this.emit('removed');
-    await this.signOut();
+  /** The server said, in so many words, that this device is out: 'removed' or 'circle_deleted'. */
+  async _handleRemoved(reason) {
+    this.emit('removed', { reason });
+    await this.signOut(reason);
   }
 
   async _onEvent(e) {
@@ -1088,12 +1093,12 @@ export class CircleClient {
         this.emit('places', this.places);
         break;
       case 'removed':
-        if (e.memberId === this.account.memberId) return this._handleRemoved();
+        if (e.memberId === this.account.memberId) return this._handleRemoved('removed');
         this.locations.delete(e.memberId);
         await this.refresh();
         break;
       case 'circle_deleted':
-        return this._handleRemoved();
+        return this._handleRemoved('circle_deleted');
       case 'members_changed':
       case 'key_rotated':
       case 'circle':

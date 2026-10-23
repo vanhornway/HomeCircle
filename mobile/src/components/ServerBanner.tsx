@@ -45,7 +45,7 @@ export function ServerBanner({ style }: { style?: object }) {
                   text: 'Remove',
                   style: 'destructive',
                   onPress: async () => {
-                    await getClient().signOut();
+                    await getClient().signOut('unrecognized');
                     setServerState({ unrecognized: false });
                     retryServer();
                   },

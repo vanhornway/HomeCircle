@@ -67,6 +67,7 @@ function useCircleLifecycle(circlesKey: string) {
         // removed, the circle was deleted, or the server lost its data. Keep the
         // keys (deleting them can't be undone); the banner lets the person
         // remove the circle from this phone.
+        if (e?.status === 401) diag('server:unrecognized', { via: 'http' });
         return e;
       }
     };

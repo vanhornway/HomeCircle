@@ -112,6 +112,28 @@ invite and returns a device token.
    trusted box key, adds `CK_{e+1}` to their keyring, and re-publishes their
    profile under the new epoch. Outstanding invites are revoked.
 
+## Live connection
+
+Open apps keep one WebSocket per circle at `/api/v1/ws`. The first frame is
+`{type:"auth", token}` (so the token never appears in a URL or access log); the
+server answers `{type:"ready"}` and then relays events. It pings every 25 s and
+clients answer `{type:"pong"}`.
+
+The server closes the socket with these codes:
+
+| Code | Meaning | What the app does |
+|---|---|---|
+| 4000 | No auth frame within 10 s (a slow or paused phone) | Reconnect |
+| 4001 | The token isn't valid: the member was removed, the circle deleted, or the server doesn't know this device | Check with `GET /state`. If that works, reconnect. If it also answers 401, keep the keys and ask the person whether to remove the circle from the device. |
+| 4002 | The first frame wasn't an auth frame | Reconnect |
+| 1001 | Server shutting down | Reconnect |
+
+Devices only delete their keys on an explicit `{type:"removed"}` for
+themselves or `{type:"circle_deleted"}`, or when the person chooses to.
+Deleting keys can't be undone, and a server that lost or misplaced its data
+answers 401 just like one that removed you. (Servers before 0.8.1 sent 4001
+for timeouts too, and apps before 0.8 deleted their keys on any 4001.)
+
 ## Location
 
 - Each phone keeps only its **latest** sealed location on the server

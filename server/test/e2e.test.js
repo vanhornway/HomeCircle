@@ -211,9 +211,12 @@ test('removing a member rotates the key and locks them out', async () => {
   const carolId = carol.account.memberId;
   const carolToken = carol.account.token;
   const removed = waitFor(carol, 'removed');
+  const signedOut = waitFor(carol, 'signedOut');
   const rotated = waitFor(bob, 'members', () => bob.account.epoch === 2, 5000);
   await owner.removeMember(carolId);
   await removed;
+  // An explicit "removed" still signs the device out, and says why.
+  assert.deepEqual(await signedOut, { reason: 'removed' });
   assert.equal(carol.account, null);
   assert.equal(owner.account.epoch, 2);
   await rotated;
