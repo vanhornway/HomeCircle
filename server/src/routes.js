@@ -23,6 +23,8 @@ const MAX_MEMBERS = 50;
 const MAX_OPEN_INVITES = 20;
 const MAX_PLACES = 100;
 const MAX_CIRCLES = 100;
+const MAX_OPEN_REJOINS = 3;
+const REJOIN_HOURS = 48;
 // How long a circle keeps messages: 1 day, 1 week, 1 month, 1 quarter, 1 year.
 export const RETENTION_CHOICES = [1, 7, 30, 90, 365];
 const DEFAULT_RETENTION_DAYS = 90;
@@ -37,9 +39,25 @@ export function buildRoutes({ config, store, hub, push, log }) {
   // A few Locates per person per hour at most, so nobody's battery is drained.
   const hourlyLocateLimiter = new RateLimiter(6, 3600_000);
 
+  // Guessing the setup code: a few dozen tries per hour from one address.
+  const setupCodeLimiter = new RateLimiter(30, 3600_000);
+
   const limitPublic = (ctx) => {
     const wait = publicLimiter.take(ctx.ip);
     if (wait) fail(429, 'rate_limited', 'Too many attempts, try again shortly', { retryAfter: wait });
+  };
+  const checkSetupCode = (body, ctx) => {
+    limitPublic(ctx);
+    const wait = setupCodeLimiter.take(ctx.ip);
+    if (wait) fail(429, 'rate_limited', 'Too many attempts, try again later', { retryAfter: wait });
+    if (typeof body.setupToken !== 'string' || !safeEqual(body.setupToken.trim(), config.setupToken)) {
+      fail(403, 'bad_setup_token', 'That setup code is not right. Find it in your server logs or hosting dashboard.');
+    }
+  };
+  const vName = (v) => {
+    const name = typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 40) : '';
+    if (!name) fail(400, 'invalid', 'name is required');
+    return name;
   };
   const currentEpoch = (circleId, epoch) => {
     const current = store.circle(circleId).epoch;
@@ -85,6 +103,8 @@ export function buildRoutes({ config, store, hub, push, log }) {
       // Only meaningful on single-circle servers; apps before 0.4 compare it.
       circleId: store.soleCircleId(),
       multiCircle: true,
+      // Setup-code recovery: /recover/* and rejoin requests (0.8+).
+      recovery: true,
       push: push.enabled,
       tileUrl: config.tileUrl,
       tileAttribution: config.tileAttribution,
@@ -113,19 +133,144 @@ export function buildRoutes({ config, store, hub, push, log }) {
     return { memberId: member.id, token };
   };
 
-  // First circle on a new server, authorized by the setup code.
+  // A circle authorized by the setup code: the server's first, or another one
+  // by whoever set the server up (for example after losing their phone).
   r.add(
     'POST',
     '/setup',
     ({ body, ctx }) => {
-      limitPublic(ctx);
-      if (store.isSetup) fail(409, 'already_setup', 'This server already has a circle. Ask an admin for an invite.');
-      if (typeof body.setupToken !== 'string' || !safeEqual(body.setupToken, config.setupToken)) {
-        fail(403, 'bad_setup_token', 'That setup code is not right. Find it in your server logs or hosting dashboard.');
-      }
+      checkSetupCode(body, ctx);
+      const first = !store.isSetup;
+      if (store.circleCount() >= MAX_CIRCLES) fail(409, 'too_many_circles', 'This server has reached its circle limit');
       const res = insertCircle(vNewCircle(body));
-      log('setup complete: first circle created');
+      log(first ? 'setup complete: first circle created' : 'new circle created with the setup code');
       return res;
+    },
+    { auth: false },
+  );
+
+  // --- recovery with the setup code -----------------------------------------
+  // Whoever has the setup code can see which circles exist (dates and member
+  // counts only: names are encrypted), delete one, or ask to rejoin one.
+  // Rejoining needs a member of that circle to approve on their phone: only
+  // members hold the circle key, so the setup code alone never reveals
+  // anything inside a circle.
+
+  r.add(
+    'POST',
+    '/recover',
+    ({ body, ctx }) => {
+      checkSetupCode(body, ctx);
+      const now = Date.now();
+      return { circles: store.circleSummaries().map((c) => ({ ...c, waiting: store.countOpenRejoins(c.id, now) })) };
+    },
+    { auth: false },
+  );
+
+  r.add(
+    'POST',
+    '/recover/delete',
+    ({ body, ctx }) => {
+      checkSetupCode(body, ctx);
+      const circleId = vId(body.circleId, 'circleId');
+      if (!store.circleExists(circleId)) fail(404, 'not_found', 'No such circle');
+      hub.broadcast(circleId, { type: 'circle_deleted' });
+      const memberIds = store.tx(() => store.deleteCircle(circleId));
+      for (const id of memberIds) hub.disconnect(id);
+      log('circle deleted with the setup code');
+      return { ok: true };
+    },
+    { auth: false },
+  );
+
+  r.add(
+    'POST',
+    '/recover/rejoin',
+    ({ body, ctx }) => {
+      checkSetupCode(body, ctx);
+      const circleId = vId(body.circleId, 'circleId');
+      if (!store.circleExists(circleId)) fail(404, 'not_found', 'No such circle');
+      const id = vId(body.requestId, 'requestId');
+      const name = vName(body.name);
+      const boxPub = vBytes(body.boxPub, 'boxPub', 32);
+      const signPub = vBytes(body.signPub, 'signPub', 32);
+      const authHash = vBytes(body.authHash, 'authHash', 32);
+      const now = Date.now();
+      const active = store.activeMembers(circleId);
+      if (!active.length) fail(409, 'no_members', 'Nobody is left in this circle to approve you. Delete it and start a new circle instead.');
+      if (store.countOpenRejoins(circleId, now) >= MAX_OPEN_REJOINS) {
+        fail(409, 'too_many_requests', 'This circle already has requests waiting. Ask a member to approve or deny them first.');
+      }
+      if (store.rejoin(id)) fail(409, 'conflict', 'Request id already exists');
+      const expiresAt = now + REJOIN_HOURS * 3600_000;
+      store.insertRejoin({ id, circleId, name, boxPub, signPub, authHash, now, expiresAt });
+      hub.broadcast(circleId, { type: 'rejoin_requests' });
+      push.rejoinRequest(active.filter((m) => m.pushToken && !hub.isOnline(m.id)));
+      log('rejoin requested with the setup code');
+      return { id, expiresAt };
+    },
+    { auth: false },
+  );
+
+  // The requester checks back with the secret only they have (not the setup code).
+  const rejoinRequest = (body) => {
+    const req = store.rejoin(vId(body.requestId, 'requestId'));
+    if (!req || typeof body.auth !== 'string' || !safeEqual(inviteAuthHash(body.auth), req.auth_hash)) {
+      fail(404, 'not_found', 'No such request');
+    }
+    return req;
+  };
+
+  r.add(
+    'POST',
+    '/recover/rejoin/status',
+    ({ body, ctx }) => {
+      limitPublic(ctx);
+      const req = rejoinRequest(body);
+      if (req.used_at) return { status: 'done' };
+      if (req.denied_at) return { status: 'denied' };
+      if (req.expires_at <= Date.now()) return { status: 'expired' };
+      if (!req.approved_at) return { status: 'pending', expiresAt: req.expires_at };
+      const by = store.member(req.circle_id, req.approved_by);
+      if (!by) return { status: 'pending', expiresAt: req.expires_at };
+      return { status: 'approved', epoch: req.epoch, wrapped: req.wrapped, from: { id: by.id, boxPub: by.boxPub } };
+    },
+    { auth: false },
+  );
+
+  r.add(
+    'POST',
+    '/recover/rejoin/complete',
+    ({ body, ctx }) => {
+      limitPublic(ctx);
+      const req = rejoinRequest(body);
+      const now = Date.now();
+      if (req.used_at || req.denied_at || !req.approved_at || req.expires_at <= now) {
+        fail(409, 'not_approved', 'This request isn’t approved, or it has expired.');
+      }
+      const member = vMember(body.member);
+      if (member.boxPub !== req.box_pub || member.signPub !== req.sign_pub) fail(400, 'invalid', 'Keys don’t match the request');
+      const circleId = req.circle_id;
+      const circle = store.circle(circleId);
+      if (req.epoch !== circle.epoch || member.profile.epoch !== circle.epoch) {
+        // The key changed after they approved: ask again with the new one.
+        store.reopenRejoin(req.id);
+        hub.broadcast(circleId, { type: 'rejoin_requests' });
+        fail(409, 'stale_epoch', 'The circle key changed. Ask them to approve you again.', { epoch: circle.epoch });
+      }
+      if (store.memberExists(member.id)) fail(409, 'conflict', 'Member id already exists');
+      if (store.activeMembers(circleId).length >= MAX_MEMBERS) fail(409, 'circle_full', 'This circle is full');
+      const { token, tokenHash } = newToken();
+      store.tx(() => {
+        if (!store.useRejoin(req.id, member.id, now)) fail(409, 'not_approved', 'This request was just used');
+        // The setup code holder becomes the owner; the previous owner stays as an admin.
+        for (const m of store.activeMembers(circleId)) if (m.role === 'owner') store.setRole(m.id, 'admin');
+        store.insertMember({ ...member, circleId, role: 'owner', serverAdmin: true, tokenHash, now });
+      });
+      hub.broadcast(circleId, { type: 'members_changed' });
+      hub.broadcast(circleId, { type: 'rejoin_requests' });
+      log('owner rejoined with the setup code');
+      return { memberId: member.id, token };
     },
     { auth: false },
   );
@@ -321,6 +466,48 @@ export function buildRoutes({ config, store, hub, push, log }) {
   r.add('DELETE', '/invites/:id', ({ me, params }) => {
     requireAdmin(me);
     if (!store.revokeInvite(me.circleId, vId(params.id, 'id'), Date.now())) fail(404, 'not_found', 'No such open invite');
+    return { ok: true };
+  });
+
+  // --- rejoin requests -----------------------------------------------------
+  // Made with the setup code (see /recover/rejoin). Any member can approve:
+  // their phone encrypts the circle key and name to the requester's key.
+
+  r.add('GET', '/rejoin-requests', ({ me }) => ({
+    requests: store.openRejoins(me.circleId, Date.now()).map((q) => ({
+      id: q.id,
+      name: q.name,
+      boxPub: q.box_pub,
+      signPub: q.sign_pub,
+      createdAt: q.created_at,
+      expiresAt: q.expires_at,
+    })),
+  }));
+
+  const waitingRejoin = (me, id) => {
+    const req = store.rejoin(vId(id, 'id'));
+    if (!req || req.circle_id !== me.circleId || req.approved_at || req.denied_at || req.used_at || req.expires_at <= Date.now()) {
+      fail(404, 'not_found', 'This request is no longer waiting');
+    }
+    return req;
+  };
+
+  r.add('POST', '/rejoin-requests/:id/approve', ({ me, params, body }) => {
+    const req = waitingRejoin(me, params.id);
+    const epoch = vEpoch(body.epoch);
+    currentEpoch(me.circleId, epoch);
+    const wrapped = vBox(body.wrapped, 'wrapped', 4096);
+    if (!store.approveRejoin(req.id, me.id, wrapped, epoch, Date.now())) fail(404, 'not_found', 'This request is no longer waiting');
+    hub.broadcast(me.circleId, { type: 'rejoin_requests' });
+    log('rejoin approved');
+    return { ok: true };
+  });
+
+  r.add('POST', '/rejoin-requests/:id/deny', ({ me, params }) => {
+    const req = waitingRejoin(me, params.id);
+    store.denyRejoin(req.id, Date.now());
+    hub.broadcast(me.circleId, { type: 'rejoin_requests' });
+    log('rejoin denied');
     return { ok: true };
   });
 

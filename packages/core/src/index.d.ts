@@ -107,6 +107,8 @@ export interface ServerInfo {
   circleId: string | null;
   /** Server can host several circles (0.4+). */
   multiCircle?: boolean;
+  /** Setup-code recovery and rejoin requests (0.8+). */
+  recovery?: boolean;
   push: boolean;
   tileUrl: string;
   tileAttribution: string;
@@ -118,6 +120,40 @@ export interface Invite {
   expiresAt: number;
   link: string;
   appLink: string;
+}
+
+/** A circle as the setup code shows it: names are encrypted, so only these. */
+export interface RecoverableCircle {
+  id: string;
+  createdAt: number;
+  /** Members still in it (including anyone who signed out without leaving). */
+  members: number;
+  lastSeenAt: number | null;
+  /** Rejoin requests waiting for a member. */
+  waiting: number;
+}
+
+/** A rejoin request made on this device. Holds new secret keys: keep it in secure storage. */
+export interface PendingRejoin {
+  server: string;
+  circleId: string;
+  requestId: string;
+  auth: string;
+  identity: { boxPub: string; boxSecret: string; signPub: string; signSecret: string };
+  name: string;
+  expiresAt: number;
+  safetyNumber: string;
+}
+
+/** Someone asking to rejoin this circle with the setup code. */
+export interface RejoinRequest {
+  id: string;
+  name: string;
+  boxPub: string;
+  signPub: string;
+  createdAt: number;
+  expiresAt: number;
+  safetyNumber: string;
 }
 
 export interface InvitePreview {
@@ -156,6 +192,12 @@ export class CircleClient {
   /** Where this circle's account is stored. */
   readonly accountKey: string;
   static serverInfo(serverUrl: string, fetchImpl?: typeof fetch): Promise<ServerInfo>;
+  /** With the server's setup code: every circle on it. */
+  static recoverCircles(serverUrl: string, setupToken: string, fetchImpl?: typeof fetch): Promise<{ server: string; circles: RecoverableCircle[] }>;
+  /** With the server's setup code: delete a circle for everyone in it. */
+  static recoverDeleteCircle(serverUrl: string, setupToken: string, circleId: string, fetchImpl?: typeof fetch): Promise<void>;
+  /** With the server's setup code: ask a circle's members to let you back in as its owner. */
+  static requestRejoin(opts: { serverUrl: string; setupToken: string; circleId: string; name: string; fetchImpl?: typeof fetch }): Promise<PendingRejoin>;
 
   account: Account | null;
   api: Api;
@@ -183,6 +225,7 @@ export class CircleClient {
   on(event: 'places', fn: (p: Map<string, Place>) => void): () => void;
   on(event: 'status', fn: (s: ConnectionStatus) => void): () => void;
   on(event: 'locationRequest', fn: (r: { from: string }) => void): () => void;
+  on(event: 'rejoinRequests', fn: () => void): () => void;
   on(event: 'circle' | 'removed' | 'signedOut', fn: (d?: any) => void): () => void;
   on(event: string, fn: (d?: any) => void): () => void;
 
@@ -191,10 +234,15 @@ export class CircleClient {
   /** Check an address reaches the server holding this circle, without switching. */
   verifyServer(serverUrl: string): Promise<ServerInfo>;
   signOut(): Promise<void>;
-  /** First circle on a server: pass `setupToken`. More circles: pass `admin`, a client already on that server. */
+  /** With the server's setup code (any time), or `admin`: a client already on that server that can create circles. */
   createCircle(opts: { serverUrl: string; setupToken?: string; admin?: CircleClient; name: string; circleName: string }): Promise<void>;
   previewInvite(link: string): Promise<InvitePreview>;
   joinWithInvite(link: string, opts: { name: string }): Promise<void>;
+  /** Join once a member approved the request: 'joined'. Otherwise its status. */
+  finishRejoin(pending: PendingRejoin): Promise<'joined' | 'pending' | 'denied' | 'expired'>;
+  rejoinRequests(): Promise<RejoinRequest[]>;
+  approveRejoin(request: RejoinRequest): Promise<void>;
+  denyRejoin(id: string): Promise<unknown>;
   refresh(): Promise<unknown>;
   memberList(): Member[];
   fetchLocations(): Promise<Map<string, MemberLocation>>;

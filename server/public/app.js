@@ -59,6 +59,24 @@ const local = {
     }
   },
 };
+// A rejoin request made with the setup code, waiting for a member to approve
+// it. It holds this browser's new keys until it completes.
+const PENDING_REJOIN_KEY = 'homecircle.pendingRejoin';
+const pendingRejoin = {
+  get() {
+    try {
+      return JSON.parse(local.get(PENDING_REJOIN_KEY) || 'null');
+    } catch {
+      return null;
+    }
+  },
+  set(p) {
+    local.set(PENDING_REJOIN_KEY, JSON.stringify(p));
+  },
+  clear() {
+    storage.removeItem(PENDING_REJOIN_KEY);
+  },
+};
 const makeClient = (accountKey) => new CircleClient({ storage, accountKey, onError: (e) => console.warn('[homecircle]', e.message) });
 let circles = []; // loaded clients, in the order they were added
 let client = makeClient(ACCOUNT_KEY); // the circle on screen
@@ -289,10 +307,251 @@ function renderNoAccount() {
         brandRow(),
         h('h1', {}, 'A private HomeCircle'),
         h('p', { class: 'muted' }, 'This server belongs to a family circle. To join, ask one of its admins for an invite link or QR code.'),
+        info.recovery ? h('button', { class: 'btn block', onclick: () => renderRecover() }, 'I set up this server') : null,
         lockNote('Locations and messages here are end-to-end encrypted. Even this server can’t read them.'),
       ),
     ),
   );
+}
+
+// --- recovery with the setup code ------------------------------------------
+// Whoever set up this server can always get back in with its setup code:
+// rejoin a circle (a member approves it on their phone), start a new circle,
+// or delete one nobody uses anymore.
+
+const backHome = () => h('a', { class: 'btn block', href: '/', style: 'margin-top:10px' }, circles.length ? 'Back to your circles' : 'Back');
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+function renderRecover() {
+  const pending = pendingRejoin.get();
+  if (pending) return renderRejoinWait(pending);
+  const err = h('p', { class: 'error', role: 'alert' });
+  const code = h('input', { class: 'input mono', id: 'code', required: true, autocomplete: 'off', spellcheck: 'false', placeholder: 'From your server logs' });
+  const btn = h('button', { class: 'btn primary block', type: 'submit' }, 'Continue');
+  mount(
+    h(
+      'main',
+      { class: 'onboard' },
+      h(
+        'div',
+        { class: 'card' },
+        brandRow(),
+        h('h1', {}, 'I set up this server'),
+        h('p', { class: 'muted' }, 'Enter this server’s setup code to get back into your circle, start a new one, or delete one nobody uses.'),
+        h(
+          'form',
+          {
+            onsubmit: async (e) => {
+              e.preventDefault();
+              btn.disabled = true;
+              err.textContent = '';
+              try {
+                const { circles: list } = await CircleClient.recoverCircles(SERVER, code.value);
+                renderRecoverCircles(code.value.trim(), list);
+              } catch (ex) {
+                err.textContent = errorText(ex);
+                btn.disabled = false;
+              }
+            },
+          },
+          h('div', { class: 'field' }, h('label', { for: 'code' }, 'Setup code'), code),
+          btn,
+          err,
+        ),
+        h('p', { class: 'muted small' }, 'Find it in the server’s log, or where you host it: Render’s Environment tab (SETUP_TOKEN), or setup_code in Home Assistant.'),
+        backHome(),
+      ),
+    ),
+  );
+  code.focus();
+}
+
+function renderRecoverCircles(code, list) {
+  const err = h('p', { class: 'error', role: 'alert' });
+  const reload = async () => {
+    try {
+      renderRecoverCircles(code, (await CircleClient.recoverCircles(SERVER, code)).circles);
+    } catch (ex) {
+      err.textContent = errorText(ex);
+    }
+  };
+  const rows = list.map((c, i) => {
+    const mine = circles.find((x) => x.circleId === c.id);
+    const label = mine ? mine.circle.name : `Circle ${i + 1}`;
+    const bits = [
+      `created ${new Date(c.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`,
+      plural(c.members, 'member'),
+      c.lastSeenAt ? `active ${timeAgo(c.lastSeenAt)}` : 'never active',
+    ];
+    if (c.waiting) bits.push(`${c.waiting} waiting for approval`);
+    return h(
+      'div',
+      { class: 'row', style: 'flex-wrap:wrap' },
+      h('div', { class: 'grow' }, h('strong', {}, label), h('div', { class: 'muted small' }, bits.join(' · '))),
+      mine
+        ? h('button', { class: 'btn small', onclick: () => (history.replaceState(null, '', '/'), switchCircle(mine.accountKey)) }, 'Open')
+        : h('button', { class: 'btn small', disabled: !c.members, onclick: () => renderRejoinForm(code, c, label, () => renderRecoverCircles(code, list)) }, 'Ask to rejoin'),
+      h(
+        'button',
+        {
+          class: 'btn small danger',
+          onclick: async () => {
+            if (!confirm(`Delete ${label}? Everyone in it is removed, and its messages, places and locations are deleted. This can’t be undone.`)) return;
+            try {
+              await CircleClient.recoverDeleteCircle(SERVER, code, c.id);
+              toast(`${label} deleted`);
+              await reload();
+            } catch (ex) {
+              err.textContent = errorText(ex);
+            }
+          },
+        },
+        'Delete',
+      ),
+    );
+  });
+
+  const name = h('input', { class: 'input', id: 'name', required: true, maxlength: '40', autocomplete: 'given-name', placeholder: 'e.g. Sam' });
+  const circleName = h('input', { class: 'input', id: 'circle', maxlength: '40', placeholder: 'e.g. The Parkers' });
+  const btn = h('button', { class: 'btn primary block', type: 'submit' }, 'Create circle');
+  const createErr = h('p', { class: 'error', role: 'alert' });
+  mount(
+    h(
+      'main',
+      { class: 'onboard' },
+      h(
+        'div',
+        { class: 'card' },
+        brandRow(),
+        h('h1', {}, 'Circles on this server'),
+        h('p', { class: 'muted' }, 'Circle names are encrypted, so the server can’t show them. Tell them apart by when each was created and how many people are in it.'),
+        list.length ? rows : h('p', { class: 'muted' }, 'There are no circles on this server.'),
+        err,
+        h('h3', { style: 'margin-top:18px' }, 'Start a new circle'),
+        h(
+          'form',
+          {
+            onsubmit: async (e) => {
+              e.preventDefault();
+              btn.disabled = true;
+              createErr.textContent = '';
+              try {
+                const c = newCircleClient();
+                await c.createCircle({ serverUrl: SERVER, setupToken: code, name: name.value, circleName: circleName.value });
+                openNewCircle(c);
+              } catch (ex) {
+                createErr.textContent = errorText(ex);
+                btn.disabled = false;
+              }
+            },
+          },
+          h('div', { class: 'field' }, h('label', { for: 'name' }, 'Your name'), name),
+          h('div', { class: 'field' }, h('label', { for: 'circle' }, 'Circle name'), circleName),
+          btn,
+          createErr,
+        ),
+        lockNote('Rejoining needs someone still in that circle to approve you on their phone. The setup code alone can’t open a circle.'),
+        backHome(),
+      ),
+    ),
+  );
+}
+
+function renderRejoinForm(code, c, label, back) {
+  const err = h('p', { class: 'error', role: 'alert' });
+  const name = h('input', { class: 'input', id: 'name', required: true, maxlength: '40', autocomplete: 'given-name', placeholder: 'So they know it’s you' });
+  const btn = h('button', { class: 'btn primary block', type: 'submit' }, 'Ask to rejoin');
+  mount(
+    h(
+      'main',
+      { class: 'onboard' },
+      h(
+        'div',
+        { class: 'card' },
+        brandRow(),
+        h('h1', {}, `Rejoin ${label}`),
+        h('p', { class: 'muted' }, `Someone still in it (${plural(c.members, 'member')}) approves you on their phone. You’ll come back as the circle’s owner; your old phone stays listed until you remove it.`),
+        h(
+          'form',
+          {
+            onsubmit: async (e) => {
+              e.preventDefault();
+              btn.disabled = true;
+              err.textContent = '';
+              try {
+                const pending = await CircleClient.requestRejoin({ serverUrl: SERVER, setupToken: code, circleId: c.id, name: name.value });
+                pendingRejoin.set(pending);
+                renderRejoinWait(pending);
+              } catch (ex) {
+                err.textContent = errorText(ex);
+                btn.disabled = false;
+              }
+            },
+          },
+          h('div', { class: 'field' }, h('label', { for: 'name' }, 'Your name'), name),
+          btn,
+          err,
+        ),
+        h('button', { class: 'btn block', style: 'margin-top:10px', onclick: back }, 'Back'),
+      ),
+    ),
+  );
+  name.focus();
+}
+
+let rejoinTimer;
+function renderRejoinWait(pending) {
+  const status = h('p', { class: 'muted', role: 'status' }, 'Waiting for approval…');
+  const cancel = h(
+    'button',
+    {
+      class: 'btn block',
+      onclick: () => {
+        clearTimeout(rejoinTimer);
+        pendingRejoin.clear();
+        location.href = '/';
+      },
+    },
+    'Cancel request',
+  );
+  mount(
+    h(
+      'main',
+      { class: 'onboard' },
+      h(
+        'div',
+        { class: 'card' },
+        brandRow(),
+        h('h1', {}, 'Waiting for approval'),
+        h('p', { class: 'muted' }, 'Ask someone in the circle to open HomeCircle. They’ll see your request at the top of People and can approve it.'),
+        h('p', { class: 'muted small' }, 'They’ll be asked to check this safety number. Read it to them in person or on a call:'),
+        h('p', { class: 'mono', style: 'font-size:18px' }, pending.safetyNumber),
+        status,
+        cancel,
+      ),
+    ),
+  );
+  const check = async () => {
+    const joiner = newCircleClient();
+    try {
+      const result = await joiner.finishRejoin(pending);
+      if (result === 'joined') {
+        pendingRejoin.clear();
+        return openNewCircle(joiner);
+      }
+      if (result === 'denied' || result === 'expired') {
+        pendingRejoin.clear();
+        status.textContent = result === 'denied' ? 'Your request was denied.' : 'Your request expired. Start again with the setup code.';
+        cancel.textContent = 'Back';
+        return;
+      }
+      status.textContent = 'Waiting for approval…';
+    } catch (e) {
+      status.textContent = errorText(e);
+    }
+    rejoinTimer = setTimeout(check, 5000);
+  };
+  check();
 }
 
 function renderMessage(title, text) {
@@ -414,6 +673,7 @@ async function startApp() {
   client.on('locationRequest', () => {
     if (sharingEnabled()) sendBrowserLocation('requested', true);
   });
+  client.on('rejoinRequests', loadRejoins);
   client.on('removed', () => {
     if (circles.length > 1) {
       toast(`You’re no longer in ${client.circle.name}`);
@@ -444,7 +704,67 @@ async function startApp() {
   renderMarkers();
   renderPanel();
   if (sharingEnabled()) startSharing();
+  loadRejoins();
   setInterval(() => ui.tab === 'people' && renderPanel(), 30000);
+}
+
+/** Requests to rejoin with the setup code, shown at the top of People. */
+async function loadRejoins() {
+  if (!info.recovery) return;
+  try {
+    ui.rejoins = await client.rejoinRequests();
+  } catch {
+    ui.rejoins = [];
+  }
+  if (ui.tab === 'people') renderPanel();
+}
+
+function rejoinCards() {
+  return (ui.rejoins || []).map((q) =>
+    h(
+      'div',
+      { class: 'rejoin-card' },
+      h('strong', {}, `${q.name} asked to rejoin as the circle’s owner`),
+      h('p', { class: 'muted small' }, 'They used this server’s setup code. Approve only if you know it’s them: ask them to read you their safety number, and check it matches this one.'),
+      h('p', { class: 'mono' }, q.safetyNumber),
+      h(
+        'div',
+        { class: 'panel-actions' },
+        h(
+          'button',
+          {
+            class: 'btn small primary',
+            onclick: async () => {
+              if (!confirm(`Let ${q.name} back into ${client.circle.name}? They’ll see everything in it and become its owner.`)) return;
+              try {
+                await client.approveRejoin(q);
+                toast(`${q.name} can rejoin now`);
+              } catch (e) {
+                toast(errorText(e));
+              }
+              loadRejoins();
+            },
+          },
+          'Approve',
+        ),
+        h(
+          'button',
+          {
+            class: 'btn small danger',
+            onclick: async () => {
+              try {
+                await client.denyRejoin(q.id);
+              } catch (e) {
+                toast(errorText(e));
+              }
+              loadRejoins();
+            },
+          },
+          'Deny',
+        ),
+      ),
+    ),
+  );
 }
 
 function setTab(t) {
@@ -587,6 +907,7 @@ function peopleView() {
   return h(
     'div',
     {},
+    rejoinCards(),
     h(
       'div',
       { class: 'panel-actions' },
@@ -1221,6 +1542,15 @@ function circlesSection() {
       ),
     ),
     h('p', { class: 'muted small' }, 'Each circle is separate: its own people, map, chat and encryption key. To join another circle, open its invite link in this browser.'),
+    info.recovery
+      ? h(
+          'p',
+          { class: 'muted small' },
+          'Set up this server? ',
+          h('a', { href: '/#recover', onclick: () => setTimeout(() => location.reload()) }, 'Manage its circles with the setup code'),
+          '.',
+        )
+      : null,
     admin
       ? h(
           'form',
@@ -1350,6 +1680,7 @@ async function boot() {
 
   const invite = location.pathname.startsWith('/join') && location.hash.length > 1 ? `${SERVER}/join${location.hash}` : null;
   if (invite) return renderJoin(invite);
+  if (info.recovery && (location.hash === '#recover' || (!circles.length && pendingRejoin.get()))) return renderRecover();
   if (circles.length) return startApp();
   if (!info.setup) return renderSetup();
   renderNoAccount();

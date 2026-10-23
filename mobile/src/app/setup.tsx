@@ -18,7 +18,8 @@ export default function Setup() {
     setError(null);
     try {
       const info = await CircleClient.serverInfo(server);
-      if (info.setup) {
+      // Servers from 0.8 accept the setup code for more circles; older ones only for the first.
+      if (info.setup && !info.recovery) {
         throw new Error('This server is already set up. Ask the person who set it up to create a circle for you, or to invite you.');
       }
       const first = allClients().length === 0;
@@ -50,6 +51,12 @@ export default function Setup() {
       <Field label="Circle name" value={circleName} onChangeText={setCircleName} placeholder="e.g. The Parkers" />
       <Button title="Create my circle" variant="primary" loading={busy} disabled={!server || !code || !name} onPress={submit} />
       <ErrorText>{error}</ErrorText>
+      <Button
+        title="Already have a circle there? Get back in"
+        variant="ghost"
+        style={{ marginTop: 8 }}
+        onPress={() => router.push(server.trim() ? { pathname: '/recover', params: { server } } : '/recover')}
+      />
       <LockNote>
         Your encryption keys are created on this phone and never leave it. You’ll be the circle’s owner. Everyone who joins agrees that the
         circle can see their location and ask for it at any time.

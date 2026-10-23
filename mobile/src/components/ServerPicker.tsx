@@ -85,13 +85,22 @@ export function ServerPicker({ groups, value, onChange }: { groups: ServerGroup[
                 </Pressable>
               );
             })}
-            <View style={{ padding: 8, paddingTop: 12 }}>
+            <View style={{ padding: 8, paddingTop: 12, gap: 8 }}>
               <Button
                 small
                 title="Set up a new server"
                 onPress={() => {
                   setOpen(false);
                   router.push('/setup');
+                }}
+              />
+              <Button
+                small
+                variant="ghost"
+                title="Use this server’s setup code"
+                onPress={() => {
+                  setOpen(false);
+                  router.push({ pathname: '/recover', params: { server: value } });
                 }}
               />
             </View>

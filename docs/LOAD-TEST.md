@@ -56,7 +56,7 @@ The load-test server comes with add-on version 0.7.2.
    [homecircle] Load-test server is ON (separate data, no push notifications):
    [homecircle]   on your home network:  http://<your-home-assistant-ip>:8081
    [homecircle]   from anywhere:         https://homecircle.<tailnet>.ts.net:8443
-   [load-test] …  and this one-time setup code:  k3J9-…
+   [load-test] …  and this setup code:  k3J9-…
    ```
 
    Write down the **https address** and the **setup code** (unless you chose

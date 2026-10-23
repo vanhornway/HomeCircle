@@ -15,7 +15,7 @@ const log = (...args) => console.log(new Date().toISOString(), ...args);
 export function createApp(config) {
   config = { maxRetentionDays: 365, ...config };
   const store = openDb(config.dataDir);
-  if (!store.isSetup) ensureSetupToken(config);
+  ensureSetupToken(config, store);
   const hub = new Hub({ store, log });
   const push = new Push(config, store, log);
   const router = buildRoutes({ config, store, hub, push, log });
@@ -75,6 +75,7 @@ export function createApp(config) {
     const now = Date.now();
     store.pruneMessages(now, config.maxRetentionDays);
     store.pruneInvites(now - 7 * 86400_000);
+    store.pruneRejoins(now - 7 * 86400_000);
   };
   prune();
   const pruneTimer = setInterval(prune, 3600_000);
@@ -100,19 +101,22 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   const { config } = app;
   app.server.listen(config.port, config.host, () => {
     log(`HomeCircle server ${config.version} listening on ${config.host}:${config.port}`);
+    const where = config.publicUrl || 'your server address';
+    log('──────────────────────────────────────────────────────────');
     if (!app.store.isSetup) {
-      const where = config.publicUrl || 'your server address';
-      log('──────────────────────────────────────────────────────────');
       log('  This server has no circle yet.');
       log(`  Open the HomeCircle app, choose "Set up a new server", enter ${where}`);
-      if (config.setupTokenGenerated) {
-        log(`  and this one-time setup code:  ${config.setupToken}`);
-        log('  (Set SETUP_TOKEN to choose your own code; this one changes on restart.)');
-      } else {
-        log('  and the setup code you chose (SETUP_TOKEN, or setup_code in Home Assistant).');
-      }
-      log('──────────────────────────────────────────────────────────');
+    } else {
+      log('  Lost access to your circle? In the HomeCircle app choose "I set up this server",');
+      log(`  enter ${where}`);
     }
+    if (config.setupTokenGenerated) {
+      log(`  and this setup code:  ${config.setupToken}`);
+      log('  (It stays the same after restarts. Keep it private. Set SETUP_TOKEN to choose your own.)');
+    } else {
+      log('  and the setup code you chose (SETUP_TOKEN, or setup_code in Home Assistant).');
+    }
+    log('──────────────────────────────────────────────────────────');
   });
   for (const sig of ['SIGINT', 'SIGTERM']) {
     process.on(sig, async () => {

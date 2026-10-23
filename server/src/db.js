@@ -48,6 +48,23 @@ CREATE TABLE IF NOT EXISTS invites (
   used_at INTEGER,
   revoked_at INTEGER
 );
+CREATE TABLE IF NOT EXISTS rejoin_requests (
+  id TEXT PRIMARY KEY,
+  circle_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  box_pub TEXT NOT NULL,
+  sign_pub TEXT NOT NULL,
+  auth_hash TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  approved_by TEXT,
+  approved_at INTEGER,
+  wrapped TEXT,
+  epoch INTEGER,
+  denied_at INTEGER,
+  used_by TEXT,
+  used_at INTEGER
+);
 CREATE TABLE IF NOT EXISTS key_envelopes (
   epoch INTEGER NOT NULL,
   member_id TEXT NOT NULL,
@@ -194,6 +211,21 @@ export class Store {
   circleCount() {
     return this.q('SELECT COUNT(*) AS n FROM circles').get().n;
   }
+  /**
+   * Every circle with only what the server knows without its key (names are
+   * encrypted), so whoever has the setup code can tell them apart.
+   */
+  circleSummaries() {
+    return this.q(
+      `SELECT c.id, c.created_at AS createdAt,
+              SUM(CASE WHEN m.id IS NOT NULL AND m.removed_at IS NULL THEN 1 ELSE 0 END) AS members,
+              MAX(CASE WHEN m.removed_at IS NULL THEN m.last_seen_at END) AS lastSeenAt
+       FROM circles c LEFT JOIN members m ON m.circle_id = c.id
+       GROUP BY c.id ORDER BY c.created_at`,
+    )
+      .all()
+      .map((r) => ({ id: r.id, createdAt: r.createdAt, members: r.members ?? 0, lastSeenAt: r.lastSeenAt ?? null }));
+  }
   /** The only circle's id, if the server has exactly one (older apps check it). */
   soleCircleId() {
     const rows = this.q('SELECT id FROM circles LIMIT 2').all();
@@ -244,7 +276,7 @@ export class Store {
       this.q('DELETE FROM locations WHERE member_id = ?').run(m);
       this.q('DELETE FROM key_envelopes WHERE member_id = ?').run(m);
     }
-    for (const t of ['messages', 'places', 'invites', 'members']) this.q(`DELETE FROM ${t} WHERE circle_id = ?`).run(id);
+    for (const t of ['messages', 'places', 'invites', 'rejoin_requests', 'members']) this.q(`DELETE FROM ${t} WHERE circle_id = ?`).run(id);
     this.q('DELETE FROM circles WHERE id = ?').run(id);
     return members;
   }
@@ -406,6 +438,47 @@ export class Store {
   }
   pruneInvites(before) {
     return this.q('DELETE FROM invites WHERE expires_at < ?').run(before).changes;
+  }
+
+  // rejoin requests (setup-code recovery)
+  insertRejoin({ id, circleId, name, boxPub, signPub, authHash, now, expiresAt }) {
+    this.q(
+      `INSERT INTO rejoin_requests (id, circle_id, name, box_pub, sign_pub, auth_hash, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, circleId, name, boxPub, signPub, authHash, now, expiresAt);
+  }
+  rejoin(id) {
+    const r = this.q('SELECT * FROM rejoin_requests WHERE id = ?').get(id);
+    return r && { ...r, wrapped: parse(r.wrapped) };
+  }
+  /** Requests still waiting for a member to approve or deny them. */
+  openRejoins(circleId, now) {
+    return this.q(
+      `SELECT * FROM rejoin_requests WHERE circle_id = ? AND approved_at IS NULL AND denied_at IS NULL
+       AND used_at IS NULL AND expires_at > ? ORDER BY created_at`,
+    ).all(circleId, now);
+  }
+  countOpenRejoins(circleId, now) {
+    return this.openRejoins(circleId, now).length;
+  }
+  approveRejoin(id, by, wrapped, epoch, now) {
+    return this.q(
+      `UPDATE rejoin_requests SET approved_by = ?, approved_at = ?, wrapped = ?, epoch = ?
+       WHERE id = ? AND approved_at IS NULL AND denied_at IS NULL AND used_at IS NULL`,
+    ).run(by, now, JSON.stringify(wrapped), epoch, id).changes;
+  }
+  /** Back to waiting, after the circle key changed before the requester finished. */
+  reopenRejoin(id) {
+    this.q('UPDATE rejoin_requests SET approved_by = NULL, approved_at = NULL, wrapped = NULL, epoch = NULL WHERE id = ? AND used_at IS NULL').run(id);
+  }
+  denyRejoin(id, now) {
+    return this.q('UPDATE rejoin_requests SET denied_at = ? WHERE id = ? AND approved_at IS NULL AND used_at IS NULL').run(now, id).changes;
+  }
+  useRejoin(id, memberId, now) {
+    return this.q('UPDATE rejoin_requests SET used_by = ?, used_at = ? WHERE id = ? AND used_at IS NULL AND approved_at IS NOT NULL').run(memberId, now, id).changes;
+  }
+  pruneRejoins(before) {
+    return this.q('DELETE FROM rejoin_requests WHERE expires_at < ?').run(before).changes;
   }
 
   // places

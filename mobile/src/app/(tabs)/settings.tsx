@@ -5,6 +5,7 @@ import type { Member } from '@homecircle/core';
 import { Avatar, Button, Card, Checkbox, H1, SectionTitle, Screen, Tag } from '../../components/ui';
 import { ServerBanner } from '../../components/ServerBanner';
 import { ServerPicker } from '../../components/ServerPicker';
+import { RejoinBanner } from '../../components/RejoinBanner';
 import { useServerState } from '../../lib/connection';
 import { useCircle } from '../../lib/useCircle';
 import { errorText, serverGroups, setActiveCircle, useCircles } from '../../lib/circle';
@@ -166,6 +167,7 @@ export default function SettingsTab() {
     <Screen>
       <H1 style={{ marginTop: 4 }}>Settings</H1>
       <ServerBanner style={{ marginTop: 14 }} />
+      <RejoinBanner style={{ marginTop: 14 }} />
 
       <SectionTitle>Your circles</SectionTitle>
       <Card style={{ gap: 4 }}>

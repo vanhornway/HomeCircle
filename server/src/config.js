@@ -44,10 +44,18 @@ export function loadConfig() {
   return config;
 }
 
-/** If no SETUP_TOKEN was provided, make one for this boot and print it. */
-export function ensureSetupToken(config) {
-  if (!config.setupToken) {
-    config.setupToken = randomBytes(12).toString('base64url');
-    config.setupTokenGenerated = true;
+/**
+ * If no SETUP_TOKEN was provided, use the code this server generated before,
+ * or make one and keep it, so it stays the same after restarts. It's needed
+ * again later to recover circles.
+ */
+export function ensureSetupToken(config, store) {
+  if (config.setupToken) return;
+  let code = store.getMeta('setup_code');
+  if (!code) {
+    code = randomBytes(12).toString('base64url');
+    store.setMeta('setup_code', code);
   }
+  config.setupToken = code;
+  config.setupTokenGenerated = true;
 }

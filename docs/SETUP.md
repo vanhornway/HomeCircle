@@ -268,7 +268,36 @@ shared while that page is open.
 | Problem | Fix |
 |---|---|
 | "Can't reach the server" | Open the server address in the phone's browser. If it doesn't load, the server is off or the address is wrong. Fix the address under **Settings → Change server address**. |
-| "Setup code is wrong" | The code works once and is case-sensitive. On Docker without `SETUP_TOKEN`, it changes each time the server restarts; run `docker logs homecircle` again. |
+| "Setup code is wrong" | It's case-sensitive. Copy it from the server log (`docker logs homecircle`), Render's **Environment** tab (`SETUP_TOKEN`), or **setup_code** in Home Assistant. |
+| Lost your phone, or signed out | See [Lost access to your circle?](#lost-access-to-your-circle) below. |
 | Someone's location is old | Read the status under their name. Ask them to open **Settings → Setup check** and fix anything marked **!**. Admins can see every phone in **Settings → Circle health**. Opening the app on their phone sends a fresh update. |
 | Arrive/leave alerts are missing | On that phone, check **Setup check**, then **Settings → Diagnostics → Send to admin** so the admin can see what happened in the background. |
 | New phone | Ask the admin for a new invite. The admin can remove the old phone in **Settings**: tap **Remove** next to the person. |
+
+## Lost access to your circle?
+
+If you set up the server and lost your phone, signed out, or reset the app,
+the server's **setup code** gets you back in. Nobody needs to invite you.
+
+1. Find the setup code: in the server log (`and this setup code:`), in
+   Render's **Environment** tab (`SETUP_TOKEN`), or as **setup_code** in
+   Home Assistant (**Settings → Apps → HomeCircle → Configuration**, click the
+   eye icon).
+2. In the app, tap **Get back in with a setup code** (on the first screen, or
+   in **Settings → Your circles → Server → Use this server's setup code**). On
+   the web, open your server address and choose **I set up this server**.
+3. Enter the server address and the code. You'll see the server's circles,
+   with when each was created and how many people are in it (names are
+   encrypted, so the server can't show them). Then:
+   - **Ask to rejoin** your circle. Someone still in it sees your request at
+     the top of their map (or People on the web). They check your safety
+     number with you and tap **Let them in**. You're back as the owner. Your
+     old phone stays listed as an admin; remove it in **Settings**.
+   - **Delete** a circle nobody uses anymore, for example one where
+     everyone's phone was reset.
+   - **Start a new circle**, and invite everyone again.
+
+Rejoining always needs someone in the circle to approve it, because only
+their phones hold the circle's key: the setup code alone can't open a circle
+or read anything in it. Keep the code private anyway, since it can delete
+circles and start new ones.

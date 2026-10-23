@@ -146,6 +146,26 @@ export function openCircleKeyBox(envelope, { fromBoxPub, myBoxSecret, epoch, cir
   return msg.key;
 }
 
+/**
+ * For someone rejoining with the server's setup code: the circle key and name,
+ * encrypted by the approving member's phone to the requester's key.
+ */
+export function boxRejoin({ circleKey, epoch, circle, circleName, approvedByName, toBoxPub, fromBoxSecret }) {
+  const nonce = nacl.randomBytes(nacl.box.nonceLength);
+  const pt = utf8Encode(JSON.stringify({ kind: 'rejoin', key: circleKey, epoch, circle, circleName, approvedByName }));
+  const ct = nacl.box(pt, nonce, fromB64(toBoxPub), fromB64(fromBoxSecret));
+  return { nonce: toB64(nonce), ct: toB64(ct) };
+}
+
+export function openRejoinBox(envelope, { fromBoxPub, myBoxSecret, epoch, circle }) {
+  const pt = nacl.box.open(fromB64(envelope.ct), fromB64(envelope.nonce), fromB64(fromBoxPub), fromB64(myBoxSecret));
+  if (!pt) throw new CryptoError('rejoin');
+  const msg = JSON.parse(utf8Decode(pt));
+  if (msg.kind !== 'rejoin' || msg.epoch !== epoch || msg.circle !== circle) throw new CryptoError('rejoin-context');
+  if (fromB64(msg.key).length !== 32) throw new CryptoError('rejoin-key');
+  return msg;
+}
+
 // --- Safety numbers ------------------------------------------------------
 
 /** 30-digit fingerprint of a member's public keys, for in-person verification. */

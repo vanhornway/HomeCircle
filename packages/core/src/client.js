@@ -17,6 +17,8 @@ import {
   boxCircleKey,
   directKey,
   openCircleKeyBox,
+  boxRejoin,
+  openRejoinBox,
   safetyNumber,
   normalizeServerUrl,
   parseInviteLink,
@@ -255,6 +257,136 @@ export class CircleClient {
     await this.refresh();
   }
 
+  // --- recovery with the setup code ----------------------------------------
+  //
+  // Whoever set up the server can always get back in with its setup code:
+  // start a new circle (createCircle with setupToken), delete an abandoned
+  // one, or ask to rejoin one. A rejoin only completes once a member of that
+  // circle approves it on their phone, which encrypts the circle key to the
+  // requester: the server and the setup code alone can't read any circle.
+
+  /** The server's circles: id, createdAt, members, lastSeenAt, waiting (open rejoin requests). */
+  static async recoverCircles(serverUrl, setupToken, fetchImpl) {
+    const server = normalizeServerUrl(serverUrl);
+    const { circles } = await new Api(server, { fetchImpl }).recover(String(setupToken || '').trim());
+    return { server, circles };
+  }
+
+  /** Delete a circle and everything in it, for everyone in it. */
+  static async recoverDeleteCircle(serverUrl, setupToken, circleId, fetchImpl) {
+    await new Api(normalizeServerUrl(serverUrl), { fetchImpl }).recoverDelete(String(setupToken || '').trim(), circleId);
+  }
+
+  /**
+   * Ask to rejoin a circle as its owner. Returns the pending request, which
+   * holds this device's new keys: keep it in secure storage until
+   * finishRejoin() says it's done. Show `safetyNumber` so the approving
+   * member can check it's really you.
+   */
+  static async requestRejoin({ serverUrl, setupToken, circleId, name, fetchImpl }) {
+    const server = normalizeServerUrl(serverUrl);
+    const identity = generateIdentity();
+    const requestId = randomId();
+    const auth = newInviteSecret();
+    const res = await new Api(server, { fetchImpl }).requestRejoin({
+      setupToken: String(setupToken || '').trim(),
+      circleId,
+      requestId,
+      name: cleanName(name),
+      boxPub: identity.boxPub,
+      signPub: identity.signPub,
+      authHash: inviteAuthHash(auth),
+    });
+    return {
+      server,
+      circleId,
+      requestId,
+      auth,
+      identity,
+      name: cleanName(name),
+      expiresAt: res.expiresAt,
+      safetyNumber: safetyNumber(identity.signPub, identity.boxPub),
+    };
+  }
+
+  /**
+   * Check a pending rejoin and, once a member approved it, join the circle as
+   * its owner. Returns 'joined', 'pending', 'denied' or 'expired'.
+   */
+  async finishRejoin(pending) {
+    const api = this._makeApi(pending.server);
+    const auth = { requestId: pending.requestId, auth: pending.auth };
+    const st = await api.rejoinStatus(auth);
+    if (st.status === 'done') return 'expired';
+    if (st.status !== 'approved') return st.status;
+    const got = openRejoinBox(st.wrapped, {
+      fromBoxPub: st.from.boxPub,
+      myBoxSecret: pending.identity.boxSecret,
+      epoch: st.epoch,
+      circle: pending.circleId,
+    });
+    this.account = {
+      server: pending.server,
+      token: null,
+      memberId: randomId(),
+      circleId: pending.circleId,
+      identity: pending.identity,
+      epoch: st.epoch,
+      keyring: { [st.epoch]: got.key },
+      profile: { name: pending.name, color: randomColor() },
+      known: {},
+      circleName: cleanName(got.circleName) || 'Our Circle',
+      rejoined: true,
+    };
+    try {
+      const res = await api.completeRejoin({
+        ...auth,
+        member: {
+          id: this.account.memberId,
+          boxPub: pending.identity.boxPub,
+          signPub: pending.identity.signPub,
+          profile: this._seal('profile', this._profileBody()),
+        },
+      });
+      this.account.token = res.token;
+    } catch (e) {
+      this.account = null;
+      // The key changed after they approved: the request is waiting again.
+      if (e instanceof ApiError && e.code === 'stale_epoch') return 'pending';
+      throw e;
+    }
+    this.circle = { name: this.account.circleName };
+    this.api = this._makeApi(pending.server, this.account.token);
+    await this._save();
+    await this.refresh();
+    return 'joined';
+  }
+
+  /** Requests to rejoin this circle with the setup code, waiting for a member. */
+  async rejoinRequests() {
+    const { requests } = await this.api.rejoinRequests();
+    return requests.map((q) => ({ ...q, safetyNumber: safetyNumber(q.signPub, q.boxPub) }));
+  }
+
+  /** Let them back in: they get the circle key and become its owner. */
+  async approveRejoin(request) {
+    const a = this.account;
+    const wrapped = boxRejoin({
+      circleKey: a.keyring[a.epoch],
+      epoch: a.epoch,
+      circle: a.circleId,
+      circleName: this.circle.name,
+      approvedByName: this.me?.name || '',
+      toBoxPub: request.boxPub,
+      fromBoxSecret: a.identity.boxSecret,
+    });
+    await this.api.approveRejoin(request.id, { epoch: a.epoch, wrapped });
+  }
+
+  denyRejoin(id) {
+    return this.api.denyRejoin(id);
+  }
+
   /** Decrypts the invite so the UI can show "Join <circle> invited by <name>?" */
   async previewInvite(link) {
     const { serverUrl, inviteId, secret } = parseInviteLink(link);
@@ -308,7 +440,12 @@ export class CircleClient {
   async refresh() {
     const st = await this.api.state();
     this.state = st;
-    if (st.epoch > this.account.epoch || !this.account.keyring[st.epoch]) await this._syncKeys(st);
+    if (st.epoch > this.account.epoch || !this.account.keyring[st.epoch]) {
+      // Recognize members we can already verify first: a new key is only
+      // accepted from an admin whose keys we know.
+      this._decodeMembers(st);
+      await this._syncKeys(st);
+    }
     this._decodeMembers(st);
     this._decodeCircle(st);
 
@@ -320,7 +457,7 @@ export class CircleClient {
     this.emit('members', this.memberList());
     this.emit('circle', this.circle);
 
-    if (st.rotationNeeded && this.isAdmin) {
+    if (st.rotationNeeded && this.isAdmin && !this._holdRotation(st)) {
       try {
         await this.rotateKey();
       } catch (e) {
@@ -328,6 +465,18 @@ export class CircleClient {
       }
     }
     return st;
+  }
+
+  /**
+   * After rejoining with the setup code, don't rotate the key until every
+   * other member has been online since (so their phones verified this one;
+   * they only accept a new key from an admin they know), or a day has passed.
+   */
+  _holdRotation(st) {
+    if (!this.account.rejoined) return false;
+    const mine = st.members.find((m) => m.id === this.account.memberId);
+    if (!mine || Date.now() - mine.joinedAt > 86400_000) return false;
+    return st.members.some((m) => !m.removed && m.id !== mine.id && !((m.lastSeenAt ?? 0) > mine.joinedAt));
   }
 
   async _syncKeys(st) {
@@ -921,6 +1070,9 @@ export class CircleClient {
       case 'key_rotated':
       case 'circle':
         await this.refresh();
+        break;
+      case 'rejoin_requests':
+        this.emit('rejoinRequests');
         break;
       default:
         break;

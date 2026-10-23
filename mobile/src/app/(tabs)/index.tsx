@@ -8,6 +8,7 @@ import { FamilyMap, type MapMember } from '../../map/FamilyMap';
 import { Avatar, Button, IconButton, Tag } from '../../components/ui';
 import { ServerBanner } from '../../components/ServerBanner';
 import { CircleSwitcher } from '../../components/CircleSwitcher';
+import { RejoinBanner } from '../../components/RejoinBanner';
 import { PersonSheet } from '../../components/PersonSheet';
 import { useServerState } from '../../lib/connection';
 import { initials, useCircle } from '../../lib/useCircle';
@@ -113,6 +114,7 @@ export default function MapTab() {
             <CircleSwitcher />
           </View>
           <ServerBanner style={{ marginTop: 10 }} />
+          <RejoinBanner style={{ marginTop: 10 }} />
           {setupIssues ? (
             <Pressable
               accessibilityRole="button"

@@ -61,7 +61,7 @@ Tailscale gives HomeCircle its public `https://` address.
    ```
    [homecircle] Phones can reach HomeCircle at:  https://homecircle.tail1234.ts.net
    ...
-     and this one-time setup code:  k3J9-…
+     and this setup code:  k3J9-…
    ```
 
    Write down the **address** and the **setup code**.
@@ -95,8 +95,10 @@ covers everyday use.
 ## Good to know
 
 - **Choose your own setup code:** set **setup_code** in the Configuration tab
-  (12+ characters). Otherwise HomeCircle creates a random code each time it
-  starts, until your circle exists.
+  (12+ characters). Otherwise HomeCircle creates a random code once, keeps it,
+  and shows it in the log every time it starts.
+- **Keep the setup code.** If you lose your phone or sign out, it gets you back
+  in: see [Lost access to your circle?](SETUP.md#lost-access-to-your-circle).
 - **Address name:** **tailscale_hostname** sets the first part of the
   address. The default is `homecircle`.
 - **Backups:** HomeCircle's data (all encrypted) and its Tailscale login are

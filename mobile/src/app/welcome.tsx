@@ -34,6 +34,7 @@ export default function Welcome() {
       <Button title="Join my family" variant="primary" onPress={() => router.push('/join')} />
       <View style={{ height: 12 }} />
       <Button title="Set up a new server" onPress={() => router.push('/setup')} />
+      <Button title="Get back in with a setup code" variant="ghost" onPress={() => router.push('/recover')} style={{ marginTop: 6 }} />
       <LockNote>
         No server yet? Pick one in two minutes at {LANDING_URL.replace('https://', '')} — Render, Railway, Fly.io, DigitalOcean, Hetzner, or a Raspberry Pi at home.
       </LockNote>

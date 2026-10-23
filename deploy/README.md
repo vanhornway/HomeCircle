@@ -137,7 +137,7 @@ on your Pi.
 
 | Variable | Default | |
 |---|---|---|
-| `SETUP_TOKEN` | random, printed in logs | one-time code to create the first circle (more circles are created in the app) |
+| `SETUP_TOKEN` | random, kept in the database and printed in logs | the server's setup code: creates the first circle, and later lets whoever set the server up get back in (rejoin a circle with a member's approval, start or delete circles) |
 | `DATA_DIR` | `/data` | SQLite database location |
 | `PORT` | `8080` | |
 | `TRUST_PROXY` | `false` | set `true` behind a proxy (all options above do) |

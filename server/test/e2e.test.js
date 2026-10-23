@@ -71,7 +71,7 @@ const owner = client();
 const bob = client();
 const carol = client();
 
-test('setup: wrong code rejected, circle created once', async () => {
+test('setup: wrong code rejected; the code never joins an existing circle', async () => {
   const info = await CircleClient.serverInfo(url);
   assert.equal(info.setup, false);
   await assert.rejects(
@@ -82,10 +82,16 @@ test('setup: wrong code rejected, circle created once', async () => {
   assert.equal(owner.me.role, 'owner');
   assert.equal(owner.me.name, 'Mom');
   assert.equal(owner.circle.name, 'The Parkers');
-  await assert.rejects(
-    () => client().createCircle({ serverUrl: url, setupToken: SETUP, name: 'Eve', circleName: 'Hijack' }),
-    (e) => e.code === 'already_setup',
+  // Using the code again makes a separate circle; the first one is untouched.
+  const eve = client();
+  await eve.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Eve', circleName: 'Hijack' });
+  assert.notEqual(eve.circleId, owner.circleId);
+  await owner.refresh();
+  assert.deepEqual(
+    owner.memberList().map((m) => m.name),
+    ['Mom'],
   );
+  await eve.deleteCircle();
 });
 
 test('invites: join, preview shows circle, single use', async () => {

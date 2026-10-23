@@ -6,8 +6,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-function startAndRead(env) {
-  const dir = mkdtempSync(join(tmpdir(), 'homecircle-start-'));
+function startAndRead(env, dataDir) {
+  const dir = dataDir || mkdtempSync(join(tmpdir(), 'homecircle-start-'));
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', 'src/index.js'], {
       cwd: new URL('..', import.meta.url).pathname,
@@ -18,7 +18,7 @@ function startAndRead(env) {
     const finish = (err) => {
       clearTimeout(timer);
       child.kill();
-      rmSync(dir, { recursive: true, force: true });
+      if (!dataDir) rmSync(dir, { recursive: true, force: true });
       if (err) reject(err);
       else resolve(out);
     };
@@ -30,9 +30,16 @@ function startAndRead(env) {
   });
 }
 
-test('without SETUP_TOKEN, the log shows a generated one-time setup code', async () => {
-  const out = await startAndRead({});
-  assert.match(out, /this one-time setup code:\s+[A-Za-z0-9_-]{12,}/);
+test('without SETUP_TOKEN, the log shows a generated setup code that survives restarts', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'homecircle-start-'));
+  try {
+    const code = (out) => out.match(/this setup code:\s+([A-Za-z0-9_-]{12,})/)?.[1];
+    const first = code(await startAndRead({}, dir));
+    assert.ok(first);
+    assert.equal(code(await startAndRead({}, dir)), first);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('with SETUP_TOKEN, the log never prints it', async () => {

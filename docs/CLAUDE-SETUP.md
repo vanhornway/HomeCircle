@@ -142,7 +142,7 @@ curl -fsSL https://raw.githubusercontent.com/vanhornway/HomeCircle/main/deploy/i
    curl -fsSLO https://github.com/vanhornway/HomeCircle/releases/latest/download/docker-compose.yml
    docker compose up -d
    ```
-3. Read the setup code from the log line `one-time setup code:`:
+3. Read the setup code from the log line `and this setup code:`:
    ```bash
    docker logs homecircle
    ```
@@ -198,7 +198,7 @@ table, is <https://github.com/vanhornway/HomeCircle/blob/main/docs/HOME-ASSISTAN
 6. **Disable key expiry** so the server doesn't go offline in 180 days:
    <https://login.tailscale.com/admin/machines> → **⋯** next to
    **homecircle** → **Disable key expiry**.
-7. The **Setup code** is in the same log (`one-time setup code:`), or is the
+7. The **Setup code** is in the same log (`and this setup code:`), or is the
    **setup_code** they set in Configuration.
 
 ## Step 3. Verify the server

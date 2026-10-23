@@ -90,11 +90,12 @@ test('the server admin creates a second circle; others cannot', async () => {
     () => client().createCircle({ serverUrl: url, admin: wife, name: 'Sara', circleName: 'Mine' }),
     (e) => e.status === 403,
   );
-  // The setup code only works for the first circle.
-  await assert.rejects(
-    () => client().createCircle({ serverUrl: url, setupToken: SETUP, name: 'Eve', circleName: 'Second' }),
-    (e) => e.code === 'already_setup',
-  );
+  // The setup code keeps working after the first circle, for a separate circle.
+  const viaCode = client();
+  await viaCode.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Umair', circleName: 'Second' });
+  assert.notEqual(viaCode.circleId, me.circleId);
+  assert.equal(viaCode.isServerAdmin, true);
+  await viaCode.deleteCircle();
 
   await meParents.createCircle({ serverUrl: url, admin: me, name: 'Umair', circleName: 'Parents & siblings' });
   assert.equal(meParents.me.role, 'owner');

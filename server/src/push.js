@@ -47,6 +47,20 @@ export class Push {
     );
   }
 
+  /** Someone used the setup code to ask to rejoin. No name: just open the app. */
+  rejoinRequest(members) {
+    return this._send(
+      members.map((m) => ({
+        to: m.pushToken,
+        title: 'HomeCircle',
+        body: 'Someone asked to rejoin your circle. Open HomeCircle to approve or deny.',
+        sound: 'default',
+        priority: 'high',
+        data: { t: 'rejoin' },
+      })),
+    );
+  }
+
   async _send(messages) {
     messages = messages.filter((m) => isPushToken(m.to));
     if (!this.enabled || !messages.length) return;

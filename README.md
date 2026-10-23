@@ -36,7 +36,7 @@ Read https://raw.githubusercontent.com/vanhornway/HomeCircle/main/docs/CLAUDE-SE
 ## How it works
 
 1. **Deploy a server.** See [deploy/README.md](deploy/README.md) or open `landing/index.html`.
-2. **Set up.** In the app, the first person taps **Set up a new server** and enters the address and the one-time setup code. This creates the first circle and its encryption key on their phone. They can create more circles later from the circle switcher or Settings.
+2. **Set up.** In the app, the first person taps **Set up a new server** and enters the address and the server's setup code. This creates the first circle and its encryption key on their phone. They can create more circles later from the circle switcher or Settings.
 3. **Invite.** Settings → Invite shows a QR code or link. The secret half of the link never reaches the server.
 4. **Share.** Each phone uploads its encrypted location in the background. Viewers get live updates over WebSocket while the app is open.
    **Locate** sends a content-free silent push that makes the target phone take one fresh GPS fix.

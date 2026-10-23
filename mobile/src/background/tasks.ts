@@ -77,7 +77,7 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(PUSH_TASK, async (
   if (error) return;
   const raw = JSON.stringify(data ?? {});
   try {
-    diag('wake:push', { type: raw.includes('loc_req') ? 'locate' : 'message' });
+    diag('wake:push', { type: raw.includes('loc_req') ? 'locate' : raw.includes('rejoin') ? 'rejoin' : 'message' });
     if (raw.includes('loc_req')) {
       diag('locate-request', { via: 'push' });
       await shareNow('requested');

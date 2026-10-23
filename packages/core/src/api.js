@@ -78,6 +78,15 @@ export class Api {
   putPlace = (id, env) => this.req('PUT', `/places/${encodeURIComponent(id)}`, env);
   deletePlace = (id) => this.req('DELETE', `/places/${encodeURIComponent(id)}`);
   putCircle = (env) => this.req('PUT', '/circle', env);
+  // Recovery with the setup code (no account needed), and rejoin requests.
+  recover = (setupToken) => this.req('POST', '/recover', { setupToken });
+  recoverDelete = (setupToken, circleId) => this.req('POST', '/recover/delete', { setupToken, circleId });
+  requestRejoin = (body) => this.req('POST', '/recover/rejoin', body);
+  rejoinStatus = (body) => this.req('POST', '/recover/rejoin/status', body);
+  completeRejoin = (body) => this.req('POST', '/recover/rejoin/complete', body);
+  rejoinRequests = () => this.req('GET', '/rejoin-requests');
+  approveRejoin = (id, body) => this.req('POST', `/rejoin-requests/${encodeURIComponent(id)}/approve`, body);
+  denyRejoin = (id) => this.req('POST', `/rejoin-requests/${encodeURIComponent(id)}/deny`);
 
   /**
    * Live connection while the app is open. Reconnects with backoff.
