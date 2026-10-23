@@ -2,6 +2,12 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.8.2
+
+- Load-test guardrails: the load-test server now runs in load-test mode (a
+  red banner on its web page, and the swarm refuses any other server), at low
+  CPU priority with a memory cap, so it can't slow down your family's server.
+
 ## 0.8.1
 
 - Fixed: phones could drop out of their circle for good when the live
