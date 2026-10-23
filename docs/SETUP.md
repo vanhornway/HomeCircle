@@ -254,9 +254,10 @@ shared while that page is open.
 
 ## Notes for this test version
 
-- **Message notifications** show while HomeCircle is open or recently used.
-  Notifications for a fully closed app, and **Locate** reaching a closed app,
-  need push setup that's still being added.
+- **Notifications and Locate** reach phones even when HomeCircle is closed
+  (app 0.8.1 or newer). Pushes carry no names, locations or message text: the
+  phone wakes up, fetches the encrypted data from your server and decrypts it
+  itself.
 - **Updating the app:** download the APK from the same link and install it over
   the old one. Your circle and keys are kept.
 - **Updating the server:** Render updates on its own when the code changes. On a

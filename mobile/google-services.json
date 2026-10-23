@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1011223817139",
+    "project_id": "homecircle-75321",
+    "storage_bucket": "homecircle-75321.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1011223817139:android:de9dae9ad9d8d51067f9c6",
+        "android_client_info": {
+          "package_name": "us.umair.homecircle"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBK9Q7Jog-NWRPNcO8SyI6-3Q-Q7gzx5S4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
