@@ -999,7 +999,7 @@ export class CircleClient {
       onStatus: (s) => {
         this.status = s;
         this.emit('status', s);
-        if (s === 'unauthorized') this._handleRemoved();
+        if (s === 'unauthorized') this._checkMembership();
         if (s === 'online') {
           // Anything sent while we were disconnected never reached us live.
           if (connectedBefore) this.catchUp().catch(this.onError);
@@ -1022,6 +1022,34 @@ export class CircleClient {
     if (this.status !== 'offline') {
       this.status = 'offline';
       this.emit('status', 'offline');
+    }
+  }
+
+  /**
+   * The server closed the live connection saying it doesn't know this device.
+   * Ask again before believing it: a server that lost or misplaced its data
+   * says the same thing, and deleting this device's keys can't be undone.
+   * Only an explicit "removed" or "circle deleted" message signs it out;
+   * otherwise the app is told ('unrecognized') and the person decides.
+   */
+  async _checkMembership() {
+    if (!this.account) return; // already signed out by a "removed" message
+    if (this.connection) this.connection.close();
+    this.connection = null;
+    try {
+      await this.refresh();
+      this.connect();
+    } catch (e) {
+      if (!this.account) return;
+      if (e instanceof ApiError && e.status === 401) {
+        this.status = 'unauthorized';
+        this.emit('status', 'unauthorized');
+        this.emit('unrecognized');
+      } else {
+        setTimeout(() => {
+          if (!this.connection && this.account) this.connect();
+        }, 15000);
+      }
     }
   }
 

@@ -4,8 +4,9 @@ import { WebSocketServer } from 'ws';
 import { sha256 } from './http.js';
 
 export class Hub {
-  constructor({ store, log, heartbeatMs = 25000 }) {
+  constructor({ store, log, heartbeatMs = 25000, authTimeoutMs = 10000 }) {
     this.store = store;
+    this.authTimeoutMs = authTimeoutMs;
     this.log = log;
     this.sockets = new Map(); // memberId -> Set<WebSocket>
     this.circleOf = new Map(); // memberId -> circleId, for connected members
@@ -32,7 +33,11 @@ export class Hub {
     ws.on('pong', () => {
       if (!ws.memberId) ws.isAlive = true;
     });
-    const authTimer = setTimeout(() => ws.close(4001, 'auth timeout'), 10000);
+    // Close codes: 4001 only when this server doesn't know the device (removed,
+    // or the circle was deleted). Apps from before 0.8 delete their keys on
+    // 4001, so a slow or paused phone must never get it: 4000 and 4002 mean
+    // "try again".
+    const authTimer = setTimeout(() => ws.close(4000, 'auth timeout'), this.authTimeoutMs);
     ws.on('message', (data) => {
       ws.isAlive = true;
       if (ws.memberId) return; // after auth, clients only send heartbeat replies
@@ -41,9 +46,10 @@ export class Hub {
       try {
         msg = JSON.parse(data.toString());
       } catch {
-        return ws.close(4001, 'bad auth');
+        return ws.close(4002, 'bad auth');
       }
-      const member = msg?.type === 'auth' && typeof msg.token === 'string' ? this.store.memberByToken(sha256(msg.token)) : null;
+      if (msg?.type !== 'auth' || typeof msg.token !== 'string') return ws.close(4002, 'bad auth');
+      const member = this.store.memberByToken(sha256(msg.token));
       if (!member) return ws.close(4001, 'unauthorized');
       ws.memberId = member.id;
       if (!this.sockets.has(member.id)) this.sockets.set(member.id, new Set());

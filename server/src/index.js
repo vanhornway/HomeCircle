@@ -16,7 +16,7 @@ export function createApp(config) {
   config = { maxRetentionDays: 365, ...config };
   const store = openDb(config.dataDir);
   ensureSetupToken(config, store);
-  const hub = new Hub({ store, log });
+  const hub = new Hub({ store, log, authTimeoutMs: config.wsAuthTimeoutMs });
   const push = new Push(config, store, log);
   const router = buildRoutes({ config, store, hub, push, log });
   const serveStatic = config.webClient ? createStatic(config) : null;

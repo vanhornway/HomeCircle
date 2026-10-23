@@ -226,6 +226,8 @@ export class CircleClient {
   on(event: 'status', fn: (s: ConnectionStatus) => void): () => void;
   on(event: 'locationRequest', fn: (r: { from: string }) => void): () => void;
   on(event: 'rejoinRequests', fn: () => void): () => void;
+  /** The server says it doesn't know this device. Keys are kept: the app decides whether to sign out. */
+  on(event: 'unrecognized', fn: () => void): () => void;
   on(event: 'circle' | 'removed' | 'signedOut', fn: (d?: any) => void): () => void;
   on(event: string, fn: (d?: any) => void): () => void;
 

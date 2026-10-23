@@ -554,6 +554,48 @@ function renderRejoinWait(pending) {
   check();
 }
 
+/** This server no longer knows this browser in the open circle. Deleting its keys can't be undone, so ask. */
+function renderUnrecognized() {
+  const name = client.circle.name;
+  mount(
+    h(
+      'main',
+      { class: 'onboard' },
+      h(
+        'div',
+        { class: 'card' },
+        brandRow(),
+        h('h1', {}, 'This server doesn’t recognize this browser'),
+        h(
+          'p',
+          { class: 'muted' },
+          `In ${name}. You may have been removed, or the circle deleted. If the server lost its data, this browser still has the circle’s keys, so don’t remove it until you’re sure.`,
+        ),
+        h('button', { class: 'btn primary block', onclick: () => location.reload() }, 'Try again'),
+        h(
+          'button',
+          {
+            class: 'btn danger block',
+            style: 'margin-top:10px',
+            onclick: async () => {
+              if (!confirm(`Remove ${name} from this browser? Its keys here are deleted, and you’ll need a new invite to come back.`)) return;
+              await client.signOut();
+              circles = circles.filter((c) => c !== client);
+              if (circles.length) return switchCircle(circles[0].accountKey);
+              local.set(LIST_KEY, '[]');
+              location.reload();
+            },
+          },
+          `Remove ${name} from this browser`,
+        ),
+        circles.length > 1
+          ? h('button', { class: 'btn block', style: 'margin-top:10px', onclick: () => switchCircle(circles.find((c) => c !== client).accountKey) }, 'Open another circle')
+          : null,
+      ),
+    ),
+  );
+}
+
 function renderMessage(title, text) {
   mount(h('main', { class: 'onboard' }, h('div', { class: 'card' }, brandRow(), h('h1', {}, title), h('p', { class: 'muted' }, text))));
 }
@@ -682,19 +724,15 @@ async function startApp() {
     renderMessage('You were removed', 'You’re no longer in this circle (an admin removed you, or it was deleted), and this browser’s keys were deleted.');
   });
 
+  client.on('unrecognized', renderUnrecognized);
+
   setTab('people');
   try {
     await client.start();
   } catch (e) {
-    if (e.status === 401) {
-      // This circle is gone (removed, or deleted): go to the next one, or start over.
-      await client.signOut();
-      circles = circles.filter((c) => c !== client);
-      toast('This browser is no longer part of that circle');
-      if (circles.length) return switchCircle(circles[0].accountKey);
-      local.set(LIST_KEY, '[]');
-      return setTimeout(() => location.reload(), 1200);
-    }
+    // The server doesn't know this browser in that circle: removed, deleted,
+    // or the server lost its data. Keep the keys until the person decides.
+    if (e.status === 401) return renderUnrecognized();
     toast(errorText(e));
   }
   showTitle();

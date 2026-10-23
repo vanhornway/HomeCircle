@@ -6,9 +6,11 @@ export interface ServerState {
   reachable: boolean;
   error: string | null;
   retrying: boolean;
+  /** The server answers but doesn't know this phone in the open circle. */
+  unrecognized: boolean;
 }
 
-let state: ServerState = { reachable: true, error: null, retrying: false };
+let state: ServerState = { reachable: true, error: null, retrying: false, unrecognized: false };
 const subscribers = new Set<() => void>();
 let retryHandler: (() => void) | null = null;
 

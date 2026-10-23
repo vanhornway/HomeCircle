@@ -63,8 +63,10 @@ function useCircleLifecycle(circlesKey: string) {
         }
         return null;
       } catch (e: any) {
-        // This phone was removed from that circle (or it was deleted).
-        if (e?.status === 401) await client.signOut();
+        // A 401 means the server doesn't know this phone in that circle: it was
+        // removed, the circle was deleted, or the server lost its data. Keep the
+        // keys (deleting them can't be undone); the banner lets the person
+        // remove the circle from this phone.
         return e;
       }
     };
@@ -79,10 +81,12 @@ function useCircleLifecycle(circlesKey: string) {
       if (!alive) return;
       const failed = [...results].filter(([c, e]) => e && e.status !== 401 && allClients().includes(c));
       const activeError = results.get(getClient());
-      if (activeError && activeError.status !== 401) {
-        setServerState({ reachable: false, error: isUnreachable(activeError) ? null : errorText(activeError) });
+      if (activeError?.status === 401) {
+        setServerState({ reachable: true, error: null, retrying: false, unrecognized: true });
+      } else if (activeError) {
+        setServerState({ reachable: false, error: isUnreachable(activeError) ? null : errorText(activeError), unrecognized: false });
       } else {
-        setServerState({ reachable: true, error: null, retrying: false });
+        setServerState({ reachable: true, error: null, retrying: false, unrecognized: false });
       }
       if (failed.length) scheduleRetry();
       else attempt = 0;

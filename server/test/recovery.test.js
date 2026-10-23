@@ -58,6 +58,7 @@ before(async () => {
     tileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     tileAttribution: 'OSM',
     webClient: false,
+    wsAuthTimeoutMs: 300,
   });
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   url = `http://127.0.0.1:${app.server.address().port}`;
@@ -158,6 +159,26 @@ test('the setup code starts a new circle and deletes an abandoned one', async ()
     [circleId],
   );
   await assert.rejects(() => extra.refresh(), (e) => e.status === 401);
+});
+
+test('a phone slow to log in on the live connection is told to retry, not that it is unknown', async () => {
+  const ws = new WebSocket(`${url.replace(/^http/, 'ws')}/api/v1/ws`);
+  const code = await new Promise((resolve) => ws.addEventListener('close', (e) => resolve(e.code)));
+  // 4001 makes apps before 0.8 delete their keys; a timeout must never send it.
+  assert.equal(code, 4000);
+});
+
+test('a phone the server stops recognizing keeps its keys and is told', async () => {
+  const memberId = wife.account.memberId;
+  wife.disconnect();
+  // As if the server lost this member's data (no "removed" message is sent).
+  app.store.db.prepare('UPDATE members SET token_hash = NULL WHERE id = ?').run(memberId);
+  const told = waitFor(wife, 'unrecognized');
+  wife.connect();
+  await told;
+  assert.equal(wife.status, 'unauthorized');
+  assert.ok(wife.account, 'keys kept');
+  assert.equal(wife.account.memberId, memberId);
 });
 
 test('no unexpected client errors', () => {
