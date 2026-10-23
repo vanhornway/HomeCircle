@@ -1,4 +1,5 @@
-import { Alert, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Button } from './ui';
 import { retryServer, setServerState, useServerState } from '../lib/connection';
@@ -19,6 +20,14 @@ export function ServerBanner({ style }: { style?: object }) {
     { backgroundColor: t.warnBg, borderRadius: 14, padding: 14, gap: 10, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 6, elevation: 2 },
     style,
   ];
+  // "Reconnecting…" only once reconnecting has taken 2 s, so a quick one doesn't flash.
+  const since = server.reconnectingSince;
+  const [slowSince, setSlowSince] = useState<number | null>(null);
+  useEffect(() => {
+    if (since == null) return;
+    const id = setTimeout(() => setSlowSince(since), Math.max(0, since + 2000 - Date.now()));
+    return () => clearTimeout(id);
+  }, [since]);
 
   if (server.unrecognized || client.status === 'unauthorized') {
     const name = client.circle.name;
@@ -54,6 +63,23 @@ export function ServerBanner({ style }: { style?: object }) {
             }
           />
         </View>
+      </View>
+    );
+  }
+
+  if (since != null) {
+    if (slowSince !== since) return null;
+    return (
+      <View
+        accessibilityRole="progressbar"
+        accessibilityLabel="Reconnecting"
+        style={[
+          { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: t.surface, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, elevation: 2 },
+          style,
+        ]}
+      >
+        <ActivityIndicator size="small" color={t.muted} />
+        <Text style={{ color: t.muted, fontSize: 14 }}>Reconnecting…</Text>
       </View>
     );
   }

@@ -5,7 +5,7 @@ import { Tabs } from 'expo-router/js-tabs';
 import { router, useRouter } from 'expo-router';
 import { CircleClient } from '@homecircle/core';
 import { allClients, clientForCircle, errorText, getClient, useCircles } from '../../lib/circle';
-import { getServerState, isUnreachable, setRetryHandler, setServerState } from '../../lib/connection';
+import { getServerState, isUnreachable, RECONNECT_GRACE_MS, setRetryHandler, setServerState } from '../../lib/connection';
 import { registerPush } from '../../lib/push';
 import { ensureNotificationChannels, markSeen, notifyNewMessages } from '../../lib/notify';
 import { ensureReadBase, unreadInCircle } from '../../lib/unread';
@@ -18,12 +18,28 @@ import { updateSettings, useSettings } from '../../lib/storage';
 import { Icon } from '../../components/ui';
 import { useTheme } from '../../theme';
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Run `fn` over `items`, at most `limit` at a time. */
+async function inBatches<T>(items: T[], limit: number, fn: (item: T) => Promise<void>) {
+  const queue = [...items];
+  await Promise.all(
+    Array.from({ length: Math.min(limit, queue.length) }, async () => {
+      for (let item = queue.shift(); item; item = queue.shift()) await fn(item);
+    }),
+  );
+}
+
 /**
  * While the app is open: a live WebSocket + fresh data for every circle this
  * phone is in. In the background the sockets close and the OS location,
  * geofence and push tasks take over. The banner reflects the circle on screen;
  * if a server can't be reached, the app keeps working and retries (10 s, 20 s,
  * 40 s … up to 2 min) while it's in the foreground.
+ *
+ * Reconnecting after unlock is gentle on the servers and the phone: one
+ * reconnect at a time, the circle on screen first, then the others two at a
+ * time. For the first RECONNECT_GRACE_MS it shows "Reconnecting…", not an error.
  */
 function useCircleLifecycle(circlesKey: string) {
   useEffect(() => {
@@ -72,33 +88,86 @@ function useCircleLifecycle(circlesKey: string) {
       }
     };
 
-    const resume = async () => {
+    let pushRegistered = false;
+    const resumeOnce = async () => {
       if (retryTimer) {
         clearTimeout(retryTimer);
         retryTimer = null;
       }
+      const t0 = Date.now();
+      setServerState({ reconnectingSince: t0 });
       const results = new Map<CircleClient, any>();
-      await Promise.all(allClients().map(async (c) => results.set(c, await startOne(c))));
-      if (!alive) return;
-      const failed = [...results].filter(([c, e]) => e && e.status !== 401 && allClients().includes(c));
-      const activeError = results.get(getClient());
-      if (activeError?.status === 401) {
-        setServerState({ reachable: true, error: null, retrying: false, unrecognized: true });
-      } else if (activeError) {
-        setServerState({ reachable: false, error: isUnreachable(activeError) ? null : errorText(activeError), unrecognized: false });
-      } else {
-        setServerState({ reachable: true, error: null, retrying: false, unrecognized: false });
+
+      // The circle on screen first. If it fails right after unlocking (the
+      // network is often still waking up), try once more when the grace
+      // period ends before showing an error.
+      const active = getClient();
+      let activeError = await startOne(active);
+      if (activeError && activeError.status !== 401 && alive) {
+        await sleep(Math.max(0, t0 + RECONNECT_GRACE_MS - Date.now()));
+        if (alive) activeError = await startOne(active);
       }
-      if (failed.length) scheduleRetry();
-      else attempt = 0;
+      if (!alive) return;
+      results.set(active, activeError);
+      const activeMs = Date.now() - t0;
+      if (activeError?.status === 401) {
+        setServerState({ reachable: true, error: null, retrying: false, unrecognized: true, reconnectingSince: null });
+      } else if (activeError) {
+        setServerState({ reachable: false, error: isUnreachable(activeError) ? null : errorText(activeError), unrecognized: false, reconnectingSince: null });
+      } else {
+        setServerState({ reachable: true, error: null, retrying: false, unrecognized: false, reconnectingSince: null });
+      }
+
+      // Then what depends on being connected, once.
       shareNow('open').catch(() => {});
-      registerPush().catch(() => {});
       syncGeofences().catch(() => {});
       // Anything that couldn't be posted while offline goes out now.
       flushOutbox().catch(() => 0);
+      if (!pushRegistered) {
+        pushRegistered = true;
+        registerPush().catch(() => {
+          pushRegistered = false;
+        });
+      }
+
+      // The other circles, two at a time, so unlocking doesn't send every
+      // request for every circle at once.
+      await inBatches(
+        allClients().filter((c) => c !== active),
+        2,
+        async (c) => {
+          if (alive) results.set(c, await startOne(c));
+        },
+      );
+      if (!alive) return;
+      const failed = [...results].filter(([c, e]) => e && e.status !== 401 && allClients().includes(c));
+      if (failed.length) scheduleRetry();
+      else attempt = 0;
       phoneHealth()
-        .then((h) => diag('app-open', { ...h, circles: allClients().length, failed: failed.length }))
+        .then((h) => diag('app-open', { ...h, circles: allClients().length, failed: failed.length, activeMs, totalMs: Date.now() - t0 }))
         .catch(() => {});
+    };
+
+    // One reconnect at a time: unlocking twice, or Retry mid-way, waits for
+    // the one in progress and then runs once more.
+    let running: Promise<void> | null = null;
+    let again = false;
+    const resume = () => {
+      if (running) {
+        again = true;
+        return running;
+      }
+      running = (async () => {
+        try {
+          do {
+            again = false;
+            await resumeOnce();
+          } while (again && alive);
+        } finally {
+          running = null;
+        }
+      })();
+      return running;
     };
 
     const offs = clients.flatMap((client) => [
@@ -115,6 +184,8 @@ function useCircleLifecycle(circlesKey: string) {
         if (s === 'online') {
           if (!getServerState().reachable) setServerState({ reachable: true, error: null, retrying: false });
         } else if (s === 'offline' && AppState.currentState === 'active') {
+          // Drops while reconnecting are expected; the reconnect reports the outcome.
+          if (getServerState().reconnectingSince != null) return;
           setServerState({ reachable: false, retrying: true });
         }
       }),

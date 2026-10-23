@@ -8,9 +8,17 @@ export interface ServerState {
   retrying: boolean;
   /** The server answers but doesn't know this phone in the open circle. */
   unrecognized: boolean;
+  /**
+   * When the app started reconnecting (after opening or unlocking), while it
+   * still is. Errors wait for RECONNECT_GRACE_MS: phones often need a moment.
+   */
+  reconnectingSince: number | null;
 }
 
-let state: ServerState = { reachable: true, error: null, retrying: false, unrecognized: false };
+/** How long after opening the app a connection problem is "reconnecting", not an error. */
+export const RECONNECT_GRACE_MS = 10_000;
+
+let state: ServerState = { reachable: true, error: null, retrying: false, unrecognized: false, reconnectingSince: null };
 const subscribers = new Set<() => void>();
 let retryHandler: (() => void) | null = null;
 
