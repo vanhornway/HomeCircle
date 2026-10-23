@@ -1,8 +1,9 @@
 // The simulated people and circles: where they go, when they open the app,
 // what they say. Everything runs on a simulated clock (World.simMin) that
 // moves --speed times faster than real time, so --speed 10 is a 10× busier day.
-import { distanceM, QUICK_REACTIONS, isValidReaction } from '../../../packages/core/src/index.js';
-import { SCENARIOS, REPLIES_TO_YOU, DM_LINES, pick } from './scenarios.mjs';
+import { distanceM, QUICK_REACTIONS, isValidReaction, isEmojiOnly } from '../../../packages/core/src/index.js';
+import { SCENARIOS, REPLIES_TO_YOU, DM_LINES, EMOJI_REPLIES, pick } from './scenarios.mjs';
+import { greeting } from './world.mjs';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const MOVE_UPLOAD_M = 500; // the app uploads after moving this far…
@@ -67,6 +68,7 @@ export class World {
   }
 
   stop() {
+    this.stopping = true;
     clearInterval(this.timer);
     for (const c of this.circles) for (const m of c.members) m.client.disconnect();
   }
@@ -172,6 +174,16 @@ export class SimCircle {
     return pick(match.length ? match : all.length ? all : this.members);
   }
 
+  /** True for the first two emoji replies to a message in this circle. */
+  emojiBudget(id) {
+    this.emojiReplies ??= new Map();
+    const n = this.emojiReplies.get(id) || 0;
+    if (n >= 2) return false;
+    this.emojiReplies.set(id, n + 1);
+    if (this.emojiReplies.size > 500) this.emojiReplies.delete(this.emojiReplies.keys().next().value);
+    return true;
+  }
+
   someoneBut(not) {
     const others = this.members.filter((m) => m !== not);
     return pick(others.length ? others : this.members);
@@ -182,7 +194,11 @@ export class SimCircle {
       .replaceAll('{kid}', () => this.byRole('kid', speaker).name)
       .replaceAll('{parent}', () => this.byRole('parent', speaker).name)
       .replaceAll('{any}', () => this.someoneBut(speaker).name)
-      .replaceAll('{place}', () => (this.places.length ? pick(this.places).name : 'the usual place'));
+      .replaceAll('{place}', () => (this.places.length ? pick(this.places).name : 'the usual place'))
+      .replaceAll('{landmark}', () => this.city?.landmark?.name || this.place('park')?.name || 'the park')
+      .replaceAll('{city}', () => this.city?.name || 'town')
+      .replaceAll('{greet}', () => greeting(this.city))
+      .replaceAll('{emoji}', () => pick(EMOJI_REPLIES));
   }
 
   startThread() {
@@ -291,6 +307,17 @@ export class SimMember {
     this.client.on('newMessage', (m) => this.onMessage(m, true));
     this.client.on('locationRequest', () => setTimeout(() => this.upload('requested', { force: true }), rand(1, 4) * 1000));
     this.client.on('removed', () => (this.dead = true));
+    // A live connection that drops while the app is open (not one we closed).
+    this.client.on('status', (st) => {
+      if (st === 'offline' && this.appOpen && !this.dead && !this.circle.stopped && !this.world.stopping && !this.closing) {
+        this.dropped = true;
+        this.metrics.count('socketDrops');
+        this.metrics.noteError(`${this.circle.name}: live connection dropped`);
+      } else if (st === 'online' && this.dropped) {
+        this.dropped = false;
+        this.metrics.count('reconnects');
+      }
+    });
   }
 
   get memberId() {
@@ -344,7 +371,9 @@ export class SimMember {
     this.battery = Math.min(1, Math.max(0.03, this.battery + (dt / 60) * (home ? 0.25 : this.appOpen ? -0.08 : -0.04)));
 
     if (this.state === 'dwell' && now >= this.until) {
-      const next = sc.next(this, now);
+      // Now and then anyone drops by one of the circle's places (the city's
+      // landmark too), so arrivals and departures happen all over the map.
+      const next = Math.random() < 0.12 && this.circle.places.length ? pick(this.circle.places).key : sc.next(this, now);
       const dest = this.point(next);
       if (next === this.at || !dest || distanceM(this.pos, dest) < 50) {
         this.until = now + rand(...sc.dwell);
@@ -518,6 +547,12 @@ export class SimMember {
     if (this.dead || m.from === this.memberId) return;
     if (live && typeof m.body?.t0 === 'number') this.metrics.fanoutMs(Date.now() - m.body.t0);
     if (!this.world.simIds.has(m.from)) return this.circle.onUserMessage(m, this);
+    // Emoji replies answer real lines only (never another emoji reply, which
+    // snowballs), and at most two per message across the whole circle.
+    const text = m.body?.text || '';
+    if (live && m.kind === 'chat' && !m.to && text && !isEmojiOnly(text) && Math.random() < (this.circle.scenario.emojiChance || 0) && this.circle.emojiBudget(m.id)) {
+      setTimeout(() => this.say(pick(EMOJI_REPLIES)), rand(2, 15) * 1000);
+    }
     if (live && m.kind === 'chat' && !m.to && Math.random() < this.circle.scenario.reactChance) {
       setTimeout(() => this.react(m.id), rand(1, 8) * 1000);
     }

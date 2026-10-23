@@ -5,10 +5,17 @@
 import { createServer } from 'node:http';
 import qrcode from 'qrcode-generator';
 
-export async function startDashboard({ port, stats, setSpeed, setMix }) {
+export async function startDashboard({ port, stats, setSpeed, setMix, report }) {
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     try {
+      if (url.pathname === '/report.md') {
+        res.writeHead(200, {
+          'Content-Type': 'text/markdown; charset=utf-8',
+          'Content-Disposition': `attachment; filename="homecircle-load-test-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.md"`,
+        });
+        return res.end(report());
+      }
       if (url.pathname === '/api/stats') {
         res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
         return res.end(JSON.stringify(stats()));
@@ -119,6 +126,16 @@ dialog img { width: 100%; background: #fff; border-radius: 10px; }
 dialog code { display: block; word-break: break-all; font-size: 11px; color: var(--muted); margin: 10px 0; }
 .foot { color: var(--muted); font-size: 12px; margin-top: 16px; }
 .mix { margin-bottom: 14px; }
+.findings { margin-bottom: 14px; }
+.findings ul { list-style: none; margin: 0; padding: 0; }
+.findings li { display: grid; grid-template-columns: 14px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.findings li:last-child { border-bottom: 0; }
+.dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; }
+.dot.bad { background: var(--bad); } .dot.warn { background: var(--warn); } .dot.info { background: var(--s3); } .dot.good { background: var(--brand); }
+.findings .t { font-weight: 600; }
+.findings .x { color: var(--muted); font-size: 13px; }
+.findings .a { font-size: 13px; margin-top: 2px; }
+.dl { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--brand); text-decoration: none; border: 1px solid var(--brand); border-radius: 8px; padding: 3px 10px; }
 .mix-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-bottom: 4px; }
 .mix-head h2 { margin: 0; }
 .mix td, .mix th { white-space: nowrap; }
@@ -142,6 +159,10 @@ dialog code { display: block; word-break: break-all; font-size: 11px; color: var
   </header>
   <div id="hint" class="hint" hidden></div>
   <section class="kpis" id="kpis"></section>
+  <section class="card findings">
+    <div class="mix-head"><h2>Findings: what broke, what slowed down</h2><a class="dl" href="/report.md">Download report</a></div>
+    <ul id="findings"></ul>
+  </section>
   <section class="card mix">
     <div class="mix-head"><h2>Circles and people</h2><span class="busy" id="mix-note"></span></div>
     <p class="sub" style="margin:0 0 6px;font-size:12px">Change how many circles of each kind run and how many people are in each. New circles and people join through invites; fewer circles pause (and come back when you raise it again); fewer people leave their circle.</p>
@@ -186,7 +207,7 @@ function niceMax(v) {
 // 4 gridlines for 2 or 4 (…×10ⁿ), 5 for 1 or 5: round numbers either way.
 const divisions = (max) => (/^[24]/.test(String(max / 10 ** Math.floor(Math.log10(max)))) ? 4 : 5);
 
-function chart(id, legendId, tl, series, unit, fixedMax) {
+function chart(id, legendId, tl, series, unit, fixedMax, markers = []) {
   const svg = $(id);
   const W = svg.clientWidth || 500, H = 180, L = 40, R = 8, T = 8, B = 20;
   svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
@@ -209,6 +230,12 @@ function chart(id, legendId, tl, series, unit, fixedMax) {
   }
   out += '<text x="' + L + '" y="' + (H - 4) + '">' + new Date(t0).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '</text>';
   out += '<text x="' + (W - R) + '" y="' + (H - 4) + '" text-anchor="end">' + new Date(t1).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '</text>';
+  // Changes of mix or speed: a dashed line, so you can see what each did.
+  for (const m of markers) {
+    if (m.t <= t0 || m.t > t1) continue;
+    const x = X(m.t).toFixed(1);
+    out += '<line x1="' + x + '" x2="' + x + '" y1="' + T + '" y2="' + (H - B) + '" stroke="' + css('--muted') + '" stroke-dasharray="3 3" opacity=".6"><title>' + esc(m.label) + '</title></line>';
+  }
   for (const s of series) {
     let d = '', pen = false;
     for (const p of tl) {
@@ -246,14 +273,17 @@ function render(s) {
   ];
   $('kpis').innerHTML = k.map(([l, val, d]) => '<div class="kpi"><div class="l">' + l + '</div><div class="v">' + val + '</div><div class="d">' + d + '</div></div>').join('');
   const tl = s.timeline;
-  chart('ch-cpu', 'lg-cpu', tl, [{ key: 'addonCpu', name: 'HomeCircle add-on', color: '--s1' }, { key: 'hostCpu', name: 'Whole machine', color: '--s2' }, { key: 'swarmCpu', name: 'Swarm (this computer)', color: '--s3' }], '%');
-  chart('ch-mem', 'lg-mem', tl, [{ key: 'addonMem', name: 'HomeCircle add-on', color: '--s1' }, { key: 'hostMem', name: 'Whole machine', color: '--s2' }], '%');
-  chart('ch-req', 'lg-req', tl, [{ key: 'perMin', name: 'Requests/min', color: '--s1' }], '');
-  chart('ch-lat', 'lg-lat', tl, [{ key: 'p50', name: 'p50', color: '--s1' }, { key: 'p95', name: 'p95', color: '--s2' }, { key: 'fanoutP95', name: 'Chat delivery p95', color: '--s3' }], ' ms');
+  chart('ch-cpu', 'lg-cpu', tl, [{ key: 'addonCpu', name: 'HomeCircle add-on', color: '--s1' }, { key: 'hostCpu', name: 'Whole machine', color: '--s2' }, { key: 'swarmCpu', name: 'Swarm (this computer)', color: '--s3' }], '%', 0, s.markers);
+  chart('ch-mem', 'lg-mem', tl, [{ key: 'addonMem', name: 'HomeCircle add-on', color: '--s1' }, { key: 'hostMem', name: 'Whole machine', color: '--s2' }], '%', 0, s.markers);
+  chart('ch-req', 'lg-req', tl, [{ key: 'perMin', name: 'Requests/min', color: '--s1' }], '', 0, s.markers);
+  chart('ch-lat', 'lg-lat', tl, [{ key: 'p50', name: 'p50', color: '--s1' }, { key: 'p95', name: 'p95', color: '--s2' }, { key: 'fanoutP95', name: 'Chat delivery p95', color: '--s3' }], ' ms', 0, s.markers);
 
-  const rows = [{ name: s.hq.name, label: 'Swarm status (send “status”)', people: 1, online: 1, messages: null, invite: s.hq.invite, you: s.hq.joined ? ['you'] : [], active: true }, ...s.circles];
-  $('circles').innerHTML = '<tr><th>Circle</th><th>Kind</th><th class="n">People</th><th class="n">App open</th><th class="n">Messages</th><th>You</th></tr>' +
-    rows.map((r, i) => '<tr><td>' + esc(r.name) + (r.active ? '' : ' <span class="sub">(starting)</span>') + '</td><td class="sub">' + esc(r.label) + '</td><td class="n">' + fmt(r.people) + '</td><td class="n">' + fmt(r.online) + '</td><td class="n">' + fmt(r.messages) + '</td><td>' +
+  $('findings').innerHTML = (s.findings || []).map((f) => '<li><span class="dot ' + f.level + '"></span><div><div class="t">' + esc(f.title) + '</div><div class="x">' + esc(f.detail || '') + '</div>' +
+    (f.action ? '<div class="a"><b>What to do:</b> ' + esc(f.action) + '</div>' : '') + '</div></li>').join('') ||
+    '<li><span></span><div class="x">Findings appear after a minute or two of load.</div></li>';
+  const rows = [{ name: s.hq.name, label: 'Swarm status (send “status” or “report”)', people: 1, online: 1, messages: null, invite: s.hq.invite, you: s.hq.joined ? ['you'] : [], active: true }, ...s.circles];
+  $('circles').innerHTML = '<tr><th>Circle</th><th>Where</th><th>Kind</th><th class="n">People</th><th class="n">App open</th><th class="n">Messages</th><th>You</th></tr>' +
+    rows.map((r, i) => '<tr><td>' + esc(r.name) + (r.active ? '' : ' <span class="sub">(starting)</span>') + '</td><td class="sub">' + esc(r.where || '') + '</td><td class="sub">' + esc(r.label) + '</td><td class="n">' + fmt(r.people) + '</td><td class="n">' + fmt(r.online) + '</td><td class="n">' + fmt(r.messages) + '</td><td>' +
       (r.you.length ? '<span class="ok">✓ joined</span>' : r.invite ? '<button class="btn" data-i="' + i + '">Join</button>' : '<span class="sub">…</span>') + '</td></tr>').join('');
   $('circles').querySelectorAll('button[data-i]').forEach((b) => (b.onclick = () => openQr(rows[b.dataset.i])));
 
@@ -262,7 +292,7 @@ function render(s) {
 
   $('feed').innerHTML = s.feed.map((f) => '<li><span class="' + (f.kind === 'you' ? 'you' : '') + '">' + esc(f.who) + '</span>' + (f.kind === 'chat' || f.kind === 'you' ? ': ' : ' ') + esc(f.text) +
     '<div class="c">' + esc(f.circle) + ' · ' + ago(s.now - f.t) + ' ago</div></li>').join('') || '<li class="sub">Nothing yet</li>';
-  $('foot').textContent = 'Timeline CSV: ' + s.csvPath + (s.inviteServer ? ' · invite links use ' + s.inviteServer : '');
+  $('foot').textContent = 'Report: ' + s.reportPath + ' · Timeline CSV: ' + s.csvPath + (s.inviteServer ? ' · invite links use ' + s.inviteServer : '');
 }
 
 function openQr(r) {

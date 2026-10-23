@@ -17,6 +17,8 @@ import { CircleClient, normalizeServerUrl } from '../../packages/core/src/index.
 import { Metrics } from './swarm/metrics.mjs';
 import { World, SimCircle, SimMember, offset } from './swarm/sim.mjs';
 import { SCENARIOS, SCALES, MAX_PEOPLE, MAX_CIRCLES, newPerson } from './swarm/scenarios.mjs';
+import { pickCity, customCity } from './swarm/world.mjs';
+import { findings, report } from './swarm/analysis.mjs';
 import { startDashboard } from './swarm/dashboard.mjs';
 
 const HELP = `HomeCircle swarm: simulated people using a HomeCircle server.
@@ -27,18 +29,20 @@ const HELP = `HomeCircle swarm: simulated people using a HomeCircle server.
   --setup-code <code>    its setup code, from the add-on log (first run only)  (env HC_SETUP_CODE)
   --invite-server <url>  address in the invite links for your phone, e.g.
                          https://homecircle.your-tailnet.ts.net:8443         (env HC_INVITE_SERVER)
-  --scale <size>         small (5 circles, ~45 people), medium (~10, ~100),
-                         large (~24, ~250), xl (~50, ~500). Default small, or
+  --scale <size>         small (7 circles, ~85 people), medium (11, ~115),
+                         large (26, ~250), xl (54, ~540). Default small, or
                          the mix from your last run.
   --circles <mix>        circles of each kind, e.g. family=4,friends=2,party=0
-                         (kinds: family, friends, work, party, elders)
+                         (kinds: family, friends, work, party, elders,
+                         politics, history)
   --people <n | mix>     people in every circle (8), or per kind:
                          family=5,party=40. Up to ${MAX_PEOPLE}. Default: varied sizes.
                          Both can also be changed live on the dashboard.
   --speed <n>            how many times busier than a normal day. Default 1.
   --ramp <minutes>       bring circles online gradually over this long. Default 5.
   --duration <minutes>   stop after this long. Default: run until Ctrl+C.
-  --near <lat,lng>       where the simulated town is. Default 34.05,-118.25.
+  --near <lat,lng>       put every circle around one spot instead of in cities
+                         around the world (the default).
   --always-open <0-1>    share of people with the app always open. Default 0.15.
   --ha-url <url>         Home Assistant, e.g. http://homeassistant.local:8123  (env HA_URL)
   --ha-token <token>     a long-lived access token from your HA profile        (env HA_TOKEN)
@@ -57,7 +61,7 @@ const { values: opt } = parseArgs({
     speed: { type: 'string', default: '1' },
     ramp: { type: 'string', default: '5' },
     duration: { type: 'string', default: '0' },
-    near: { type: 'string', default: '34.05,-118.25' },
+    near: { type: 'string' },
     'always-open': { type: 'string', default: '0.15' },
     'ha-url': { type: 'string', default: process.env.HA_URL },
     'ha-token': { type: 'string', default: process.env.HA_TOKEN },
@@ -96,8 +100,7 @@ const peopleArg = parseMix(opt.people, '--people', MAX_PEOPLE);
 const server = normalizeServerUrl(opt.server);
 const inviteServer = opt['invite-server'] ? normalizeServerUrl(opt['invite-server']) : null;
 const speed = Math.max(0.1, Number(opt.speed) || 1);
-const [nearLat, nearLng] = opt.near.split(',').map(Number);
-const near = { lat: nearLat, lng: nearLng };
+const near = opt.near ? customCity(...opt.near.split(',').map(Number)) : null;
 const alwaysOpenShare = Math.min(1, Math.max(0, Number(opt['always-open']) || 0));
 const dataDir = resolve(opt.data);
 mkdirSync(dataDir, { recursive: true });
@@ -105,6 +108,7 @@ const tag = server.replace(/^https?:\/\//, '').replace(/[^A-Za-z0-9.-]+/g, '_');
 const statePath = join(dataDir, `${tag}.json`);
 const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
 const csvPath = join(dataDir, `${tag}-${stamp}.csv`);
+const reportPath = join(dataDir, `${tag}-${stamp}-report.md`);
 
 const log = (...a) => console.log(new Date().toLocaleTimeString(), ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -116,9 +120,18 @@ if (state && state.server !== server) state = null;
 state ??= { server, created: Date.now(), ipCounter: 2, hq: null, accounts: {}, circles: [] };
 
 let saveTimer = null;
+let worldRef = null;
 const saveNow = () => {
   clearTimeout(saveTimer);
   saveTimer = null;
+  // Remember how far each phone has read, so a restart doesn't make every
+  // simulated phone download its circle's whole history again.
+  for (const c of worldRef?.circles ?? []) {
+    for (const m of c.members) {
+      const p = c.saved.members.find((x) => x.accountKey === m.client.accountKey);
+      if (p) p.lastSeq = m.client.lastSeq;
+    }
+  }
   writeFileSync(`${statePath}.tmp`, JSON.stringify(state));
   renameSync(`${statePath}.tmp`, statePath);
 };
@@ -144,6 +157,7 @@ const feed = (circle, who, text, kind) => {
   if (feedItems.length > 80) feedItems.shift();
 };
 const world = new World({ speed, metrics, feed });
+worldRef = world;
 
 const nextIp = () => {
   const n = state.ipCounter++;
@@ -275,20 +289,28 @@ async function createSavedCircle(key) {
   const sc = SCENARIOS[key];
   // Distinct names, so you can tell circles apart in the app. Reserved
   // before any await: several circles are built at once.
-  let spec = sc.build();
-  for (let i = 0; i < 10 && takenNames.has(spec.circleName); i++) spec = sc.build();
+  // Each circle lives in a city somewhere in the world (or around --near).
+  const city = near || pickCity();
+  let spec = sc.build(city);
+  for (let i = 0; i < 10 && takenNames.has(spec.circleName); i++) spec = sc.build(city);
   if (takenNames.has(spec.circleName)) {
     let n = 2;
     while (takenNames.has(`${spec.circleName} ${n}`)) n++;
     spec.circleName = `${spec.circleName} ${n}`;
   }
   takenNames.add(spec.circleName);
-  const center = offset(near, Math.random() * 12);
+  const center = offset(city, near ? Math.random() * 12 : 0.5 + Math.random() * 3);
   const saved = {
     key,
+    city: { name: city.name, flag: city.flag, region: city.region, landmark: city.landmark },
     spec: { circleName: spec.circleName, homes: !!spec.homes },
     center,
-    places: spec.places.map((p) => ({ key: p.key, name: p.name, radius: 150, ...(p.km ? offset(center, p.km) : center) })),
+    places: spec.places.map((p) => ({
+      key: p.key,
+      name: p.name,
+      radius: p.key === 'landmark' ? 250 : 150,
+      ...(p.lat != null ? { lat: p.lat, lng: p.lng } : p.km ? offset(center, p.km) : { lat: center.lat, lng: center.lng }),
+    })),
     members: [],
     // The rest of the people build() came up with, for a "natural" size.
     planned: spec.people.slice(1),
@@ -309,6 +331,7 @@ async function hydrate(saved) {
   const members = [];
   const circle = new SimCircle({ world, key: saved.key, spec: saved.spec, center: saved.center, places: saved.places, members, owner: null });
   circle.saved = saved;
+  circle.city = saved.city || null;
   for (const p of saved.members) members.push(await loadMember(circle, p));
   circle.owner = members[0];
   world.circles.push(circle);
@@ -318,6 +341,7 @@ async function hydrate(saved) {
 async function loadMember(circle, p) {
   const client = makeClient(p.accountKey, p.ip);
   await client.load();
+  client.lastSeq = p.lastSeq || 0;
   const m = new SimMember({ world, circle, person: p, index: p.index, client, ip: p.ip, home: p.home, work: p.work, alwaysOpen: p.alwaysOpen });
   world.simIds.add(client.account.memberId);
   return m;
@@ -327,8 +351,8 @@ async function loadMember(circle, p) {
 async function addPerson(circle) {
   const saved = circle.saved;
   const names = new Set(saved.members.map((p) => p.name));
-  const next = saved.planned?.length ? saved.planned.shift() : newPerson(saved.key, names);
-  if (names.has(next.name)) Object.assign(next, newPerson(saved.key, names), { role: next.role, travel: next.travel });
+  const next = saved.planned?.length ? saved.planned.shift() : newPerson(saved.key, names, saved.city);
+  if (names.has(next.name)) Object.assign(next, newPerson(saved.key, names, saved.city), { role: next.role, travel: next.travel });
   const p = personRecord(saved, next, Math.max(...saved.members.map((x) => x.index)) + 1);
   const owner = circle.owner;
   const inv = await patiently(() => owner.client.createInvite({ hours: 1 }), 'invite');
@@ -558,6 +582,7 @@ const dashboard = await startDashboard({
     circles: world.circles.filter((c) => c.active || !c.stopped).map((c) => ({
       name: c.name,
       label: c.scenario.label,
+      where: c.city ? `${c.city.flag} ${c.city.name}` : '',
       active: c.active,
       people: c.members.length,
       online: c.members.filter((m) => m.client.status === 'online').length,
@@ -567,7 +592,11 @@ const dashboard = await startDashboard({
     })),
     feed: feedItems.slice(-40).reverse(),
     recentErrors: metrics.recentErrors.slice(-5).reverse(),
+    findings: currentFindings(),
+    markers: metrics.markers,
+    reportPath,
   }),
+  report: () => report(analysisCtx()),
   setMix: ({ kind, circles, people }) => {
     if (!KINDS.includes(kind)) return;
     if (circles != null && Number.isFinite(Number(circles))) target.circles[kind] = Number(circles);
@@ -576,11 +605,13 @@ const dashboard = await startDashboard({
     clampTarget();
     const t = target.people[kind];
     log(`mix: ${SCENARIOS[kind].label}: ${target.circles[kind]} circle(s), ${t ?? 'varied'} people each`);
+    metrics.mark(`${SCENARIOS[kind].label}: ${target.circles[kind]} circle(s) × ${t ?? 'varied'}`);
     reconcile();
   },
   setSpeed: (s) => {
     world.speed = Math.min(500, Math.max(0.1, s));
     log(`speed is now ${world.speed}×`);
+    metrics.mark(`speed ${world.speed}×`);
   },
 });
 log(`dashboard: http://localhost:${dashboard.port}`);
@@ -588,9 +619,39 @@ log(`dashboard: http://localhost:${dashboard.port}`);
 world.start();
 hq.on('newMessage', (m) => {
   if (world.simIds.has(m.from) || m.kind !== 'chat') return;
-  if (/status|stats|how/i.test(m.body?.text || '')) hq.sendChat(summary()).catch(() => {});
+  const text = m.body?.text || '';
+  if (/report|finding|learn|wrong|broke|slow/i.test(text)) {
+    const top = currentFindings().slice(0, 6);
+    const icon = { bad: '🔴', warn: '🟠', info: '🔵', good: '🟢' };
+    hq.sendChat(top.length ? top.map((f) => `${icon[f.level]} ${f.title}`).join('\n') : 'Nothing to report yet: give it a few minutes ⏳').catch(() => {});
+  } else if (/status|stats|how/i.test(text)) hq.sendChat(summary()).catch(() => {});
 });
 hq.connect();
+
+const mixText = () =>
+  KINDS.filter((k) => target.circles[k])
+    .map((k) => `${target.circles[k]} ${SCENARIOS[k].label.toLowerCase()}${target.people[k] != null ? ` × ${target.people[k]}` : ''}`)
+    .join(', ');
+const analysisCtx = () => ({
+  totals: metrics.totals,
+  opTotals: metrics.opTotals(),
+  timeline: metrics.timeline,
+  markers: metrics.markers,
+  fanoutAll: metrics.fanoutAll,
+  ha: metrics.ha,
+  speed: world.speed,
+  counts: world.counts(),
+  server,
+  startedAt,
+  mix: mixText(),
+  csvPath,
+});
+let findingsCache = { t: 0, list: [] };
+const currentFindings = () => {
+  if (Date.now() - findingsCache.t > 10_000) findingsCache = { t: Date.now(), list: findings(analysisCtx()) };
+  return findingsCache.list;
+};
+const writeReport = () => writeFileSync(reportPath, report(analysisCtx()));
 
 function summary() {
   const c = world.counts();
@@ -608,6 +669,7 @@ function summary() {
   phase = 'running';
   const c = world.counts();
   log(`all ${c.circles} circles running, ${c.people} people`);
+  metrics.mark(`everyone online: ${c.people} people`);
   hq.sendChat(`🚀 Swarm running: ${c.people} people in ${c.circles} circles at ${world.speed}× speed`).catch(() => {});
 })();
 
@@ -630,6 +692,18 @@ every(60_000, async () => {
   for (const c of world.circles) if (c.active && !c.userMembers().length) await userInvite(c);
 });
 every(60_000, () => world.circles.forEach((c) => c.members.forEach((m) => m.trim())));
+// New problems go to the HQ circle once, so you hear about them on your phone.
+const alerted = new Set();
+every(60_000, () => {
+  for (const f of currentFindings()) {
+    if ((f.level !== 'bad' && f.level !== 'warn') || alerted.has(f.id)) continue;
+    alerted.add(f.id);
+    log(`finding: ${f.title}`);
+    hq.sendChat(`${f.level === 'bad' ? '🔴' : '🟠'} ${f.title}${f.action ? `\n→ ${f.action}` : ''}`).catch(() => {});
+  }
+});
+every(5 * 60_000, writeReport);
+every(60_000, saveNow);
 
 let stopping = false;
 async function stop(why) {
@@ -639,12 +713,18 @@ async function stop(why) {
   world.stop();
   hq.disconnect();
   saveNow();
+  try {
+    writeReport();
+  } catch (e) {
+    log(`couldn’t write the report: ${e.message}`);
+  }
   const t = metrics.totals;
   log(
     `done. ${t.requests} requests, ${t.errors} errors, ${t.rateLimited} rate-limited; ` +
       `${t.messages} messages, ${t.dms} DMs, ${t.reactions} reactions, ${t.locations} locations, ${t.placeEvents} place events, ${t.locates} Locates.`,
   );
   log(`timeline saved to ${csvPath}`);
+  log(`findings report: ${reportPath}`);
   process.exit(0);
 }
 process.on('SIGINT', () => stop('Ctrl+C'));

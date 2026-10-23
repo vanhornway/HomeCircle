@@ -35,6 +35,11 @@ export class Metrics {
     this.lag = monitorEventLoopDelay({ resolution: 20 });
     this.lag.enable();
     this.recentErrors = [];
+    // Whole-run totals per API call, for the findings report.
+    this.ops = new Map(); // op -> { n, statuses: {code: n}, ms: [last 2000] }
+    this.fanoutAll = []; // last 5000 chat delivery times
+    // What changed when (mix, speed), so the report can compare load steps.
+    this.markers = [{ t: Date.now(), label: 'start' }];
   }
 
   /** A fetch that records every call. `ip` becomes X-Forwarded-For. */
@@ -66,6 +71,14 @@ export class Metrics {
 
   record(op, ms, status) {
     this.events.push({ t: Date.now(), op, ms, status });
+    let o = this.ops.get(op);
+    if (!o) this.ops.set(op, (o = { n: 0, statuses: {}, ms: [] }));
+    o.n++;
+    o.statuses[status] = (o.statuses[status] || 0) + 1;
+    if (status && status < 400) {
+      o.ms.push(ms);
+      if (o.ms.length > 2000) o.ms.splice(0, o.ms.length - 2000);
+    }
     this.totals.requests++;
     if (status === 0) this.totals.network++;
     else if (status === 429) this.totals.rateLimited++;
@@ -83,7 +96,25 @@ export class Metrics {
   }
 
   fanoutMs(ms) {
-    if (ms >= 0 && ms < 120_000) this.fanout.push({ t: Date.now(), ms });
+    if (ms >= 0 && ms < 120_000) {
+      this.fanout.push({ t: Date.now(), ms });
+      this.fanoutAll.push(ms);
+      if (this.fanoutAll.length > 5000) this.fanoutAll.splice(0, this.fanoutAll.length - 5000);
+    }
+  }
+
+  /** Something changed (mix, speed): the report compares the load before and after. */
+  mark(label) {
+    this.markers.push({ t: Date.now(), label });
+    if (this.markers.length > 200) this.markers.splice(1, 1);
+  }
+
+  /** Whole-run per-call figures: calls, p50/p95, failures by status. */
+  opTotals() {
+    return [...this.ops].map(([op, o]) => {
+      const s = [...o.ms].sort((a, b) => a - b);
+      return { op, n: o.n, p50: round(pct(s, 50)), p95: round(pct(s, 95)), statuses: o.statuses };
+    });
   }
 
   _trim(now) {
