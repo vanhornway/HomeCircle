@@ -14,14 +14,23 @@ import { freshFix, upload } from './location';
 
 export const SOS_TASK = 'homecircle-sos';
 const KEY = 'homecircle.sos';
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+// Public OpenStreetMap query servers, tried in turn (the main one is often busy).
+const OVERPASS_URLS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
 const SEARCH_RADIUS_M = 3000;
 // Close enough to count as "reached" a place without a radius of its own.
 const ARRIVED_M = 75;
 
 export type SafeKind = 'police' | 'fire' | 'hospital' | 'pharmacy' | 'library' | 'grocery' | 'circle';
 export type SafePlace = { id: string; name: string; kind: SafeKind; lat: number; lng: number; radius: number };
-export type MySos = { startedAt: number; ids: Record<string, string>; places: SafePlace[]; reached: string[]; at: { lat: number; lng: number } | null };
+export type MySos = {
+  startedAt: number;
+  ids: Record<string, string>;
+  places: SafePlace[];
+  // Whether the last lookup reached OpenStreetMap (if not, it's tried again on the next fix).
+  placesOk?: boolean;
+  reached: string[];
+  at: { lat: number; lng: number } | null;
+};
 
 export const SAFE_EMOJI: Record<SafeKind, string> = { police: '🚓', fire: '🚒', hospital: '🏥', pharmacy: '💊', library: '📚', grocery: '🛒', circle: '📍' };
 export const SAFE_KIND_NAME: Record<SafeKind, string> = {
@@ -115,10 +124,11 @@ export async function onSosFix(loc: Location.LocationObject): Promise<void> {
   const here = { lat: loc.coords.latitude, lng: loc.coords.longitude };
   await upload(loc, 'sos', { force: true, everyone: true }).catch((e) => diag('sos:upload-failed', { msg: String(e?.message ?? e).slice(0, 80) }));
   let places = sos.places;
-  // Look safe places up again after moving more than a kilometre.
-  if (!places.length || !sos.at || distanceM(sos.at, here) > 1000) {
-    places = await findSafePlaces(here).catch(() => places);
-    await save({ ...sos, places, at: here });
+  // Look safe places up again after moving more than a kilometre, or if the last try failed.
+  if (!sos.placesOk || !sos.at || distanceM(sos.at, here) > 1000) {
+    const found = await findSafePlaces(here).catch(() => null);
+    if (found) places = found.places;
+    await save({ ...sos, places, placesOk: !!found?.ok, at: here });
   }
   const reachedNow = places.find((p) => !sos.reached.includes(p.id) && distanceM(p, here) <= Math.max(ARRIVED_M, p.radius));
   if (!reachedNow) return;
@@ -129,32 +139,42 @@ export async function onSosFix(loc: Location.LocationObject): Promise<void> {
 
 const KIND_OF: Record<string, SafeKind> = { police: 'police', fire_station: 'fire', hospital: 'hospital', pharmacy: 'pharmacy', library: 'library' };
 
-/** Safe places near a point, nearest first: OpenStreetMap plus the circles' own places. */
-export async function findSafePlaces(at: { lat: number; lng: number }): Promise<SafePlace[]> {
+/**
+ * Safe places near a point, nearest first: OpenStreetMap plus the circles' own
+ * places. `ok` says whether OpenStreetMap answered.
+ */
+export async function findSafePlaces(at: { lat: number; lng: number }): Promise<{ places: SafePlace[]; ok: boolean }> {
   const out: SafePlace[] = [];
-  const query = `[out:json][timeout:15];(nwr(around:${SEARCH_RADIUS_M},${at.lat},${at.lng})[amenity~"^(police|fire_station|hospital|pharmacy|library)$"];nwr(around:${SEARCH_RADIUS_M},${at.lat},${at.lng})[shop~"^(supermarket|convenience)$"][opening_hours="24/7"];);out center 60;`;
-  try {
-    const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), 15_000);
-    const res = await fetch(OVERPASS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': `HomeCircle/${Constants.expoConfig?.version ?? 'app'}` },
-      body: `data=${encodeURIComponent(query)}`,
-      signal: abort.signal,
-    }).finally(() => clearTimeout(timer));
-    if (res.ok) {
-      const json = (await res.json()) as { elements?: { type: string; id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }[] };
-      for (const e of json.elements ?? []) {
-        const lat = e.lat ?? e.center?.lat;
-        const lng = e.lon ?? e.center?.lon;
-        if (lat == null || lng == null) continue;
-        const kind = KIND_OF[e.tags?.amenity ?? ''] ?? (e.tags?.shop ? 'grocery' : null);
-        if (!kind) continue;
-        out.push({ id: `osm:${e.type}/${e.id}`, name: e.tags?.name || SAFE_KIND_NAME[kind], kind, lat, lng, radius: 0 });
+  let ok = false;
+  const query = `[out:json][timeout:20];(nwr(around:${SEARCH_RADIUS_M},${at.lat},${at.lng})[amenity~"^(police|fire_station|hospital|pharmacy|library)$"];nwr(around:${SEARCH_RADIUS_M},${at.lat},${at.lng})[shop~"^(supermarket|convenience)$"][opening_hours="24/7"];);out center 60;`;
+  for (const url of OVERPASS_URLS) {
+    if (ok) break;
+    try {
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), 25_000);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': `HomeCircle/${Constants.expoConfig?.version ?? 'app'}` },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: abort.signal,
+      }).finally(() => clearTimeout(timer));
+      if (res.ok) {
+        const json = (await res.json()) as { elements?: { type: string; id: number; lat?: number; lon?: number; center?: { lat: number; lon: number }; tags?: Record<string, string> }[] };
+        for (const e of json.elements ?? []) {
+          const lat = e.lat ?? e.center?.lat;
+          const lng = e.lon ?? e.center?.lon;
+          if (lat == null || lng == null) continue;
+          const kind = KIND_OF[e.tags?.amenity ?? ''] ?? (e.tags?.shop ? 'grocery' : null);
+          if (!kind) continue;
+          out.push({ id: `osm:${e.type}/${e.id}`, name: e.tags?.name || SAFE_KIND_NAME[kind], kind, lat, lng, radius: 0 });
+        }
+        ok = true;
+      } else {
+        diag('sos:places-failed', { url: url.split('/')[2], status: res.status });
       }
+    } catch (e) {
+      diag('sos:places-failed', { url: url.split('/')[2], msg: String((e as Error)?.message ?? e).slice(0, 80) });
     }
-  } catch (e) {
-    diag('sos:places-failed', { msg: String((e as Error)?.message ?? e).slice(0, 80) });
   }
   for (const c of await loadedClients()) {
     for (const p of c.places.values()) {
@@ -162,8 +182,9 @@ export async function findSafePlaces(at: { lat: number; lng: number }): Promise<
     }
   }
   const seen = new Set<string>();
-  return out
+  const places = out
     .sort((a, b) => distanceM(a, at) - distanceM(b, at))
     .filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)))
     .slice(0, 20);
+  return { places, ok };
 }
