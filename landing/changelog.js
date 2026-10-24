@@ -1,6 +1,17 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.9.0',
+    date: '2026-10-23',
+    title: 'Chirps and most visited places',
+    items: [
+      'Chirp someone, or your whole circle: a short bird sound on their phone, even with the app closed. Pick your own from ten, so they know it’s you without looking. Add a flash to blink their camera light.',
+      'Chirps respect Do Not Disturb, and you can turn their sound or flash off. Three in a row, then a 30-minute break.',
+      'Most visited places: see where each person spends the most time, with a first guess at names like Home, Work, School, Costco or Shell. Rename or hide yours, or stop sharing them.',
+      'Your location history stays on your phone; only the short list is shared, end-to-end encrypted.',
+    ],
+  },
+  {
     version: '0.8.1',
     date: '2026-10-23',
     title: 'Notifications and Locate reach closed apps',

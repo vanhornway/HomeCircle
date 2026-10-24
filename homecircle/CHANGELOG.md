@@ -2,6 +2,14 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.9.0
+
+- Chirps: a short bird sound (and optionally a flash) on someone's phone, or
+  everyone's in a circle. Three in a row, then a 30-minute break.
+- Most visited places: each phone can share where it spends the most time,
+  end-to-end encrypted like locations.
+- Needs the HomeCircle app 0.9.0 for both.
+
 ## 0.8.2
 
 - Load-test guardrails: the load-test server now runs in load-test mode (a

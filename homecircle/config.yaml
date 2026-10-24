@@ -1,5 +1,5 @@
 name: HomeCircle
-version: "0.8.2"
+version: "0.9.0"
 slug: homecircle
 description: Private family location sharing and chat, end-to-end encrypted, on your own Home Assistant.
 url: https://github.com/vanhornway/HomeCircle
