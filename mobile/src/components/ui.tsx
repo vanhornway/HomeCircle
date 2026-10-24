@@ -15,7 +15,7 @@ import {
   type ColorValue,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle, Ellipse, G, Path, Polygon, Rect } from 'react-native-svg';
+import Svg, { Circle, G, Path, Rect } from 'react-native-svg';
 import { useTheme } from '../theme';
 import { initials } from '../lib/useCircle';
 
@@ -303,28 +303,21 @@ export function Icon({ name, size = 24, color = '#000', bg }: { name: keyof type
   );
 }
 
-// Three little birds close together: chirp everyone (one bird chirps one person).
+// Chirp everyone: three of the chirp bird close together (one bird chirps one person).
 const FLOCK: [number, number, number][] = [
-  [5.2, -1.2, 0.62],
-  [-1.6, 8, 0.62],
-  [9.6, 9, 0.62],
+  [5.6, -2.2, 0.6],
+  [-2.2, 7.2, 0.6],
+  [9, 8.2, 0.6],
 ];
 
 function Flock({ size, color, bg }: { size: number; color: ColorValue; bg?: ColorValue }) {
   const t = useTheme();
-  const edge = bg ?? t.surface;
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
       {FLOCK.map(([x, y, s], i) => (
         <G key={i} transform={`translate(${x} ${y}) scale(${s})`}>
-          {/* Outlined first, in the background color, so overlapping birds stay apart. */}
-          <Polygon points="5,13.5 0.5,10.5 1.8,16.2" fill={color} stroke={edge} strokeWidth={1.6 / s} strokeLinejoin="round" />
-          <Ellipse cx={10.5} cy={14} rx={7} ry={5} rotation={-18} origin="10.5, 14" fill={color} stroke={edge} strokeWidth={1.6 / s} />
-          <Circle cx={16.6} cy={8.6} r={3.6} fill={color} stroke={edge} strokeWidth={1.6 / s} />
-          <Polygon points="19.8,7.6 23.4,8.8 19.8,10" fill={color} />
-          <Circle cx={16.6} cy={8.6} r={3.6} fill={color} />
-          <Ellipse cx={10.5} cy={14} rx={7} ry={5} rotation={-18} origin="10.5, 14" fill={color} />
-          <Circle cx={17.4} cy={8} r={0.9} fill={edge} />
+          {/* Filled with the background so the front birds cover the one behind. */}
+          <Path d={ICONS.bird} fill={bg ?? t.surface} stroke={color} strokeWidth={1.2 / s} strokeLinecap="round" strokeLinejoin="round" />
         </G>
       ))}
     </Svg>
