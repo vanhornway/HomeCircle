@@ -2,7 +2,7 @@
 window.HOMECIRCLE_CHANGELOG = [
   {
     version: '0.11.0',
-    date: '2026-10-25',
+    date: '2026-10-24',
     title: 'SOS, a circle helper, and ticks',
     items: [
       'SOS: hold the red button on the map for 2 seconds. After a 5-second countdown you can cancel, everyone in your circles is alerted and your exact location is shared every minute until you tap “I’m safe”. It lists safe places nearby (police, fire stations, hospitals, pharmacies, libraries, 24-hour stores) with directions, tells your circle when you reach one, and has a Call 911 button.',
