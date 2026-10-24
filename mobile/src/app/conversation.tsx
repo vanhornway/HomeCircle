@@ -56,6 +56,10 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // The circle's agent: asked with "/Name …", the 🤖 button, or in its own chat.
+  const agent = client.agent;
+  const withAgent = !!agent && peer === agent.id;
+  const [asking, setAsking] = useState(false);
   const [pollOpen, setPollOpen] = useState(false);
   const [reactingTo, setReactingTo] = useState<Message | null>(null);
   const [checkingIn, setCheckingIn] = useState<string | null>(null);
@@ -89,7 +93,12 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     setText('');
     setError(null);
     try {
-      await client.sendChat(value, { to: peer });
+      const question = agent && !peer ? agentQuestion(value, agent.name) : null;
+      if (withAgent) await client.askAgent(value, { peer });
+      else if (agent && !peer && (asking || question != null)) {
+        await client.askAgent(question ?? value);
+        setAsking(false);
+      } else await client.sendChat(value, { to: peer });
       list.current?.scrollToOffset({ offset: 0, animated: true });
     } catch (e) {
       setText(value);
@@ -186,7 +195,11 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     const reactions = client.reactionsFor(m.id);
     return (
       <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', alignItems: mine ? 'flex-end' : 'flex-start', maxWidth: '82%', marginVertical: 3 }}>
-        {!mine && !peer ? <Text style={{ color: who?.color || t.muted, fontSize: 13, fontWeight: '700', marginLeft: 4, marginBottom: 2 }}>{name}</Text> : null}
+        {!mine && !peer ? (
+          <Text style={{ color: who?.kind === 'agent' ? t.brand : who?.color || t.muted, fontSize: 13, fontWeight: '700', marginLeft: 4, marginBottom: 2 }}>
+            {who?.kind === 'agent' ? `🤖 ${name}` : name}
+          </Text>
+        ) : null}
         <Pressable
           onLongPress={() => {
             Keyboard.dismiss();
@@ -204,6 +217,9 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
         >
           <Text style={big ? { fontSize: 44, lineHeight: 54 } : { color: mine ? t.brandInk : t.text, fontSize: 17, lineHeight: 23 }}>{m.body?.text}</Text>
         </Pressable>
+        {who?.kind === 'agent' && Array.isArray(m.body?.undo) && m.body.undo.length ? (
+          <Button small title="Undo" onPress={() => client.undoAgent(m.body!.undo, { peer }).catch((e) => setError(errorText(e)))} style={{ marginTop: 6 }} />
+        ) : null}
         {m.body?.nudge === true && !mine ? (
           <Button small variant="primary" title="Open setup check" onPress={() => router.push('/setup-check')} style={{ marginTop: 6 }} />
         ) : null}
@@ -320,7 +336,17 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             >
               <Text style={{ fontSize: 26 }}>😊</Text>
             </Pressable>
-            {text.trim() ? null : (
+            {agent && !peer && !text.trim() ? (
+              <Pressable
+                accessibilityLabel={asking ? `Stop asking ${agent.name}` : `Ask ${agent.name}`}
+                accessibilityState={{ selected: asking }}
+                onPress={() => setAsking((v) => !v)}
+                style={{ width: 40, height: 48, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginLeft: -6, backgroundColor: asking ? t.brandSoft : 'transparent' }}
+              >
+                <Text style={{ fontSize: 24 }}>🤖</Text>
+              </Pressable>
+            ) : null}
+            {text.trim() || withAgent ? null : (
               <Pressable
                 accessibilityLabel="New poll"
                 onPress={() => {
@@ -337,7 +363,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
               value={text}
               onChangeText={setText}
               onFocus={() => setPickerOpen(false)}
-              placeholder={peer ? `Message ${title}` : 'Message your circle'}
+              placeholder={withAgent ? `Ask ${title} anything` : asking && agent ? `Ask ${agent.name}…` : peer ? `Message ${title}` : 'Message your circle'}
               placeholderTextColor={t.muted}
               multiline
               maxLength={4000}
@@ -352,6 +378,17 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
               <Icon name="send" color={t.brandInk} size={22} />
             </Pressable>
           </View>
+          {agent && !peer && /^\/\S*$/.test(text) && `/${agent.name}`.toLowerCase().startsWith(text.toLowerCase()) ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setText(`/${agent.name} `)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 10, marginBottom: 8, padding: 10, borderRadius: 12, backgroundColor: t.brandSoft }}
+            >
+              <Text style={{ fontSize: 18 }}>🤖</Text>
+              <Text style={{ color: t.brand, fontSize: 16, fontWeight: '700' }}>/{agent.name}</Text>
+              <Text style={{ color: t.muted, fontSize: 13 }}>ask the circle’s helper</Text>
+            </Pressable>
+          ) : null}
           {pickerOpen ? (
             <ScrollView style={{ maxHeight: 280, backgroundColor: t.surface }} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
               {EMOJI_GROUPS.map((g) => (
@@ -408,6 +445,17 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
                   );
                 })}
               </View>
+              {agent && typeof reactingTo.body?.text === 'string' && reactingTo.from !== agent.id ? (
+                <Button
+                  small
+                  title={`📌 Remember with ${agent.name}`}
+                  onPress={() => {
+                    const id = reactingTo.id;
+                    setReactingTo(null);
+                    client.rememberWithAgent(id).catch((e) => setError(errorText(e)));
+                  }}
+                />
+              ) : null}
             </View>
           ) : null}
         </Pressable>
@@ -440,4 +488,14 @@ function chatRows(messages: Message[]): ChatRow[] {
   }
   flush();
   return rows;
+}
+
+/** "/Jarvis when…" or "/agent when…" → "when…" (the question for the agent), else null. */
+function agentQuestion(text: string, name: string): string | null {
+  const t = text.trim();
+  const lower = t.toLowerCase();
+  for (const tag of [`/${name.toLowerCase()} `, '/agent ']) {
+    if (lower.startsWith(tag)) return t.slice(tag.length).trim() || null;
+  }
+  return null;
 }

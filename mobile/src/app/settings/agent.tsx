@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, Share, Text, TextInput, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Button } from '../../components/ui';
 import { GroupBody, SettingsGroup, SettingsPage, SettingsRow } from '../../components/SettingsKit';
 import { errorText } from '../../lib/circle';
@@ -177,6 +177,12 @@ function AgentReady({ name }: { name: string }) {
 
       <SettingsGroup>
         <SettingsRow icon="🧠" title={`What ${name} remembers`} detail="Search, browse, edit or delete notes and calendars" href="/agent-memory" />
+        <SettingsRow
+          icon="💬"
+          title={`Chat with ${name} privately`}
+          detail="Only you see it; what you tell it stays private unless you say “share with the circle”"
+          onPress={() => client.agent && router.push({ pathname: '/conversation', params: { circle: client.circleId!, peer: client.agent.id } })}
+        />
       </SettingsGroup>
 
       {error ? (
