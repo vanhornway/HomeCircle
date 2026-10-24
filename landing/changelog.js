@@ -1,6 +1,18 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.10.0',
+    date: '2026-10-24',
+    title: 'Polls, and quieter chirps at school',
+    items: [
+      'Polls: ask anything in a group or direct chat with the 📊 button. Everyone taps to vote and the bars move live. See who voted for what, add an option, spin the wheel to break a tie, and get a 🎉 when everyone has voted.',
+      'Start from a quick template (where to eat, what time, movie night…), pick an emoji for each option, or add ideas from your circle’s places. Set a deadline, or close the poll yourself and the winner is posted to the chat.',
+      'Polls are end-to-end encrypted like messages, and work on the server’s web page too.',
+      'Chirp everyone now has its own button: three birds together, next to Refresh everyone.',
+      'At school from 8 AM to 3 PM, chirps only flash, so they don’t go off in class. The person chirping sees that they might be in class and only got a flash.',
+    ],
+  },
+  {
     version: '0.9.1',
     date: '2026-10-24',
     title: 'Tidier chat',

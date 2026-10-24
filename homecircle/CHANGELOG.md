@@ -2,6 +2,14 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.10.0
+
+- Polls on the web page: vote, see who voted, add an option, spin the wheel,
+  close your own poll, and start one with the 📊 button. Polls are sealed like
+  messages; the server only stores ciphertext.
+- Needs the HomeCircle app 0.10.0 to vote from phones (older apps show a poll
+  as text).
+
 ## 0.9.1
 
 - The web page's chat folds more than 5 arrived/left alerts in a row into
