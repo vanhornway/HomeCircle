@@ -7,6 +7,7 @@ import { Avatar, Icon } from './ui';
 import { AlertRuleSheet } from './AlertRuleSheet';
 import { errorText } from '../lib/circle';
 import { chirpWithChoice } from '../lib/chirp';
+import { KIND_EMOJI } from '../lib/visits';
 import { canLocate, locatePerson, locateState, openDirections, statusLine, useLocateVersion } from '../lib/people';
 import { timeAgo } from '../lib/useCircle';
 import { useTheme } from '../theme';
@@ -85,7 +86,7 @@ export function PersonSheet({ client, memberId, onClose }: { client: CircleClien
                   </View>
                 </View>
                 {m.isMe ? (
-                  <Text style={{ color: t.muted, fontSize: 14 }}>This is you. Change how you share in Settings.</Text>
+                  <Text style={{ color: t.muted, fontSize: 14 }}>This is you. Change how you share, and your most visited places, in Settings.</Text>
                 ) : (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 }}>
                     {tile(
@@ -118,6 +119,25 @@ export function PersonSheet({ client, memberId, onClose }: { client: CircleClien
                     {tile('bird', 'Chirp', 'A sound they’ll know is you', go(() => chirpWithChoice(client, m.id)))}
                   </View>
                 )}
+                {!m.isMe && client.frequent.get(m.id)?.places.length ? (
+                  <View style={{ gap: 8 }}>
+                    <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700' }}>MOST VISITED · LAST 30 DAYS</Text>
+                    {client.frequent
+                      .get(m.id)!
+                      .places.slice(0, 5)
+                      .map((p) => (
+                        <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <Text style={{ fontSize: 18 }}>{KIND_EMOJI[p.kind]}</Text>
+                          <Text style={{ flex: 1, color: t.text, fontSize: 15 }} numberOfLines={1}>
+                            {p.name}
+                          </Text>
+                          <Text style={{ color: t.muted, fontSize: 13 }}>
+                            {p.hours < 1 ? `${Math.round(p.hours * 60)} min` : `${Math.round(p.hours)} h`} · {p.visits} {p.visits === 1 ? 'visit' : 'visits'}
+                          </Text>
+                        </View>
+                      ))}
+                  </View>
+                ) : null}
               </SafeAreaView>
             </Pressable>
           ) : null}

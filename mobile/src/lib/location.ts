@@ -16,6 +16,8 @@ import { getSettings, getLastUpload, setLastUpload } from './storage';
 import { checkPlaces, geofenceId, sharingClients } from './places';
 import { diag } from './diagnostics';
 import { phoneHealth } from './health';
+import { recordFix, shareMyPlaces } from './visits';
+import { loadedClients } from './circle';
 
 export { distanceM, sharingClients };
 
@@ -111,10 +113,17 @@ export async function upload(
 
 /** Check places with this position, then upload it (right away if you arrived or left somewhere). */
 export async function report(loc: Location.LocationObject, trigger: string, { force = false }: { force?: boolean } = {}) {
+  // Most visited places: this phone's own history, kept on the phone.
+  await recordFix(loc.coords.latitude, loc.coords.longitude, loc.coords.accuracy ?? null, loc.timestamp).catch(() => {});
   const check = await checkPlaces({ lat: loc.coords.latitude, lng: loc.coords.longitude, accuracy: loc.coords.accuracy ?? null }).catch(
     () => ({ placeIds: {}, changed: false, action: null }),
   );
-  return upload(loc, check.changed && check.action ? check.action : trigger, { force: force || check.changed, placeIds: check.placeIds });
+  const sent = await upload(loc, check.changed && check.action ? check.action : trigger, { force: force || check.changed, placeIds: check.placeIds });
+  // At most every 6 hours; every circle, so paused and approximate ones get them withdrawn.
+  loadedClients()
+    .then((clients) => shareMyPlaces(clients))
+    .catch(() => {});
+  return sent;
 }
 
 /** A fresh fix, falling back to the last known one if GPS is slow. */

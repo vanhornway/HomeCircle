@@ -7,6 +7,7 @@ import { ServerBanner } from '../../components/ServerBanner';
 import { ServerPicker } from '../../components/ServerPicker';
 import { RejoinBanner } from '../../components/RejoinBanner';
 import { ChirpSettings } from '../../components/ChirpSettings';
+import { FrequentSettings } from '../../components/FrequentSettings';
 import { useServerState } from '../../lib/connection';
 import { useCircle } from '../../lib/useCircle';
 import { errorText, serverGroups, setActiveCircle, useCircles } from '../../lib/circle';
@@ -307,6 +308,8 @@ export default function SettingsTab() {
       </Card>
 
       <ChirpSettings clients={clients} settings={settings} onChange={setSettings} />
+
+      <FrequentSettings clients={clients} settings={settings} onChange={setSettings} />
 
       <SectionTitle>This phone</SectionTitle>
       <Card style={{ gap: 10 }}>

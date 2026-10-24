@@ -71,6 +71,8 @@ export interface Settings {
   pauseReasons: Record<string, string>;
   /** "Notify me when <person> arrives at / leaves <place>". */
   alertRules: AlertRule[];
+  /** Share your most visited places with circles that see your exact location. */
+  shareFrequent: boolean;
   /** Your chirp: the sound others hear when you chirp them. */
   myChirp: ChirpSound | null;
   /** Play chirps' sounds (off: they still show, silently). Do Not Disturb always applies. */
@@ -96,6 +98,7 @@ export const DEFAULT_SETTINGS: Settings = {
   approximateCircles: [],
   pauseReasons: {},
   alertRules: [],
+  shareFrequent: true,
   myChirp: null,
   chirpSound: true,
   chirpFlash: true,
