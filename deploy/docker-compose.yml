@@ -23,6 +23,22 @@ services:
       - homecircle-data:/data
     ports:
       - "127.0.0.1:8080:8080"
+    # Only /data is writable. The entrypoint starts as root just long enough
+    # to fix the volume's owner, then runs the server as "node" with nothing
+    # more it could gain.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
 
   caddy:
     image: caddy:2-alpine
