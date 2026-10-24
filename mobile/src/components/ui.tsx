@@ -15,7 +15,7 @@ import {
   type ColorValue,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import Svg, { Circle, Ellipse, G, Path, Polygon, Rect } from 'react-native-svg';
 import { useTheme } from '../theme';
 import { initials } from '../lib/useCircle';
 
@@ -288,16 +288,45 @@ export function IconButton({
       ) : done ? (
         <Text style={{ color: t.brand, fontSize: 18, fontWeight: '800' }}>✓</Text>
       ) : (
-        <Icon name={icon} color={fg} size={Math.round(size * 0.5)} />
+        <Icon name={icon} color={fg} bg={primary ? t.brand : t.surface} size={Math.round(size * (icon === 'birds' ? 0.68 : 0.5))} />
       )}
     </Pressable>
   );
 }
 
-export function Icon({ name, size = 24, color = '#000' }: { name: keyof typeof ICONS | string; size?: number; color?: ColorValue }) {
+export function Icon({ name, size = 24, color = '#000', bg }: { name: keyof typeof ICONS | 'birds' | string; size?: number; color?: ColorValue; bg?: ColorValue }) {
+  if (name === 'birds') return <Flock size={size} color={color} bg={bg} />;
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path d={ICONS[name] || ICONS.place} stroke={color} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+// Three little birds close together: chirp everyone (one bird chirps one person).
+const FLOCK: [number, number, number][] = [
+  [5.2, -1.2, 0.62],
+  [-1.6, 8, 0.62],
+  [9.6, 9, 0.62],
+];
+
+function Flock({ size, color, bg }: { size: number; color: ColorValue; bg?: ColorValue }) {
+  const t = useTheme();
+  const edge = bg ?? t.surface;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      {FLOCK.map(([x, y, s], i) => (
+        <G key={i} transform={`translate(${x} ${y}) scale(${s})`}>
+          {/* Outlined first, in the background color, so overlapping birds stay apart. */}
+          <Polygon points="5,13.5 0.5,10.5 1.8,16.2" fill={color} stroke={edge} strokeWidth={1.6 / s} strokeLinejoin="round" />
+          <Ellipse cx={10.5} cy={14} rx={7} ry={5} rotation={-18} origin="10.5, 14" fill={color} stroke={edge} strokeWidth={1.6 / s} />
+          <Circle cx={16.6} cy={8.6} r={3.6} fill={color} stroke={edge} strokeWidth={1.6 / s} />
+          <Polygon points="19.8,7.6 23.4,8.8 19.8,10" fill={color} />
+          <Circle cx={16.6} cy={8.6} r={3.6} fill={color} />
+          <Ellipse cx={10.5} cy={14} rx={7} ry={5} rotation={-18} origin="10.5, 14" fill={color} />
+          <Circle cx={17.4} cy={8} r={0.9} fill={edge} />
+        </G>
+      ))}
     </Svg>
   );
 }

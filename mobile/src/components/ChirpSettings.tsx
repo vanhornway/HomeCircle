@@ -94,6 +94,9 @@ export function ChirpSettings({ clients, settings, onChange }: { clients: Circle
         <Text style={{ color: t.muted, fontSize: 13 }}>
           Anyone can chirp the same person, or the whole circle, three times in a row, then has to wait 30 minutes.
         </Text>
+        <Text style={{ color: t.muted, fontSize: 13 }}>
+          At school from 8 AM to 3 PM, chirps only flash, so they don’t go off in class. A school is a place with “school” in its name, or a school among your most visited places.
+        </Text>
       </Card>
     </>
   );

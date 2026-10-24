@@ -136,7 +136,9 @@ export default function MapTab() {
       <View style={{ flex: 1, backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, marginTop: -18, paddingTop: 16 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 6 }}>
           <Text style={{ flex: 1, color: t.text, fontSize: 20, fontWeight: '700' }}>People</Text>
-          <Button title="Chirp all" small disabled={members.length < 2} onPress={() => chirpWithChoice(client, null)} style={{ marginRight: 8 }} />
+          <View style={{ marginRight: 8 }}>
+            <IconButton icon="birds" label="Chirp everyone" disabled={members.length < 2} onPress={() => chirpWithChoice(client, null)} />
+          </View>
           <Button
             title={everyoneCooling ? 'Asked everyone' : 'Refresh everyone'}
             small
