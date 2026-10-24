@@ -54,6 +54,19 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # The tests run from the repo, where every package is installed; this
+      # checks the image itself starts (agent on) before anyone can pull it.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: homecircle:smoke
+      - name: Start the image
+        run: |
+          docker run -d --name smoke -p 127.0.0.1:8080:8080 -e SETUP_TOKEN=ci-smoke-token -e AGENT=true --read-only --tmpfs /tmp homecircle:smoke
+          for i in $(seq 1 30); do curl -sf 127.0.0.1:8080/api/v1/info && exit 0; sleep 1; done
+          docker logs smoke
+          exit 1
       - uses: docker/build-push-action@v6
         with:
           context: .

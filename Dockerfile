@@ -12,7 +12,8 @@ ENV NODE_ENV=production \
 RUN apk add --no-cache tini su-exec \
  && mkdir -p /data && chown node:node /data
 WORKDIR /app
-COPY --from=deps /app/server/node_modules ./server/node_modules
+# In /app so both server/src and packages/core/src (the agent uses it) find them.
+COPY --from=deps /app/server/node_modules ./node_modules
 COPY server/package.json server/docker-entrypoint.sh ./server/
 COPY server/src ./server/src
 COPY server/public ./server/public
