@@ -78,6 +78,11 @@ export class Api {
   putPlace = (id, env) => this.req('PUT', `/places/${encodeURIComponent(id)}`, env);
   deletePlace = (id) => this.req('DELETE', `/places/${encodeURIComponent(id)}`);
   putCircle = (env) => this.req('PUT', '/circle', env);
+  frequent = () => this.req('GET', '/frequent');
+  putFrequent = (env) => this.req('PUT', '/frequent/me', env);
+  deleteFrequent = () => this.req('DELETE', '/frequent/me');
+  chirp = (body) => this.req('POST', '/chirps', body);
+  chirps = () => this.req('GET', '/chirps');
   // Recovery with the setup code (no account needed), and rejoin requests.
   recover = (setupToken) => this.req('POST', '/recover', { setupToken });
   recoverDelete = (setupToken, circleId) => this.req('POST', '/recover/delete', { setupToken, circleId });

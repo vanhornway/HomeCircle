@@ -78,6 +78,25 @@ CREATE TABLE IF NOT EXISTS locations (
   env TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS frequent_places (
+  member_id TEXT PRIMARY KEY,
+  env TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS chirps (
+  id TEXT PRIMARY KEY,
+  circle_id TEXT NOT NULL,
+  from_id TEXT NOT NULL,
+  to_id TEXT NOT NULL,
+  flash INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS chirp_limits (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL,
+  last_at INTEGER NOT NULL,
+  blocked_until INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS messages (
   seq INTEGER PRIMARY KEY AUTOINCREMENT,
   id TEXT NOT NULL UNIQUE,
@@ -108,6 +127,7 @@ export function openDb(dataDir) {
     CREATE INDEX IF NOT EXISTS invites_circle ON invites (circle_id);
     CREATE INDEX IF NOT EXISTS messages_circle_seq ON messages (circle_id, seq);
     CREATE INDEX IF NOT EXISTS places_circle ON places (circle_id);
+    CREATE INDEX IF NOT EXISTS chirps_to ON chirps (to_id);
   `);
   return new Store(db);
 }
@@ -274,9 +294,10 @@ export class Store {
     const members = this.q('SELECT id FROM members WHERE circle_id = ?').all(id).map((r) => r.id);
     for (const m of members) {
       this.q('DELETE FROM locations WHERE member_id = ?').run(m);
+      this.q('DELETE FROM frequent_places WHERE member_id = ?').run(m);
       this.q('DELETE FROM key_envelopes WHERE member_id = ?').run(m);
     }
-    for (const t of ['messages', 'places', 'invites', 'rejoin_requests', 'members']) this.q(`DELETE FROM ${t} WHERE circle_id = ?`).run(id);
+    for (const t of ['messages', 'places', 'invites', 'rejoin_requests', 'chirps', 'members']) this.q(`DELETE FROM ${t} WHERE circle_id = ?`).run(id);
     this.q('DELETE FROM circles WHERE id = ?').run(id);
     return members;
   }
@@ -327,6 +348,8 @@ export class Store {
   removeMember(id, now) {
     this.q('UPDATE members SET removed_at = ?, token_hash = NULL, push_token = NULL WHERE id = ?').run(now, id);
     this.q('DELETE FROM locations WHERE member_id = ?').run(id);
+    this.q('DELETE FROM frequent_places WHERE member_id = ?').run(id);
+    this.q('DELETE FROM chirps WHERE to_id = ? OR from_id = ?').run(id, id);
   }
 
   // invites
@@ -398,6 +421,50 @@ export class Store {
     )
       .all(circleId)
       .map((r) => ({ memberId: r.member_id, env: parse(r.env), updatedAt: r.updated_at }));
+  }
+
+  // most visited places: each member's latest sealed summary, like locations
+  putFrequent(memberId, env, now) {
+    this.q(
+      `INSERT INTO frequent_places (member_id, env, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(member_id) DO UPDATE SET env = excluded.env, updated_at = excluded.updated_at`,
+    ).run(memberId, JSON.stringify(env), now);
+  }
+  deleteFrequent(memberId) {
+    this.q('DELETE FROM frequent_places WHERE member_id = ?').run(memberId);
+  }
+  frequent(circleId) {
+    return this.q(
+      `SELECT f.* FROM frequent_places f JOIN members m ON m.id = f.member_id WHERE m.circle_id = ? AND m.removed_at IS NULL`,
+    )
+      .all(circleId)
+      .map((r) => ({ memberId: r.member_id, env: parse(r.env), updatedAt: r.updated_at }));
+  }
+
+  // chirps: held for each recipient until their phone collects them
+  insertChirps(circleId, fromId, flash, rows, now) {
+    for (const { id, toId } of rows) {
+      this.q('INSERT INTO chirps (id, circle_id, from_id, to_id, flash, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, circleId, fromId, toId, flash ? 1 : 0, now);
+    }
+  }
+  /** This member's waiting chirps, oldest first; collecting them removes them. */
+  takeChirps(memberId) {
+    const rows = this.q('SELECT * FROM chirps WHERE to_id = ? ORDER BY created_at').all(memberId);
+    if (rows.length) this.q('DELETE FROM chirps WHERE to_id = ?').run(memberId);
+    return rows.map((r) => ({ id: r.id, from: r.from_id, flash: r.flash === 1, at: r.created_at }));
+  }
+  pruneChirps(chirpsBefore, limitsBefore) {
+    this.q('DELETE FROM chirps WHERE created_at < ?').run(chirpsBefore);
+    this.q('DELETE FROM chirp_limits WHERE last_at < ? AND blocked_until < ?').run(limitsBefore, limitsBefore);
+  }
+  chirpLimit(key) {
+    return this.q('SELECT * FROM chirp_limits WHERE key = ?').get(key) ?? null;
+  }
+  setChirpLimit(key, count, lastAt, blockedUntil) {
+    this.q(
+      `INSERT INTO chirp_limits (key, count, last_at, blocked_until) VALUES (?, ?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET count = excluded.count, last_at = excluded.last_at, blocked_until = excluded.blocked_until`,
+    ).run(key, count, lastAt, blockedUntil);
   }
 
   // messages (seq is server-wide; each circle sees an increasing subset).

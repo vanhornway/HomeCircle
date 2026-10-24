@@ -25,6 +25,10 @@ const MAX_PLACES = 100;
 const MAX_CIRCLES = 100;
 const MAX_OPEN_REJOINS = 3;
 const REJOIN_HOURS = 48;
+// Chirps: three in a row to the same person (or the whole circle), then a
+// break of 30 minutes. A new run starts after 30 minutes without a chirp.
+const CHIRP_BURST = 3;
+const CHIRP_COOLDOWN_MS = 30 * 60_000;
 // How long a circle keeps messages: 1 day, 1 week, 1 month, 1 quarter, 1 year.
 export const RETENTION_CHOICES = [1, 7, 30, 90, 365];
 const DEFAULT_RETENTION_DAYS = 90;
@@ -51,7 +55,11 @@ export function buildRoutes({ config, store, hub, push, log }) {
     const wait = setupCodeLimiter.take(ctx.ip);
     if (wait) fail(429, 'rate_limited', 'Too many attempts, try again later', { retryAfter: wait });
     if (typeof body.setupToken !== 'string' || !safeEqual(body.setupToken.trim(), config.setupToken)) {
-      fail(403, 'bad_setup_token', 'That setup code is not right. Find it in your server logs or hosting dashboard.');
+      fail(
+        403,
+        'bad_setup_token',
+        'That setup code isn’t right. Use setup_code from the Home Assistant app’s Configuration, SETUP_TOKEN from your host’s settings (Render: Environment), or the code printed in the server log. A [load-test] code only works on the load-test server.',
+      );
     }
   };
   const vName = (v) => {
@@ -107,6 +115,9 @@ export function buildRoutes({ config, store, hub, push, log }) {
       recovery: true,
       // A throwaway server for load tests: never put real people on it.
       loadTest: !!config.loadTest,
+      // Chirps and most-visited places (0.9+).
+      chirps: true,
+      frequentPlaces: true,
       push: push.enabled,
       tileUrl: config.tileUrl,
       tileAttribution: config.tileAttribution,
@@ -600,6 +611,72 @@ export function buildRoutes({ config, store, hub, push, log }) {
     );
     return { requested: targets.length, online, pushed: offline.length, delivery, cooldown: config.locationRequestCooldown };
   });
+
+  // --- most visited places -------------------------------------------------
+  // Each phone works out its own most visited places from its own location
+  // history (which never leaves it) and shares only a short summary, sealed
+  // with the circle key like a location.
+
+  r.add('GET', '/frequent', ({ me }) => ({ frequent: store.frequent(me.circleId) }));
+
+  r.add('PUT', '/frequent/me', ({ me, body }) => {
+    const env = vEnvelope(body, 'frequent', 8192);
+    currentEpoch(me.circleId, env.epoch);
+    const now = Date.now();
+    store.putFrequent(me.id, env, now);
+    hub.broadcast(me.circleId, { type: 'frequent', memberId: me.id }, me.id);
+    return { ok: true, updatedAt: now };
+  });
+
+  r.add('DELETE', '/frequent/me', ({ me }) => {
+    store.deleteFrequent(me.id);
+    hub.broadcast(me.circleId, { type: 'frequent', memberId: me.id }, me.id);
+    return { ok: true };
+  });
+
+  // --- chirps --------------------------------------------------------------
+  // A short sound, and optionally a flash, on one person's phone or everyone's
+  // in the circle. Phones play the sender's own chirp, from their encrypted
+  // profile, so the server only knows who chirped whom. The chirp waits here
+  // until the phone collects it (a content-free push wakes it).
+
+  const takeChirp = (key, now) => {
+    const row = store.chirpLimit(key);
+    if (row && row.blocked_until > now) {
+      const wait = Math.ceil((row.blocked_until - now) / 1000);
+      fail(429, 'chirp_cooldown', `You can chirp again in ${Math.ceil(wait / 60)} min`, { retryAfter: wait, cooldownUntil: row.blocked_until });
+    }
+    const fresh = !row || row.blocked_until || now - row.last_at > CHIRP_COOLDOWN_MS;
+    const count = (fresh ? 0 : row.count) + 1;
+    const blockedUntil = count >= CHIRP_BURST ? now + CHIRP_COOLDOWN_MS : 0;
+    store.setChirpLimit(key, count, now, blockedUntil);
+    return { remaining: CHIRP_BURST - count, cooldownUntil: blockedUntil || null };
+  };
+
+  r.add('POST', '/chirps', ({ me, body }) => {
+    const to = body.to == null ? null : vId(body.to, 'to');
+    const flash = body.flash === true;
+    const others = store.activeMembers(me.circleId).filter((m) => m.id !== me.id);
+    const targets = to ? others.filter((m) => m.id === to) : others;
+    if (to && !targets.length) fail(404, 'not_found', 'No such member');
+    if (!targets.length) fail(409, 'nobody', 'There’s no one else in this circle yet');
+    const now = Date.now();
+    const limit = takeChirp(`${me.id}>${to || '*'}`, now);
+    store.insertChirps(
+      me.circleId,
+      me.id,
+      flash,
+      targets.map((m) => ({ id: randomBytes(12).toString('base64url'), toId: m.id })),
+      now,
+    );
+    for (const m of targets) if (hub.isOnline(m.id)) hub.send(m.id, { type: 'chirp' });
+    push.chirp(targets.filter((m) => m.pushToken && !hub.isOnline(m.id)));
+    log(to ? 'chirp sent' : `chirp sent to a circle (${targets.length})`);
+    return { sent: targets.length, ...limit };
+  });
+
+  // Collect waiting chirps: { id, from, flash, at }. Collecting removes them.
+  r.add('GET', '/chirps', ({ me }) => ({ chirps: store.takeChirps(me.id) }));
 
   // --- messages ----------------------------------------------------------
 

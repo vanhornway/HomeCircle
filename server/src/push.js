@@ -47,6 +47,21 @@ export class Push {
     );
   }
 
+  /**
+   * Someone chirped: wake the phone so it collects the chirp and plays the
+   * sender's sound. Android gets a content-free data push; other platforms a
+   * generic alert.
+   */
+  chirp(members) {
+    return this._send(
+      members.map((m) =>
+        m.pushPlatform === 'android'
+          ? { to: m.pushToken, data: { t: 'chirp' }, priority: 'high' }
+          : { to: m.pushToken, title: 'HomeCircle', body: 'Someone chirped you', sound: 'default', priority: 'high', data: { t: 'chirp' } },
+      ),
+    );
+  }
+
   /** Someone used the setup code to ask to rejoin. No name: just open the app. */
   rejoinRequest(members) {
     return this._send(

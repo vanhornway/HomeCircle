@@ -76,6 +76,9 @@ export function createApp(config) {
     store.pruneMessages(now, config.maxRetentionDays);
     store.pruneInvites(now - 7 * 86400_000);
     store.pruneRejoins(now - 7 * 86400_000);
+    // A chirp is only worth playing right away; one nobody collected in 10
+    // minutes is dropped. Limits are kept until their 30 minutes are over.
+    store.pruneChirps(now - 10 * 60_000, now - 30 * 60_000);
   };
   prune();
   const pruneTimer = setInterval(prune, 3600_000);

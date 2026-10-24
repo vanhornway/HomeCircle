@@ -32,6 +32,12 @@ import { isValidReaction } from './emoji.js';
 export const ACCOUNT_KEY = 'homecircle.account';
 export const MEMBER_COLORS = ['#2f7d6d', '#d9644a', '#4a6fd9', '#b0479c', '#c79a1e', '#3c8fb5', '#7a5bd6', '#5d8a2e'];
 const randomColor = () => MEMBER_COLORS[Math.floor(Math.random() * MEMBER_COLORS.length)];
+/**
+ * The ten chirp sounds. Each member picks one (in their encrypted profile);
+ * phones play the sender's chirp, so you can tell who it is without looking.
+ */
+export const CHIRP_SOUNDS = ['robin', 'wren', 'finch', 'chickadee', 'cardinal', 'bluebird', 'canary', 'sparrow', 'lark', 'dove'];
+const MAX_FREQUENT = 8;
 
 export class CircleClient {
   /**
@@ -63,6 +69,8 @@ export class CircleClient {
     // messageId -> emoji -> memberId -> { on, seq }
     this.reactions = new Map();
     this.places = new Map();
+    // memberId -> { places: [...], ts } for members who share their most visited places
+    this.frequent = new Map();
     this.lastSeq = 0;
     this.connection = null;
     this.status = 'offline';
@@ -211,7 +219,13 @@ export class CircleClient {
 
   _profileBody() {
     const a = this.account;
-    return { name: a.profile.name, color: a.profile.color, boxPub: a.identity.boxPub, signPub: a.identity.signPub };
+    return {
+      name: a.profile.name,
+      color: a.profile.color,
+      ...(a.profile.chirp ? { chirp: a.profile.chirp } : {}),
+      boxPub: a.identity.boxPub,
+      signPub: a.identity.signPub,
+    };
   }
 
   /**
@@ -546,6 +560,7 @@ export class CircleClient {
           });
           view.name = cleanName(p.body.name) || 'Member';
           view.color = MEMBER_COLORS.includes(p.body.color) ? p.body.color : MEMBER_COLORS[0];
+          view.chirp = CHIRP_SOUNDS.includes(p.body.chirp) ? p.body.chirp : null;
           view.verified = true;
           view.current = m.profile.epoch === st.epoch;
           known[m.id] = { signPub: m.signPub, boxPub: m.boxPub, name: view.name };
@@ -934,6 +949,67 @@ export class CircleClient {
     await this.refresh();
   }
 
+  /** Pick the chirp others hear when you chirp them (one of CHIRP_SOUNDS). */
+  async setChirp(sound) {
+    if (!CHIRP_SOUNDS.includes(sound)) throw new Error('Unknown chirp');
+    this.account.profile.chirp = sound;
+    await this.api.putProfile(this._seal('profile', this._profileBody()));
+    await this._save();
+    await this.refresh();
+  }
+
+  /**
+   * Chirp one member (`to`), or everyone else in the circle (`to` null): a
+   * short sound, and with `flash` a few blinks of their camera light. Three in
+   * a row, then a 30-minute break (the server enforces it): returns
+   * { sent, remaining, cooldownUntil }, or throws ApiError 'chirp_cooldown'
+   * with `cooldownUntil`.
+   */
+  chirp(to = null, { flash = false } = {}) {
+    return this.api.chirp({ to, flash });
+  }
+
+  /**
+   * Chirps waiting for this device, with who sent them: [{ id, from, name,
+   * sound, flash, at }]. Collecting them removes them from the server.
+   */
+  async collectChirps() {
+    const { chirps } = await this.api.chirps();
+    if (chirps.length && chirps.some((c) => !this.members.has(c.from))) await this.refresh();
+    return chirps.map((c) => {
+      const m = this.members.get(c.from);
+      return { ...c, name: m?.name || 'Someone', sound: m?.chirp || CHIRP_SOUNDS[0] };
+    });
+  }
+
+  // --- most visited places -------------------------------------------------
+
+  /**
+   * Share this phone's most visited places with the circle, sealed with the
+   * circle key: [{ id, name, kind, lat, lng, visits, hours, lastAt }].
+   */
+  async shareFrequent(places) {
+    const clean = places.slice(0, MAX_FREQUENT).map(cleanFrequent).filter(Boolean);
+    await this.api.putFrequent(this._seal('frequent', { places: clean }));
+  }
+
+  /** Stop sharing most visited places with this circle. */
+  async clearFrequent() {
+    await this.api.deleteFrequent();
+  }
+
+  async fetchFrequent() {
+    const { frequent } = await this.api.frequent();
+    this.frequent = new Map();
+    for (const f of frequent) {
+      const msg = this._open(f.env, f.memberId, ['frequent']);
+      const places = Array.isArray(msg?.body?.places) ? msg.body.places.map(cleanFrequent).filter(Boolean).slice(0, MAX_FREQUENT) : null;
+      if (places) this.frequent.set(f.memberId, { places, ts: msg.ts });
+    }
+    this.emit('frequent', this.frequent);
+    return this.frequent;
+  }
+
   async setCircleName(name) {
     await this.api.putCircle(this._seal('circle', { name: cleanName(name) }));
     await this.refresh();
@@ -1107,6 +1183,12 @@ export class CircleClient {
       case 'rejoin_requests':
         this.emit('rejoinRequests');
         break;
+      case 'chirp':
+        this.emit('chirp');
+        break;
+      case 'frequent':
+        await this.fetchFrequent();
+        break;
       default:
         break;
     }
@@ -1118,6 +1200,23 @@ function cleanName(s) {
     .replace(/[\u0000-\u001f\u007f]/g, '')
     .trim()
     .slice(0, 40);
+}
+
+const FREQUENT_KINDS = ['home', 'work', 'school', 'shopping', 'grocery', 'gas', 'food', 'gym', 'health', 'worship', 'park', 'other'];
+
+/** A most-visited place as shared, checked and trimmed. */
+function cleanFrequent(p) {
+  if (!p || typeof p.lat !== 'number' || typeof p.lng !== 'number' || Math.abs(p.lat) > 90 || Math.abs(p.lng) > 180) return null;
+  return {
+    id: String(p.id || '').slice(0, 40),
+    name: cleanName(p.name) || 'Place',
+    kind: FREQUENT_KINDS.includes(p.kind) ? p.kind : 'other',
+    lat: Math.round(p.lat * 1e4) / 1e4,
+    lng: Math.round(p.lng * 1e4) / 1e4,
+    visits: Math.max(0, Math.min(10000, Math.round(num(p.visits) ?? 0))),
+    hours: Math.max(0, Math.min(10000, Math.round((num(p.hours) ?? 0) * 10) / 10)),
+    lastAt: num(p.lastAt),
+  };
 }
 
 function num(v) {

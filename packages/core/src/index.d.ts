@@ -28,6 +28,36 @@ export interface Member {
   current: boolean;
   keyChanged: boolean;
   safetyNumber: string;
+  /** Their chirp sound (one of CHIRP_SOUNDS), or null if they haven't picked one. */
+  chirp?: ChirpSound | null;
+}
+
+export type ChirpSound = 'robin' | 'wren' | 'finch' | 'chickadee' | 'cardinal' | 'bluebird' | 'canary' | 'sparrow' | 'lark' | 'dove';
+export const CHIRP_SOUNDS: ChirpSound[];
+
+/** A chirp waiting for this device. */
+export interface IncomingChirp {
+  id: string;
+  from: string;
+  name: string;
+  sound: ChirpSound;
+  flash: boolean;
+  at: number;
+}
+
+export type FrequentKind = 'home' | 'work' | 'school' | 'shopping' | 'grocery' | 'gas' | 'food' | 'gym' | 'health' | 'worship' | 'park' | 'other';
+
+/** One of someone's most visited places, as they share it. */
+export interface FrequentPlace {
+  id: string;
+  name: string;
+  kind: FrequentKind;
+  lat: number;
+  lng: number;
+  visits: number;
+  /** Hours spent there over the last 30 days. */
+  hours: number;
+  lastAt: number | null;
 }
 
 export interface MemberLocation {
@@ -109,6 +139,9 @@ export interface ServerInfo {
   multiCircle?: boolean;
   /** Setup-code recovery and rejoin requests (0.8+). */
   recovery?: boolean;
+  /** Chirps and most-visited places (0.9+). */
+  chirps?: boolean;
+  frequentPlaces?: boolean;
   push: boolean;
   tileUrl: string;
   tileAttribution: string;
@@ -231,6 +264,9 @@ export class CircleClient {
   on(event: 'rejoinRequests', fn: () => void): () => void;
   /** The server says it doesn't know this device. Keys are kept: the app decides whether to sign out. */
   on(event: 'unrecognized', fn: () => void): () => void;
+  /** Someone chirped this device: collect with collectChirps(). */
+  on(event: 'chirp', fn: () => void): () => void;
+  on(event: 'frequent', fn: (f: Map<string, { places: FrequentPlace[]; ts: number }>) => void): () => void;
   on(event: 'signedOut', fn: (d: { reason: SignOutReason }) => void): () => void;
   on(event: 'circle' | 'removed', fn: (d?: any) => void): () => void;
   on(event: string, fn: (d?: any) => void): () => void;
@@ -309,6 +345,15 @@ export class CircleClient {
   createInvite(opts?: { hours?: number }): Promise<Invite>;
   setName(name: string): Promise<void>;
   setCircleName(name: string): Promise<void>;
+  setChirp(sound: ChirpSound): Promise<void>;
+  /** Chirp one member, or everyone else (to = null). Three in a row, then 30 minutes off. */
+  chirp(to?: string | null, opts?: { flash?: boolean }): Promise<{ sent: number; remaining: number; cooldownUntil: number | null }>;
+  collectChirps(): Promise<IncomingChirp[]>;
+  /** memberId -> their shared most visited places. */
+  frequent: Map<string, { places: FrequentPlace[]; ts: number }>;
+  fetchFrequent(): Promise<Map<string, { places: FrequentPlace[]; ts: number }>>;
+  shareFrequent(places: FrequentPlace[]): Promise<void>;
+  clearFrequent(): Promise<void>;
   removeMember(id: string): Promise<void>;
   setRole(id: string, role: 'admin' | 'member'): Promise<void>;
   leave(): Promise<void>;
