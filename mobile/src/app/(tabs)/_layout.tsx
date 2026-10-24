@@ -13,6 +13,7 @@ import { useAllCircles } from '../../lib/useCircle';
 import { shareNow, startBackgroundUpdates, syncGeofences } from '../../lib/location';
 import { flushOutbox } from '../../lib/places';
 import { diag } from '../../lib/diagnostics';
+import { applyMyChirp, collectAndPlay, playChirps } from '../../lib/chirp';
 import { phoneHealth } from '../../lib/health';
 import { updateSettings, useSettings } from '../../lib/storage';
 import { Icon } from '../../components/ui';
@@ -69,6 +70,7 @@ function useCircleLifecycle(circlesKey: string) {
         // What arrived meanwhile shows as unread in Chats, but isn't notified again.
         markSeen(client, client.lastSeq).catch(() => {});
         ensureReadBase(client).catch(() => {});
+        applyMyChirp(client).catch(() => {});
         if (!started.has(client)) {
           started.add(client);
           if (client === clients[0] && client.serverUrl) {
@@ -123,6 +125,8 @@ function useCircleLifecycle(circlesKey: string) {
       syncGeofences().catch(() => {});
       // Anything that couldn't be posted while offline goes out now.
       flushOutbox().catch(() => 0);
+      // Chirps that arrived while the app was closed and no push got through.
+      collectAndPlay(allClients()).catch(() => {});
       if (!pushRegistered) {
         pushRegistered = true;
         registerPush().catch(() => {
@@ -177,6 +181,12 @@ function useCircleLifecycle(circlesKey: string) {
       }),
       client.on('places', () => syncGeofences().catch(() => {})),
       client.on('newMessage', (m) => notifyNewMessages(client, [m]).catch(() => {})),
+      client.on('chirp', () => {
+        client
+          .collectChirps()
+          .then((chirps) => playChirps(client, chirps, { multiCircle: allClients().length > 1 }))
+          .catch(() => {});
+      }),
       // The live socket reconnects by itself; reflect the circle on screen in
       // the banner. CircleClient catches up on missed data after a reconnect.
       client.on('status', (s) => {

@@ -1,0 +1,6 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": ["us.umair.homecircle.attention.HcAttentionModule"]
+  }
+}

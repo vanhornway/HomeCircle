@@ -6,6 +6,7 @@ import { Avatar, Button, Card, Checkbox, H1, SectionTitle, Screen, Tag } from '.
 import { ServerBanner } from '../../components/ServerBanner';
 import { ServerPicker } from '../../components/ServerPicker';
 import { RejoinBanner } from '../../components/RejoinBanner';
+import { ChirpSettings } from '../../components/ChirpSettings';
 import { useServerState } from '../../lib/connection';
 import { useCircle } from '../../lib/useCircle';
 import { errorText, serverGroups, setActiveCircle, useCircles } from '../../lib/circle';
@@ -304,6 +305,8 @@ export default function SettingsTab() {
           }
         />
       </Card>
+
+      <ChirpSettings clients={clients} settings={settings} onChange={setSettings} />
 
       <SectionTitle>This phone</SectionTitle>
       <Card style={{ gap: 10 }}>

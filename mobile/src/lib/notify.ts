@@ -4,6 +4,7 @@
 import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
+import { ensureChirpChannels } from './chirp';
 import { AndroidImportance, AndroidNotificationVisibility } from 'expo-notifications';
 import { ACCOUNT_KEY, type CircleClient, type Message } from '@homecircle/core';
 import { getSettings } from './storage';
@@ -32,6 +33,7 @@ export async function ensureNotificationChannels() {
     enableVibrate: true,
     lockscreenVisibility: AndroidNotificationVisibility.PRIVATE,
   });
+  await ensureChirpChannels();
 }
 
 // Message sequence numbers are per server, so each circle keeps its own mark.

@@ -238,6 +238,7 @@ const ICONS: Record<string, string> = {
   navigate: 'M3.5 10.5 20.5 3.5l-7 17-2.2-7.8-7.8-2.2Z',
   bell: 'M6 16.5V11a6 6 0 1 1 12 0v5.5l1.5 1.5h-15L6 16.5Zm4 3.5a2 2 0 0 0 4 0',
   checkin: 'M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Zm-3-11.5 2 2 4-4',
+  bird: 'M3.5 15.5c4.5.5 7-2 8-5.5.8-2.8 2.7-4.5 5.3-4.5l3.7 1.3-3.2 1.2v1.5c0 5-3.8 8.5-8.8 8.5H6l-2.5-2.5ZM16.5 7.6h.01M11 20.5l1.5-3',
 };
 
 /** A round icon-only button with a 44pt touch target. */

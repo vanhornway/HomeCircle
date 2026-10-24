@@ -9,6 +9,7 @@ import { checkPlaces, flushOutbox } from '../lib/places';
 import { diag } from '../lib/diagnostics';
 import { loadedClients } from '../lib/circle';
 import { ensureNotificationChannels, notifyNewMessages } from '../lib/notify';
+import { collectAndPlay } from '../lib/chirp';
 
 const log = (...a: unknown[]) => {
   if (__DEV__) console.log('[homecircle:bg]', ...a);
@@ -77,8 +78,11 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(PUSH_TASK, async (
   if (error) return;
   const raw = JSON.stringify(data ?? {});
   try {
-    diag('wake:push', { type: raw.includes('loc_req') ? 'locate' : raw.includes('rejoin') ? 'rejoin' : 'message' });
-    if (raw.includes('loc_req')) {
+    diag('wake:push', { type: raw.includes('loc_req') ? 'locate' : raw.includes('rejoin') ? 'rejoin' : raw.includes('chirp') ? 'chirp' : 'message' });
+    if (raw.includes('"chirp"') || raw.includes('\\"chirp\\"')) {
+      await ensureNotificationChannels();
+      await collectAndPlay(await loadedClients());
+    } else if (raw.includes('loc_req')) {
       diag('locate-request', { via: 'push' });
       await shareNow('requested');
     } else if (/\\?"t\\?"\s*:\s*\\?"msg/.test(raw)) {

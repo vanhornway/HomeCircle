@@ -3,7 +3,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Storage } from '@homecircle/core';
+import type { ChirpSound, Storage } from '@homecircle/core';
 
 const CHUNK = 1800;
 // Background tasks run while the phone is locked, so keys must be readable
@@ -71,6 +71,12 @@ export interface Settings {
   pauseReasons: Record<string, string>;
   /** "Notify me when <person> arrives at / leaves <place>". */
   alertRules: AlertRule[];
+  /** Your chirp: the sound others hear when you chirp them. */
+  myChirp: ChirpSound | null;
+  /** Play chirps' sounds (off: they still show, silently). Do Not Disturb always applies. */
+  chirpSound: boolean;
+  /** Blink the camera light for chirps that ask for it (never during Do Not Disturb). */
+  chirpFlash: boolean;
   /** Map tiles, from the server's /info. */
   tileUrl: string;
   tileAttribution: string;
@@ -90,6 +96,9 @@ export const DEFAULT_SETTINGS: Settings = {
   approximateCircles: [],
   pauseReasons: {},
   alertRules: [],
+  myChirp: null,
+  chirpSound: true,
+  chirpFlash: true,
   tileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   tileAttribution: '&copy; OpenStreetMap contributors',
 };

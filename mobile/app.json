@@ -59,7 +59,19 @@
         "expo-notifications",
         {
           "enableBackgroundRemoteNotifications": true,
-          "color": "#2F7D6D"
+          "color": "#2F7D6D",
+          "sounds": [
+            "./assets/sounds/chirp_robin.wav",
+            "./assets/sounds/chirp_wren.wav",
+            "./assets/sounds/chirp_finch.wav",
+            "./assets/sounds/chirp_chickadee.wav",
+            "./assets/sounds/chirp_cardinal.wav",
+            "./assets/sounds/chirp_bluebird.wav",
+            "./assets/sounds/chirp_canary.wav",
+            "./assets/sounds/chirp_sparrow.wav",
+            "./assets/sounds/chirp_lark.wav",
+            "./assets/sounds/chirp_dove.wav"
+          ]
         }
       ],
       [
