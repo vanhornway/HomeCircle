@@ -5,13 +5,16 @@
   "description": "HomeCircle self-hosted server: stores and relays end-to-end encrypted locations and messages for one family",
   "type": "module",
   "main": "src/index.js",
-  "engines": { "node": ">=22.13" },
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning src/index.js",
     "dev": "HOST=127.0.0.1 DATA_DIR=./data SETUP_TOKEN=dev-setup-token node --disable-warning=ExperimentalWarning --watch src/index.js",
     "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.133.0",
     "leaflet": "1.9.4",
     "qrcode-generator": "2.0.4",
     "tweetnacl": "1.0.3",
