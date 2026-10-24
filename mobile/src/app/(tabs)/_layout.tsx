@@ -13,6 +13,7 @@ import { useAllCircles } from '../../lib/useCircle';
 import { shareNow, startBackgroundUpdates, syncGeofences } from '../../lib/location';
 import { flushOutbox } from '../../lib/places';
 import { diag } from '../../lib/diagnostics';
+import { checkForUpdate, downloadUpdate } from '../../lib/updates';
 import { applyMyChirp, collectAndPlay, playChirps } from '../../lib/chirp';
 import { phoneHealth } from '../../lib/health';
 import { updateSettings, useSettings } from '../../lib/storage';
@@ -231,12 +232,16 @@ function useCircleLifecycle(circlesKey: string) {
   }, [circlesKey]);
 }
 
-/** Tapping a message notification opens that conversation. */
+/** Tapping a message notification opens that conversation; an update one downloads it. */
 function useOpenChatFromNotification() {
   const nav = useRouter();
   const response = Notifications.useLastNotificationResponse();
   useEffect(() => {
     const data = response?.notification.request.content.data as { t?: string; circle?: string; peer?: string } | undefined;
+    if (data?.t === 'update') {
+      downloadUpdate().catch(() => {});
+      return;
+    }
     if (data?.t !== 'chat') return;
     const client = clientForCircle(data.circle);
     nav.navigate('/(tabs)/chat');
@@ -252,6 +257,12 @@ export default function TabsLayout() {
   const unread = useAllCircles(['messages']).reduce((n, c) => n + unreadInCircle(c), 0);
   useCircleLifecycle(clients.map((c) => c.accountKey).join('|'));
   useOpenChatFromNotification();
+  // A newer app? Checked at most every 4 hours, on opening and coming back.
+  useEffect(() => {
+    checkForUpdate().catch(() => {});
+    const sub = AppState.addEventListener('change', (s) => s === 'active' && checkForUpdate().catch(() => {}));
+    return () => sub.remove();
+  }, []);
   return (
     <Tabs
       // Back from a tab returns to the tab you came from.

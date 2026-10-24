@@ -8,6 +8,7 @@ import { FamilyMap, type MapMember } from '../../map/FamilyMap';
 import { Avatar, Button, IconButton, Tag } from '../../components/ui';
 import { ServerBanner } from '../../components/ServerBanner';
 import { CircleSwitcher } from '../../components/CircleSwitcher';
+import { UpdateBanner } from '../../components/UpdateBanner';
 import { RejoinBanner } from '../../components/RejoinBanner';
 import { PersonSheet } from '../../components/PersonSheet';
 import { useServerState } from '../../lib/connection';
@@ -116,6 +117,7 @@ export default function MapTab() {
           </View>
           <ServerBanner style={{ marginTop: 10 }} />
           <RejoinBanner style={{ marginTop: 10 }} />
+          <UpdateBanner style={{ marginTop: 10 }} />
           {setupIssues ? (
             <Pressable
               accessibilityRole="button"

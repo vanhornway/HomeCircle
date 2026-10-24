@@ -10,6 +10,7 @@ import { diag } from '../lib/diagnostics';
 import { loadedClients } from '../lib/circle';
 import { ensureNotificationChannels, notifyNewMessages } from '../lib/notify';
 import { collectAndPlay } from '../lib/chirp';
+import { checkForUpdateInBackground } from '../lib/updates';
 
 const log = (...a: unknown[]) => {
   if (__DEV__) console.log('[homecircle:bg]', ...a);
@@ -37,6 +38,8 @@ TaskManager.defineTask(HEARTBEAT_TASK, async () => {
     diag('wake:heartbeat', { fix: fix ? 'recent' : loc ? 'fresh' : 'none' });
     if (loc) await report(loc, 'update');
     else await flushOutbox().catch(() => 0);
+    // A newer app? At most every 4 hours; says so once per version.
+    await checkForUpdateInBackground().catch(() => {});
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch (e) {
     log('heartbeat failed', e);
