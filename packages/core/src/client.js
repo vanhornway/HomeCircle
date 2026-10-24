@@ -68,6 +68,8 @@ export class CircleClient {
     this.seenMessageIds = new Set();
     // messageId -> emoji -> memberId -> { on, seq }
     this.reactions = new Map();
+    // pollId -> { votes: Map<memberId, [{ options, seq }]>, added: [], closes: [], spins: [] }
+    this.polls = new Map();
     this.places = new Map();
     // memberId -> { places: [...], ts } for members who share their most visited places
     this.frequent = new Map();
@@ -731,9 +733,11 @@ export class CircleClient {
     const peer = to ? (m.from === this.account.memberId ? to : m.from) : null;
     const msg = this._open(m.env, m.from, to ? ['chat', 'reaction'] : ['chat', 'event', 'reaction'], to);
     if (msg?.kind === 'reaction') {
-      this._applyReaction(m.from, m.seq, msg.body);
+      if (isPollUpdate(msg.body)) this._applyPollUpdate(m.from, m.seq, msg.body);
+      else this._applyReaction(m.from, m.seq, msg.body);
       return { kind: 'reaction', id: m.id, from: m.from, to, peer, seq: m.seq, body: msg.body };
     }
+    if (msg?.kind === 'chat' && msg.body?.pollSpin) this._applyPollSpin(m.from, m.seq, msg.ts, msg.body.pollSpin);
     const entry = {
       seq: m.seq,
       id: m.id,
@@ -788,6 +792,164 @@ export class CircleClient {
     // Reactions to a direct message stay between the same two people.
     const to = this.messages.find((m) => m.id === messageId)?.peer ?? null;
     return this._post('reaction', { target: messageId, emoji, on: !mine?.on }, { silent: true, to });
+  }
+
+  // --- polls -------------------------------------------------------------
+  //
+  // A poll is a chat message with `poll` in its body; older apps just show its
+  // text. Votes, suggested options and closing ride on reactions that carry
+  // no emoji, which older apps ignore. A spin of the wheel is a chat line, so
+  // everyone hears about it. No server changes: it's all sealed messages.
+
+  _poll(pollId) {
+    let p = this.polls.get(pollId);
+    if (!p) this.polls.set(pollId, (p = { votes: new Map(), added: [], closes: [], spins: [] }));
+    return p;
+  }
+
+  // Everything is kept as it arrives (live and fetched can come out of order);
+  // pollState() decides what counts once it knows who started the poll.
+  _applyPollUpdate(from, seq, body) {
+    const p = this._poll(body.target);
+    if (Array.isArray(body.vote)) {
+      let mine = p.votes.get(from);
+      if (!mine) p.votes.set(from, (mine = []));
+      if (!mine.some((v) => v.seq === seq)) mine.push({ options: body.vote.filter((x) => typeof x === 'string').slice(0, MAX_POLL_OPTIONS), seq });
+    } else if (body.add) {
+      const opt = cleanPollOption(body.add);
+      if (opt && !p.added.some((a) => a.id === opt.id)) p.added.push({ ...opt, by: from, seq });
+    } else if (body.close === true) {
+      if (!p.closes.some((c) => c.seq === seq)) p.closes.push({ by: from, seq });
+    }
+  }
+
+  _applyPollSpin(from, seq, ts, spin) {
+    if (typeof spin.poll !== 'string' || typeof spin.option !== 'string') return;
+    const p = this._poll(spin.poll);
+    if (!p.spins.some((s) => s.seq === seq)) p.spins.push({ by: from, option: spin.option, seq, ts });
+  }
+
+  /**
+   * Start a poll in the group chat (or a direct chat with `to`): 2–8 options,
+   * each with an optional emoji. `closesAt` (ms) closes it automatically.
+   */
+  createPoll({ question, options, multi = false, allowAdd = true, closesAt = null }, { to = null } = {}) {
+    const poll = cleanPoll({ question, options: options.map((o, i) => ({ ...o, id: `o${i + 1}` })), multi, allowAdd, closesAt });
+    if (!poll) return Promise.reject(new Error('A poll needs a question and 2 to 8 options'));
+    const lines = poll.options.map((o) => `${o.emoji || '•'} ${o.label}`).join('\n');
+    return this._post('chat', { text: `📊 ${poll.question}\n${lines}\n(Update HomeCircle to vote)`, poll }, { to });
+  }
+
+  _pollMessage(pollId) {
+    return this.messages.find((m) => m.id === pollId && m.kind === 'chat' && m.body?.poll);
+  }
+
+  /** Vote: the option ids you pick (one, unless the poll allows several; [] withdraws). */
+  vote(pollId, optionIds) {
+    const m = this._pollMessage(pollId);
+    if (!m) return Promise.reject(new Error('No such poll'));
+    const state = this.pollState(pollId);
+    if (state.closed) return Promise.reject(new Error('This poll is closed'));
+    const valid = optionIds.filter((id) => state.options.some((o) => o.id === id));
+    const vote = state.multi ? [...new Set(valid)] : valid.slice(0, 1);
+    return this._post('reaction', { target: pollId, vote }, { silent: true, to: m.peer });
+  }
+
+  /** Suggest another option (if the poll allows it). */
+  suggestOption(pollId, label, emoji = '') {
+    const m = this._pollMessage(pollId);
+    if (!m) return Promise.reject(new Error('No such poll'));
+    const state = this.pollState(pollId);
+    if (state.closed || !state.allowAdd) return Promise.reject(new Error('This poll doesn’t take new options'));
+    if (state.options.length >= MAX_POLL_OPTIONS) return Promise.reject(new Error(`A poll can have at most ${MAX_POLL_OPTIONS} options`));
+    const opt = cleanPollOption({ id: `a${randomId(6)}`, label, emoji });
+    if (!opt) return Promise.reject(new Error('Give the option a name'));
+    return this._post('reaction', { target: pollId, add: opt }, { silent: true, to: m.peer });
+  }
+
+  /** Close the poll (its creator only) and tell everyone the result. */
+  async closePoll(pollId) {
+    const m = this._pollMessage(pollId);
+    if (!m) throw new Error('No such poll');
+    if (m.from !== this.account.memberId) throw new Error('Only the person who started the poll can close it');
+    await this._post('reaction', { target: pollId, close: true }, { silent: true, to: m.peer });
+    const s = this.pollState(pollId);
+    const text = s.winners.length === 1 ? `🏁 Poll closed: ${s.winners[0].emoji || ''} ${s.winners[0].label} wins` : s.winners.length ? `🏁 Poll closed: a tie between ${s.winners.map((w) => w.label).join(' and ')}` : '🏁 Poll closed with no votes';
+    await this._post('chat', { text: text.replace(/\s+/g, ' ').trim(), pollResult: { poll: pollId } }, { to: m.peer });
+  }
+
+  /**
+   * Spin the wheel: pick one of the leading options (or any, before anyone
+   * voted) at random, and tell everyone.
+   */
+  async spinWheel(pollId) {
+    const m = this._pollMessage(pollId);
+    if (!m) throw new Error('No such poll');
+    const s = this.pollState(pollId);
+    const pool = s.winners.length ? s.winners : s.options;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    const who = this.me?.name || 'Someone';
+    await this._post('chat', { text: `🎡 ${who} spun the wheel: ${pick.emoji ? `${pick.emoji} ` : ''}${pick.label}!`, pollSpin: { poll: pollId, option: pick.id } }, { to: m.peer });
+    return pick;
+  }
+
+  /**
+   * Everything about a poll for drawing it: options with votes and voters,
+   * who voted, whether it's closed, the winners, and the latest spin.
+   */
+  pollState(pollId, now = Date.now()) {
+    const m = this._pollMessage(pollId);
+    if (!m) return null;
+    const poll = cleanPoll(m.body.poll);
+    if (!poll) return null;
+    const p = this.polls.get(pollId) || { votes: new Map(), added: [], closes: [], spins: [] };
+    const options = [...poll.options];
+    if (poll.allowAdd) {
+      for (const a of [...p.added].sort((x, y) => x.seq - y.seq)) {
+        if (options.length >= MAX_POLL_OPTIONS) break;
+        if (!options.some((o) => o.id === a.id || o.label.toLowerCase() === a.label.toLowerCase())) options.push({ id: a.id, label: a.label, emoji: a.emoji, by: a.by });
+      }
+    }
+    // Who may vote: everyone in the circle, or the two people in a direct chat.
+    const members = this.memberList().filter((x) => !x.removed);
+    const eligible = m.peer ? members.filter((x) => x.id === m.from || x.id === m.peer || x.id === m.to) : members;
+    // Only its creator can close it; votes sent after that don't count.
+    const closedAt = Math.min(Infinity, ...p.closes.filter((c) => c.by === m.from).map((c) => c.seq));
+    const counted = new Map();
+    for (const [memberId, history] of p.votes) {
+      if (!eligible.some((x) => x.id === memberId)) continue;
+      const v = history.filter((x) => x.seq < closedAt).sort((a, b) => b.seq - a.seq)[0];
+      if (!v) continue;
+      const picks = v.options.filter((id) => options.some((o) => o.id === id));
+      const list = poll.multi ? [...new Set(picks)] : picks.slice(0, 1);
+      if (list.length) counted.set(memberId, list);
+    }
+    const nameOf = (id) => this.members.get(id)?.name || 'Former member';
+    const withVotes = options.map((o) => {
+      const voters = [...counted].filter(([, list]) => list.includes(o.id)).map(([id]) => id);
+      return { ...o, votes: voters.length, voters: voters.map(nameOf), mine: voters.includes(this.account?.memberId) };
+    });
+    const top = Math.max(0, ...withVotes.map((o) => o.votes));
+    const spin = [...p.spins].sort((a, b) => b.seq - a.seq)[0];
+    const spinOption = spin && withVotes.find((o) => o.id === spin.option);
+    return {
+      id: pollId,
+      question: poll.question,
+      multi: poll.multi,
+      allowAdd: poll.allowAdd,
+      closesAt: poll.closesAt,
+      creator: m.from,
+      creatorName: nameOf(m.from),
+      mine: m.from === this.account?.memberId,
+      options: withVotes,
+      voters: counted.size,
+      eligible: eligible.length,
+      everyoneVoted: eligible.length > 0 && counted.size >= eligible.length,
+      myVote: counted.get(this.account?.memberId) || [],
+      closed: closedAt !== Infinity || (poll.closesAt != null && poll.closesAt <= now),
+      winners: top > 0 ? withVotes.filter((o) => o.votes === top) : [],
+      spin: spinOption ? { option: spinOption, by: nameOf(spin.by), ts: spin.ts } : null,
+    };
   }
 
   /** Messages in one conversation: the group (peer null) or a direct chat with `peer`. */
@@ -1200,6 +1362,43 @@ function cleanName(s) {
     .replace(/[\u0000-\u001f\u007f]/g, '')
     .trim()
     .slice(0, 40);
+}
+
+const MAX_POLL_OPTIONS = 12; // 8 to start with, plus suggestions
+
+/** A poll update riding on a reaction: a vote, a suggested option, or closing it. */
+function isPollUpdate(b) {
+  return !!b && typeof b.target === 'string' && b.emoji === undefined && (Array.isArray(b.vote) || !!b.add || b.close === true);
+}
+
+function cleanPollOption(o) {
+  if (!o || typeof o.id !== 'string' || !/^[A-Za-z0-9_-]{1,24}$/.test(o.id)) return null;
+  const label = String(o.label ?? '')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .trim()
+    .slice(0, 60);
+  if (!label) return null;
+  const emoji = typeof o.emoji === 'string' && o.emoji.length <= 16 && isValidReaction(o.emoji) ? o.emoji : '';
+  return { id: o.id, label, emoji };
+}
+
+/** A poll as stored in its message, checked and trimmed (null if unusable). */
+function cleanPoll(p) {
+  if (!p || typeof p.question !== 'string' || !Array.isArray(p.options)) return null;
+  const question = p.question.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 200);
+  const options = [];
+  for (const o of p.options.slice(0, 8)) {
+    const c = cleanPollOption(o);
+    if (c && !options.some((x) => x.id === c.id)) options.push(c);
+  }
+  if (!question || options.length < 2) return null;
+  return {
+    question,
+    options,
+    multi: p.multi === true,
+    allowAdd: p.allowAdd !== false,
+    closesAt: typeof p.closesAt === 'number' && Number.isFinite(p.closesAt) ? p.closesAt : null,
+  };
 }
 
 const FREQUENT_KINDS = ['home', 'work', 'school', 'shopping', 'grocery', 'gas', 'food', 'gym', 'health', 'worship', 'park', 'other'];

@@ -109,6 +109,34 @@ export interface Message {
   body: any;
 }
 
+export interface PollOptionInput {
+  label: string;
+  emoji?: string;
+}
+
+/** A poll as drawn: options with votes, who voted, closed or not, and the winners. */
+export interface PollState {
+  id: string;
+  question: string;
+  multi: boolean;
+  allowAdd: boolean;
+  closesAt: number | null;
+  creator: string;
+  creatorName: string;
+  /** You started it (so you can close it). */
+  mine: boolean;
+  options: { id: string; label: string; emoji: string; votes: number; voters: string[]; mine: boolean; by?: string }[];
+  /** How many people voted, and how many can. */
+  voters: number;
+  eligible: number;
+  everyoneVoted: boolean;
+  myVote: string[];
+  closed: boolean;
+  /** The option(s) with the most votes; empty before anyone votes. */
+  winners: PollState['options'];
+  spin: { option: PollState['options'][number]; by: string; ts: number } | null;
+}
+
 export interface Reaction {
   emoji: string;
   count: number;
@@ -339,6 +367,18 @@ export class CircleClient {
   /** Add or remove this person's reaction. Doesn't trigger a notification. */
   react(messageId: string, emoji: string): Promise<void>;
   reactionsFor(messageId: string): Reaction[];
+  /** Start a poll (2–8 options) in the group chat, or a direct chat with `to`. */
+  createPoll(
+    poll: { question: string; options: PollOptionInput[]; multi?: boolean; allowAdd?: boolean; closesAt?: number | null },
+    opts?: { to?: string | null },
+  ): Promise<void>;
+  vote(pollId: string, optionIds: string[]): Promise<void>;
+  suggestOption(pollId: string, label: string, emoji?: string): Promise<void>;
+  /** Its creator only: close it and post the result. */
+  closePoll(pollId: string): Promise<void>;
+  /** Pick one of the leading options (or any) at random and tell everyone. */
+  spinWheel(pollId: string): Promise<PollState['options'][number]>;
+  pollState(pollId: string, now?: number): PollState | null;
   fetchPlaces(): Promise<Map<string, Place>>;
   savePlace(p: { id?: string; name: string; lat: number; lng: number; radius?: number; icon?: string; address?: string | null; group?: string | null }): Promise<string>;
   deletePlace(id: string): Promise<void>;
