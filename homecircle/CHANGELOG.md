@@ -2,6 +2,11 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.9.1
+
+- The web page's chat folds more than 5 arrived/left alerts in a row into
+  one "Movement" line; click it to see them all.
+
 ## 0.9.0
 
 - Chirps: a short bird sound (and optionally a flash) on someone's phone, or

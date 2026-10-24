@@ -1,6 +1,12 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.9.1',
+    date: '2026-10-24',
+    title: 'Tidier chat',
+    items: ['When more than 5 arrived/left alerts come in a row, the chat shows one “Movement” line instead. Tap it to see them all.'],
+  },
+  {
     version: '0.9.0',
     date: '2026-10-23',
     title: 'Chirps and most visited places',
