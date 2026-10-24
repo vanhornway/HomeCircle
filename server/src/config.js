@@ -42,6 +42,8 @@ export function loadConfig() {
     // A throwaway server for the swarm (scripts/swarm.mjs): it says so in /info,
     // its web page shows a banner, and the swarm refuses any server without it.
     loadTest: bool('LOAD_TEST', false),
+    // Run each circle's agent (the optional AI helper) in this server.
+    agent: bool('AGENT', false),
   };
   if (config.setupToken && config.setupToken.length < 12) {
     throw new Error('SETUP_TOKEN must be at least 12 characters');

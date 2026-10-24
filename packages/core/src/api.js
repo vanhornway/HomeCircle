@@ -82,6 +82,8 @@ export class Api {
   putFrequent = (env) => this.req('PUT', '/frequent/me', env);
   deleteFrequent = () => this.req('DELETE', '/frequent/me');
   chirp = (body) => this.req('POST', '/chirps', body);
+  agentHost = () => this.req('GET', '/agent-host');
+  agentSetup = (body) => this.req('POST', '/agent-host/setup', body);
   chirps = () => this.req('GET', '/chirps');
   // Recovery with the setup code (no account needed), and rejoin requests.
   recover = (setupToken) => this.req('POST', '/recover', { setupToken });

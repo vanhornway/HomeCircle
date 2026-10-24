@@ -244,9 +244,10 @@ export const isDayOff = (summary) => DAY_OFF.test(summary) && !NOT_OFF.test(summ
  *
  * Each person: { school: events[] (their school calendars), busy: events[]
  * (anything else booked) }. A school day is a weekday inside the school
- * year (the calendar's first to last date) that no day-off event covers.
- * Weekends, days off and days outside the school year are free unless
- * something else is booked.
+ * year (the calendar's first to last date, and again from the same date a
+ * year after the first, since next year isn't listed yet) that no day-off
+ * event covers. Weekends, days off and summer are free unless something else
+ * is booked.
  */
 export function freeStretches(people, { days, from, horizon = 365, limit = 3 }) {
   const busyDays = people.map((p) => {
@@ -256,14 +257,17 @@ export function freeStretches(people, { days, from, horizon = 365, limit = 3 }) 
     const last = school.reduce((m, e) => (m && m > e.end ? m : e.end), null);
     const off = new Set();
     for (const e of school) if (isDayOff(e.summary)) for (let d = e.start; d <= e.end; d = addDays(d, 1)) off.add(d);
-    return { set, first, last, off, busy: p.busy ?? [] };
+    // A calendar rarely lists next year yet: assume it starts when this one did.
+    const nextYear = first ? `${Number(first.slice(0, 4)) + 1}${first.slice(4)}` : null;
+    return { set, first, last, nextYear, off, busy: p.busy ?? [] };
   });
   for (const b of busyDays) for (const e of b.busy) for (let d = e.start; d <= e.end; d = addDays(d, 1)) b.set.add(d);
   const freeOn = (d) =>
     busyDays.every((b) => {
       if (b.set.has(d)) return false;
       const weekday = new Date(`${d}T00:00:00Z`).getUTCDay();
-      const schoolDay = b.first && d >= b.first && d <= b.last && weekday !== 0 && weekday !== 6 && !b.off.has(d);
+      const inYear = b.first && d >= b.first && (d <= b.last || d >= b.nextYear);
+      const schoolDay = inYear && weekday !== 0 && weekday !== 6 && !b.off.has(d);
       return !schoolDay;
     });
   const out = [];

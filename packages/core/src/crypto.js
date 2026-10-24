@@ -123,6 +123,13 @@ export function openProfile(envelope, { key, circle, memberId, boxPub, signPub }
 
 // --- Invites -------------------------------------------------------------
 
+/** Seal something to another party's box key (e.g. the agent host's), from your own. */
+export function sealToKey(obj, theirBoxPub, myBoxSecret) {
+  const nonce = nacl.randomBytes(nacl.box.nonceLength);
+  const ct = nacl.box(utf8Encode(JSON.stringify(obj)), nonce, fromB64(theirBoxPub), fromB64(myBoxSecret));
+  return { nonce: toB64(nonce), ct: toB64(ct) };
+}
+
 export function newInviteSecret() {
   return toB64(nacl.randomBytes(32));
 }

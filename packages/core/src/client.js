@@ -23,6 +23,7 @@ import {
   normalizeServerUrl,
   parseInviteLink,
   inviteLink,
+  sealToKey,
   appInviteLink,
 } from './crypto.js';
 import { isValidReaction } from './emoji.js';
@@ -91,6 +92,8 @@ export class CircleClient {
     // Envelope nonces already taken in: the same envelope stored again under
     // another id (a replay) is dropped.
     this.seenNonces = new Set();
+    // agentRpc requests waiting for the agent's answer: id -> callback.
+    this._rpcWaiters = new Map();
     // messageId -> emoji -> memberId -> { on, seq }
     this.reactions = new Map();
     // pollId -> { votes: Map<memberId, [{ options, seq }]>, added: [], closes: [], spins: [] }
@@ -801,7 +804,15 @@ export class CircleClient {
     if (msg?.kind === 'chat' && msg.body?.pollSpin) this._applyPollSpin(m.from, m.seq, msg.ts, msg.body.pollSpin);
     // What you sent the agent alongside a question or Remember in the group:
     // only for the agent, not a conversation of its own.
-    if (msg?.kind === 'chat' && msg.body?.agentCopy) return { kind: 'agentCopy', id: m.id, from: m.from, to, peer, seq: m.seq, body: msg.body };
+    if (msg?.kind === 'chat' && msg.body?.agentCopy) {
+      // The agent's answer to an app request (agentRpc).
+      const r = msg.body.rpcResult;
+      if (r && m.from === this.circle?.agent?.id) {
+        this._rpcWaiters.get(r.id)?.(r);
+        this._rpcWaiters.delete(r.id);
+      }
+      return { kind: 'agentCopy', id: m.id, from: m.from, to, peer, seq: m.seq, body: msg.body };
+    }
     const agentId = this.circle?.agent?.id;
     const entry = {
       seq: m.seq,
@@ -1101,7 +1112,64 @@ export class CircleClient {
   }
 
   _agentContext() {
-    return { asker: this.myName, people: this.memberList().map((m) => ({ id: m.id, name: m.name })) };
+    return { asker: this.myName, agentName: this.circle?.agent?.name, people: this.memberList().map((m) => ({ id: m.id, name: m.name })) };
+  }
+
+  /** Whether this server can run an agent: { available, running }. */
+  async agentHostStatus() {
+    const { available, running } = await this.api.agentHost();
+    return { available, running };
+  }
+
+  /**
+   * Admins: add the circle's agent, named `name`, run by this server. The
+   * invite goes to the server's agent host sealed to its key, so the server
+   * itself never sees it.
+   */
+  async setUpAgent({ name }) {
+    const host = await this.api.agentHost();
+    if (!host.available) throw new Error('This server doesn’t run agents yet. Turn on AGENT (or “Run the agent” in the Home Assistant app).');
+    const { link } = await this.createAgentInvite({ name, hours: 1 });
+    await this.api.agentSetup({ from: this.account.identity.boxPub, box: sealToKey({ link }, host.boxPub, this.account.identity.boxSecret) });
+    await this.refresh();
+    return this.agent;
+  }
+
+  /**
+   * Ask the agent for something the app shows (the Memory screen, its
+   * settings): sealed for it like any message, never shown in a chat.
+   * Resolves with its answer; rejects with its error.
+   */
+  async agentRpc(op, args = {}, { timeoutMs = 60_000 } = {}) {
+    const agent = this.agent;
+    if (!agent) throw new Error('This circle has no agent');
+    const id = randomId(9);
+    const answer = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this._rpcWaiters.delete(id);
+        reject(new Error(`${agent.name} didn’t answer. Is the server running it?`));
+      }, timeoutMs);
+      this._rpcWaiters.set(id, (r) => {
+        clearTimeout(timer);
+        if (r.ok) resolve(r.data);
+        else reject(new Error(r.error || 'The agent couldn’t do that'));
+      });
+    });
+    await this._post('chat', { rpc: { id, op, args }, agentCopy: true, thread: 'dm', ...this._agentContext() }, { to: agent.id, silent: true });
+    // The answer arrives live; without a live connection, look for it.
+    const poll = setInterval(() => !this.connection && this.fetchMessages().catch(() => {}), 1000);
+    try {
+      return await answer;
+    } finally {
+      clearInterval(poll);
+    }
+  }
+
+  /** Undo what the agent just remembered (the Undo on its "📌 Remembered" message). */
+  async undoAgent(noteIds, { peer = null } = {}) {
+    const agent = this.agent;
+    if (!agent) throw new Error('This circle has no agent');
+    await this._post('chat', { undo: noteIds, thread: peer ? 'dm' : 'group', agentCopy: true, ...this._agentContext() }, { to: agent.id, silent: true });
   }
 
   /**

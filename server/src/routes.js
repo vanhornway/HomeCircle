@@ -39,7 +39,7 @@ const NO_PROFILE = { epoch: 0, nonce: 'A'.repeat(32), ct: 'AA' };
 const isAdmin = (m) => m.role === 'owner' || m.role === 'admin';
 const requireAdmin = (m) => isAdmin(m) || fail(403, 'forbidden', 'Only circle admins can do that');
 
-export function buildRoutes({ config, store, hub, push, log }) {
+export function buildRoutes({ config, store, hub, push, log, agentHost = null }) {
   const r = new Router();
   const publicLimiter = new RateLimiter(20, 60_000);
   const requestLimiter = new RateLimiter(1, config.locationRequestCooldown * 1000);
@@ -125,6 +125,8 @@ export function buildRoutes({ config, store, hub, push, log }) {
       // Chirps and most-visited places (0.9+).
       chirps: true,
       frequentPlaces: true,
+      // The optional AI helper runs here (0.11+).
+      agent: !!agentHost,
       push: push.enabled,
       tileUrl: config.tileUrl,
       tileAttribution: config.tileAttribution,
@@ -698,6 +700,31 @@ export function buildRoutes({ config, store, hub, push, log }) {
 
   // Collect waiting chirps: { id, from, flash, at }. Collecting removes them.
   r.add('GET', '/chirps', ({ me }) => ({ chirps: store.takeChirps(me.id) }));
+
+  // --- the circle's agent ------------------------------------------------
+  // The agent host's public key, for sealing the agent invite to it; and the
+  // setup itself. The server never sees the invite link.
+
+  r.add('GET', '/agent-host', ({ me }) => ({
+    available: !!agentHost,
+    boxPub: agentHost?.boxPub ?? null,
+    running: !!agentHost?.hasAgent(me.circleId),
+  }));
+
+  r.add('POST', '/agent-host/setup', async ({ me, body }) => {
+    requireAdmin(me);
+    if (!agentHost) fail(404, 'no_agent_host', 'This server doesn’t run agents. Turn on AGENT (or “Run the agent” in the Home Assistant app) first.');
+    const from = vBytes(body.from, 'from', 32);
+    if (from !== me.boxPub) fail(400, 'invalid', 'from must be your own key');
+    const box = vBox(body.box, 'box', 2048);
+    try {
+      return await agentHost.setup({ circleId: me.circleId, fromBoxPub: from, box });
+    } catch (e) {
+      if (e.code === 'agent_exists') fail(409, 'agent_exists', e.message);
+      if (e.code === 'invalid') fail(400, 'invalid', e.message);
+      throw e;
+    }
+  });
 
   // --- messages ----------------------------------------------------------
 

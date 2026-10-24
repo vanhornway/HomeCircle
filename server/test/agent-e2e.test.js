@@ -1,0 +1,263 @@
+// The agent end to end: a server running it (AGENT), phones setting it up and
+// talking to it, a fake AI provider (no real calls), and a calendar feed.
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, existsSync, readdirSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createApp } from '../src/index.js';
+import { CircleClient } from '../../packages/core/src/index.js';
+
+const SETUP = 'test-setup-token-agent-e2e';
+let app;
+let url;
+let dir;
+let calendar;
+let calUrl;
+
+// Everything the fake AI was sent, to check no real names went out.
+const sentToAi = [];
+let now = new Date('2026-11-02T17:00:00Z');
+
+/** A fake provider: reads the (masked) request and answers like a model would. */
+async function fakeLlm(cfg, { system, messages, schema }) {
+  const text = messages.map((m) => m.content).join('\n');
+  sentToAi.push(`${system}\n${text}`);
+  if (/Reply with the word OK/.test(system)) return { text: 'OK', json: null, usd: 0.0001, refused: false };
+  if (schema?.properties?.intent) {
+    if (/are our kids/.test(text)) {
+      // New names can't be swapped yet (nobody's told the agent about them).
+      const [a, b] = text.match(/asks: (.+) are our kids/)[1].split(' and ');
+      return json({
+        intent: 'remember',
+        people: [a, b],
+        days: null,
+        from: null,
+        to: null,
+        keywords: [],
+        remember: [a, b].map((p) => ({ type: 'person', title: p, body: `${p} is one of the kids.`, people: [], start: null, end: null, role: 'kid' })),
+      });
+    }
+    if (/free/.test(text)) return json({ intent: 'free_time', people: ['kids'], days: 5, from: null, to: null, keywords: ['vacation'], remember: [] });
+    if (/decided|Tahoe/.test(text)) return json({ intent: 'recall', people: [], days: null, from: null, to: null, keywords: ['tahoe'], remember: [] });
+    return json({ intent: 'other', people: [], days: null, from: null, to: null, keywords: [], remember: [] });
+  }
+  if (schema?.properties?.notes) {
+    return json({ notes: [{ type: 'event', title: 'Dentist', body: `Dentist for ${text.match(/Person [A-Z]/g)?.[1] ?? 'someone'} at 3:30.`, people: [], start: '2026-11-14', end: null, role: null }] });
+  }
+  // Answers: repeat what was worked out, or the first note.
+  const worked = text.match(/Worked out from calendars:\n([^\n]+)/)?.[1];
+  const note = text.match(/^- [a-z]+: ([^\n]+)/m)?.[1];
+  return { text: worked ?? note ?? 'I don’t know.', json: null, usd: 0.002, refused: false };
+}
+const json = (o) => ({ text: JSON.stringify(o), json: o, usd: 0.001, refused: false });
+
+class MemoryStorage {
+  constructor() {
+    this.m = new Map();
+  }
+  async getItem(k) {
+    return this.m.has(k) ? this.m.get(k) : null;
+  }
+  async setItem(k, v) {
+    this.m.set(k, v);
+  }
+  async removeItem(k) {
+    this.m.delete(k);
+  }
+}
+
+let ics = '';
+const school = (extra = '') => `BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:first
+DTSTART;VALUE=DATE:20260819
+SUMMARY:First Day of School
+END:VEVENT
+BEGIN:VEVENT
+UID:vets
+DTSTART;VALUE=DATE:20261111
+SUMMARY:Veterans Day - No School
+END:VEVENT
+BEGIN:VEVENT
+UID:thanks
+DTSTART;VALUE=DATE:20261125
+DTEND;VALUE=DATE:20261128
+SUMMARY:Thanksgiving Break
+END:VEVENT
+BEGIN:VEVENT
+UID:winter
+DTSTART;VALUE=DATE:20261221
+DTEND;VALUE=DATE:20270102
+SUMMARY:Winter Recess
+END:VEVENT
+${extra}BEGIN:VEVENT
+UID:last
+DTSTART;VALUE=DATE:20270611
+SUMMARY:Last Day of School
+END:VEVENT
+END:VCALENDAR`;
+
+before(async () => {
+  dir = mkdtempSync(join(tmpdir(), 'homecircle-agent-e2e-'));
+  calendar = createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/calendar' });
+    res.end(ics);
+  });
+  await new Promise((r) => calendar.listen(0, '127.0.0.1', r));
+  calUrl = `http://127.0.0.1:${calendar.address().port}/lincoln.ics`;
+  app = createApp({
+    version: 'test',
+    dataDir: dir,
+    setupToken: SETUP,
+    trustProxy: 0,
+    messageRetentionDays: 90,
+    locationRequestCooldown: 60,
+    inviteMaxHours: 168,
+    push: 'none',
+    tileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    tileAttribution: 'OSM',
+    webClient: false,
+    agent: true,
+    // The test's calendar is on this machine: let the agent read it.
+    agentBrainOptions: { llm: fakeLlm, allowPrivateFetch: true, now: () => now },
+  });
+  await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
+  url = `http://127.0.0.1:${app.server.address().port}`;
+  await app.agentHost.start(url);
+});
+
+after(async () => {
+  for (const c of [mom, dad]) c.disconnect();
+  await app.close();
+  await new Promise((r) => calendar.close(r));
+  rmSync(dir, { recursive: true, force: true });
+});
+
+const errors = [];
+const client = () => new CircleClient({ storage: new MemoryStorage(), onError: (e) => errors.push(e) });
+const mom = client();
+const dad = client();
+const settle = (ms = 150) => new Promise((r) => setTimeout(r, ms));
+/** Wait until `pred` holds after fetching, up to ~5 s. */
+async function until(c, pred) {
+  for (let i = 0; i < 50; i++) {
+    await c.fetchMessages();
+    const hit = pred(c);
+    if (hit) return hit;
+    await settle(100);
+  }
+  throw new Error('timed out');
+}
+const lastFromAgent = (c) => (c.agent ? [...c.conversation(null)].reverse().find((m) => m.from === c.agent.id) : null);
+
+test('an admin adds the agent: the server only ever sees the invite sealed', async () => {
+  await mom.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'Family' });
+  await dad.joinWithInvite((await mom.createInvite()).link, { name: 'Dad' });
+  await mom.refresh();
+  assert.deepEqual(await mom.agentHostStatus(), { available: true, running: false });
+  await assert.rejects(() => dad.setUpAgent({ name: 'Jarvis' }), /Only circle admins/);
+  const agent = await mom.setUpAgent({ name: 'Jarvis' });
+  assert.equal(agent.name, 'Jarvis');
+  await dad.refresh();
+  assert.equal(dad.agent.name, 'Jarvis');
+  assert.equal((await dad.agentHostStatus()).running, true);
+  // Its memory is on disk, encrypted, under the circle.
+  assert.ok(existsSync(join(dir, 'agent', mom.circleId, 'memory.db')));
+});
+
+test('before an AI is set up it says so; admins set provider and budget, sealed to it', async () => {
+  const qid = await dad.askAgent('When are the kids free?');
+  assert.ok(qid);
+  const a = await until(dad, lastFromAgent);
+  assert.match(a.body.text, /not set up yet/);
+  await assert.rejects(() => dad.agentRpc('setSettings', { budgetUsd: 5 }), /Only circle admins/);
+  await mom.agentRpc('setSettings', { provider: { provider: 'anthropic', model: 'claude-sonnet-5-5', apiKey: 'sk-test-123' }, budgetUsd: 1 });
+  const s = await dad.agentRpc('settings');
+  assert.deepEqual([s.provider.model, s.provider.keySet, s.budgetUsd, s.name], ['claude-sonnet-5-5', true, 1, 'Jarvis']);
+  assert.equal(JSON.stringify(s).includes('sk-test-123'), false);
+});
+
+test('telling it who the kids are; Remember keeps one message; Undo takes it back', async () => {
+  await mom.askAgent('Kid and Sam are our kids');
+  let a = await until(mom, (c) => (lastFromAgent(c)?.body.text.startsWith('📌') ? lastFromAgent(c) : null));
+  assert.equal(a.body.text, '📌 Remembered: Kid; Sam');
+  assert.equal(a.body.undo.length, 2);
+
+  await dad.sendChat('Dentist for Kid on Nov 14 at 3:30');
+  await mom.fetchMessages();
+  const m = mom.messages.find((x) => x.body?.text === 'Dentist for Kid on Nov 14 at 3:30');
+  await mom.rememberWithAgent(m.id);
+  a = await until(mom, (c) => (lastFromAgent(c)?.body.text === '📌 Remembered: Dentist' ? lastFromAgent(c) : null));
+  const notes = await mom.agentRpc('list');
+  assert.deepEqual(notes.map((n) => n.title).sort(), ['Dentist', 'Kid', 'Sam']);
+  assert.equal(notes.find((n) => n.title === 'Dentist').body, 'Dentist for [[Kid]] at 3:30.'.replace('[[Kid]]', 'Kid'));
+  await mom.undoAgent(a.body.undo);
+  await until(mom, (c) => (lastFromAgent(c)?.body.text === '↩️ Undone.' ? 1 : null));
+  assert.deepEqual((await mom.agentRpc('list')).map((n) => n.title).sort(), ['Kid', 'Sam']);
+});
+
+test('adding a school calendar: whose is it, then it counts for free time', async () => {
+  ics = school();
+  await mom.askAgent(`add this calendar ${calUrl}`);
+  let a = await until(mom, (c) => (/Whose calendar/.test(lastFromAgent(c)?.body.text) ? lastFromAgent(c) : null));
+  await mom.askAgent('for Kid and Sam');
+  a = await until(mom, (c) => (/Added/.test(lastFromAgent(c)?.body.text) ? lastFromAgent(c) : null));
+  assert.match(a.body.text, /^📅 Added Kid and Sam’s school calendar: 3 days off listed; next: Veterans Day - No School \(Nov 11\)/);
+  // The address is a secret: never repeated in a chat.
+  assert.ok(!dad.messages.some((x) => x.body?.text?.includes('lincoln.ics')) && !a.body.text.includes('127.0.0.1'));
+});
+
+test('“when are the kids free for 5 days” is worked out from the calendar, names never reach the AI', async () => {
+  await dad.askAgent('When are the kids free next? I want to plan a 5 day vacation');
+  const a = await until(dad, (c) => (/Free 5 days/.test(lastFromAgent(c)?.body.text) ? lastFromAgent(c) : null));
+  assert.equal(a.body.text, 'Free 5 days in a row for Kid and Sam: Nov 25–29; Dec 19–Jan 3; Jun 12–Aug 18.');
+  // Mom sees the question and the answer in the group too.
+  const seenByMom = await until(mom, (c) => (/Free 5 days/.test(lastFromAgent(c)?.body.text) ? lastFromAgent(c) : null));
+  assert.equal(seenByMom.peer, null);
+  // Except the message that first named the kids, nothing real went out.
+  for (const sent of sentToAi.filter((x) => !/are our kids/.test(x))) for (const real of ['Kid', 'Sam', 'Mom', 'Dad']) assert.ok(!new RegExp(`\\b${real}\\b`).test(sent), `${real} reached the AI: ${sent.slice(0, 200)}`);
+});
+
+test('a changed calendar: the people it’s for and whoever added it hear about it', async () => {
+  ics = school(`BEGIN:VEVENT
+UID:teacher
+DTSTART;VALUE=DATE:20261120
+SUMMARY:Teacher Work Day - No School
+END:VEVENT
+`);
+  now = new Date(now.getTime() + 7 * 3600_000);
+  await app.agentHost.refresh();
+  const dm = await until(mom, (c) => [...c.conversation(c.agent.id)].reverse().find((m) => /changed/.test(m.body?.text ?? '')));
+  assert.equal(dm.body.text, '📅 Kid and Sam’s school calendar changed: added “Teacher Work Day - No School” (Nov 20).');
+});
+
+test('spending: per person for admins, and a hard stop at the budget', async () => {
+  const u = await mom.agentRpc('usage');
+  assert.ok(u.total > 0 && u.byMember.length >= 2);
+  assert.equal((await dad.agentRpc('usage')).byMember, null);
+  // Budget of $1: spend it, then the agent stops calling the AI.
+  await mom.agentRpc('setSettings', { budgetUsd: 0.001 });
+  await dad.askAgent('What did we decide about Tahoe?');
+  const a = await until(dad, (c) => (/out of budget/.test(lastFromAgent(c)?.body.text) ? lastFromAgent(c) : null));
+  assert.match(a.body.text, /I’m out of budget until Dec 1\. Ask an admin to raise it\./);
+});
+
+test('export, then removing the agent deletes its memory', async () => {
+  const files = await mom.agentRpc('export');
+  assert.ok(files['person/Kid.md'].includes('role') || files['person/Kid.md'].includes('# Kid'));
+  await mom.removeAgent();
+  await settle(500);
+  assert.equal(existsSync(join(dir, 'agent', mom.circleId)), false);
+  assert.ok(!readdirSync(join(dir, 'agent')).includes(mom.circleId));
+  await dad.refresh();
+  assert.equal(dad.agent, null);
+});
+
+test('no unexpected client errors', () => {
+  assert.deepEqual(
+    errors.map((e) => e.message),
+    [],
+  );
+});

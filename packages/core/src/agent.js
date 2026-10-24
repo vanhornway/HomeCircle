@@ -189,9 +189,10 @@ export class AgentClient {
       },
       onEvent: async (e) => {
         try {
+          // Removed from the circle: nothing to refresh any more (it would fail).
+          if (e.type === 'removed' && e.memberId === this.memberId) return this.emit('removed', {});
           if (e.type === 'message' && e.message?.to === this.memberId) await this.fetchMessages();
           else if (e.type === 'members_changed' || e.type === 'removed' || e.type === 'key_rotated') await this.refresh();
-          if (e.type === 'removed' && e.memberId === this.memberId) this.emit('removed', {});
         } catch (err) {
           this.onError(err);
         }

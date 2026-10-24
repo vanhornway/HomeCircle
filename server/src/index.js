@@ -7,6 +7,7 @@ import { Hub } from './hub.js';
 import { Push } from './push.js';
 import { buildRoutes } from './routes.js';
 import { createStatic } from './static.js';
+import { AgentHost } from './agent/host.js';
 import { HttpError, sendJson, readJson, sha256, clientIp, RateLimiter } from './http.js';
 
 // Logs never include IPs, tokens or payloads.
@@ -39,7 +40,8 @@ export function createApp(config) {
   const requestLimiter = new RateLimiter(config.requestsPerMinute, 60_000);
   const writeLimiter = new RateLimiter(config.writesPerMinute, 60_000);
   const push = new Push(config, store, log);
-  const router = buildRoutes({ config, store, hub, push, log });
+  const agentHost = config.agent ? new AgentHost({ dataDir: config.dataDir, log, brainOptions: config.agentBrainOptions }) : null;
+  const router = buildRoutes({ config, store, hub, push, log, agentHost });
   const serveStatic = config.webClient ? createStatic(config) : null;
 
   const server = createServer(async (req, res) => {
@@ -113,8 +115,9 @@ export function createApp(config) {
   prune();
   const pruneTimer = setInterval(prune, 3600_000);
 
-  const close = () =>
-    new Promise((resolve) => {
+  const close = async () => {
+    await agentHost?.stop();
+    return new Promise((resolve) => {
       clearInterval(pruneTimer);
       hub.close();
       server.close(() => {
@@ -123,8 +126,9 @@ export function createApp(config) {
       });
       server.closeAllConnections?.();
     });
+  };
 
-  return { server, store, hub, config, close };
+  return { server, store, hub, config, close, agentHost };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
@@ -134,6 +138,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   const { config } = app;
   app.server.listen(config.port, config.host, () => {
     log(`HomeCircle server ${config.version} listening on ${config.host}:${config.port}`);
+    // Agents talk to this server like any phone, over loopback.
+    const local = ['0.0.0.0', '::', ''].includes(config.host) ? '127.0.0.1' : config.host;
+    app.agentHost?.start(`http://${local.includes(':') ? `[${local}]` : local}:${config.port}`).catch((e) => log('agent host failed to start', e?.message ?? e));
     const where = config.publicUrl || 'your server address';
     log('──────────────────────────────────────────────────────────');
     if (config.loadTest) {
