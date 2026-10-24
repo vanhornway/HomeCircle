@@ -69,6 +69,10 @@ export function createApp(config) {
       return sendJson(res, 500, { error: 'internal', message: 'Something went wrong on the server' });
     }
   });
+  // Requests are small: a client that trickles its headers or body is cut
+  // off instead of holding a connection open (Node's defaults are minutes).
+  server.headersTimeout = 15_000;
+  server.requestTimeout = 30_000;
   hub.attach(server);
 
   const prune = () => {

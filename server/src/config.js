@@ -25,7 +25,9 @@ export function loadConfig() {
     setupToken: process.env.SETUP_TOKEN || '',
     setupTokenGenerated: false,
     publicUrl: (process.env.PUBLIC_URL || '').replace(/\/+$/, ''),
-    trustProxy: bool('TRUST_PROXY', false),
+    // How many proxies in front of the server to trust for the client's
+    // address: "true" means one (Caddy, Render, Railway, Tailscale), or a count.
+    trustProxy: /^\d+$/.test(process.env.TRUST_PROXY || '') ? int('TRUST_PROXY', 0) : bool('TRUST_PROXY', false) ? 1 : 0,
     // Longest any circle may keep messages; each circle's admin picks up to this.
     // Never more than a year: older messages are always deleted from the server.
     maxRetentionDays: Math.min(365, Math.max(1, int('MESSAGE_RETENTION_DAYS', 365) || 365)),

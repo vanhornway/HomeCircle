@@ -161,12 +161,22 @@ export class RateLimiter {
   }
 }
 
-export function clientIp(req, trustProxy) {
-  if (trustProxy) {
+/**
+ * The address a request came from. Behind `hops` trusted proxies, each one
+ * appends the address it saw to X-Forwarded-For, so the client is the entry
+ * that many places from the end. Entries before it are whatever the client
+ * sent, so they never count (they'd let anyone dodge rate limits).
+ */
+export function clientIp(req, hops) {
+  if (hops > 0) {
     const xff = req.headers['x-forwarded-for'];
-    if (typeof xff === 'string' && xff) return xff.split(',')[0].trim();
+    const parts = (Array.isArray(xff) ? xff.join(',') : typeof xff === 'string' ? xff : '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (parts.length) return parts.at(Math.max(0, parts.length - hops));
     const fly = req.headers['fly-client-ip'];
-    if (typeof fly === 'string') return fly;
+    if (typeof fly === 'string' && fly) return fly;
   }
   return req.socket.remoteAddress || 'unknown';
 }
