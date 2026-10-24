@@ -56,13 +56,16 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   const [reactingTo, setReactingTo] = useState<Message | null>(null);
   const [checkingIn, setCheckingIn] = useState<string | null>(null);
   useLocateVersion();
-  const list = useRef<FlatList<Message>>(null);
+  const list = useRef<FlatList<ChatRow>>(null);
   const me = client.account?.memberId;
   const key = conversationKey(client.circleId!, peer);
   const other = peer ? client.members.get(peer) : null;
   const { showPlaceAlerts } = useSettings();
   const all = client.conversation(peer).filter((m) => showPlaceAlerts || m.kind !== 'event');
-  const messages = [...all].reverse();
+  // More than MOVEMENT_RUN arrived/left alerts in a row fold into one
+  // "Movement" row, so they don't take over the screen. Tap to open it.
+  const [openRuns, setOpenRuns] = useState<Set<string>>(() => new Set());
+  const rows = [...chatRows(all)].reverse();
   const lastSeq = all.at(-1)?.seq ?? 0;
 
   // While this conversation is on screen it's read, and doesn't notify.
@@ -120,19 +123,49 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     ? `Direct message · ${client.circle.name} · end-to-end encrypted`
     : `Group · ${plural(client.memberList().length, 'member')} · end-to-end encrypted`;
 
-  const render = ({ item: m }: { item: Message }) => {
+  const eventLabel = (m: Message) =>
+    `${client.members.get(m.from)?.name || 'Former member'} ${m.body?.action === 'left' ? 'left' : 'arrived at'} ${m.body?.placeName || 'a place'} · ${clock(typeof m.body?.at === 'number' ? m.body.at : m.ts)}`;
+  const pill = { alignSelf: 'center', color: t.muted, backgroundColor: t.surface2, fontSize: 14, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, overflow: 'hidden', marginVertical: 4 } as const;
+
+  const renderRow = ({ item }: { item: ChatRow }) => {
+    if (item.type === 'message') return render(item.m);
+    const open = openRuns.has(item.id);
+    const toggle = () =>
+      setOpenRuns((prev) => {
+        const next = new Set(prev);
+        if (open) next.delete(item.id);
+        else next.add(item.id);
+        return next;
+      });
+    return (
+      <View style={{ alignItems: 'center' }}>
+        <Pressable
+          onPress={toggle}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+          accessibilityLabel={`Movement: ${item.events.length} arrivals and departures. ${open ? 'Tap to hide' : 'Tap to show'}`}
+          style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}
+        >
+          <Text style={[pill, { color: t.text, fontWeight: '600' }]}>
+            {open ? '▴' : '▾'} Movement · {item.events.length}
+          </Text>
+        </Pressable>
+        {open
+          ? item.events.map((m) => (
+              <Text key={m.id} style={pill}>
+                {eventLabel(m)}
+              </Text>
+            ))
+          : null}
+      </View>
+    );
+  };
+
+  const render = (m: Message) => {
     const who = client.members.get(m.from);
     const name = who?.name || 'Former member';
     if (m.kind !== 'chat') {
-      const label =
-        m.kind === 'event'
-          ? `${name} ${m.body?.action === 'left' ? 'left' : 'arrived at'} ${m.body?.placeName || 'a place'} · ${clock(typeof m.body?.at === 'number' ? m.body.at : m.ts)}`
-          : '🔒 Sent before you joined';
-      return (
-        <Text style={{ alignSelf: 'center', color: t.muted, backgroundColor: t.surface2, fontSize: 14, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, overflow: 'hidden', marginVertical: 4 }}>
-          {label}
-        </Text>
-      );
+      return <Text style={pill}>{m.kind === 'event' ? eventLabel(m) : '🔒 Sent before you joined'}</Text>;
     }
     const mine = m.from === me;
     const big = isEmojiOnly(m.body?.text);
@@ -242,7 +275,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
       <ServerBanner style={{ marginHorizontal: 12, marginTop: 10 }} />
       {/* Android draws edge to edge, so the window doesn't shrink for the keyboard: pad on both platforms. */}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        {messages.length ? null : (
+        {rows.length ? null : (
           <View style={{ flex: 1, justifyContent: 'center', padding: 24 }}>
             <Text style={{ color: t.muted, textAlign: 'center', fontSize: 15 }}>
               {peer ? `Only you and ${title} can read this conversation.` : 'No messages yet. Say hi 👋'}
@@ -250,12 +283,12 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
           </View>
         )}
         <FlatList
-          style={messages.length ? undefined : { display: 'none' }}
+          style={rows.length ? undefined : { display: 'none' }}
           ref={list}
           inverted
-          data={messages}
-          keyExtractor={(m) => m.id}
-          renderItem={render}
+          data={rows}
+          keyExtractor={(r) => (r.type === 'message' ? r.m.id : r.id)}
+          renderItem={renderRow}
           contentContainerStyle={{ padding: 14 }}
           keyboardShouldPersistTaps="handled"
         />
@@ -343,4 +376,30 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
       </Modal>
     </SafeAreaView>
   );
+}
+
+/** More than this many arrived/left alerts in a row collapse into "Movement". */
+const MOVEMENT_RUN = 5;
+
+type ChatRow = { type: 'message'; m: Message } | { type: 'movement'; id: string; events: Message[] };
+
+/** Messages in order, with long runs of arrived/left alerts folded into one row (keyed by its first alert). */
+function chatRows(messages: Message[]): ChatRow[] {
+  const rows: ChatRow[] = [];
+  let run: Message[] = [];
+  const flush = () => {
+    if (run.length > MOVEMENT_RUN) rows.push({ type: 'movement', id: `movement:${run[0].id}`, events: run });
+    else for (const m of run) rows.push({ type: 'message', m });
+    run = [];
+  };
+  for (const m of messages) {
+    if (m.kind === 'event') {
+      run.push(m);
+      continue;
+    }
+    flush();
+    rows.push({ type: 'message', m });
+  }
+  flush();
+  return rows;
 }

@@ -163,6 +163,8 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 .emoji-grid button { border: 0; background: none; font-size: 22px; height: 38px; border-radius: 8px; cursor: pointer; }
 .emoji-grid button:hover { background: var(--surface-2); }
 .event-line { align-self: center; font-size: 13px; color: var(--muted); background: var(--surface-2); padding: 4px 10px; border-radius: 999px; }
+.event-line.movement { border: 0; font: inherit; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; }
+.event-line.movement:hover { filter: brightness(0.96); }
 .chat-form { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); }
 .chat-form .input { flex: 1; }
 

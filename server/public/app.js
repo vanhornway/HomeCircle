@@ -603,7 +603,9 @@ function renderMessage(title, text) {
 // --- main app ------------------------------------------------------------
 
 // peer: the open conversation in Chat (null = the circle's group chat).
-const ui = { tab: 'people', unread: 0, pickPlace: false, invite: null, asked: {}, peer: null };
+const ui = { tab: 'people', unread: 0, pickPlace: false, invite: null, asked: {}, peer: null, openRuns: new Set() };
+/** More than this many arrived/left alerts in a row collapse into "Movement". */
+const MOVEMENT_RUN = 5;
 const FEET_PER_METER = 3.28084;
 const feet = (m) => {
   const ft = m * FEET_PER_METER;
@@ -1039,13 +1041,45 @@ function chatView() {
       h('p', { class: 'muted small', style: 'text-align:center' }, ui.peer ? `Only you and ${peerName} can read this conversation.` : 'No messages yet. Say hi 👋'),
     );
   }
-  for (const m of shown) {
+  const eventLine = (m) => {
+    const b = m.body || {};
+    const verb = b.action === 'left' ? 'left' : 'arrived at';
+    return h('div', { class: 'event-line' }, `${client.members.get(m.from)?.name || 'Former member'} ${verb} ${b.placeName || 'a place'} · ${clock(m.ts)}`);
+  };
+  for (let i = 0; i < shown.length; i++) {
+    const m = shown[i];
     const who = client.members.get(m.from);
     const name = who?.name || 'Former member';
     if (m.kind === 'event') {
-      const b = m.body || {};
-      const verb = b.action === 'left' ? 'left' : 'arrived at';
-      log.append(h('div', { class: 'event-line' }, `${name} ${verb} ${b.placeName || 'a place'} · ${clock(m.ts)}`));
+      // More than MOVEMENT_RUN arrived/left alerts in a row fold into one
+      // "Movement" line, so they don't take over the chat. Click to open it.
+      let end = i;
+      while (end < shown.length && shown[end].kind === 'event') end++;
+      if (end - i > MOVEMENT_RUN) {
+        const run = shown.slice(i, end);
+        const id = run[0].id;
+        const open = ui.openRuns.has(id);
+        log.append(
+          h(
+            'button',
+            {
+              class: 'event-line movement',
+              type: 'button',
+              'aria-expanded': String(open),
+              onclick: () => {
+                if (open) ui.openRuns.delete(id);
+                else ui.openRuns.add(id);
+                renderPanel();
+              },
+            },
+            `${open ? '▴' : '▾'} Movement · ${run.length}`,
+          ),
+          ...(open ? run.map(eventLine) : []),
+        );
+        i = end - 1;
+        continue;
+      }
+      log.append(eventLine(m));
     } else if (m.kind === 'chat') {
       const mine = m.from === me;
       const big = isEmojiOnly(m.body.text);
