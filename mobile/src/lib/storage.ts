@@ -81,6 +81,8 @@ export interface Settings {
   chirpFlash: boolean;
   /** An SOS from your circle plays at alarm volume, even with Do Not Disturb on. Off until you opt in. */
   sosThroughDnd: boolean;
+  /** Send read receipts (and see others'). Delivered ticks always show. */
+  readReceipts: boolean;
   /** Map tiles, from the server's /info. */
   tileUrl: string;
   tileAttribution: string;
@@ -105,6 +107,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chirpSound: true,
   chirpFlash: true,
   sosThroughDnd: false,
+  readReceipts: true,
   tileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   tileAttribution: '&copy; OpenStreetMap contributors',
 };

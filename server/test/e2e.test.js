@@ -189,9 +189,13 @@ test('reactions: encrypted, aggregated, toggle, never shown as messages', async 
 test('server cannot read anything', () => {
   const files = readdirSync(dir).filter((f) => f.startsWith('homecircle.db'));
   const raw = Buffer.concat(files.map((f) => readFileSync(join(dir, f))));
-  for (const secret of ['Mom', 'Bob', 'Carol', 'The Parkers', '40.712776', '74.005974', 'milk', 'Home', '❤️', '😂']) {
-    assert.ok(!raw.includes(Buffer.from(secret, 'utf8')), `database contains plaintext "${secret}"`);
+  // Short words also turn up by chance inside base64 ciphertext ("Bob"), so
+  // look for them standing alone, as plaintext would.
+  const text = raw.toString('latin1');
+  for (const secret of ['Mom', 'Bob', 'Carol', 'The Parkers', '40.712776', '74.005974', 'milk', 'Home']) {
+    assert.ok(!new RegExp(`(?<![A-Za-z0-9_+/-])${secret.replace('.', '\\.')}(?![A-Za-z0-9_+/-])`).test(text), `database contains plaintext "${secret}"`);
   }
+  for (const emoji of ['❤️', '😂']) assert.ok(!raw.includes(Buffer.from(emoji, 'utf8')), `database contains plaintext "${emoji}"`);
 });
 
 test('forged or tampered envelopes are rejected by clients', async () => {

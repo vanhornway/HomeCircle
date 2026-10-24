@@ -92,6 +92,10 @@ export class CircleClient {
     // Envelope nonces already taken in: the same envelope stored again under
     // another id (a replay) is dropped.
     this.seenNonces = new Set();
+    // Ticks: how far each member's phone has fetched (delivered), and how far
+    // each has read each conversation ("memberId|peer" -> seq; peer '' = group).
+    this.delivered = new Map();
+    this.reads = new Map();
     // agentRpc requests waiting for the agent's answer: id -> callback.
     this._rpcWaiters = new Map();
     // messageId -> emoji -> memberId -> { on, seq }
@@ -499,6 +503,7 @@ export class CircleClient {
   async refresh() {
     const st = await this.api.state();
     this.state = st;
+    for (const m of st.members) if ((m.deliveredSeq ?? 0) > (this.delivered.get(m.id) ?? 0)) this.delivered.set(m.id, m.deliveredSeq);
     if (st.epoch > this.account.epoch || !this.account.keyring[st.epoch]) {
       // Recognize members we can already verify first: a new key is only
       // accepted from an admin whose keys we know.
@@ -797,6 +802,13 @@ export class CircleClient {
     const msg = this._open(m.env, m.from, to ? ['chat', 'reaction'] : ['chat', 'event', 'reaction'], to, m.id);
     if (msg === REPLAYED) return false;
     if (msg?.kind === 'reaction') {
+      // A read receipt: "I've read this conversation up to here".
+      if (Number.isInteger(msg.body?.read) && msg.body.read > 0) {
+        const key = `${m.from}|${peer ?? ''}`;
+        if (msg.body.read > (this.reads.get(key) ?? 0)) this.reads.set(key, Math.min(msg.body.read, m.seq));
+        this.emit('receipts');
+        return { kind: 'reaction', id: m.id, from: m.from, to, peer, seq: m.seq, body: msg.body };
+      }
       if (isPollUpdate(msg.body)) this._applyPollUpdate(m.from, m.seq, msg.body);
       else this._applyReaction(m.from, m.seq, msg.body);
       return { kind: 'reaction', id: m.id, from: m.from, to, peer, seq: m.seq, body: msg.body };
@@ -1036,6 +1048,44 @@ export class CircleClient {
   /** Messages in one conversation: the group (peer null) or a direct chat with `peer`. */
   conversation(peer = null) {
     return this.messages.filter((m) => (m.peer ?? null) === peer);
+  }
+
+  // --- ticks ---------------------------------------------------------------
+  // ✓ sent (the server has it), ✓✓ delivered (every recipient's phone has it),
+  // read (every recipient has read it). Recipients: the other person in a
+  // direct chat, or everyone who was in the circle when it was sent.
+
+  /** Tell the others you've read a conversation up to `seq` (sealed, silent). */
+  sendReadReceipt(peer, seq) {
+    if (!Number.isInteger(seq) || seq <= (this.reads.get(`${this.account.memberId}|${peer ?? ''}`) ?? 0)) return Promise.resolve();
+    this.reads.set(`${this.account.memberId}|${peer ?? ''}`, seq);
+    return this._post('reaction', { read: seq }, { silent: true, to: peer });
+  }
+
+  _recipients(m) {
+    if (m.peer) return [m.peer];
+    return [...this.members.values()].filter((x) => !x.isMe && !x.removed && x.kind !== 'agent' && x.joinedAt <= m.createdAt).map((x) => x.id);
+  }
+
+  /** For your own message: 'sent', 'delivered' or 'read'. */
+  receipt(m) {
+    const to = this._recipients(m);
+    if (!to.length) return 'sent';
+    if (to.every((id) => (this.reads.get(`${id}|${m.peer ?? ''}`) ?? 0) >= m.seq)) return 'read';
+    if (to.every((id) => (this.delivered.get(id) ?? 0) >= m.seq)) return 'delivered';
+    return 'sent';
+  }
+
+  /** Who has read, has, or hasn't got your message yet: { read, delivered, waiting } (names). */
+  receiptsFor(m) {
+    const out = { read: [], delivered: [], waiting: [] };
+    for (const id of this._recipients(m)) {
+      const name = this.members.get(id)?.name || 'Former member';
+      if ((this.reads.get(`${id}|${m.peer ?? ''}`) ?? 0) >= m.seq) out.read.push(name);
+      else if ((this.delivered.get(id) ?? 0) >= m.seq) out.delivered.push(name);
+      else out.waiting.push(name);
+    }
+    return out;
   }
 
   // --- the circle's agent -------------------------------------------------
@@ -1619,6 +1669,13 @@ export class CircleClient {
           this.emit('messages', this.messages);
           if (m.from !== this.account.memberId && m.kind !== 'reaction') this.emit('newMessage', m);
         }
+        break;
+      }
+      case 'delivered': {
+        for (const [id, seq] of Object.entries(e.delivered || {})) {
+          if (Number.isInteger(seq) && seq > (this.delivered.get(id) ?? 0)) this.delivered.set(id, seq);
+        }
+        this.emit('receipts');
         break;
       }
       case 'location_deleted':

@@ -405,6 +405,12 @@ export class CircleClient {
   endSos(sosId: string): Promise<void>;
   /** SOSes still on, newest first. */
   activeSos(now?: number): ActiveSos[];
+  /** Tell the others you've read a conversation (peer null = the group) up to `seq`. */
+  sendReadReceipt(peer: string | null, seq: number): Promise<void>;
+  /** For your own message: 'sent', 'delivered' (every recipient's phone has it) or 'read'. */
+  receipt(m: Message): 'sent' | 'delivered' | 'read';
+  /** Who has read, has, or hasn't got your message yet (names). */
+  receiptsFor(m: Message): { read: string[]; delivered: string[]; waiting: string[] };
   /** Whether this server can run an agent, and whether this circle's is running. */
   agentHostStatus(): Promise<{ available: boolean; running: boolean }>;
   /** Admins: add the circle's agent, run by this server, named `name`. */

@@ -37,6 +37,15 @@ export default function NotificationSettings() {
           </GroupBody>
         ) : null}
       </SettingsGroup>
+
+      <SettingsGroup title="Chats" footer="Delivered ticks (✓✓) always show. Read receipts work both ways, as in other messengers.">
+        <ToggleRow
+          title="Read receipts"
+          detail={settings.readReceipts ? 'Others see when you’ve read their messages, and you see when they’ve read yours.' : 'Off: others don’t see when you’ve read, and you don’t see when they have.'}
+          value={settings.readReceipts}
+          onChange={(v) => updateSettings({ readReceipts: v })}
+        />
+      </SettingsGroup>
     </SettingsPage>
   );
 }

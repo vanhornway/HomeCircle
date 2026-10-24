@@ -44,7 +44,7 @@ function useClientEvents(client: CircleClient) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const bump = () => setTick((n) => n + 1);
-    const offs = ['messages', 'members', 'circle', 'locations', 'status'].map((e) => client.on(e, bump));
+    const offs = ['messages', 'members', 'circle', 'locations', 'status', 'receipts'].map((e) => client.on(e, bump));
     return () => offs.forEach((off) => off());
   }, [client]);
   return tick;
@@ -68,7 +68,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   const me = client.account?.memberId;
   const key = conversationKey(client.circleId!, peer);
   const other = peer ? client.members.get(peer) : null;
-  const { showPlaceAlerts } = useSettings();
+  const { showPlaceAlerts, readReceipts } = useSettings();
   const all = client.conversation(peer).filter((m) => showPlaceAlerts || m.kind !== 'event');
   // More than MOVEMENT_RUN arrived/left alerts in a row fold into one
   // "Movement" row, so they don't take over the screen. Tap to open it.
@@ -84,8 +84,13 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     }, [key]),
   );
   useEffect(() => {
-    if (AppState.currentState === 'active') markRead(client, peer).catch(() => {});
-  }, [client, peer, lastSeq]);
+    if (AppState.currentState !== 'active') return;
+    markRead(client, peer).catch(() => {});
+    // Tell the others you've read up to here (unless you turned read receipts off).
+    const lastIn = all.filter((x) => x.kind === 'chat' && x.from !== me).at(-1);
+    if (readReceipts && lastIn) client.sendReadReceipt(peer, lastIn.seq).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per new message, not on every render
+  }, [client, peer, lastSeq, readReceipts]);
 
   const send = async () => {
     const value = text;
@@ -256,7 +261,10 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             ))}
           </View>
         ) : null}
-        <Text style={{ color: t.muted, fontSize: 12, marginTop: 2, marginHorizontal: 6 }}>{clock(m.ts)}</Text>
+        <Text style={{ color: t.muted, fontSize: 12, marginTop: 2, marginHorizontal: 6 }}>
+          {clock(m.ts)}
+          {mine ? <Ticks state={client.receipt(m)} showRead={readReceipts} /> : null}
+        </Text>
       </View>
     );
   };
@@ -430,6 +438,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
               <Text style={{ color: t.muted, fontSize: 15 }} numberOfLines={2}>
                 React to “{reactingTo.body?.text}”
               </Text>
+              {reactingTo.from === me && !reactingTo.peer ? <ReadBy receipts={client.receiptsFor(reactingTo)} showRead={readReceipts} /> : null}
               <View style={{ flexDirection: 'row', gap: 6 }}>
                 {QUICK_REACTIONS.map((e) => {
                   const mine = client.reactionsFor(reactingTo.id).some((r) => r.emoji === e && r.mine);
@@ -498,4 +507,37 @@ function agentQuestion(text: string, name: string): string | null {
     if (lower.startsWith(tag)) return t.slice(tag.length).trim() || null;
   }
   return null;
+}
+
+/** ✓ sent, ✓✓ delivered, and ✓✓ in colour when read (if you share read receipts). */
+function Ticks({ state, showRead }: { state: 'sent' | 'delivered' | 'read'; showRead: boolean }) {
+  const t = useTheme();
+  const read = state === 'read' && showRead;
+  const label = read ? 'Read' : state === 'sent' ? 'Sent' : 'Delivered';
+  return (
+    <Text accessibilityLabel={label} style={{ color: read ? t.brand : t.muted, fontWeight: '700' }}>
+      {'  '}
+      {state === 'sent' ? '✓' : '✓✓'}
+    </Text>
+  );
+}
+
+/** For your own group message: who has read it, who has it, who doesn't yet. */
+function ReadBy({ receipts, showRead }: { receipts: { read: string[]; delivered: string[]; waiting: string[] }; showRead: boolean }) {
+  const t = useTheme();
+  const delivered = showRead ? receipts.delivered : [...receipts.read, ...receipts.delivered];
+  const line = (label: string, names: string[]) =>
+    names.length ? (
+      <Text style={{ color: t.text, fontSize: 14 }}>
+        <Text style={{ fontWeight: '700' }}>{label}: </Text>
+        {names.join(', ')}
+      </Text>
+    ) : null;
+  return (
+    <View style={{ alignSelf: 'stretch', gap: 2 }}>
+      {showRead ? line('Read by', receipts.read) : null}
+      {line('Delivered to', delivered)}
+      {line('Not yet', receipts.waiting)}
+    </View>
+  );
 }

@@ -364,6 +364,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null })
         id: m.id,
         role: m.role,
         kind: m.kind,
+        deliveredSeq: m.deliveredSeq,
         boxPub: m.boxPub,
         signPub: m.signPub,
         profile: m.profile ?? NO_PROFILE,
@@ -732,6 +733,12 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null })
     const after = Math.max(0, Number.parseInt(query.get('after') || '0', 10) || 0);
     const limit = Math.min(500, Math.max(1, Number.parseInt(query.get('limit') || '200', 10) || 200));
     const rows = me.kind === 'agent' ? store.directMessagesAfter(me.circleId, me.id, after, limit) : store.messagesAfter(me.circleId, me.id, after, limit);
+    // A phone asking for what's after `after` has everything up to it; a page
+    // that isn't full means it now has everything. Delivered ticks follow.
+    if (me.kind !== 'agent') {
+      const upTo = rows.length < limit ? Math.max(after, rows.at(-1)?.seq ?? 0) : after;
+      if (upTo > 0 && store.setDelivered(me.id, upTo)) hub.broadcast(me.circleId, { type: 'delivered', delivered: { [me.id]: upTo } }, me.id);
+    }
     return { messages: rows };
   }, { agent: true });
 
@@ -759,6 +766,12 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null })
     const message = { seq, id, from: me.id, to: to?.id ?? null, env, createdAt: now };
     if (to) hub.send(to.id, { type: 'message', message });
     else hub.broadcast(me.circleId, { type: 'message', message }, me.id);
+    // Phones with the app open got it just now: delivered.
+    const reached = {};
+    for (const m of to ? [to] : store.activeMembers(me.circleId)) {
+      if (m.id !== me.id && m.kind !== 'agent' && hub.isOnline(m.id) && store.setDelivered(m.id, seq)) reached[m.id] = seq;
+    }
+    if (Object.keys(reached).length) hub.broadcast(me.circleId, { type: 'delivered', delivered: reached });
     // Clients mark reactions "silent": stored and relayed live, but no push.
     if (body.silent !== true) {
       const recipients = to ? [to] : store.activeMembers(me.circleId).filter((m) => m.id !== me.id);

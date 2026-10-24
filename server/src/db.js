@@ -153,6 +153,8 @@ function migrateToMultiCircle(db) {
   // A circle's agent (0.11): a member that never gets the circle key.
   add('members', 'kind', "TEXT NOT NULL DEFAULT 'person'");
   add('invites', 'kind', "TEXT NOT NULL DEFAULT 'person'");
+  // Delivered ticks (0.11): every message up to this seq has reached the member's phone.
+  add('members', 'delivered_seq', 'INTEGER NOT NULL DEFAULT 0');
 
   const meta = (k) => db.prepare('SELECT v FROM meta WHERE k = ?').get(k)?.v ?? null;
   const circleId = meta('circle_id');
@@ -183,6 +185,7 @@ function memberRow(r) {
     serverAdmin: r.server_admin === 1,
     role: r.role,
     kind: r.kind || 'person',
+    deliveredSeq: r.delivered_seq ?? 0,
     boxPub: r.box_pub,
     signPub: r.sign_pub,
     profile: parse(r.profile),
@@ -332,6 +335,10 @@ export class Store {
   }
   activeMembers(circleId) {
     return this.members(circleId).filter((m) => !m.removed);
+  }
+  /** Messages up to `seq` reached this member's phone. Returns true if that's further than before. */
+  setDelivered(id, seq) {
+    return this.q('UPDATE members SET delivered_seq = ? WHERE id = ? AND delivered_seq < ?').run(seq, id, seq).changes > 0;
   }
   touchMember(id, now) {
     this.q('UPDATE members SET last_seen_at = ? WHERE id = ?').run(now, id);
