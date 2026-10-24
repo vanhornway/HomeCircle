@@ -98,6 +98,28 @@ export function ChirpSettings({ clients, settings, onChange }: { clients: Circle
           At school from 8 AM to 3 PM, chirps only flash, so they don’t go off in class. A school is a place with “school” in its name, or a school among your most visited places.
         </Text>
       </Card>
+
+      <SectionTitle>SOS</SectionTitle>
+      <Card style={{ gap: 12 }}>
+        <Text style={{ color: t.text, fontSize: 15, lineHeight: 21 }}>
+          Hold the red SOS button on the map for 2 seconds. After a 5-second countdown, everyone in your circles is alerted and your exact location is shared every minute until you say you’re safe.
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Ring through Do Not Disturb</Text>
+            <Text style={{ color: t.muted, fontSize: 13, marginTop: 2 }}>
+              {settings?.sosThroughDnd
+                ? 'An SOS from your circle plays at alarm volume, even with Do Not Disturb on.'
+                : 'Off: Do Not Disturb silences SOS alerts like other notifications.'}
+            </Text>
+          </View>
+          <Switch
+            value={settings?.sosThroughDnd ?? false}
+            onValueChange={(v) => updateSettings({ sosThroughDnd: v }).then(onChange)}
+            trackColor={{ true: t.danger }}
+          />
+        </View>
+      </Card>
     </>
   );
 }

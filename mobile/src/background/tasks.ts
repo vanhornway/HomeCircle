@@ -11,6 +11,7 @@ import { loadedClients } from '../lib/circle';
 import { ensureNotificationChannels, notifyNewMessages } from '../lib/notify';
 import { collectAndPlay } from '../lib/chirp';
 import { checkForUpdateInBackground } from '../lib/updates';
+import { SOS_TASK, onSosFix } from '../lib/sos';
 
 const log = (...a: unknown[]) => {
   if (__DEV__) console.log('[homecircle:bg]', ...a);
@@ -27,6 +28,16 @@ TaskManager.defineTask<{ locations: Location.LocationObject[] }>(LOCATION_TASK, 
   } catch (e) {
     log('location upload failed', e);
     diag('error', { where: 'movement', msg: String((e as Error)?.message ?? e).slice(0, 100) });
+  }
+});
+
+// During an SOS: a high-accuracy fix every minute, sent to every circle.
+TaskManager.defineTask<{ locations: Location.LocationObject[] }>(SOS_TASK, async ({ data, error }) => {
+  if (error || !data?.locations?.length) return;
+  try {
+    await onSosFix(data.locations[data.locations.length - 1]);
+  } catch (e) {
+    log('sos fix failed', e);
   }
 });
 

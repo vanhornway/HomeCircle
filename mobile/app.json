@@ -70,7 +70,17 @@
             "./assets/sounds/chirp_canary.wav",
             "./assets/sounds/chirp_sparrow.wav",
             "./assets/sounds/chirp_lark.wav",
-            "./assets/sounds/chirp_dove.wav"
+            "./assets/sounds/chirp_dove.wav",
+            "./assets/sounds/sos_robin.wav",
+            "./assets/sounds/sos_wren.wav",
+            "./assets/sounds/sos_finch.wav",
+            "./assets/sounds/sos_chickadee.wav",
+            "./assets/sounds/sos_cardinal.wav",
+            "./assets/sounds/sos_bluebird.wav",
+            "./assets/sounds/sos_canary.wav",
+            "./assets/sounds/sos_sparrow.wav",
+            "./assets/sounds/sos_lark.wav",
+            "./assets/sounds/sos_dove.wav"
           ]
         }
       ],

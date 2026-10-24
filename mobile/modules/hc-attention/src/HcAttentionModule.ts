@@ -6,6 +6,8 @@ type Native = {
   isDoNotDisturbOn(): boolean;
   blink(times: number, onMs: number, offMs: number): Promise<boolean>;
   preview(name: string): boolean;
+  playAlarm(name: string, times: number): boolean;
+  stopAlarm(): void;
 };
 
 const native = requireOptionalNativeModule<Native>('HcAttention');
@@ -25,6 +27,27 @@ export async function blinkLight(times = 3, onMs = 180, offMs = 160): Promise<bo
     return (await native?.blink(times, onMs, offMs)) ?? false;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Play a bundled sound at alarm volume, `times` times in a row (for an SOS
+ * the person opted to hear through Do Not Disturb). False if it couldn't.
+ */
+export function playAlarm(name: string, times = 1): boolean {
+  try {
+    return native?.playAlarm(name, times) ?? false;
+  } catch {
+    return false;
+  }
+}
+
+/** Stop a sound started with playAlarm. */
+export function stopAlarmSound() {
+  try {
+    native?.stopAlarm();
+  } catch {
+    // nothing playing
   }
 }
 

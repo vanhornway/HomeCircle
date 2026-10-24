@@ -19,6 +19,7 @@ class HcAttentionModule : Module() {
     get() = appContext.reactContext ?: throw IllegalStateException("No Android context")
 
   private var player: MediaPlayer? = null
+  private var alarm: MediaPlayer? = null
 
   override fun definition() = ModuleDefinition {
     Name("HcAttention")
@@ -52,6 +53,45 @@ class HcAttentionModule : Module() {
         }
         false
       }
+    }
+
+    // Play a bundled sound on the alarm stream, `times` times in a row: for an
+    // SOS the person chose to hear even with Do Not Disturb on (alarms get
+    // through unless they blocked those too).
+    Function("playAlarm") { name: String, times: Int ->
+      val res = context.resources.getIdentifier(name, "raw", context.packageName)
+      if (res == 0) return@Function false
+      alarm?.release()
+      val attrs = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_ALARM)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+        .build()
+      var left = times.coerceIn(1, 5)
+      alarm = MediaPlayer.create(context, res, attrs, 0)?.apply {
+        setOnCompletionListener {
+          left -= 1
+          if (left > 0) {
+            it.seekTo(0)
+            it.start()
+          } else {
+            it.release()
+            if (alarm === it) alarm = null
+          }
+        }
+        start()
+      }
+      alarm != null
+    }
+
+    Function("stopAlarm") {
+      alarm?.let {
+        try {
+          it.stop()
+        } catch (_: Exception) {
+        }
+        it.release()
+      }
+      alarm = null
     }
 
     // Play a bundled sound (e.g. "chirp_robin") once, for previews.

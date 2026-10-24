@@ -183,7 +183,11 @@ function useCircleLifecycle(circlesKey: string) {
         shareNow('requested').catch(() => {});
       }),
       client.on('places', () => syncGeofences().catch(() => {})),
-      client.on('newMessage', (m) => notifyNewMessages(client, [m]).catch(() => {})),
+      client.on('newMessage', (m) => {
+        notifyNewMessages(client, [m]).catch(() => {});
+        // Someone's SOS while the app is open: show it right away.
+        if (m.kind === 'chat' && !m.peer && m.body?.sos?.state === 'start') router.push({ pathname: '/sos', params: { circle: client.circleId!, member: m.from } });
+      }),
       client.on('chirp', () => {
         client
           .collectChirps()
@@ -240,6 +244,10 @@ function useOpenChatFromNotification() {
     const data = response?.notification.request.content.data as { t?: string; circle?: string; peer?: string } | undefined;
     if (data?.t === 'update') {
       downloadUpdate().catch(() => {});
+      return;
+    }
+    if (data?.t === 'sos') {
+      nav.push({ pathname: '/sos', params: { circle: data.circle ?? '', member: (data as { member?: string }).member ?? '' } });
       return;
     }
     if (data?.t !== 'chat') return;

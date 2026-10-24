@@ -79,6 +79,8 @@ export interface Settings {
   chirpSound: boolean;
   /** Blink the camera light for chirps that ask for it (never during Do Not Disturb). */
   chirpFlash: boolean;
+  /** An SOS from your circle plays at alarm volume, even with Do Not Disturb on. Off until you opt in. */
+  sosThroughDnd: boolean;
   /** Map tiles, from the server's /info. */
   tileUrl: string;
   tileAttribution: string;
@@ -102,6 +104,7 @@ export const DEFAULT_SETTINGS: Settings = {
   myChirp: null,
   chirpSound: true,
   chirpFlash: true,
+  sosThroughDnd: false,
   tileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   tileAttribution: '&copy; OpenStreetMap contributors',
 };

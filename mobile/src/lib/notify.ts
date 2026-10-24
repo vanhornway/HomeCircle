@@ -11,6 +11,7 @@ import { getSettings } from './storage';
 import { allClients } from './circle';
 import { conversationKey } from './unread';
 import { previewText } from './polls';
+import { alertSos, ensureSosChannels, stopAlarm } from './sosAlarm';
 
 const LAST_NOTIFIED_KEY = 'homecircle.lastNotifiedSeq';
 export const MESSAGES_CHANNEL = 'messages';
@@ -35,6 +36,7 @@ export async function ensureNotificationChannels() {
     lockscreenVisibility: AndroidNotificationVisibility.PRIVATE,
   });
   await ensureChirpChannels();
+  await ensureSosChannels();
 }
 
 // Message sequence numbers are per server, so each circle keeps its own mark.
@@ -92,6 +94,12 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
     return;
   }
   const id = client.circleId!;
+  // An SOS rings even if you're reading that chat; "safe now" stops it.
+  const sosOf = (m: Message) => (m.seq > last && m.from !== me && m.kind === 'chat' && !m.peer ? m.body?.sos?.state : null);
+  for (const m of messages) {
+    if (sosOf(m) === 'start') await alertSos(client, m).catch(() => {});
+    if (sosOf(m) === 'safe') stopAlarm();
+  }
   const reading = AppState.currentState === 'active' ? visibleConversation : null;
   const { showPreviews, showPlaceAlerts, notifyAllPlaceAlerts, alertRules } = await getSettings();
   // Your "notify me when…" rules fire even when other place alerts are off.
@@ -103,6 +111,7 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
     (m) =>
       m.seq > last &&
       m.from !== me &&
+      sosOf(m) !== 'start' &&
       (m.kind === 'chat' || ruleHit(m) || (m.kind === 'event' && showPlaceAlerts && notifyAllPlaceAlerts)) &&
       conversationKey(id, m.peer) !== reading,
   );

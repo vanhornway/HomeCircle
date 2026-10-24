@@ -33,6 +33,7 @@ export default function RootLayout() {
         <Stack.Screen name="conversation" options={{ headerShown: false }} />
         <Stack.Screen name="setup-check" options={{ headerShown: true, title: 'Setup check' }} />
         <Stack.Screen name="diagnostics" options={{ headerShown: true, title: 'Diagnostics' }} />
+        <Stack.Screen name="sos" options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }} />
         <Stack.Screen name="circle-health" options={{ headerShown: true, title: 'Circle health' }} />
       </Stack>
     </SafeAreaProvider>

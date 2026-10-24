@@ -9,6 +9,8 @@ import { Avatar, Button, IconButton, Tag } from '../../components/ui';
 import { ServerBanner } from '../../components/ServerBanner';
 import { CircleSwitcher } from '../../components/CircleSwitcher';
 import { UpdateBanner } from '../../components/UpdateBanner';
+import { SosBanner } from '../../components/SosBanner';
+import { SosButton } from '../../components/SosButton';
 import { RejoinBanner } from '../../components/RejoinBanner';
 import { PersonSheet } from '../../components/PersonSheet';
 import { useServerState } from '../../lib/connection';
@@ -98,6 +100,7 @@ export default function MapTab() {
             setSheet(id);
           }}
         />
+        <SosButton style={{ position: 'absolute', right: 16, bottom: 34 }} />
         <SafeAreaView edges={['top']} style={{ position: 'absolute', left: 12, right: 12, top: 0 }} pointerEvents="box-none">
           <View
             style={{
@@ -115,6 +118,7 @@ export default function MapTab() {
           >
             <CircleSwitcher />
           </View>
+          <SosBanner style={{ marginTop: 10 }} />
           <ServerBanner style={{ marginTop: 10 }} />
           <RejoinBanner style={{ marginTop: 10 }} />
           <UpdateBanner style={{ marginTop: 10 }} />

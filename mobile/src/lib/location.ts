@@ -60,10 +60,11 @@ const lowBatteryStep = ({ battery, charging }: { battery: number | null; chargin
 export async function upload(
   loc: Location.LocationObject,
   trigger: string,
-  { force = false, placeIds = {} }: { force?: boolean; placeIds?: Record<string, string> } = {},
+  { force = false, placeIds = {}, everyone = false }: { force?: boolean; placeIds?: Record<string, string>; everyone?: boolean } = {},
 ): Promise<boolean> {
   const settings = await getSettings();
-  const targets = await sharingClients();
+  // During an SOS: every circle on this phone, exact, paused or not.
+  const targets = everyone ? await loadedClients() : await sharingClients();
   if (!targets.length) return false;
   const here = { lat: loc.coords.latitude, lng: loc.coords.longitude };
   const last = await getLastUpload();
@@ -79,7 +80,7 @@ export async function upload(
     Date.now() - last.ts >= intervalMs - 30_000 ||
     distanceM(last, here) > MOVE_THRESHOLD_M;
   if (!due) return false;
-  const approxCircles = new Set(settings.approximateCircles);
+  const approxCircles = new Set(everyone ? [] : settings.approximateCircles);
   // Battery saver, permission level and precise on/off travel with every
   // update, so the circle sees why updates may be slow.
   const health = await phoneHealth();
