@@ -39,6 +39,25 @@ const randomColor = () => MEMBER_COLORS[Math.floor(Math.random() * MEMBER_COLORS
 export const CHIRP_SOUNDS = ['robin', 'wren', 'finch', 'chickadee', 'cardinal', 'bluebird', 'canary', 'sparrow', 'lark', 'dove'];
 const MAX_FREQUENT = 8;
 
+const AGENT_NAME = /^[\p{L}\p{N}][\p{L}\p{N} _-]{0,23}$/u;
+/** An agent's name: what people call it (/Name), so letters, digits, space, _ and - only. */
+function cleanAgentName(name) {
+  const n = String(name || '').trim().replace(/\s+/g, ' ');
+  return AGENT_NAME.test(n) ? n : '';
+}
+
+/** The agent card in the circle record: { name, id?, signPub?, boxPub? } or null. */
+function cleanAgentCard(c) {
+  if (!c || typeof c !== 'object') return null;
+  const name = cleanAgentName(c.name);
+  if (!name) return null;
+  const b64 = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{43}$/.test(v);
+  if (typeof c.id === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(c.id) && b64(c.signPub) && b64(c.boxPub)) {
+    return { name, id: c.id, signPub: c.signPub, boxPub: c.boxPub };
+  }
+  return { name };
+}
+
 // What _open returns for an envelope signed under another id (a replay).
 const REPLAYED = Symbol('replayed');
 
@@ -480,9 +499,10 @@ export class CircleClient {
     }
     this._decodeMembers(st);
     this._decodeCircle(st);
+    if (this.isAdmin) await this._cardAgent(st).catch(this.onError);
 
     const mine = st.members.find((m) => m.id === this.account.memberId);
-    if (mine && mine.profile.epoch < st.epoch && this.account.keyring[st.epoch]) {
+    if (mine && mine.profile?.epoch < st.epoch && this.account.keyring[st.epoch]) {
       await this.api.putProfile(this._seal('profile', this._profileBody()));
     }
     await this._save();
@@ -543,6 +563,7 @@ export class CircleClient {
       const view = {
         id: m.id,
         role: m.role,
+        kind: m.kind === 'agent' ? 'agent' : 'person',
         removed: !!m.removed,
         joinedAt: m.joinedAt,
         lastSeenAt: m.lastSeenAt,
@@ -562,7 +583,15 @@ export class CircleClient {
         this.members.set(m.id, view);
         continue;
       }
-      const key = this.account.keyring[m.profile.epoch];
+      // The circle's agent: no profile (it can't seal one). Named and
+      // verified from the circle's own record (_decodeCircle).
+      if (view.kind === 'agent') {
+        view.name = pinned?.name || 'Agent';
+        view.verified = !!pinned;
+        this.members.set(m.id, view);
+        continue;
+      }
+      const key = this.account.keyring[m.profile?.epoch];
       if (key) {
         try {
           const p = openProfile(m.profile, {
@@ -597,16 +626,26 @@ export class CircleClient {
     if (!signPub || !key) return;
     try {
       const msg = open(env, { key, signPub, kind: 'circle', from: st.circle.by, circle: this.account.circleId });
-      this.circle = { name: cleanName(msg.body.name) || 'Our Circle' };
+      this.circle = { name: cleanName(msg.body.name) || 'Our Circle', agent: cleanAgentCard(msg.body.agent) };
       this.account.circleName = this.circle.name;
+      // The agent's keys, as the admin who added it saw them: trusted only if
+      // the server lists the same ones for an agent.
+      const card = this.circle.agent;
+      const listed = card?.id && st.members.find((m) => m.id === card.id && m.kind === 'agent' && !m.removed);
+      if (listed && listed.signPub === card.signPub && listed.boxPub === card.boxPub) {
+        this.account.known[card.id] = { signPub: card.signPub, boxPub: card.boxPub, name: card.name };
+        const view = this.members.get(card.id);
+        if (view) Object.assign(view, { name: card.name, verified: true });
+      }
     } catch (e) {
       this.onError(e);
     }
   }
 
+  /** The people in the circle (not its agent). */
   memberList() {
     return [...this.members.values()]
-      .filter((m) => !m.removed)
+      .filter((m) => !m.removed && m.kind !== 'agent')
       .sort((a, b) => (a.isMe ? -1 : b.isMe ? 1 : a.name.localeCompare(b.name)));
   }
 
@@ -755,12 +794,18 @@ export class CircleClient {
       return { kind: 'reaction', id: m.id, from: m.from, to, peer, seq: m.seq, body: msg.body };
     }
     if (msg?.kind === 'chat' && msg.body?.pollSpin) this._applyPollSpin(m.from, m.seq, msg.ts, msg.body.pollSpin);
+    // What you sent the agent alongside a question or Remember in the group:
+    // only for the agent, not a conversation of its own.
+    if (msg?.kind === 'chat' && msg.body?.agentCopy) return { kind: 'agentCopy', id: m.id, from: m.from, to, peer, seq: m.seq, body: msg.body };
+    const agentId = this.circle?.agent?.id;
     const entry = {
       seq: m.seq,
       id: m.id,
       from: m.from,
       to,
-      peer,
+      // The agent answers a group question to each person separately; it
+      // belongs in the group chat.
+      peer: agentId && m.from === agentId && msg?.body?.thread === 'group' ? null : peer,
       createdAt: m.createdAt,
       kind: msg?.kind || 'unreadable',
       ts: msg?.ts || m.createdAt,
@@ -975,6 +1020,119 @@ export class CircleClient {
   /** Messages in one conversation: the group (peer null) or a direct chat with `peer`. */
   conversation(peer = null) {
     return this.messages.filter((m) => (m.peer ?? null) === peer);
+  }
+
+  // --- the circle's agent -------------------------------------------------
+  // An admin invites it (the invite carries no circle key) and names it; once
+  // it joins, an admin's phone puts its id and keys in the circle's sealed
+  // record, which is how everyone's phone knows and trusts it. People talk to
+  // it with messages sealed only for it; it answers each person the same way.
+
+  _circleBody(patch = {}) {
+    const body = { name: this.circle.name, ...patch };
+    if (this.circle.agent && !('agent' in patch)) body.agent = this.circle.agent;
+    if (!body.agent) delete body.agent;
+    return body;
+  }
+
+  /** The circle's agent once it has joined: { id, name }, or null. */
+  get agent() {
+    const card = this.circle?.agent;
+    const m = card?.id ? this.members.get(card.id) : null;
+    return m && !m.removed && m.kind === 'agent' && m.verified ? { id: card.id, name: card.name } : null;
+  }
+
+  /** The agent's name while it's invited but hasn't joined yet, or null. */
+  get agentInvited() {
+    const card = this.circle?.agent;
+    return card && !this.agent ? { name: card.name } : null;
+  }
+
+  /** Admins: invite an agent with this name. The link goes to the agent, never to a person. */
+  async createAgentInvite({ name, hours = 168 } = {}) {
+    if (!this.isAdmin) throw new Error('Only circle admins can add an agent');
+    const agentName = cleanAgentName(name);
+    if (!agentName) throw new Error('Give the agent a name');
+    const secret = newInviteSecret();
+    const { inviteAuth } = deriveInvite(secret);
+    const id = randomId(9);
+    const a = this.account;
+    const res = await this.api.createInvite({ id, authHash: inviteAuthHash(inviteAuth), epoch: a.epoch, hours, agent: true });
+    await this.api.putCircle(this._seal('circle', this._circleBody({ agent: { name: agentName } })));
+    await this.refresh();
+    return { id, expiresAt: res.expiresAt, link: inviteLink(a.server, id, secret) };
+  }
+
+  /** Once the invited agent has joined, record its id and keys (any admin's phone does this). */
+  async _cardAgent(st) {
+    const card = this.circle?.agent;
+    if (!card || card.id) return;
+    const joined = st.members.find((m) => m.kind === 'agent' && !m.removed);
+    if (!joined) return;
+    const agent = { name: card.name, id: joined.id, signPub: joined.signPub, boxPub: joined.boxPub };
+    await this.api.putCircle(this._seal('circle', this._circleBody({ agent })));
+    this.circle.agent = agent;
+    this.account.known[agent.id] = { signPub: agent.signPub, boxPub: agent.boxPub, name: agent.name };
+    const view = this.members.get(agent.id);
+    if (view) Object.assign(view, { name: agent.name, verified: true });
+  }
+
+  /** Admins: rename the agent (also what people call it: /Name). */
+  async setAgentName(name) {
+    const card = this.circle?.agent;
+    if (!card) throw new Error('This circle has no agent');
+    const agentName = cleanAgentName(name);
+    if (!agentName) throw new Error('Give the agent a name');
+    await this.api.putCircle(this._seal('circle', this._circleBody({ agent: { ...card, name: agentName } })));
+    await this.refresh();
+  }
+
+  /** Admins: remove the agent (and forget its card). */
+  async removeAgent() {
+    const id = this.circle?.agent?.id;
+    if (id && this.members.get(id) && !this.members.get(id).removed) await this.api.removeMember(id);
+    await this.api.putCircle(this._seal('circle', this._circleBody({ agent: null })));
+    await this.refresh();
+  }
+
+  _agentContext() {
+    return { asker: this.me?.name || 'Someone', people: this.memberList().map((m) => ({ id: m.id, name: m.name })) };
+  }
+
+  /**
+   * Ask the agent. In the group (`peer` null) everyone sees the question as
+   * "/Name …" and the answer; only the agent gets the question sealed for it.
+   * In a direct chat with the agent (`peer` = its id), only you do.
+   */
+  async askAgent(text, { peer = null } = {}) {
+    const agent = this.agent;
+    if (!agent) throw new Error('This circle has no agent');
+    const q = String(text || '').trim().slice(0, 2000);
+    if (!q) return null;
+    if (peer && peer !== agent.id) throw new Error('Ask the agent in the group or in a chat with it');
+    if (peer) {
+      const id = randomId(12);
+      await this._post('chat', { text: q, ask: q, thread: 'dm', ...this._agentContext() }, { to: agent.id, id });
+      return id;
+    }
+    const id = randomId(12);
+    await this._post('chat', { text: `/${agent.name} ${q}`, agentAsk: true }, { id });
+    await this._post('chat', { ask: q, thread: 'group', replyTo: id, agentCopy: true, ...this._agentContext() }, { to: agent.id, silent: true });
+    return id;
+  }
+
+  /**
+   * Remember with the agent: sends it just this one message. From the group
+   * it goes to circle memory; from a direct chat, to your private notes.
+   */
+  async rememberWithAgent(messageId) {
+    const agent = this.agent;
+    if (!agent) throw new Error('This circle has no agent');
+    const m = this.messages.find((x) => x.id === messageId);
+    const text = m && typeof m.body?.text === 'string' ? m.body.text : '';
+    if (!text) throw new Error('Only messages with text can be remembered');
+    const remember = { text: text.slice(0, 4000), by: this.members.get(m.from)?.name || 'Someone', at: m.ts, scope: m.peer ? 'private' : 'circle' };
+    await this._post('chat', { remember, thread: m.peer ? 'dm' : 'group', agentCopy: true, ...this._agentContext() }, { to: agent.id, silent: true });
   }
 
   // --- SOS ---------------------------------------------------------------
@@ -1243,7 +1401,7 @@ export class CircleClient {
   }
 
   async setCircleName(name) {
-    await this.api.putCircle(this._seal('circle', { name: cleanName(name) }));
+    await this.api.putCircle(this._seal('circle', this._circleBody({ name: cleanName(name) })));
     await this.refresh();
   }
 
@@ -1287,7 +1445,7 @@ export class CircleClient {
     await this._save();
     // Re-seal shared data so people who join later can read it.
     await this.api.putProfile(this._seal('profile', this._profileBody()));
-    await this.api.putCircle(this._seal('circle', { name: this.circle.name }));
+    await this.api.putCircle(this._seal('circle', this._circleBody()));
     for (const p of this.places.size ? this.places.values() : (await this.fetchPlaces()).values()) {
       const { updatedBy, ...body } = p;
       await this.api.putPlace(p.id, this._seal('place', body));

@@ -56,7 +56,7 @@ export class Router {
   constructor() {
     this.routes = [];
   }
-  add(method, pattern, handler, { auth = true, cors = false } = {}) {
+  add(method, pattern, handler, { auth = true, cors = false, agent = false } = {}) {
     const keys = [];
     const re = new RegExp(
       `^${pattern.replace(/:([a-z]+)/gi, (_, k) => {
@@ -64,7 +64,7 @@ export class Router {
         return '([^/]+)';
       })}$`,
     );
-    this.routes.push({ method, re, keys, handler, auth, cors });
+    this.routes.push({ method, re, keys, handler, auth, cors, agent });
   }
   match(method, path) {
     let pathMatched = false;

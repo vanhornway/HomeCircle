@@ -33,6 +33,9 @@ const CHIRP_COOLDOWN_MS = 30 * 60_000;
 export const RETENTION_CHOICES = [1, 7, 30, 90, 365];
 const DEFAULT_RETENTION_DAYS = 90;
 
+// What apps before 0.11 get for an agent's profile: shaped like one, opened by no key.
+const NO_PROFILE = { epoch: 0, nonce: 'A'.repeat(32), ct: 'AA' };
+
 const isAdmin = (m) => m.role === 'owner' || m.role === 'admin';
 const requireAdmin = (m) => isAdmin(m) || fail(403, 'forbidden', 'Only circle admins can do that');
 
@@ -83,6 +86,10 @@ export function buildRoutes({ config, store, hub, push, log }) {
       signPub: vBytes(m.signPub, 'member.signPub', 32),
       profile: vEnvelope(m.profile, 'member.profile', 4096),
     };
+  };
+  const vAgentMember = (m) => {
+    if (!m || typeof m !== 'object') fail(400, 'invalid', 'member is required');
+    return { id: vId(m.id, 'member.id'), boxPub: vBytes(m.boxPub, 'member.boxPub', 32), signPub: vBytes(m.signPub, 'member.signPub', 32), profile: null };
   };
   const checkInvite = (body, now) => {
     const inviteId = vId(body.inviteId, 'inviteId');
@@ -305,7 +312,7 @@ export function buildRoutes({ config, store, hub, push, log }) {
     ({ body, ctx }) => {
       limitPublic(ctx);
       const inv = checkInvite(body, Date.now());
-      return { wrapped: inv.wrapped, epoch: inv.epoch };
+      return { wrapped: inv.wrapped, epoch: inv.epoch, kind: inv.kind || 'person' };
     },
     { auth: false },
   );
@@ -318,17 +325,21 @@ export function buildRoutes({ config, store, hub, push, log }) {
       const now = Date.now();
       const inv = checkInvite(body, now);
       const circleId = inv.circle_id;
-      const member = vMember(body.member);
-      currentEpoch(circleId, member.profile.epoch);
+      const agent = inv.kind === 'agent';
+      // An agent has no profile: it can't seal one without the circle key.
+      // Its name and keys go in the circle's own (sealed) record instead.
+      const member = agent ? vAgentMember(body.member) : vMember(body.member);
+      if (!agent) currentEpoch(circleId, member.profile.epoch);
+      if (agent && store.activeMembers(circleId).some((m) => m.kind === 'agent')) fail(409, 'agent_exists', 'This circle already has an agent');
       if (store.memberExists(member.id)) fail(409, 'conflict', 'Member id already exists');
       if (store.activeMembers(circleId).length >= MAX_MEMBERS) fail(409, 'circle_full', 'This circle is full');
       const { token, tokenHash } = newToken();
       store.tx(() => {
         if (!store.useInvite(inv.id, member.id, now)) fail(404, 'invalid_invite', 'This invite was just used');
-        store.insertMember({ ...member, circleId, role: 'member', tokenHash, now });
+        store.insertMember({ ...member, circleId, role: 'member', kind: agent ? 'agent' : 'person', tokenHash, now });
       });
       hub.broadcast(circleId, { type: 'members_changed' });
-      log('member joined');
+      log(agent ? 'agent joined' : 'member joined');
       return { memberId: member.id, token };
     },
     { auth: false },
@@ -350,16 +361,17 @@ export function buildRoutes({ config, store, hub, push, log }) {
       members: store.members(me.circleId).map((m) => ({
         id: m.id,
         role: m.role,
+        kind: m.kind,
         boxPub: m.boxPub,
         signPub: m.signPub,
-        profile: m.profile,
+        profile: m.profile ?? NO_PROFILE,
         joinedAt: m.joinedAt,
         lastSeenAt: m.removed ? null : m.lastSeenAt,
         removed: m.removed,
         online: hub.isOnline(m.id),
       })),
     };
-  });
+  }, { agent: true });
 
   r.add('PUT', '/circle', ({ me, body }) => {
     requireAdmin(me);
@@ -422,16 +434,20 @@ export function buildRoutes({ config, store, hub, push, log }) {
       if (target.role === 'admin' && me.role !== 'owner') fail(403, 'forbidden', 'Only the owner can remove admins');
     }
     const now = Date.now();
+    // An agent never had the circle key, so removing it needs no new key.
+    const agent = target.kind === 'agent';
     store.tx(() => {
       store.removeMember(target.id, now);
-      store.setRotationNeeded(me.circleId);
-      store.revokeAllInvites(me.circleId, now);
+      if (!agent) {
+        store.setRotationNeeded(me.circleId);
+        store.revokeAllInvites(me.circleId, now);
+      }
     });
     hub.send(target.id, { type: 'removed', memberId: target.id });
     hub.disconnect(target.id);
     hub.broadcast(me.circleId, { type: 'removed', memberId: target.id });
-    log('member removed; key rotation pending');
-    return { ok: true, rotationNeeded: true };
+    log(agent ? 'agent removed' : 'member removed; key rotation pending');
+    return { ok: true, rotationNeeded: !agent };
   });
 
   r.add('POST', '/members/:id/role', ({ me, params, body }) => {
@@ -454,13 +470,16 @@ export function buildRoutes({ config, store, hub, push, log }) {
     const id = vId(body.id, 'id');
     currentEpoch(me.circleId, vEpoch(body.epoch));
     const authHash = vBytes(body.authHash, 'authHash', 32);
-    const wrapped = vBox(body.wrapped, 'wrapped', 2048);
+    // An agent's invite carries no circle key: the agent never reads the chat.
+    const agent = body.agent === true;
+    if (agent && store.activeMembers(me.circleId).some((m) => m.kind === 'agent')) fail(409, 'agent_exists', 'This circle already has an agent');
+    const wrapped = agent ? null : vBox(body.wrapped, 'wrapped', 2048);
     const now = Date.now();
     if (store.countOpenInvites(me.circleId, now) >= MAX_OPEN_INVITES) fail(409, 'too_many_invites', 'Too many open invites');
     if (store.inviteExists(id)) fail(409, 'conflict', 'Invite id already exists');
     const hours = Math.min(config.inviteMaxHours, Math.max(1, Number.isInteger(body.hours) ? body.hours : 48));
     const expiresAt = now + hours * 3600_000;
-    store.insertInvite({ id, circleId: me.circleId, authHash, wrapped, epoch: circle.epoch, createdBy: me.id, now, expiresAt });
+    store.insertInvite({ id, circleId: me.circleId, authHash, wrapped, epoch: circle.epoch, createdBy: me.id, now, expiresAt, kind: agent ? 'agent' : 'person' });
     return { id, expiresAt };
   });
 
@@ -532,8 +551,10 @@ export function buildRoutes({ config, store, hub, push, log }) {
     const current = store.circle(me.circleId).epoch;
     if (epoch !== current + 1) fail(409, 'stale_epoch', 'Someone else already rotated the key', { epoch: current });
     if (!body.envelopes || typeof body.envelopes !== 'object') fail(400, 'invalid', 'envelopes required');
-    const active = store.activeMembers(me.circleId).map((m) => m.id).sort();
-    const given = Object.keys(body.envelopes).sort();
+    const members = store.activeMembers(me.circleId);
+    const agents = new Set(members.filter((m) => m.kind === 'agent').map((m) => m.id));
+    const active = members.filter((m) => !agents.has(m.id)).map((m) => m.id).sort();
+    const given = Object.keys(body.envelopes).filter((id) => !agents.has(id)).sort();
     if (active.length !== given.length || active.some((id, i) => id !== given[i])) {
       fail(400, 'envelopes_mismatch', 'Need exactly one key envelope per active member');
     }
@@ -683,8 +704,9 @@ export function buildRoutes({ config, store, hub, push, log }) {
   r.add('GET', '/messages', ({ me, query }) => {
     const after = Math.max(0, Number.parseInt(query.get('after') || '0', 10) || 0);
     const limit = Math.min(500, Math.max(1, Number.parseInt(query.get('limit') || '200', 10) || 200));
-    return { messages: store.messagesAfter(me.circleId, me.id, after, limit) };
-  });
+    const rows = me.kind === 'agent' ? store.directMessagesAfter(me.circleId, me.id, after, limit) : store.messagesAfter(me.circleId, me.id, after, limit);
+    return { messages: rows };
+  }, { agent: true });
 
   r.add('POST', '/messages', ({ me, body }) => {
     const id = vId(body.id, 'id');
@@ -696,6 +718,7 @@ export function buildRoutes({ config, store, hub, push, log }) {
       to = store.member(me.circleId, vId(body.to, 'to'));
       if (!to || to.removed || to.id === me.id) fail(404, 'not_found', 'No such member in this circle');
     }
+    if (me.kind === 'agent' && !to) fail(403, 'forbidden', 'An agent only sends direct messages');
     if (store.messageExists(id)) fail(409, 'conflict', 'Duplicate message id');
     const now = Date.now();
     // Storage limits, so one device (or a stolen one) can't fill the disk.
@@ -715,7 +738,7 @@ export function buildRoutes({ config, store, hub, push, log }) {
       push.activity(recipients.filter((m) => m.pushToken && !hub.isOnline(m.id)));
     }
     return { seq, createdAt: now };
-  });
+  }, { agent: true });
 
   // --- places ------------------------------------------------------------
 

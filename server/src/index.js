@@ -70,6 +70,8 @@ export function createApp(config) {
           const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
           me = token ? store.memberByToken(sha256(token)) : null;
           if (!me) throw new HttpError(401, 'unauthorized', 'Your device is not signed in to this circle');
+          // A circle's agent reads its state and messages and sends direct messages; nothing else.
+          if (me.kind === 'agent' && !route.agent) throw new HttpError(403, 'forbidden', 'Not available to an agent');
           const wait = requestLimiter.take(me.id) || (req.method === 'GET' ? 0 : writeLimiter.take(me.id));
           if (wait) throw new HttpError(429, 'rate_limited', 'Too many requests from this device, try again shortly', { retryAfter: wait });
           const now = Date.now();

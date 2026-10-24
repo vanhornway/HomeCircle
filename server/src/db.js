@@ -150,6 +150,9 @@ function migrateToMultiCircle(db) {
   add('places', 'circle_id', 'TEXT');
   add('circles', 'retention_days', 'INTEGER NOT NULL DEFAULT 90');
   add('messages', 'to_id', 'TEXT');
+  // A circle's agent (0.11): a member that never gets the circle key.
+  add('members', 'kind', "TEXT NOT NULL DEFAULT 'person'");
+  add('invites', 'kind', "TEXT NOT NULL DEFAULT 'person'");
 
   const meta = (k) => db.prepare('SELECT v FROM meta WHERE k = ?').get(k)?.v ?? null;
   const circleId = meta('circle_id');
@@ -179,6 +182,7 @@ function memberRow(r) {
     circleId: r.circle_id,
     serverAdmin: r.server_admin === 1,
     role: r.role,
+    kind: r.kind || 'person',
     boxPub: r.box_pub,
     signPub: r.sign_pub,
     profile: parse(r.profile),
@@ -307,11 +311,11 @@ export class Store {
   }
 
   // members
-  insertMember({ id, circleId, role, serverAdmin = false, boxPub, signPub, profile, tokenHash, now }) {
+  insertMember({ id, circleId, role, kind = 'person', serverAdmin = false, boxPub, signPub, profile, tokenHash, now }) {
     this.q(
-      `INSERT INTO members (id, circle_id, server_admin, role, box_pub, sign_pub, profile, token_hash, joined_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, circleId, serverAdmin ? 1 : 0, role, boxPub, signPub, JSON.stringify(profile), tokenHash, now, now);
+      `INSERT INTO members (id, circle_id, server_admin, role, kind, box_pub, sign_pub, profile, token_hash, joined_at, last_seen_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, circleId, serverAdmin ? 1 : 0, role, kind, boxPub, signPub, JSON.stringify(profile ?? null), tokenHash, now, now);
   }
   memberByToken(tokenHash) {
     return memberRow(this.q('SELECT * FROM members WHERE token_hash = ? AND removed_at IS NULL').get(tokenHash));
@@ -357,11 +361,11 @@ export class Store {
   }
 
   // invites
-  insertInvite({ id, circleId, authHash, wrapped, epoch, createdBy, now, expiresAt }) {
+  insertInvite({ id, circleId, authHash, wrapped, epoch, createdBy, now, expiresAt, kind = 'person' }) {
     this.q(
-      `INSERT INTO invites (id, circle_id, auth_hash, wrapped, epoch, created_by, created_at, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, circleId, authHash, JSON.stringify(wrapped), epoch, createdBy, now, expiresAt);
+      `INSERT INTO invites (id, circle_id, auth_hash, wrapped, epoch, created_by, created_at, expires_at, kind)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, circleId, authHash, JSON.stringify(wrapped ?? null), epoch, createdBy, now, expiresAt, kind);
   }
   invite(id) {
     const r = this.q('SELECT * FROM invites WHERE id = ?').get(id);
@@ -487,6 +491,15 @@ export class Store {
     return Number(r.lastInsertRowid);
   }
   /** Group messages plus this member's own direct messages. */
+  /** Only the direct messages to or from a member (an agent sees nothing else, not even group ciphertext). */
+  directMessagesAfter(circleId, memberId, after, limit) {
+    return this.q(
+      `SELECT * FROM messages WHERE circle_id = ? AND seq > ? AND (to_id = ? OR (from_id = ? AND to_id IS NOT NULL))
+       ORDER BY seq LIMIT ?`,
+    )
+      .all(circleId, after, memberId, memberId, limit)
+      .map(messageRow);
+  }
   messagesAfter(circleId, memberId, after, limit) {
     return this.q(
       `SELECT * FROM messages WHERE circle_id = ? AND seq > ? AND (to_id IS NULL OR to_id = ? OR from_id = ?)
