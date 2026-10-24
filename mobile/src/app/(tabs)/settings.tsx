@@ -51,7 +51,7 @@ export default function SettingsTab() {
       </Pressable>
 
       <SettingsGroup title="Circle">
-        <SettingsRow icon="👥" title={circle} detail={`${plural(people, 'person')}${client.isAdmin ? ' · invite, history, members' : ' · people, history, leave'}`} href="/settings/circle" />
+        <SettingsRow icon="👥" title={circle} detail={`${people === 1 ? '1 person' : `${people} people`}${client.isAdmin ? ' · invite, history, members' : ' · people, history, leave'}`} href="/settings/circle" />
         <SettingsRow icon="🏡" title="Your circles" detail={clients.length > 1 ? `${plural(clients.length, 'circle')} · switch, and how much each sees` : 'How much your circle sees, or join another'} href="/settings/circles" />
       </SettingsGroup>
 

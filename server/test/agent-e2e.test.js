@@ -7,6 +7,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/index.js';
+import { LlmError } from '../src/agent/llm.js';
 import { CircleClient } from '../../packages/core/src/index.js';
 
 const SETUP = 'test-setup-token-agent-e2e';
@@ -24,7 +25,10 @@ let now = new Date('2026-11-02T17:00:00Z');
 async function fakeLlm(cfg, { system, messages, schema }) {
   const text = messages.map((m) => m.content).join('\n');
   sentToAi.push(`${system}\n${text}`);
-  if (/Reply with the word OK/.test(system)) return { text: 'OK', json: null, usd: 0.0001, refused: false };
+  if (/Reply with the word OK/.test(system)) {
+    if (cfg.apiKey === 'sk-wrong') throw new LlmError('The AI provider didn’t accept the API key', { status: 401, auth: true });
+    return { text: 'OK', json: null, usd: 0.0001, refused: false };
+  }
   if (schema?.properties?.intent) {
     if (/are our kids/.test(text)) {
       // New names can't be swapped yet (nobody's told the agent about them).
@@ -177,6 +181,9 @@ test('before an AI is set up it says so; admins set provider and budget, sealed 
   const s = await dad.agentRpc('settings');
   assert.deepEqual([s.provider.model, s.provider.keySet, s.budgetUsd, s.name], ['claude-sonnet-5-5', true, 1, 'Jarvis']);
   assert.equal(JSON.stringify(s).includes('sk-test-123'), false);
+  // A key that fails its test leaves the working settings alone.
+  await assert.rejects(() => mom.agentRpc('setSettings', { provider: { provider: 'anthropic', model: 'claude-haiku-5-5', apiKey: 'sk-wrong' } }), /didn’t accept the API key/);
+  assert.equal((await dad.agentRpc('settings')).provider.model, 'claude-sonnet-5-5');
 });
 
 test('telling it who the kids are; Remember keeps one message; Undo takes it back', async () => {
@@ -207,6 +214,17 @@ test('adding a school calendar: whose is it, then it counts for free time', asyn
   assert.match(a.body.text, /^📅 Added Kid and Sam’s school calendar: 3 days off listed; next: Veterans Day - No School \(Nov 11\)/);
   // The address is a secret: never repeated in a chat.
   assert.ok(!dad.messages.some((x) => x.body?.text?.includes('lincoln.ics')) && !a.body.text.includes('127.0.0.1'));
+});
+
+test('changing provider or model keeps everything it remembers', async () => {
+  const notes = await mom.agentRpc('list');
+  assert.ok(notes.length >= 3);
+  await mom.agentRpc('setSettings', { provider: { provider: 'openai', model: 'gpt-test', apiKey: 'sk-openai', inUsd: 1, outUsd: 2 } });
+  assert.equal((await dad.agentRpc('settings')).provider.model, 'gpt-test');
+  assert.deepEqual(await mom.agentRpc('list'), notes);
+  await mom.agentRpc('setSettings', { provider: { provider: 'anthropic', model: 'claude-haiku-5-5', apiKey: 'sk-test-123' } });
+  assert.deepEqual(await mom.agentRpc('list'), notes);
+  // The next test answers from these notes and the calendar with the new model.
 });
 
 test('“when are the kids free for 5 days” is worked out from the calendar, names never reach the AI', async () => {

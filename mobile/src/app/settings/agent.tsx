@@ -253,7 +253,7 @@ function ProviderSettings({ s, admin, onSaved }: { s: AgentSettings; admin: bool
     );
   }
   return (
-    <SettingsGroup title="AI provider" footer="You pay the provider directly with your own key. The key is sealed to the agent; the server never stores it readable.">
+    <SettingsGroup title="AI provider" footer="You pay the provider directly with your own key. The key is sealed to the agent; the server never stores it readable. Switch provider or model any time: everything it remembers stays.">
       <GroupBody>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {Object.entries(s.providers).map(([id, p]) => {

@@ -8,6 +8,12 @@
       "port": 8080
     },
     {
+      "name": "server-agent",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["AGENT=true", "npm", "--prefix", "server", "run", "dev"],
+      "port": 8080
+    },
+    {
       "name": "landing",
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "8090", "--directory", "landing"],

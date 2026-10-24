@@ -581,12 +581,13 @@ export class Brain {
           if (!Number.isFinite(b) || b < 0 || b > 10_000) throw new BrainError('Give a monthly budget in dollars');
           next.budgetUsd = b;
         }
-        this.memory.setSetting('config', next);
-        // A tiny call so a wrong key or model shows up right away.
+        // A tiny call so a wrong key or model shows up right away, before it
+        // replaces settings that work.
         if (args.provider && args.test !== false) {
           const res = await this.llm(next.provider, { system: 'Reply with the word OK.', messages: [{ role: 'user', content: 'Test' }], maxTokens: 50 }, this.llmOptions);
           this.memory.spend(by, res.usd, this.now());
         }
+        this.memory.setSetting('config', next);
         return this._rpcReply(msg, true, { ok: true });
       }
       case 'export':
