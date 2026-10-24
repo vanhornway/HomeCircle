@@ -216,6 +216,37 @@ test('a poll in a direct chat is just between the two', async () => {
   assert.equal(mom.pollState(m.id).options[1].votes, 1);
 });
 
+test('a vote that arrives live during catch-up doesn’t hide the ones before it', async () => {
+  await mom.createPoll({ question: 'Pancakes or waffles?', options: [{ label: 'Pancakes' }, { label: 'Waffles' }] });
+  await sync();
+  const id = lastPoll(kid).id;
+  // Kid's live connection is down (phone locked): Dad votes, then Mom votes.
+  await dad.vote(id, ['o1']);
+  await mom.vote(id, ['o2']);
+  // Kid comes back; Mom's vote arrives live before Kid's catch-up fetch runs.
+  const { messages } = await kid.api.messages(0, 500);
+  await kid._onEvent({ type: 'message', message: messages.at(-1) });
+  await kid.fetchMessages();
+  assert.deepEqual(
+    kid.pollState(id).options.map((o) => o.votes),
+    [1, 1],
+    'Dad’s vote is still fetched',
+  );
+});
+
+test('closing counts votes the closer’s phone hadn’t fetched yet', async () => {
+  await mom.createPoll({ question: 'Beach or park?', options: [{ label: 'Beach' }, { label: 'Park' }] });
+  await sync();
+  const id = lastPoll(dad).id;
+  await dad.vote(id, ['o2']);
+  await kid.vote(id, ['o2']);
+  // Mom's phone never heard about those votes, and closes.
+  await mom.closePoll(id);
+  await sync();
+  assert.match(dad.messages.at(-1).body.text, /^🏁 Poll closed: Park wins$/);
+  for (const c of [mom, dad, kid]) assert.equal(c.pollState(id).voters, 2);
+});
+
 test('no unexpected client errors', () => {
   assert.deepEqual(
     errors.map((e) => e.message),

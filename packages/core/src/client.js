@@ -73,7 +73,12 @@ export class CircleClient {
     this.places = new Map();
     // memberId -> { places: [...], ts } for members who share their most visited places
     this.frequent = new Map();
+    // The newest message seen, live or fetched.
     this.lastSeq = 0;
+    // Where the next fetch starts: moved only by fetches. Messages that arrive
+    // live can't move it, or a catch-up after reconnecting would skip whatever
+    // was sent just before them.
+    this.fetchedSeq = 0;
     this.connection = null;
     this.status = 'offline';
   }
@@ -872,6 +877,8 @@ export class CircleClient {
     const m = this._pollMessage(pollId);
     if (!m) throw new Error('No such poll');
     if (m.from !== this.account.memberId) throw new Error('Only the person who started the poll can close it');
+    // Every vote in before closing, so the result posted is right.
+    await this.fetchMessages();
     await this._post('reaction', { target: pollId, close: true }, { silent: true, to: m.peer });
     const s = this.pollState(pollId);
     const text = s.winners.length === 1 ? `🏁 Poll closed: ${s.winners[0].emoji || ''} ${s.winners[0].label} wins` : s.winners.length ? `🏁 Poll closed: a tie between ${s.winners.map((w) => w.label).join(' and ')}` : '🏁 Poll closed with no votes';
@@ -885,6 +892,7 @@ export class CircleClient {
   async spinWheel(pollId) {
     const m = this._pollMessage(pollId);
     if (!m) throw new Error('No such poll');
+    await this.fetchMessages();
     const s = this.pollState(pollId);
     const pool = s.winners.length ? s.winners : s.options;
     const pick = pool[Math.floor(Math.random() * pool.length)];
@@ -966,8 +974,11 @@ export class CircleClient {
 
   async fetchMessages() {
     for (;;) {
-      const { messages } = await this.api.messages(this.lastSeq, 500);
-      for (const m of messages) this._addMessage(m);
+      const { messages } = await this.api.messages(this.fetchedSeq, 500);
+      for (const m of messages) {
+        this._addMessage(m);
+        this.fetchedSeq = Math.max(this.fetchedSeq, m.seq);
+      }
       if (messages.length < 500) break;
     }
     this.emit('messages', this.messages);
@@ -980,11 +991,9 @@ export class CircleClient {
       env = this._seal(kind, body, this.account.epoch, { to });
       return this.api.postMessage(id, env, { silent, to });
     });
-    // Our own message's seq says nothing about what others posted before it:
-    // if the live connection is down (app in the background, posting a place
-    // event), moving lastSeq past their messages would make fetchMessages()
-    // skip them for good. Only received messages move lastSeq; our own copy
-    // is de-duplicated by id when it comes back in the next fetch.
+    // Our own message's seq says nothing about what others posted before it
+    // (the live connection may be down), so it doesn't count as seen; our own
+    // copy is de-duplicated by id when it comes back in the next fetch.
     const seenUpTo = this.lastSeq;
     this._addMessage({ seq: res.seq, id, from: this.account.memberId, to, createdAt: res.createdAt, env });
     this.lastSeq = seenUpTo;
