@@ -71,9 +71,16 @@ async function amInClass(client: CircleClient): Promise<boolean> {
   if (!me || !classHours(new Date())) return false;
   // Woken by a push, the circle's places may not be loaded yet.
   if (!client.places.size) await client.fetchPlaces().catch(() => {});
-  const fix = await Location.getLastKnownPositionAsync({ maxAge: 30 * 60_000 }).catch(() => null);
+  const fix = (await Location.getLastKnownPositionAsync({ maxAge: 5 * 60_000 }).catch(() => null)) ?? (await quickFix());
   const here = fix ? { lat: fix.coords.latitude, lng: fix.coords.longitude } : client.locations.get(me);
   return inClass(client, me, here);
+}
+
+/** Where the phone is now, if it can tell within a few seconds; else its last fix from the past half hour. */
+async function quickFix(): Promise<Location.LocationObject | null> {
+  const timeout = new Promise<null>((r) => setTimeout(() => r(null), 8_000));
+  const now = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, mayShowUserSettingsDialog: false }).catch(() => null);
+  return (await Promise.race([now, timeout])) ?? Location.getLastKnownPositionAsync({ maxAge: 30 * 60_000 }).catch(() => null);
 }
 
 const names = (client: CircleClient, ids: string[]) => {
