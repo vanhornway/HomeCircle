@@ -284,7 +284,9 @@ function render(s) {
   const rows = [{ name: s.hq.name, label: 'Swarm status (send “status” or “report”)', people: 1, online: 1, messages: null, invite: s.hq.invite, you: s.hq.joined ? ['you'] : [], active: true }, ...s.circles];
   $('circles').innerHTML = '<tr><th>Circle</th><th>Where</th><th>Kind</th><th class="n">People</th><th class="n">App open</th><th class="n">Messages</th><th>You</th></tr>' +
     rows.map((r, i) => '<tr><td>' + esc(r.name) + (r.active ? '' : ' <span class="sub">(starting)</span>') + '</td><td class="sub">' + esc(r.where || '') + '</td><td class="sub">' + esc(r.label) + '</td><td class="n">' + fmt(r.people) + '</td><td class="n">' + fmt(r.online) + '</td><td class="n">' + fmt(r.messages) + '</td><td>' +
-      (r.you.length ? '<span class="ok">✓ joined</span>' : r.invite ? '<button class="btn" data-i="' + i + '">Join</button>' : '<span class="sub">' + (s.phoneInvites === 'all' || (i === 0 && s.phoneInvites === 'hq') ? '…' : 'invites off') + '</span>') + '</td></tr>').join('');
+      // Joined before (maybe from a phone that lost it): still offer Join, for a new or reset phone.
+      (r.you.length ? '<span class="ok">✓ joined</span> ' : '') +
+      (r.invite ? '<button class="btn" data-i="' + i + '">' + (r.you.length ? 'Join again' : 'Join') + '</button>' : r.you.length ? '' : '<span class="sub">' + (s.phoneInvites === 'all' || (i === 0 && s.phoneInvites === 'hq') ? '…' : 'invites off') + '</span>') + '</td></tr>').join('');
   $('circles').querySelectorAll('button[data-i]').forEach((b) => (b.onclick = () => openQr(rows[b.dataset.i])));
 
   $('ops').innerHTML = '<tr><th>Call</th><th class="n">/min</th><th class="n">p50 ms</th><th class="n">p95 ms</th><th class="n">Errors</th><th class="n">429</th></tr>' +

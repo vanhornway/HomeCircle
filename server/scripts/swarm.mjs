@@ -412,8 +412,9 @@ function wantedSize(circle) {
 }
 
 async function startCircle(circle) {
-  if (phoneInvites === 'all') await userInvite(circle).catch((e) => log(`invite for ${circle.name} failed: ${e.message}`));
+  // After marking it running: members of a stopped circle don't make requests.
   circle.stopped = false;
+  if (phoneInvites === 'all') await userInvite(circle).catch((e) => log(`invite for ${circle.name} failed: ${e.message}`));
   await Promise.all(
     circle.members.map(async (m, j) => {
       await sleep(Math.random() * Math.min(20_000, 400 * j + 1000));
