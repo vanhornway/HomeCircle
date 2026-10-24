@@ -15,7 +15,7 @@ import {
   type ColorValue,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import Svg, { Circle, G, Path, Rect } from 'react-native-svg';
 import { useTheme } from '../theme';
 import { initials } from '../lib/useCircle';
 
@@ -288,16 +288,38 @@ export function IconButton({
       ) : done ? (
         <Text style={{ color: t.brand, fontSize: 18, fontWeight: '800' }}>✓</Text>
       ) : (
-        <Icon name={icon} color={fg} size={Math.round(size * 0.5)} />
+        <Icon name={icon} color={fg} bg={primary ? t.brand : t.surface} size={Math.round(size * (icon === 'birds' ? 0.68 : 0.5))} />
       )}
     </Pressable>
   );
 }
 
-export function Icon({ name, size = 24, color = '#000' }: { name: keyof typeof ICONS | string; size?: number; color?: ColorValue }) {
+export function Icon({ name, size = 24, color = '#000', bg }: { name: keyof typeof ICONS | 'birds' | string; size?: number; color?: ColorValue; bg?: ColorValue }) {
+  if (name === 'birds') return <Flock size={size} color={color} bg={bg} />;
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path d={ICONS[name] || ICONS.place} stroke={color} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+// Chirp everyone: three of the chirp bird close together (one bird chirps one person).
+const FLOCK: [number, number, number][] = [
+  [5.6, -2.2, 0.6],
+  [-2.2, 7.2, 0.6],
+  [9, 8.2, 0.6],
+];
+
+function Flock({ size, color, bg }: { size: number; color: ColorValue; bg?: ColorValue }) {
+  const t = useTheme();
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      {FLOCK.map(([x, y, s], i) => (
+        <G key={i} transform={`translate(${x} ${y}) scale(${s})`}>
+          {/* Filled with the background so the front birds cover the one behind. */}
+          <Path d={ICONS.bird} fill={bg ?? t.surface} stroke={color} strokeWidth={1.2 / s} strokeLinecap="round" strokeLinejoin="round" />
+        </G>
+      ))}
     </Svg>
   );
 }
