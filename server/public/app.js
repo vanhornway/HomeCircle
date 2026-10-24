@@ -703,6 +703,13 @@ async function startApp() {
     if (ui.tab === 'chat') renderPanel();
   });
   client.on('newMessage', (m) => {
+    // An SOS: straight to People, where it sits on top with where they are.
+    if (m.kind === 'chat' && !m.peer && m.body?.sos) {
+      if (m.body.sos.state === 'start') {
+        toast(`🆘 ${client.members.get(m.from)?.name || 'Someone'} sent an SOS`);
+        setTab('people');
+      } else if (ui.tab === 'people') renderPanel();
+    }
     if (m.kind === 'event' && !showPlaceAlerts()) return;
     const elsewhere = (m.peer ?? null) !== ui.peer;
     if (ui.tab !== 'chat' || elsewhere) {
@@ -947,6 +954,7 @@ function peopleView() {
   return h(
     'div',
     {},
+    sosCards(),
     rejoinCards(),
     h(
       'div',
@@ -957,6 +965,36 @@ function peopleView() {
     list,
     members.length < 2 ? h('p', { class: 'muted small' }, 'It’s just you so far. Invite your family from Settings.') : null,
   );
+}
+
+/** Every SOS that's on in this circle, at the top of People: where they are, directions, Locate. */
+function sosCards() {
+  const me = client.account.memberId;
+  return client.activeSos().map((s) => {
+    const loc = client.locations.get(s.memberId);
+    const mine = s.memberId === me;
+    return h(
+      'div',
+      { class: 'sos-card', role: 'alert' },
+      h('strong', {}, mine ? '🆘 Your SOS is on (sent from your phone)' : `🆘 ${s.name} needs help`),
+      h(
+        'div',
+        { class: 'small' },
+        `SOS since ${clock(s.since)}`,
+        loc ? ` · location ${timeAgo(loc.ts)}` : ' · no location yet',
+        s.arrived ? ` · reached ${s.arrived.place}` : '',
+      ),
+      mine
+        ? null
+        : h(
+            'div',
+            { class: 'panel-actions' },
+            loc ? h('button', { class: 'btn small', type: 'button', onclick: () => map.flyTo([loc.lat, loc.lng], 16, { duration: 0.6 }) }, 'Show on map') : null,
+            loc ? h('a', { class: 'btn small', href: `https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}`, target: '_blank', rel: 'noopener' }, 'Directions') : null,
+            h('button', { class: 'btn small', type: 'button', onclick: () => requestLocations([s.memberId]) }, 'Locate now'),
+          ),
+    );
+  });
 }
 
 function renderMarkers() {
