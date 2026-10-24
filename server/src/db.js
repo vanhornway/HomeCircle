@@ -126,6 +126,7 @@ export function openDb(dataDir) {
     CREATE INDEX IF NOT EXISTS members_circle ON members (circle_id);
     CREATE INDEX IF NOT EXISTS invites_circle ON invites (circle_id);
     CREATE INDEX IF NOT EXISTS messages_circle_seq ON messages (circle_id, seq);
+    CREATE INDEX IF NOT EXISTS messages_from_created ON messages (from_id, created_at);
     CREATE INDEX IF NOT EXISTS places_circle ON places (circle_id);
     CREATE INDEX IF NOT EXISTS chirps_to ON chirps (to_id);
   `);
@@ -193,6 +194,9 @@ export class Store {
   constructor(db) {
     this.db = db;
     this.stmts = new Map();
+    // circleId -> bytes of messages stored, for the per-circle cap. Counted in
+    // full on start and after each prune, and added to as messages arrive.
+    this.circleBytes = new Map();
   }
 
   q(sql) {
@@ -470,14 +474,16 @@ export class Store {
   // messages (seq is server-wide; each circle sees an increasing subset).
   // Direct messages have to_id set and are only ever returned to their two members.
   insertMessage({ id, circleId, fromId, toId = null, env, now }) {
+    const json = JSON.stringify(env);
     const r = this.q('INSERT INTO messages (id, circle_id, from_id, to_id, env, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
       id,
       circleId,
       fromId,
       toId,
-      JSON.stringify(env),
+      json,
       now,
     );
+    this.circleBytes.set(circleId, (this.circleBytes.get(circleId) || 0) + json.length);
     return Number(r.lastInsertRowid);
   }
   /** Group messages plus this member's own direct messages. */
@@ -493,6 +499,16 @@ export class Store {
     return !!this.q('SELECT 1 FROM messages WHERE id = ?').get(id);
   }
   /** Delete each circle's messages older than its retention (and never keep more than `maxDays`). */
+  /** Count each circle's stored message bytes again (after a prune). */
+  countCircleBytes() {
+    this.circleBytes = new Map(this.q('SELECT circle_id AS c, SUM(LENGTH(env)) AS b FROM messages GROUP BY circle_id').all().map((r) => [r.c, r.b]));
+  }
+
+  /** Messages a member posted since `since`, for the daily limit. */
+  messagesFromSince(memberId, since) {
+    return this.q('SELECT COUNT(*) AS n FROM messages WHERE from_id = ? AND created_at >= ?').get(memberId, since).n;
+  }
+
   pruneMessages(now, maxDays) {
     let n = 0;
     for (const c of this.q('SELECT id, retention_days FROM circles').all()) {

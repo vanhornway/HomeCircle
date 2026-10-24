@@ -7,16 +7,37 @@ import { Hub } from './hub.js';
 import { Push } from './push.js';
 import { buildRoutes } from './routes.js';
 import { createStatic } from './static.js';
-import { HttpError, sendJson, readJson, sha256, clientIp } from './http.js';
+import { HttpError, sendJson, readJson, sha256, clientIp, RateLimiter } from './http.js';
 
 // Logs never include IPs, tokens or payloads.
 const log = (...args) => console.log(new Date().toISOString(), ...args);
 
 export function createApp(config) {
-  config = { maxRetentionDays: 365, ...config };
+  config = {
+    maxRetentionDays: 365,
+    // Per device: requests a minute (writes, all), messages a day. Per circle:
+    // bytes of messages stored. Per address: open live connections.
+    writesPerMinute: 120,
+    requestsPerMinute: 600,
+    maxMessagesPerDay: 5000,
+    maxCircleBytes: 256 * 1024 * 1024,
+    maxSocketsPerIp: 40,
+    ...config,
+  };
+  // The load-test swarm runs hundreds of simulated phones from one address,
+  // up to 500× a normal day: limits meant for one person would only measure
+  // themselves.
+  if (config.loadTest) {
+    config.writesPerMinute *= 100;
+    config.requestsPerMinute *= 100;
+    config.maxMessagesPerDay *= 100;
+    config.maxSocketsPerIp = 100_000;
+  }
   const store = openDb(config.dataDir);
   ensureSetupToken(config, store);
-  const hub = new Hub({ store, log, authTimeoutMs: config.wsAuthTimeoutMs });
+  const hub = new Hub({ store, log, authTimeoutMs: config.wsAuthTimeoutMs, maxSocketsPerIp: config.maxSocketsPerIp, ipOf: (req) => clientIp(req, config.trustProxy) });
+  const requestLimiter = new RateLimiter(config.requestsPerMinute, 60_000);
+  const writeLimiter = new RateLimiter(config.writesPerMinute, 60_000);
   const push = new Push(config, store, log);
   const router = buildRoutes({ config, store, hub, push, log });
   const serveStatic = config.webClient ? createStatic(config) : null;
@@ -49,6 +70,8 @@ export function createApp(config) {
           const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
           me = token ? store.memberByToken(sha256(token)) : null;
           if (!me) throw new HttpError(401, 'unauthorized', 'Your device is not signed in to this circle');
+          const wait = requestLimiter.take(me.id) || (req.method === 'GET' ? 0 : writeLimiter.take(me.id));
+          if (wait) throw new HttpError(429, 'rate_limited', 'Too many requests from this device, try again shortly', { retryAfter: wait });
           const now = Date.now();
           if (!me.lastSeenAt || now - me.lastSeenAt > 60_000) store.touchMember(me.id, now);
         }
@@ -78,6 +101,7 @@ export function createApp(config) {
   const prune = () => {
     const now = Date.now();
     store.pruneMessages(now, config.maxRetentionDays);
+    store.countCircleBytes();
     store.pruneInvites(now - 7 * 86400_000);
     store.pruneRejoins(now - 7 * 86400_000);
     // A chirp is only worth playing right away; one nobody collected in 10

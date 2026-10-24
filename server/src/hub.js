@@ -4,10 +4,15 @@ import { WebSocketServer } from 'ws';
 import { sha256 } from './http.js';
 
 export class Hub {
-  constructor({ store, log, heartbeatMs = 25000, authTimeoutMs = 10000 }) {
+  constructor({ store, log, heartbeatMs = 25000, authTimeoutMs = 10000, maxSocketsPerIp = 40, ipOf = (req) => req.socket.remoteAddress || 'unknown' }) {
     this.store = store;
     this.authTimeoutMs = authTimeoutMs;
     this.log = log;
+    // Open connections per address, signed in or not, so one address can't
+    // hold thousands of sockets open.
+    this.maxSocketsPerIp = maxSocketsPerIp;
+    this.ipOf = ipOf;
+    this.perIp = new Map();
     this.sockets = new Map(); // memberId -> Set<WebSocket>
     this.circleOf = new Map(); // memberId -> circleId, for connected members
     this.wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
@@ -22,6 +27,20 @@ export class Hub {
         socket.destroy();
         return;
       }
+      const ip = this.ipOf(req);
+      const open = this.perIp.get(ip) || 0;
+      if (open >= this.maxSocketsPerIp) {
+        socket.end('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+        return;
+      }
+      this.perIp.set(ip, open + 1);
+      // Counted down when the connection ends, however it ends (including a
+      // handshake that fails).
+      socket.once('close', () => {
+        const n = (this.perIp.get(ip) || 1) - 1;
+        if (n > 0) this.perIp.set(ip, n);
+        else this.perIp.delete(ip);
+      });
       this.wss.handleUpgrade(req, socket, head, (ws) => this.wss.emit('connection', ws, req));
     });
   }

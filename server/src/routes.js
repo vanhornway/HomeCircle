@@ -698,6 +698,13 @@ export function buildRoutes({ config, store, hub, push, log }) {
     }
     if (store.messageExists(id)) fail(409, 'conflict', 'Duplicate message id');
     const now = Date.now();
+    // Storage limits, so one device (or a stolen one) can't fill the disk.
+    if ((store.circleBytes.get(me.circleId) || 0) > config.maxCircleBytes) {
+      fail(507, 'circle_full', 'This circle’s message storage is full. Older messages are deleted as they expire; an admin can shorten how long messages are kept.');
+    }
+    if (store.messagesFromSince(me.id, now - 86400_000) >= config.maxMessagesPerDay) {
+      fail(429, 'rate_limited', 'You’ve sent a lot of messages today. Try again later.', { retryAfter: 3600 });
+    }
     const seq = store.insertMessage({ id, circleId: me.circleId, fromId: me.id, toId: to?.id ?? null, env, now });
     const message = { seq, id, from: me.id, to: to?.id ?? null, env, createdAt: now };
     if (to) hub.send(to.id, { type: 'message', message });
