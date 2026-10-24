@@ -977,6 +977,55 @@ export class CircleClient {
     return this.messages.filter((m) => (m.peer ?? null) === peer);
   }
 
+  // --- SOS ---------------------------------------------------------------
+  // An SOS is a group chat message with `body.sos` (older apps show its text),
+  // followed by "arrived at …" lines and finally "I'm safe". While it's on,
+  // the sender's phone shares its location every minute.
+
+  /** Send an SOS to the whole circle. Returns its id. */
+  async startSos() {
+    const id = randomId(12);
+    const name = this.me?.name || 'Someone';
+    await this._post('chat', { text: `🆘 ${name} sent an SOS. Open HomeCircle to see where they are.`, sos: { state: 'start' } }, { id });
+    return id;
+  }
+
+  /** Tell the circle you reached a safe place during an SOS. */
+  sosArrived(sosId, placeName) {
+    const place = String(placeName || '').slice(0, 80) || 'a safe place';
+    const name = this.me?.name || 'Someone';
+    return this._post('chat', { text: `📍 ${name} reached ${place}`, sos: { state: 'arrived', of: sosId, place } });
+  }
+
+  /** End your SOS: "I'm safe". */
+  endSos(sosId) {
+    const name = this.me?.name || 'Someone';
+    return this._post('chat', { text: `✅ ${name} is safe now.`, sos: { state: 'safe', of: sosId } });
+  }
+
+  /**
+   * SOSes still on, newest first: [{ id, memberId, name, since, arrived }].
+   * One ends with "I'm safe" from its sender, when they leave the circle, or
+   * after a day without one (a phone that died mid-SOS).
+   */
+  activeSos(now = Date.now()) {
+    const open = new Map(); // memberId -> sos
+    for (const m of this.messages) {
+      const s = m.kind === 'chat' && !m.peer ? m.body?.sos : null;
+      if (!s || typeof s !== 'object') continue;
+      if (s.state === 'start') open.set(m.from, { id: m.id, memberId: m.from, since: m.ts, arrived: null });
+      const cur = open.get(m.from);
+      if (cur && s.of === cur.id) {
+        if (s.state === 'safe') open.delete(m.from);
+        else if (s.state === 'arrived') cur.arrived = { place: String(s.place || ''), at: m.ts };
+      }
+    }
+    return [...open.values()]
+      .filter((s) => now - s.since < 86400_000 && this.members.get(s.memberId) && !this.members.get(s.memberId).removed)
+      .map((s) => ({ ...s, name: this.members.get(s.memberId)?.name || 'Someone' }))
+      .sort((a, b) => b.since - a.since);
+  }
+
   /** Direct-message partners, most recent conversation first. */
   directPeers() {
     const last = new Map();

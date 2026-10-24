@@ -109,6 +109,16 @@ export interface Message {
   body: any;
 }
 
+/** Someone's SOS that hasn't ended yet. */
+export interface ActiveSos {
+  id: string;
+  memberId: string;
+  name: string;
+  since: number;
+  /** The last safe place they reached during it, if any. */
+  arrived: { place: string; at: number } | null;
+}
+
 export interface PollOptionInput {
   label: string;
   emoji?: string;
@@ -379,6 +389,14 @@ export class CircleClient {
   /** Pick one of the leading options (or any) at random and tell everyone. */
   spinWheel(pollId: string): Promise<PollState['options'][number]>;
   pollState(pollId: string, now?: number): PollState | null;
+  /** Send an SOS to the whole circle; returns its id. */
+  startSos(): Promise<string>;
+  /** Tell the circle you reached a safe place during your SOS. */
+  sosArrived(sosId: string, placeName: string): Promise<void>;
+  /** End your SOS ("I'm safe"). */
+  endSos(sosId: string): Promise<void>;
+  /** SOSes still on, newest first. */
+  activeSos(now?: number): ActiveSos[];
   fetchPlaces(): Promise<Map<string, Place>>;
   savePlace(p: { id?: string; name: string; lat: number; lng: number; radius?: number; icon?: string; address?: string | null; group?: string | null }): Promise<string>;
   deletePlace(id: string): Promise<void>;
