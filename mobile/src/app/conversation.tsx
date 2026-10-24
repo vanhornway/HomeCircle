@@ -7,6 +7,8 @@ import { Avatar, Button, Icon, IconButton } from '../components/ui';
 import { canLocate, isAsking, locatePerson, locateState, openDirections, useLocateVersion } from '../lib/people';
 import { shareNow } from '../lib/location';
 import { ServerBanner } from '../components/ServerBanner';
+import { PollCard } from '../components/PollCard';
+import { CreatePoll } from '../components/CreatePoll';
 import { clientForCircle, errorText, useCircles } from '../lib/circle';
 import { initials } from '../lib/useCircle';
 import { setVisibleConversation } from '../lib/notify';
@@ -39,20 +41,22 @@ function Gone() {
 }
 
 function useClientEvents(client: CircleClient) {
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     const bump = () => setTick((n) => n + 1);
     const offs = ['messages', 'members', 'circle', 'locations', 'status'].map((e) => client.on(e, bump));
     return () => offs.forEach((off) => off());
   }, [client]);
+  return tick;
 }
 
 function Conversation({ client, peer }: { client: CircleClient; peer: string | null }) {
   const t = useTheme();
-  useClientEvents(client);
+  const tick = useClientEvents(client);
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pollOpen, setPollOpen] = useState(false);
   const [reactingTo, setReactingTo] = useState<Message | null>(null);
   const [checkingIn, setCheckingIn] = useState<string | null>(null);
   useLocateVersion();
@@ -167,7 +171,17 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     if (m.kind !== 'chat') {
       return <Text style={pill}>{m.kind === 'event' ? eventLabel(m) : '🔒 Sent before you joined'}</Text>;
     }
+    // Poll results and spins read as a line across the chat, like alerts.
+    if (m.body?.pollResult || m.body?.pollSpin) return <Text style={[pill, { color: t.text }]}>{m.body.text}</Text>;
     const mine = m.from === me;
+    if (m.body?.poll) {
+      return (
+        <View style={{ marginVertical: 3 }}>
+          <PollCard client={client} pollId={m.id} />
+          <Text style={{ color: t.muted, fontSize: 12, marginHorizontal: 6, alignSelf: mine ? 'flex-end' : 'flex-start' }}>{clock(m.ts)}</Text>
+        </View>
+      );
+    }
     const big = isEmojiOnly(m.body?.text);
     const reactions = client.reactionsFor(m.id);
     return (
@@ -287,6 +301,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
           ref={list}
           inverted
           data={rows}
+          extraData={tick}
           keyExtractor={(r) => (r.type === 'message' ? r.m.id : r.id)}
           renderItem={renderRow}
           contentContainerStyle={{ padding: 14 }}
@@ -305,6 +320,19 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             >
               <Text style={{ fontSize: 26 }}>😊</Text>
             </Pressable>
+            {text.trim() ? null : (
+              <Pressable
+                accessibilityLabel="New poll"
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setPickerOpen(false);
+                  setPollOpen(true);
+                }}
+                style={{ width: 40, height: 48, alignItems: 'center', justifyContent: 'center', marginLeft: -6 }}
+              >
+                <Text style={{ fontSize: 24 }}>📊</Text>
+              </Pressable>
+            )}
             <TextInput
               value={text}
               onChangeText={setText}
@@ -348,6 +376,16 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
         </SafeAreaView>
       </KeyboardAvoidingView>
 
+      <CreatePoll
+        client={client}
+        peer={peer}
+        visible={pollOpen}
+        onClose={() => setPollOpen(false)}
+        onCreated={() => {
+          setPollOpen(false);
+          list.current?.scrollToOffset({ offset: 0, animated: true });
+        }}
+      />
       <Modal visible={!!reactingTo} transparent animationType="fade" onRequestClose={() => setReactingTo(null)}>
         <Pressable onPress={() => setReactingTo(null)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
           {reactingTo ? (

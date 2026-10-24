@@ -8,6 +8,7 @@ import { ServerBanner } from '../../components/ServerBanner';
 import { initials, useAllCircles } from '../../lib/useCircle';
 import { unreadIn } from '../../lib/unread';
 import { useSettings } from '../../lib/storage';
+import { previewText } from '../../lib/polls';
 import { useTheme } from '../../theme';
 
 type Row = {
@@ -35,7 +36,7 @@ function preview(client: CircleClient, m: Message | undefined, group: boolean) {
   const name = mine ? 'You' : client.members.get(m.from)?.name || 'Someone';
   if (m.kind === 'event') return `${name} ${m.body?.action === 'left' ? 'left' : 'arrived at'} ${m.body?.placeName || 'a place'}`;
   if (m.kind !== 'chat') return '🔒 Encrypted message';
-  const text = String(m.body?.text ?? '').replace(/\s+/g, ' ');
+  const text = previewText(m).replace(/\s+/g, ' ');
   return group || mine ? `${name}: ${text}` : text;
 }
 

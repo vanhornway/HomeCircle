@@ -10,6 +10,7 @@ import { ACCOUNT_KEY, type CircleClient, type Message } from '@homecircle/core';
 import { getSettings } from './storage';
 import { allClients } from './circle';
 import { conversationKey } from './unread';
+import { previewText } from './polls';
 
 const LAST_NOTIFIED_KEY = 'homecircle.lastNotifiedSeq';
 export const MESSAGES_CHANNEL = 'messages';
@@ -69,10 +70,10 @@ function describe(client: CircleClient, m: Message, previews: boolean, multi: bo
   // message with the circle and "Name: text".
   if (m.peer) {
     if (!previews) return { title: 'HomeCircle', body: 'New direct message' };
-    return { title: multi ? `${name} · ${circle}` : name, body: String(m.body?.text ?? '') };
+    return { title: multi ? `${name} · ${circle}` : name, body: previewText(m) };
   }
   if (!previews) return { title: circle, body: 'New message' };
-  return { title: circle, body: `${name}: ${String(m.body?.text ?? '')}` };
+  return { title: circle, body: `${name}: ${previewText(m)}` };
 }
 
 /**

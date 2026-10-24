@@ -603,7 +603,7 @@ function renderMessage(title, text) {
 // --- main app ------------------------------------------------------------
 
 // peer: the open conversation in Chat (null = the circle's group chat).
-const ui = { tab: 'people', unread: 0, pickPlace: false, invite: null, asked: {}, peer: null, openRuns: new Set() };
+const ui = { tab: 'people', unread: 0, pickPlace: false, invite: null, asked: {}, peer: null, openRuns: new Set(), cheered: new Set(), addingTo: null };
 /** More than this many arrived/left alerts in a row collapse into "Movement". */
 const MOVEMENT_RUN = 5;
 const FEET_PER_METER = 3.28084;
@@ -745,7 +745,7 @@ async function startApp() {
   renderPanel();
   if (sharingEnabled()) startSharing();
   loadRejoins();
-  setInterval(() => ui.tab === 'people' && renderPanel(), 30000);
+  setInterval(() => (ui.tab === 'people' || (ui.tab === 'chat' && ui.pollDeadline)) && renderPanel(), 30000);
 }
 
 /** Requests to rejoin with the setup code, shown at the top of People. */
@@ -1034,6 +1034,8 @@ function chatView() {
     peers.map((id) => h('option', { value: id, selected: ui.peer === id }, `💬 ${client.members.get(id)?.name || 'Former member'} (direct)`)),
   );
   const shown = client.conversation(ui.peer).filter((m) => m.kind !== 'event' || showPlaceAlerts());
+  // Re-draw every 30 s while a poll is counting down to its deadline.
+  ui.pollDeadline = shown.some((m) => m.body?.poll?.closesAt && !client.pollState(m.id)?.closed);
   const peerName = ui.peer ? client.members.get(ui.peer)?.name || 'them' : null;
   const log = h('div', { class: 'chat-log', 'aria-live': 'polite' });
   if (!shown.length) {
@@ -1080,6 +1082,11 @@ function chatView() {
         continue;
       }
       log.append(eventLine(m));
+    } else if (m.kind === 'chat' && (m.body?.pollResult || m.body?.pollSpin)) {
+      // Poll results and spins read as a line across the chat, like alerts.
+      log.append(h('div', { class: 'event-line strong' }, m.body.text));
+    } else if (m.kind === 'chat' && m.body?.poll) {
+      log.append(h('div', { class: `poll-row${m.from === me ? ' mine' : ''}` }, pollCard(m.id), h('div', { class: 'bubble-time' }, clock(m.ts))));
     } else if (m.kind === 'chat') {
       const mine = m.from === me;
       const big = isEmojiOnly(m.body.text);
@@ -1187,6 +1194,21 @@ function chatView() {
         },
         '😊',
       ),
+      h(
+        'button',
+        {
+          class: 'btn emoji-toggle',
+          type: 'button',
+          title: 'New poll',
+          'aria-label': 'New poll',
+          onclick: () => {
+            picker.classList.add('hidden');
+            ui.pollForm.classList.toggle('hidden');
+            if (!ui.pollForm.classList.contains('hidden')) ui.pollForm.querySelector('input').focus();
+          },
+        },
+        '📊',
+      ),
       input,
       h('button', { class: 'btn primary', type: 'submit' }, 'Send'),
     );
@@ -1222,9 +1244,11 @@ function chatView() {
       ),
     );
     ui.chatForm.prepend(picker);
+    ui.pollForm = newPollForm();
+    ui.chatForm.prepend(ui.pollForm);
   }
   const form = ui.chatForm;
-  const input = form.querySelector('input');
+  const input = form.querySelector(':scope > input');
   input.placeholder = ui.peer ? `Message ${peerName}` : 'Message your circle';
   const refocus = document.activeElement === input || ui.focusChat;
   ui.focusChat = false;
@@ -1242,6 +1266,180 @@ function chatView() {
       )
     : null;
   return h('div', { class: 'chat' }, h('div', { class: 'chat-top' }, picker, askBtn), log, form);
+}
+
+// --- polls ---------------------------------------------------------------
+
+/** A poll in the chat: click an option to vote; live bars, add, spin and close. */
+function pollCard(pollId) {
+  const s = client.pollState(pollId);
+  if (!s) return null;
+  const fail = (ex) => toast(errorText(ex));
+  const total = Math.max(1, s.voters);
+  const winners = s.closed ? new Set(s.winners.map((w) => w.id)) : new Set();
+  const vote = (o) => {
+    const next = s.multi ? (o.mine ? s.myVote.filter((x) => x !== o.id) : [...s.myVote, o.id]) : o.mine ? [] : [o.id];
+    client.vote(pollId, next).catch(fail);
+  };
+  const minutes = s.closesAt && !s.closed ? Math.max(1, Math.ceil((s.closesAt - Date.now()) / 60000)) : null;
+  const footer = [
+    `${s.voters} of ${s.eligible} voted`,
+    s.multi ? 'pick any' : null,
+    s.closed ? 'closed' : minutes == null ? null : minutes >= 60 ? `closes in ${Math.round(minutes / 60)} h` : `closes in ${minutes} min`,
+  ].filter(Boolean);
+  // The confetti plays once, the first time everyone has voted.
+  const cheer = s.everyoneVoted && !s.closed;
+  const pop = cheer && !ui.cheered.has(pollId);
+  if (cheer) ui.cheered.add(pollId);
+  const adding = ui.addingTo === pollId;
+  const addInput = adding ? h('input', { class: 'input', maxlength: '60', placeholder: 'Another option', 'aria-label': 'Another option' }) : null;
+  const add = () => {
+    const label = addInput.value.trim();
+    ui.addingTo = null;
+    if (label) client.suggestOption(pollId, label).catch(fail);
+    else renderPanel();
+  };
+  if (adding) {
+    addInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') add();
+      if (e.key === 'Escape') ((ui.addingTo = null), renderPanel());
+    });
+    setTimeout(() => addInput.focus(), 0);
+  }
+  const wheel = h('span', { class: 'wheel', 'aria-hidden': 'true' }, '🎡');
+  return h(
+    'div',
+    { class: 'poll' },
+    h('div', { class: 'poll-head' }, `📊 Poll · ${s.creatorName}`),
+    h('div', { class: 'poll-q' }, s.question),
+    s.options.map((o) =>
+      h(
+        'button',
+        {
+          type: 'button',
+          class: `poll-opt${o.mine ? ' mine' : ''}${winners.has(o.id) ? ' win' : ''}`,
+          style: `--share:${Math.round((o.votes / total) * 100)}%`,
+          disabled: s.closed,
+          'aria-pressed': String(o.mine),
+          title: o.voters.join(', '),
+          onclick: () => vote(o),
+        },
+        h('span', { class: 'poll-label' }, winners.has(o.id) ? '🏆 ' : '', o.emoji ? `${o.emoji} ` : '', o.label),
+        o.mine ? h('span', { class: 'poll-check' }, '✓') : null,
+        h('span', { class: 'poll-count' }, o.votes),
+        o.voters.length ? h('span', { class: 'poll-voters' }, o.voters.join(', ')) : null,
+      ),
+    ),
+    cheer ? h('div', { class: `poll-cheer${pop ? ' pop' : ''}` }, '🎉 Everyone voted!') : null,
+    s.spin ? h('div', { class: 'poll-spin' }, `🎡 ${s.spin.by} spun the wheel: ${s.spin.option.emoji ? `${s.spin.option.emoji} ` : ''}${s.spin.option.label}`) : null,
+    adding ? h('div', { class: 'poll-add' }, addInput, h('button', { class: 'btn small primary', type: 'button', onclick: add }, 'Add')) : null,
+    h('div', { class: 'muted small' }, footer.join(' · ')),
+    !s.closed || s.winners.length > 1
+      ? h(
+          'div',
+          { class: 'poll-actions' },
+          !s.closed && s.allowAdd && !adding && s.options.length < 12
+            ? h('button', { class: 'btn small', type: 'button', onclick: () => ((ui.addingTo = pollId), renderPanel()) }, '+ Add option')
+            : null,
+          h(
+            'button',
+            {
+              class: 'btn small',
+              type: 'button',
+              onclick: (e) => {
+                e.currentTarget.disabled = true;
+                wheel.classList.add('spinning');
+                setTimeout(() => client.spinWheel(pollId).catch(fail), 1200);
+              },
+            },
+            wheel,
+            ' Spin',
+          ),
+          s.mine && !s.closed
+            ? h(
+                'button',
+                {
+                  class: 'btn small',
+                  type: 'button',
+                  onclick: () => confirm('Close this poll? No more votes after this. Everyone sees the result.') && client.closePoll(pollId).catch(fail),
+                },
+                'Close poll',
+              )
+            : null,
+        )
+      : null,
+  );
+}
+
+/** The "new poll" form above the composer: question, options, two switches and a deadline. */
+function newPollForm() {
+  const question = h('input', { class: 'input', maxlength: '200', placeholder: 'Ask anything', 'aria-label': 'Question' });
+  const list = h('div', { class: 'poll-form-options' });
+  const addOption = () => {
+    if (list.children.length >= 8) return;
+    const n = list.children.length + 1;
+    list.append(h('input', { class: 'input', maxlength: '60', placeholder: `Option ${n}`, 'aria-label': `Option ${n}` }));
+  };
+  addOption();
+  addOption();
+  const multi = h('input', { type: 'checkbox' });
+  const allowAdd = h('input', { type: 'checkbox', checked: true });
+  const deadline = h(
+    'select',
+    { class: 'input', 'aria-label': 'Closes' },
+    h('option', { value: '' }, 'No deadline'),
+    h('option', { value: '30' }, 'Closes in 30 min'),
+    h('option', { value: '60' }, 'Closes in 1 hour'),
+    h('option', { value: '180' }, 'Closes in 3 hours'),
+  );
+  const form = h(
+    'div',
+    { class: 'poll-form hidden', role: 'dialog', 'aria-label': 'New poll' },
+    h('div', { class: 'poll-head' }, '📊 New poll'),
+    question,
+    list,
+    h('button', { class: 'btn small', type: 'button', onclick: addOption }, '+ Add option'),
+    h('label', { class: 'check' }, multi, ' Pick more than one'),
+    h('label', { class: 'check' }, allowAdd, ' Let others add options'),
+    deadline,
+    h(
+      'div',
+      { class: 'panel-actions' },
+      h(
+        'button',
+        {
+          class: 'btn primary',
+          type: 'button',
+          onclick: async () => {
+            const options = [...list.querySelectorAll('input')].map((i) => i.value.trim()).filter(Boolean);
+            try {
+              await client.createPoll(
+                {
+                  question: question.value.trim(),
+                  options: options.map((label) => ({ label })),
+                  multi: multi.checked,
+                  allowAdd: allowAdd.checked,
+                  closesAt: deadline.value ? Date.now() + Number(deadline.value) * 60000 : null,
+                },
+                { to: ui.peer },
+              );
+            } catch (ex) {
+              toast(errorText(ex));
+              return;
+            }
+            question.value = '';
+            list.replaceChildren();
+            addOption();
+            addOption();
+            form.classList.add('hidden');
+          },
+        },
+        'Start poll',
+      ),
+      h('button', { class: 'btn', type: 'button', onclick: () => form.classList.add('hidden') }, 'Cancel'),
+    ),
+  );
+  return form;
 }
 
 // --- places --------------------------------------------------------------
