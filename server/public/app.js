@@ -1213,7 +1213,12 @@ function chatView() {
           if (!text.trim()) return;
           input.value = '';
           try {
-            await client.sendChat(text, { to: ui.peer });
+            // The circle's agent: "/Name …" or "/agent …" in the group, or anything in its own chat.
+            const agent = client.agent;
+            const q = agent && !ui.peer ? agentQuestion(text, agent.name) : null;
+            if (agent && ui.peer === agent.id) await client.askAgent(text, { peer: ui.peer });
+            else if (q) await client.askAgent(q);
+            else await client.sendChat(text, { to: ui.peer });
           } catch (ex) {
             input.value = text;
             toast(errorText(ex));
@@ -1304,6 +1309,14 @@ function chatView() {
       )
     : null;
   return h('div', { class: 'chat' }, h('div', { class: 'chat-top' }, picker, askBtn), log, form);
+}
+
+/** "/Jarvis when…" or "/agent when…" → "when…", else null. */
+function agentQuestion(text, name) {
+  const t = text.trim();
+  const lower = t.toLowerCase();
+  for (const tag of [`/${name.toLowerCase()} `, '/agent ']) if (lower.startsWith(tag)) return t.slice(tag.length).trim() || null;
+  return null;
 }
 
 // --- polls ---------------------------------------------------------------
