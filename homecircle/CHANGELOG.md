@@ -2,11 +2,19 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
-## 0.10.1
+## 0.11.0
 
+- The circle agent (optional AI helper): switch on `run_agent`, and each
+  circle's admin adds it in the app with their own AI provider key and a
+  monthly budget. It can't read chats; its memory is encrypted in this app's
+  data and deleted when it's removed.
+- SOS and delivered/read ticks for the HomeCircle app 0.11.0; the web page
+  shows each SOS on People with directions.
 - Fixed: the web page could miss votes and messages sent just as it
-  reconnected, so counts differed between devices and a closed poll could
-  announce the wrong winner.
+  reconnected.
+- Hardening: limits per phone, per circle and per address, signed message
+  ids against replays, padded messages, and the real client address behind
+  proxies.
 
 ## 0.10.0
 

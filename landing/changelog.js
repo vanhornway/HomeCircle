@@ -1,13 +1,18 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
-    version: '0.10.1',
-    date: '2026-10-24',
-    title: 'Votes that add up, and update reminders',
+    version: '0.11.0',
+    date: '2026-10-25',
+    title: 'SOS, a circle helper, and ticks',
     items: [
-      'Fixed: a phone could miss votes (and sometimes messages) sent just as it reconnected, so two phones showed different counts and a closed poll could announce the wrong winner.',
-      'Closing a poll or spinning the wheel now counts every vote in first.',
-      'The app now tells you when a new version is out: a banner on the map (tap to download, then tap Install), and one notification per version. It checks GitHub’s release page at most every 4 hours.',
+      'SOS: hold the red button on the map for 2 seconds. After a 5-second countdown you can cancel, everyone in your circles is alerted and your exact location is shared every minute until you tap “I’m safe”. It lists safe places nearby (police, fire stations, hospitals, pharmacies, libraries, 24-hour stores) with directions, tells your circle when you reach one, and has a Call 911 button.',
+      'An SOS rings with the sender’s chirp and “SOS” in Morse. Each person can let it ring through Do Not Disturb (Settings → Chirps & SOS).',
+      'Circle agent (optional): an AI helper your admin adds and names, run by your own server with your own AI provider key and a monthly budget. It remembers dates, schedules and decisions, reads school calendars, and answers questions like “/Jarvis when are the kids free for 5 days?”. It can’t read your chats: it only sees what you send it, and names are swapped out before anything reaches the AI provider.',
+      'Delivered and read ticks on your messages (✓, ✓✓, and ✓✓ in colour once read). Long-press a group message to see who has read it. Read receipts can be turned off.',
+      'Settings is now a short menu, with a page for each part.',
+      'The app tells you when a new version is out: a banner on the map (tap to download, then Install).',
+      'Fixed: a phone could miss votes and messages sent just as it reconnected, so phones showed different poll counts.',
+      'Stronger server: limits per phone and per circle, protection against replayed messages, message sizes that say little about their content, and a locked-down Docker setup.',
     ],
   },
   {
