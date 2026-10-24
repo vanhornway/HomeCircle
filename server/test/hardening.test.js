@@ -110,6 +110,50 @@ test('a circle whose message storage is full refuses new messages', async () => 
   }
 });
 
+test('a message stored again under another id (a replay) is ignored', async () => {
+  const { app, url, stop } = await start({});
+  try {
+    const mom = await newCircle(url);
+    const dad = new CircleClient({ storage: new MemoryStorage() });
+    await dad.joinWithInvite((await mom.createInvite()).link, { name: 'Dad' });
+    await mom.refresh();
+    await mom.sendChat('Pick me up at 5');
+    await dad.fetchMessages();
+    // A compromised server copies Mom's envelope under a new id.
+    const row = app.store.db.prepare("SELECT * FROM messages WHERE env LIKE '%' ORDER BY seq DESC LIMIT 1").get();
+    app.store.insertMessage({ id: 'replayed-0001', circleId: row.circle_id, fromId: row.from_id, env: JSON.parse(row.env), now: Date.now() });
+    const fresh = new CircleClient({ storage: dad.storage });
+    await fresh.load();
+    await fresh.fetchMessages();
+    assert.equal(fresh.messages.filter((m) => m.body?.text === 'Pick me up at 5').length, 1);
+    // Even with the original gone, the copy fails its signed id and is dropped
+    // quietly, not shown as an unreadable message.
+    app.store.db.prepare('DELETE FROM messages WHERE id = ?').run(row.id);
+    const again = new CircleClient({ storage: dad.storage });
+    await again.load();
+    await again.fetchMessages();
+    assert.equal(again.messages.filter((m) => m.body?.text === 'Pick me up at 5' || m.kind === 'unreadable').length, 0);
+  } finally {
+    await stop();
+  }
+});
+
+test('messages and locations are padded, so their size says little', async () => {
+  const { app, url, stop } = await start({});
+  try {
+    const mom = await newCircle(url);
+    await mom.sendChat('ok');
+    await mom.sendChat('Running 10 minutes late, start without me!');
+    const sizes = app.store.db
+      .prepare('SELECT env FROM messages ORDER BY seq DESC LIMIT 2')
+      .all()
+      .map((r) => JSON.parse(r.env).ct.length);
+    assert.equal(sizes[0], sizes[1]);
+  } finally {
+    await stop();
+  }
+});
+
 test('one address can only hold so many live connections', async () => {
   const { url, stop } = await start({ maxSocketsPerIp: 2 });
   try {

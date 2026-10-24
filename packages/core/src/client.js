@@ -39,6 +39,9 @@ const randomColor = () => MEMBER_COLORS[Math.floor(Math.random() * MEMBER_COLORS
 export const CHIRP_SOUNDS = ['robin', 'wren', 'finch', 'chickadee', 'cardinal', 'bluebird', 'canary', 'sparrow', 'lark', 'dove'];
 const MAX_FREQUENT = 8;
 
+// What _open returns for an envelope signed under another id (a replay).
+const REPLAYED = Symbol('replayed');
+
 export class CircleClient {
   /**
    * @param {object} opts
@@ -66,6 +69,9 @@ export class CircleClient {
     this.paused = new Map();
     this.messages = [];
     this.seenMessageIds = new Set();
+    // Envelope nonces already taken in: the same envelope stored again under
+    // another id (a replay) is dropped.
+    this.seenNonces = new Set();
     // messageId -> emoji -> memberId -> { on, seq }
     this.reactions = new Map();
     // pollId -> { votes: Map<memberId, [{ options, seq }]>, added: [], closes: [], spins: [] }
@@ -193,7 +199,7 @@ export class CircleClient {
     return { server, ...info };
   }
 
-  _seal(kind, body, epoch = this.account.epoch, { to = null } = {}) {
+  _seal(kind, body, epoch = this.account.epoch, { to = null, id } = {}) {
     const a = this.account;
     return seal({
       kind,
@@ -204,6 +210,7 @@ export class CircleClient {
       key: to ? this._directKey(to) : a.keyring[epoch],
       signSecret: a.identity.signSecret,
       body,
+      id,
     });
   }
 
@@ -604,7 +611,7 @@ export class CircleClient {
   }
 
   /** Open any envelope from a member, using their pinned signing key. Pass `to` for a direct message. */
-  _open(env, from, kinds, to = null) {
+  _open(env, from, kinds, to = null, id = undefined) {
     const signPub = this.account.known[from]?.signPub;
     if (!signPub) return null;
     let key;
@@ -615,10 +622,12 @@ export class CircleClient {
     }
     if (!key) return null;
     try {
-      const msg = open(env, { key, signPub, from, to, circle: this.account.circleId });
+      const msg = open(env, { key, signPub, from, to, circle: this.account.circleId, id });
       if (!kinds.includes(msg.kind)) return null;
       return msg;
     } catch (e) {
+      // Signed for another id: a copy stored again by someone else. Not news.
+      if (e?.reason === 'id') return REPLAYED;
       this.onError(e);
       return null;
     }
@@ -733,10 +742,13 @@ export class CircleClient {
     this.lastSeq = Math.max(this.lastSeq, m.seq);
     if (this.seenMessageIds.has(m.id)) return false;
     this.seenMessageIds.add(m.id);
+    if (this.seenNonces.has(m.env?.nonce)) return false;
+    this.seenNonces.add(m.env?.nonce);
     const to = m.to ?? null;
     // Direct messages: the other person in the conversation. null = the group.
     const peer = to ? (m.from === this.account.memberId ? to : m.from) : null;
-    const msg = this._open(m.env, m.from, to ? ['chat', 'reaction'] : ['chat', 'event', 'reaction'], to);
+    const msg = this._open(m.env, m.from, to ? ['chat', 'reaction'] : ['chat', 'event', 'reaction'], to, m.id);
+    if (msg === REPLAYED) return false;
     if (msg?.kind === 'reaction') {
       if (isPollUpdate(msg.body)) this._applyPollUpdate(m.from, m.seq, msg.body);
       else this._applyReaction(m.from, m.seq, msg.body);
@@ -988,7 +1000,7 @@ export class CircleClient {
   async _post(kind, body, { silent = false, to = null, id = randomId(12) } = {}) {
     let env;
     const res = await this._withEpochRetry(() => {
-      env = this._seal(kind, body, this.account.epoch, { to });
+      env = this._seal(kind, body, this.account.epoch, { to, id });
       return this.api.postMessage(id, env, { silent, to });
     });
     // Our own message's seq says nothing about what others posted before it

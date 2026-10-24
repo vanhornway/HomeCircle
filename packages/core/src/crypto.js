@@ -47,22 +47,46 @@ export function directKey(myBoxSecret, peerBoxPub) {
  * the pair's direct key and the recipient in `to`). The server only ever sees
  * { epoch, nonce, ct }.
  */
-export function seal({ kind, from, to, circle, epoch, key, signSecret, body, ts = Date.now() }) {
+export function seal({ kind, from, to, circle, epoch, key, signSecret, body, id, ts = Date.now() }) {
   if (!KINDS.includes(kind)) throw new Error(`unknown kind ${kind}`);
   const inner = { v: PROTOCOL_VERSION, kind, from, circle, epoch, ts, body };
   if (to) inner.to = to;
-  const plaintext = utf8Encode(JSON.stringify(inner));
+  // A message's id is signed too, so the same envelope can't be stored again
+  // under another id (a replayed vote would otherwise count as a new one).
+  if (id) inner.id = id;
+  const plaintext = padded(inner);
   const signed = nacl.sign(plaintext, fromB64(signSecret));
   const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
   const ct = nacl.secretbox(signed, nonce, fromB64(key));
   return { epoch, nonce: toB64(nonce), ct: toB64(ct) };
 }
 
+// Sizes a payload is padded up to before sealing, so its length doesn't tell
+// the server a "👍" from a long message, or a phone sitting still from one on
+// the move. Each kind stays under the server's size limit for it; older apps
+// ignore the extra field.
+const PAD_TO = {
+  chat: [256, 1024, 4096, 8192],
+  reaction: [256, 1024, 4096, 8192],
+  event: [256, 1024, 4096, 8192],
+  location: [256, 1024],
+};
+// ,"pad":""
+const PAD_FIELD = 9;
+
+function padded(inner) {
+  const plain = utf8Encode(JSON.stringify(inner));
+  const target = (PAD_TO[inner.kind] || []).find((b) => b >= plain.length + PAD_FIELD);
+  if (!target) return plain;
+  return utf8Encode(JSON.stringify({ ...inner, pad: ' '.repeat(target - plain.length - PAD_FIELD) }));
+}
+
 /**
  * Decrypt and verify an envelope. Checks that the sender, kind, circle and
- * epoch inside the ciphertext match what we expected from the outer metadata.
+ * epoch inside the ciphertext match what we expected from the outer metadata,
+ * and its signed id (when it has one) the id it was stored under.
  */
-export function open(envelope, { key, signPub, kind, from, to, circle }) {
+export function open(envelope, { key, signPub, kind, from, to, circle, id }) {
   let signed;
   try {
     signed = nacl.secretbox.open(fromB64(envelope.ct), fromB64(envelope.nonce), fromB64(key));
@@ -85,6 +109,8 @@ export function open(envelope, { key, signPub, kind, from, to, circle }) {
   // A direct message can't be passed off as a group one, or redirected.
   if ((msg.to ?? null) !== (to ?? null)) throw new CryptoError('recipient');
   if (msg.epoch !== envelope.epoch) throw new CryptoError('epoch');
+  // Older apps don't sign the id; theirs are checked by nonce instead.
+  if (id && msg.id !== undefined && msg.id !== id) throw new CryptoError('id');
   return msg;
 }
 
