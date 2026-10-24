@@ -28,6 +28,8 @@ export interface Member {
   current: boolean;
   keyChanged: boolean;
   safetyNumber: string;
+  /** 'agent' for the circle's agent (it's never in memberList()). */
+  kind?: 'person' | 'agent';
   /** Their chirp sound (one of CHIRP_SOUNDS), or null if they haven't picked one. */
   chirp?: ChirpSound | null;
 }
@@ -287,6 +289,12 @@ export class CircleClient {
   status: ConnectionStatus;
   readonly me: Member | null | undefined;
   readonly isAdmin: boolean;
+  /** Your name, even before the member list has loaded. */
+  readonly myName: string;
+  /** The circle's agent once it has joined, or null. */
+  readonly agent: { id: string; name: string } | null;
+  /** The agent's name while it's invited but hasn't joined, or null. */
+  readonly agentInvited: { name: string } | null;
   readonly serverUrl: string | undefined;
   readonly circleId: string | null;
   /** Can create more circles on this server. */
@@ -397,6 +405,22 @@ export class CircleClient {
   endSos(sosId: string): Promise<void>;
   /** SOSes still on, newest first. */
   activeSos(now?: number): ActiveSos[];
+  /** Whether this server can run an agent, and whether this circle's is running. */
+  agentHostStatus(): Promise<{ available: boolean; running: boolean }>;
+  /** Admins: add the circle's agent, run by this server, named `name`. */
+  setUpAgent(opts: { name: string }): Promise<{ id: string; name: string } | null>;
+  /** Admins: an agent invite link (for an agent run somewhere else). */
+  createAgentInvite(opts: { name: string; hours?: number }): Promise<{ id: string; expiresAt: number; link: string }>;
+  setAgentName(name: string): Promise<void>;
+  removeAgent(): Promise<void>;
+  /** Ask the agent, in the group (peer null) or in a direct chat with it (peer = its id). */
+  askAgent(text: string, opts?: { peer?: string | null }): Promise<string | null>;
+  /** Send the agent just this one message to remember. */
+  rememberWithAgent(messageId: string): Promise<void>;
+  /** Undo what the agent just remembered. */
+  undoAgent(noteIds: string[], opts?: { peer?: string | null }): Promise<void>;
+  /** A request the app makes of the agent (Memory screen, settings), sealed for it; resolves with its answer. */
+  agentRpc<T = any>(op: string, args?: Record<string, unknown>, opts?: { timeoutMs?: number }): Promise<T>;
   fetchPlaces(): Promise<Map<string, Place>>;
   savePlace(p: { id?: string; name: string; lat: number; lng: number; radius?: number; icon?: string; address?: string | null; group?: string | null }): Promise<string>;
   deletePlace(id: string): Promise<void>;

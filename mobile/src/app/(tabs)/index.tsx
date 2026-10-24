@@ -5,7 +5,7 @@ import { needsAttention, setupChecklist } from '../../lib/health';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Place } from '@homecircle/core';
 import { FamilyMap, type MapMember } from '../../map/FamilyMap';
-import { Avatar, Button, IconButton, Tag } from '../../components/ui';
+import { Avatar, IconButton, Tag } from '../../components/ui';
 import { ServerBanner } from '../../components/ServerBanner';
 import { CircleSwitcher } from '../../components/CircleSwitcher';
 import { UpdateBanner } from '../../components/UpdateBanner';
@@ -145,10 +145,12 @@ export default function MapTab() {
           <View style={{ marginRight: 8 }}>
             <IconButton icon="birds" label="Chirp everyone" disabled={members.length < 2} onPress={() => chirpWithChoice(client, null)} />
           </View>
-          <Button
-            title={everyoneCooling ? 'Asked everyone' : 'Refresh everyone'}
-            small
-            variant="primary"
+          {/* Just an icon, to leave room in this row for more. */}
+          <IconButton
+            icon="refresh"
+            primary
+            label={everyoneCooling ? 'Asked everyone for a fresh location' : 'Refresh everyone’s location'}
+            done={everyoneCooling}
             disabled={everyoneCooling || members.length < 2}
             onPress={() => refreshEveryone(client)}
           />

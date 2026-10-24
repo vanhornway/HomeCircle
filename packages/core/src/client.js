@@ -1132,7 +1132,10 @@ export class CircleClient {
     const { link } = await this.createAgentInvite({ name, hours: 1 });
     await this.api.agentSetup({ from: this.account.identity.boxPub, box: sealToKey({ link }, host.boxPub, this.account.identity.boxSecret) });
     await this.refresh();
-    return this.agent;
+    const agent = this.agent;
+    // Everyone is told, in the group chat.
+    if (agent) await this._post('chat', { text: `🤖 ${this.myName} added ${agent.name}, the circle’s helper. Ask it with “/${agent.name} …”. It only sees what you send it, never your chats.`, agentAdded: true });
+    return agent;
   }
 
   /**
