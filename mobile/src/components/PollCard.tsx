@@ -152,9 +152,9 @@ function OptionRow({ option, share, winner, disabled, onPress }: { option: PollS
           }}
         />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
+          {winner ? <Text style={{ fontSize: 18 }}>🏆</Text> : null}
           {option.emoji ? <Text style={{ fontSize: 18 }}>{option.emoji}</Text> : null}
           <Text style={{ flex: 1, color: t.text, fontSize: 15, fontWeight: option.mine ? '700' : '500' }} numberOfLines={2}>
-            {winner ? '🏆 ' : ''}
             {option.label}
           </Text>
           {option.mine ? <Text style={{ color: t.brand, fontWeight: '700' }}>✓</Text> : null}
