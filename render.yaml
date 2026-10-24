@@ -17,6 +17,9 @@ services:
         value: "true"
       - key: DATA_DIR
         value: /data
+      # "true" runs the circle agent (the optional AI helper) in this server.
+      - key: AGENT
+        value: "false"
     disk:
       name: homecircle-data
       mountPath: /data

@@ -714,7 +714,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null })
 
   r.add('POST', '/agent-host/setup', async ({ me, body }) => {
     requireAdmin(me);
-    if (!agentHost) fail(404, 'no_agent_host', 'This server doesn’t run agents. Turn on AGENT (or “Run the agent” in the Home Assistant app) first.');
+    if (!agentHost) fail(404, 'no_agent_host', 'This server doesn’t run agents. Turn on AGENT=true (or run_agent in the Home Assistant app) first.');
     const from = vBytes(body.from, 'from', 32);
     if (from !== me.boxPub) fail(400, 'invalid', 'from must be your own key');
     const box = vBox(body.box, 'box', 2048);

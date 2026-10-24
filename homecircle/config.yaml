@@ -23,6 +23,7 @@ options:
   tailscale_auth_key: ""
   tailscale_hostname: homecircle
   setup_code: ""
+  run_agent: false
   load_test_server: false
   load_test_setup_code: ""
   load_test_reset: false
@@ -30,6 +31,7 @@ schema:
   tailscale_auth_key: password?
   tailscale_hostname: match(^[a-z0-9][a-z0-9-]{0,62}$)
   setup_code: password?
+  run_agent: bool
   load_test_server: bool
   load_test_setup_code: password?
   load_test_reset: bool

@@ -1178,7 +1178,7 @@ export class CircleClient {
    */
   async setUpAgent({ name }) {
     const host = await this.api.agentHost();
-    if (!host.available) throw new Error('This server doesn’t run agents yet. Turn on AGENT (or “Run the agent” in the Home Assistant app).');
+    if (!host.available) throw new Error('This server doesn’t run agents yet. Turn on AGENT=true (or run_agent in the Home Assistant app).');
     const { link } = await this.createAgentInvite({ name, hours: 1 });
     await this.api.agentSetup({ from: this.account.identity.boxPub, box: sealToKey({ link }, host.boxPub, this.account.identity.boxSecret) });
     await this.refresh();

@@ -83,7 +83,7 @@ function AddAgent() {
         <SettingsGroup title="First, on your server">
           <GroupBody>
             <Text style={{ color: t.text, fontSize: 14, lineHeight: 20 }}>
-              The agent runs on your own server. Turn it on there: in Home Assistant, open the HomeCircle app’s Configuration and switch on “Run the agent”; on Docker, Render or another host, set
+              The agent runs on your own server. Turn it on there: in Home Assistant, open the HomeCircle app’s Configuration and switch on run_agent; on Docker, Render or another host, set
               AGENT=true. Then come back here.
             </Text>
           </GroupBody>

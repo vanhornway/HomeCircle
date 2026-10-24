@@ -146,6 +146,7 @@ on your Pi.
 | `PUSH_PROVIDER` | `expo` | `none` disables push (locate requests then only reach open apps) |
 | `TILE_URL` / `TILE_ATTRIBUTION` | OpenStreetMap | map tiles the apps load |
 | `WEB_CLIENT` | `true` | serve the browser version at `/` |
+| `AGENT` | `false` | run the circle agent (the optional AI helper); each circle's admin then adds it in the app |
 
 ## Backups and updates
 

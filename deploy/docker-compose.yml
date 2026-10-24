@@ -19,6 +19,8 @@ services:
       PUBLIC_URL: https://${DOMAIN:-localhost}
       TRUST_PROXY: "true"
       MESSAGE_RETENTION_DAYS: ${MESSAGE_RETENTION_DAYS:-365}
+      # true runs the circle agent (the optional AI helper) in this server.
+      AGENT: ${AGENT:-false}
     volumes:
       - homecircle-data:/data
     ports:
