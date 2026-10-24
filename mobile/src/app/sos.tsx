@@ -23,9 +23,13 @@ const clock = (ts: number) => new Date(ts).toLocaleTimeString(undefined, { hour:
 export default function SosScreen() {
   const { countdown, circle, member } = useLocalSearchParams<{ countdown?: string; circle?: string; member?: string }>();
   const mine = useMySos();
+  // Once this screen has sent an SOS, it never counts down again: after "I'm
+  // safe" it must not start a new one on its own.
+  const [sent, setSent] = useState(false);
+  if (mine && !sent) setSent(true);
   if (circle && member) return <TheirSos circleId={circle} memberId={member} />;
   if (mine === undefined) return null;
-  if (!mine && countdown) return <Countdown />;
+  if (!mine && countdown && !sent) return <Countdown />;
   if (!mine) return <Ended text="Your SOS has ended." />;
   return <MySosView />;
 }

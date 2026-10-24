@@ -132,6 +132,11 @@ export class CircleClient {
     return this.account ? this.members.get(this.account.memberId) : null;
   }
 
+  /** Your name, even before the member list has loaded (e.g. a background task). */
+  get myName() {
+    return this.me?.name || cleanName(this.account?.profile?.name) || 'Someone';
+  }
+
   get isAdmin() {
     const role = this.me?.role;
     return role === 'owner' || role === 'admin';
@@ -427,7 +432,7 @@ export class CircleClient {
       epoch: a.epoch,
       circle: a.circleId,
       circleName: this.circle.name,
-      approvedByName: this.me?.name || '',
+      approvedByName: (this.me?.name || this.account?.profile?.name || ''),
       toBoxPub: request.boxPub,
       fromBoxSecret: a.identity.boxSecret,
     });
@@ -953,7 +958,7 @@ export class CircleClient {
     const s = this.pollState(pollId);
     const pool = s.winners.length ? s.winners : s.options;
     const pick = pool[Math.floor(Math.random() * pool.length)];
-    const who = this.me?.name || 'Someone';
+    const who = this.myName;
     await this._post('chat', { text: `🎡 ${who} spun the wheel: ${pick.emoji ? `${pick.emoji} ` : ''}${pick.label}!`, pollSpin: { poll: pollId, option: pick.id } }, { to: m.peer });
     return pick;
   }
@@ -1096,7 +1101,7 @@ export class CircleClient {
   }
 
   _agentContext() {
-    return { asker: this.me?.name || 'Someone', people: this.memberList().map((m) => ({ id: m.id, name: m.name })) };
+    return { asker: this.myName, people: this.memberList().map((m) => ({ id: m.id, name: m.name })) };
   }
 
   /**
@@ -1143,7 +1148,7 @@ export class CircleClient {
   /** Send an SOS to the whole circle. Returns its id. */
   async startSos() {
     const id = randomId(12);
-    const name = this.me?.name || 'Someone';
+    const name = this.myName;
     await this._post('chat', { text: `🆘 ${name} sent an SOS. Open HomeCircle to see where they are.`, sos: { state: 'start' } }, { id });
     return id;
   }
@@ -1151,13 +1156,13 @@ export class CircleClient {
   /** Tell the circle you reached a safe place during an SOS. */
   sosArrived(sosId, placeName) {
     const place = String(placeName || '').slice(0, 80) || 'a safe place';
-    const name = this.me?.name || 'Someone';
+    const name = this.myName;
     return this._post('chat', { text: `📍 ${name} reached ${place}`, sos: { state: 'arrived', of: sosId, place } });
   }
 
   /** End your SOS: "I'm safe". */
   endSos(sosId) {
-    const name = this.me?.name || 'Someone';
+    const name = this.myName;
     return this._post('chat', { text: `✅ ${name} is safe now.`, sos: { state: 'safe', of: sosId } });
   }
 
@@ -1321,7 +1326,7 @@ export class CircleClient {
       epoch: a.epoch,
       circle: a.circleId,
       circleName: this.circle.name,
-      invitedByName: this.me?.name || '',
+      invitedByName: (this.me?.name || this.account?.profile?.name || ''),
     });
     const res = await this.api.createInvite({ id, authHash: inviteAuthHash(inviteAuth), wrapped, epoch: a.epoch, hours });
     return {

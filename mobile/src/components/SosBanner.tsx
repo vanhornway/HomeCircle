@@ -24,7 +24,7 @@ export function SosBanner({ style }: { style?: StyleProp<ViewStyle> }) {
   );
   return (
     <View style={[{ gap: 8 }, style]}>
-      {mine ? row('mine', '🆘 Your SOS is on', 'Sharing your location every minute. Tap when you’re safe.', () => router.push('/sos')) : null}
+      {mine ? row('mine', '🆘 Your SOS is on', 'Sharing your location every minute. Tap when you’re safe.', () => router.navigate('/sos')) : null}
       {theirs.map((s) =>
         row(s.id, `🆘 ${s.name} needs help`, s.arrived ? `Reached ${s.arrived.place}. Tap to see where they are.` : 'Tap to see where they are.', () =>
           router.push({ pathname: '/sos', params: { circle: s.circleId, member: s.memberId } }),

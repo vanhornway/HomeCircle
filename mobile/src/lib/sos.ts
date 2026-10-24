@@ -80,6 +80,8 @@ export function useMySos(): MySos | null | undefined {
 
 /** Send the SOS to every circle on this phone and start sharing every minute. */
 export async function startMySos(): Promise<void> {
+  // Already on: nothing to start (and its ids must not be replaced).
+  if (await mySos()) return;
   const clients = await loadedClients();
   const ids: Record<string, string> = {};
   const sent = await Promise.allSettled(clients.map(async (c) => (ids[c.circleId!] = await c.startSos())));

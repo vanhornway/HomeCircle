@@ -59,7 +59,13 @@ after(async () => {
 const mom = client();
 const dad = client();
 const agent = new AgentClient({ storage: new MemoryStorage(), onError: (e) => errors.push(e) });
-const sync = () => Promise.all([mom, dad].map((c) => c.refresh().then(() => c.fetchMessages())));
+// In order: an admin's phone (Mom's) records the agent's card, then others see it.
+const sync = async () => {
+  for (const c of [mom, dad]) {
+    await c.refresh();
+    await c.fetchMessages();
+  }
+};
 
 test('an admin invites the agent by name; the invite carries no circle key', async () => {
   await mom.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'Family' });

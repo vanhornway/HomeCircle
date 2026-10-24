@@ -21,7 +21,7 @@ export function SosButton({ style }: { style?: StyleProp<ViewStyle> }) {
   const held = useRef(false);
 
   const press = () => {
-    if (sos) return router.push('/sos');
+    if (sos) return router.navigate('/sos');
     setHint(false);
     held.current = false;
     run.current = Animated.timing(fill, { toValue: 1, duration: HOLD_MS, easing: Easing.linear, useNativeDriver: false });
