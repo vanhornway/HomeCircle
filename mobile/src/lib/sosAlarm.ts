@@ -3,6 +3,7 @@
 // notification, so Do Not Disturb silences it. If you opted in (Settings →
 // SOS), it plays at alarm volume instead, which Do Not Disturb lets through
 // unless you've also blocked alarms.
+import { useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { AndroidImportance, AndroidNotificationVisibility } from 'expo-notifications';
@@ -59,10 +60,33 @@ export async function alertSos(client: CircleClient, m: Message) {
     },
     trigger: Platform.OS === 'android' ? { channelId: ring && !asAlarm ? channelFor(sound) : QUIET_CHANNEL } : null,
   });
-  if (asAlarm) playAlarm(`sos_${sound}`, 2);
+  if (asAlarm && playAlarm(`sos_${sound}`, 2)) setRinging(true);
 }
 
-/** Stop an SOS alarm that's ringing (you opened it, or they're safe). */
+// Whether an SOS is ringing at alarm volume (the sound plays twice, ~16 s).
+let ringing = false;
+let ringTimer: ReturnType<typeof setTimeout> | null = null;
+const listeners = new Set<() => void>();
+function setRinging(on: boolean) {
+  ringing = on;
+  if (ringTimer) clearTimeout(ringTimer);
+  ringTimer = on ? setTimeout(() => setRinging(false), 20_000) : null;
+  listeners.forEach((l) => l());
+}
+
+/** Live: is an SOS ringing at alarm volume right now? */
+export function useAlarmRinging(): boolean {
+  return useSyncExternalStore(
+    (l) => {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
+    () => ringing,
+  );
+}
+
+/** Stop an SOS alarm that's ringing (you tapped Stop, acted on it, or they're safe). */
 export function stopAlarm() {
   stopAlarmSound();
+  setRinging(false);
 }

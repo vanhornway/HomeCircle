@@ -7,7 +7,7 @@ import { Button } from '../components/ui';
 import { clientForCircle, errorText } from '../lib/circle';
 import { locatePerson, openDirections } from '../lib/people';
 import { SAFE_EMOJI, SAFE_KIND_NAME, endMySos, startMySos, useMySos, type SafePlace } from '../lib/sos';
-import { stopAlarm } from '../lib/sosAlarm';
+import { stopAlarm, useAlarmRinging } from '../lib/sosAlarm';
 import { formatFeet } from '../lib/units';
 import { timeAgo, useAllCircles } from '../lib/useCircle';
 import { useTheme } from '../theme';
@@ -146,10 +146,7 @@ function TheirSos({ circleId, memberId }: { circleId: string; memberId: string }
   const t = useTheme();
   useAllCircles(['messages', 'locations', 'members']);
   const client = clientForCircle(circleId);
-  // Seeing it is enough: the alarm can stop.
-  useEffect(() => {
-    stopAlarm();
-  }, []);
+  const ringing = useAlarmRinging();
   if (!client) return <Ended text="This circle isn’t on this phone anymore." />;
   const name = client.members.get(memberId)?.name || 'Someone';
   const sos = client.activeSos().find((s) => s.memberId === memberId);
@@ -166,6 +163,7 @@ function TheirSos({ circleId, memberId }: { circleId: string; memberId: string }
         </Text>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+        {ringing ? <Button variant="danger" title="🔕 Stop the alarm" onPress={stopAlarm} /> : null}
         <View style={{ backgroundColor: t.surface, borderRadius: 14, padding: 14, gap: 4 }}>
           <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>{loc ? `Location ${timeAgo(loc.ts)}` : 'No location yet'}</Text>
           {loc && me ? <Text style={{ color: t.muted, fontSize: 14 }}>{formatFeet(distanceM(me, loc))} from you</Text> : null}
@@ -176,10 +174,38 @@ function TheirSos({ circleId, memberId }: { circleId: string; memberId: string }
           ) : null}
           <Text style={{ color: t.muted, fontSize: 13 }}>Their phone shares its location every minute until they say they’re safe.</Text>
         </View>
-        <Button variant="primary" title={`Directions to ${name}`} disabled={!loc} onPress={() => loc && openDirections(name, loc, () => locatePerson(client, memberId))} />
-        <Button title="Locate now" onPress={() => locatePerson(client, memberId)} />
-        <Button title="Open the chat" onPress={() => router.push({ pathname: '/conversation', params: { circle: circleId, peer: '' } })} />
-        <Button variant="danger" title={`📞 Call ${EMERGENCY_NUMBER}`} onPress={() => Linking.openURL(`tel:${EMERGENCY_NUMBER}`)} />
+        {/* Doing anything about it also stops the alarm. */}
+        <Button
+          variant="primary"
+          title={`Directions to ${name}`}
+          disabled={!loc}
+          onPress={() => {
+            stopAlarm();
+            if (loc) openDirections(name, loc, () => locatePerson(client, memberId));
+          }}
+        />
+        <Button
+          title="Locate now"
+          onPress={() => {
+            stopAlarm();
+            locatePerson(client, memberId);
+          }}
+        />
+        <Button
+          title="Open the chat"
+          onPress={() => {
+            stopAlarm();
+            router.push({ pathname: '/conversation', params: { circle: circleId, peer: '' } });
+          }}
+        />
+        <Button
+          variant="danger"
+          title={`📞 Call ${EMERGENCY_NUMBER}`}
+          onPress={() => {
+            stopAlarm();
+            Linking.openURL(`tel:${EMERGENCY_NUMBER}`);
+          }}
+        />
       </ScrollView>
     </SafeAreaView>
   );
