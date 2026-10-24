@@ -2,6 +2,12 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.10.1
+
+- Fixed: the web page could miss votes and messages sent just as it
+  reconnected, so counts differed between devices and a closed poll could
+  announce the wrong winner.
+
 ## 0.10.0
 
 - Polls on the web page: vote, see who voted, add an option, spin the wheel,

@@ -1,6 +1,16 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.10.1',
+    date: '2026-10-24',
+    title: 'Votes that add up, and update reminders',
+    items: [
+      'Fixed: a phone could miss votes (and sometimes messages) sent just as it reconnected, so two phones showed different counts and a closed poll could announce the wrong winner.',
+      'Closing a poll or spinning the wheel now counts every vote in first.',
+      'The app now tells you when a new version is out: a banner on the map (tap to download, then tap Install), and one notification per version. It checks GitHub’s release page at most every 4 hours.',
+    ],
+  },
+  {
     version: '0.10.0',
     date: '2026-10-24',
     title: 'Polls, and quieter chirps at school',
