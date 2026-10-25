@@ -48,6 +48,16 @@ async function fakeLlm(cfg, { system, messages, schema }) {
     if (/decided|Tahoe/.test(text)) return json({ intent: 'recall', people: [], days: null, from: null, to: null, keywords: ['tahoe'], remember: [] });
     return json({ intent: 'other', people: [], days: null, from: null, to: null, keywords: [], remember: [] });
   }
+  if (schema?.properties?.merges) {
+    // A dream: the school is a place, the two Tahoe notes are one, and Elm St gets a note.
+    const ref = (title) => text.match(new RegExp(`^\\[(n\\d+)\\] [a-z]+ \\| ${title}\\b`, 'm'))?.[1];
+    const tahoe = [...text.matchAll(/^\[(n\d+)\] [a-z]+ \| Tahoe/gm)].map((m) => m[1]);
+    return json({
+      notes: [{ ref: ref('Lincoln Elementary'), type: 'place', title: 'Lincoln Elementary', body: 'The school on [[Elm St]].', people: [], start: null, end: null, role: null }],
+      merges: tahoe.length > 1 ? [{ keep: tahoe[0], drop: tahoe.slice(1) }] : [],
+      create: [{ type: 'place', title: 'Elm St', body: 'A street.', people: [], start: null, end: null, role: null }],
+    });
+  }
   if (schema?.properties?.events) {
     // A calendar PDF: the test's lines are "YYYY-MM-DD[..YYYY-MM-DD] What".
     const events = [...text.matchAll(/^(\d{4}-\d{2}-\d{2})(?:\.\.(\d{4}-\d{2}-\d{2}))? (.+)$/gm)].map(([, start, end, summary]) => ({ summary, start, end: end ?? null, off: /no practice|break/i.test(summary) }));
@@ -295,6 +305,32 @@ test('a calendar PDF: the dates are listed for a check, saved on OK, read again 
   now = new Date(now.getTime() + 7 * 3600_000);
   await app.agentHost.refresh();
   assert.equal(sentToAi.length, after);
+});
+
+test('a dream (admins only) sorts, merges and adds, and one Undo takes it all back', async () => {
+  for (const note of [
+    { type: 'fact', title: 'Lincoln Elementary', body: 'Lincoln Elementary is on Elm St.' },
+    { type: 'decision', title: 'Tahoe trip', body: 'We decided on Tahoe for spring break.' },
+    { type: 'fact', title: 'Tahoe', body: 'Spring break: Tahoe.' },
+  ])
+    await mom.agentRpc('add', { note });
+  const before = (await mom.agentRpc('list')).map((n) => `${n.type}:${n.title}`).sort();
+  await dad.askAgent('dream');
+  await until(dad, (c) => (/Only circle admins can start a dream/.test(lastFromAgent(c)?.body.text) ? 1 : null));
+
+  await mom.askAgent('/dream');
+  const done = await until(mom, (c) => (/Dream done/.test(lastFromAgent(c)?.body.text) ? lastFromAgent(c) : null));
+  assert.equal(done.body.text, '💤 Dream done: 1 sorted or tidied, 1 duplicate merged, 1 new note for people and places. Every change is in each note’s history in Memory.');
+  const after = await mom.agentRpc('list');
+  assert.equal(after.find((n) => n.title === 'Lincoln Elementary').type, 'place');
+  assert.equal(after.filter((n) => n.title.startsWith('Tahoe')).length, 1);
+  assert.ok(after.some((n) => n.type === 'place' && n.title === 'Elm St'));
+  // The dream never saw the calendars' data, only notes.
+  assert.ok(!sentToAi.at(-1).includes('source |'));
+
+  await mom.undoAgent(done.body.undo);
+  await until(mom, (c) => (lastFromAgent(c)?.body.text === '↩️ Undone.' ? 1 : null));
+  assert.deepEqual((await mom.agentRpc('list')).map((n) => `${n.type}:${n.title}`).sort(), before);
 });
 
 test('a PDF with no text says so', async () => {

@@ -53,6 +53,23 @@ export const UNDERSTAND = {
   required: ['intent', 'people', 'days', 'from', 'to', 'keywords', 'remember'],
   additionalProperties: false,
 };
+// What a dream changes in a batch of shared notes (refs are n1, n2… in the batch).
+const DREAM_NOTE = { ...NOTE_ITEM, properties: { ref: { type: 'string' }, ...NOTE_ITEM.properties }, required: ['ref', ...NOTE_ITEM.required] };
+export const DREAM = {
+  type: 'object',
+  properties: {
+    notes: { type: 'array', items: DREAM_NOTE },
+    merges: {
+      type: 'array',
+      items: { type: 'object', properties: { keep: { type: 'string' }, drop: { type: 'array', items: { type: 'string' } } }, required: ['keep', 'drop'], additionalProperties: false },
+    },
+    create: { type: 'array', items: NOTE_ITEM },
+  },
+  required: ['notes', 'merges', 'create'],
+  additionalProperties: false,
+};
+const DREAM_BATCH_CHARS = 30_000;
+
 // What the AI lists from a calendar PDF.
 export const PDF_EVENTS = {
   type: 'object',
@@ -310,6 +327,7 @@ export class Brain {
     if (/^(usage|budget|spending|how much)\b/i.test(text)) return this._usage(msg);
     if (/^undo\b/i.test(text)) return this._undo(msg, this.memory.getSetting(`last:${msg.from}`) ?? []);
     if (/^forget (the )?(.+)$/i.test(text)) return this._forget(msg, text.match(/^forget (?:the )?(.+)$/i)[1]);
+    if (/^\/?dream\b/i.test(text)) return this._dream(msg);
 
     const s = this._swapper(msg.from);
     const asker = this._nameOf(msg.from);
@@ -543,6 +561,103 @@ export class Brain {
     }
   }
 
+  // --- dreaming ------------------------------------------------------------
+  // Like sleep for the memory: go over every shared note and tidy it. Each
+  // note gets the right kind (person, place, event, schedule, decision,
+  // fact), a clear title, its dates, and [[links]] to the people and places it
+  // mentions; duplicates are merged; people and places mentioned but missing
+  // get a note. Admins start it; one Undo takes the whole dream back.
+
+  async _dream(msg) {
+    if (!this.agent.isAdmin(msg.from)) throw new BrainError('Only circle admins can start a dream.');
+    if (!this._provider()) throw new BrainError(`Dreaming needs the AI: an admin can add a provider in the ${this.name} settings.`);
+    // Shared notes only (never anyone's private ones); calendars and files keep their data as is.
+    const notes = this.memory
+      .list({ by: msg.from })
+      .filter((n) => n.scope === 'circle' && n.type !== 'source')
+      .sort((a, b) => a.title.localeCompare(b.title));
+    if (notes.length < 2) return this.reply(msg, '💤 Nothing to sort yet: there’s hardly anything in memory.');
+    await this.reply(msg, `💤 Dreaming over ${notes.length} notes… I’ll say when I’m done.`);
+    const s = this._swapper(msg.from);
+    const by = msg.from;
+    const now = this.now().getTime();
+    const counts = { sorted: 0, merged: 0, added: 0 };
+    const touched = new Set();
+    const known = new Set(notes.filter((n) => n.type === 'person' || n.type === 'place').map((n) => n.title.toLowerCase()));
+    for (const batch of dreamBatches(notes)) {
+      const refs = new Map(batch.map((n, i) => [`n${i + 1}`, n]));
+      const text = batch
+        .map((n, i) => {
+          const when = n.start ? ` | ${n.start}${n.end && n.end !== n.start ? `..${n.end}` : ''}` : '';
+          const role = n.data?.role ? ` | ${n.data.role}` : '';
+          return `[n${i + 1}] ${n.type} | ${n.title}${when}${role} | people: ${n.people.join(', ') || '-'}\n${n.body.slice(0, 1500)}`;
+        })
+        .join('\n\n');
+      const res = await this._ai(by, { system: this._dreamPrompt(), messages: [{ role: 'user', content: s.mask(text) }], schema: DREAM, maxTokens: 8000 });
+      const out = res.json ?? { notes: [], merges: [], create: [] };
+      const dropped = new Set();
+      for (const m of out.merges ?? []) {
+        const keep = refs.get(m.keep);
+        if (!keep) continue;
+        for (const ref of new Set(m.drop ?? [])) {
+          const gone = refs.get(ref);
+          if (!gone || gone === keep || dropped.has(ref) || touched.has(gone.id)) continue;
+          this.memory.remove(gone.id, { by, now });
+          dropped.add(ref);
+          touched.add(gone.id);
+          counts.merged++;
+        }
+      }
+      for (const fix of out.notes ?? []) {
+        const old = refs.get(fix.ref);
+        if (!old || dropped.has(fix.ref) || touched.has(old.id)) continue;
+        const next = unmaskNote(fix, s);
+        const patch = {};
+        if (NOTE_TYPES_DREAM.includes(next.type) && next.type !== old.type) patch.type = next.type;
+        if (next.title?.trim() && next.title.trim() !== old.title) patch.title = next.title.trim();
+        if (next.body?.trim() && next.body.trim() !== old.body) patch.body = next.body.trim();
+        const people = [...new Set((next.people ?? []).map((p) => p.trim()).filter(Boolean))];
+        if (people.join('|') !== old.people.join('|')) patch.people = people;
+        for (const k of ['start', 'end']) if (/^\d{4}-\d{2}-\d{2}$/.test(next[k] ?? '') && next[k] !== old[k]) patch[k] = next[k];
+        if ((next.type ?? old.type) === 'person' && ['kid', 'adult'].includes(next.role) && next.role !== old.data?.role) patch.data = { ...(old.data ?? {}), role: next.role };
+        if (!Object.keys(patch).length) continue;
+        this.memory.update(old.id, patch, { by, now });
+        touched.add(old.id);
+        counts.sorted++;
+      }
+      for (const c of out.create ?? []) {
+        const n = unmaskNote(c, s);
+        if (!['person', 'place'].includes(n.type) || !n.title?.trim() || known.has(n.title.trim().toLowerCase())) continue;
+        const [added] = this._save([n], { scope: 'circle', by });
+        known.add(added.title.toLowerCase());
+        touched.add(added.id);
+        counts.added++;
+      }
+    }
+    const done = [
+      counts.sorted && `${counts.sorted} sorted or tidied`,
+      counts.merged && `${counts.merged} duplicate${counts.merged === 1 ? '' : 's'} merged`,
+      counts.added && `${counts.added} new ${counts.added === 1 ? 'note' : 'notes'} for people and places`,
+    ].filter(Boolean);
+    if (!done.length) return this.reply(msg, '💤 Dream done: everything was already in order.');
+    this.memory.setSetting(`last:${by}`, [...touched]);
+    await this.reply(msg, `💤 Dream done: ${done.join(', ')}. Every change is in each note’s history in Memory.`, { undo: [...touched] });
+  }
+
+  _dreamPrompt() {
+    return [
+      `You tidy the shared memory of a family's helper, ${this.name}, the way sleep sorts the day's memories. Today is ${this.today()}.`,
+      'Each note is "[ref] type | title | dates | role | people", then its text. People and places appear as stand-ins (Person A, Place 1): copy them exactly as written.',
+      'notes: return only the notes you change, each in full (ref, type, title, body, people, start, end, role). Fix:',
+      '- type: person (someone), place (a location: a home, school, shop, restaurant, address), event (happens on a date), schedule (repeats, like practice every Tuesday, or a school year), decision (something the family decided), fact (anything else).',
+      '- title: short and clear; a person or place note is titled with its name.',
+      '- body: one to three sentences, keeping every fact; link people and places it mentions as [[Person A]] or [[Place 1]]. Never invent anything or drop a fact.',
+      '- people: who the note is about. start/end: YYYY-MM-DD when it has a date (end for a range), else null. role: kid or adult for a person note when the notes say so, else null.',
+      'merges: notes that say the same thing: keep the best (give its tidied version in notes, with anything the others add) and drop the rest. Only true duplicates.',
+      'create: a person or place note for someone or somewhere several notes mention that has no note of its own. Never for anyone or anywhere that already has one.',
+    ].join('\n');
+  }
+
   // --- calendar PDFs --------------------------------------------------------
   // The text is read here; the AI lists the dates (names swapped out). The
   // person who added it sees the list and saves it, or discards it.
@@ -748,6 +863,27 @@ function pick(o, keys) {
 function rawNote(text, by) {
   const t = String(text || '').trim();
   return { type: 'fact', title: t.split('\n')[0].slice(0, 60), body: by ? `${t}\n\n(from ${by})` : t, people: [], start: null, end: null, role: null };
+}
+
+const NOTE_TYPES_DREAM = ['person', 'place', 'schedule', 'event', 'decision', 'fact'];
+
+/** Notes in groups that fit one AI call; sorted by title, so duplicates land together. */
+function dreamBatches(notes) {
+  const out = [];
+  let cur = [];
+  let size = 0;
+  for (const n of notes) {
+    const len = n.title.length + Math.min(n.body.length, 1500) + 80;
+    if (cur.length && size + len > DREAM_BATCH_CHARS) {
+      out.push(cur);
+      cur = [];
+      size = 0;
+    }
+    cur.push(n);
+    size += len;
+  }
+  if (cur.length) out.push(cur);
+  return out;
 }
 
 function unmaskNote(n, s) {

@@ -1358,7 +1358,8 @@ function chatView() {
 function agentQuestion(text, name) {
   const t = text.trim();
   const lower = t.toLowerCase();
-  for (const tag of [`/${name.toLowerCase()} `, '/agent ']) if (lower.startsWith(tag)) return t.slice(tag.length).trim() || null;
+  // "/Chirya when…", and commands written "/Chirya/dream".
+  for (const tag of [`/${name.toLowerCase()} `, `/${name.toLowerCase()}/`, '/agent ', '/agent/']) if (lower.startsWith(tag)) return t.slice(tag.length).trim() || null;
   return null;
 }
 

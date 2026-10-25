@@ -171,7 +171,10 @@ function AgentReady({ name }: { name: string }) {
       <SettingsGroup>
         <GroupBody gap={4}>
           <Text style={{ color: t.text, fontSize: 17, fontWeight: '700' }}>🤖 {name}</Text>
-          <Text style={{ color: t.muted, fontSize: 14, lineHeight: 20 }}>Ask it in any chat with “/{name} …” or the 🤖 button. Long-press a message and tap Remember to keep it.</Text>
+          <Text style={{ color: t.muted, fontSize: 14, lineHeight: 20 }}>
+            Ask it in any chat with “/{name} …” or the 🤖 button. Long-press a message and tap Remember to keep it. Send it a calendar link or PDF to add a calendar.
+            {client.isAdmin ? ` Admins: “/${name}/dream” sorts and tidies everything it remembers.` : ''}
+          </Text>
         </GroupBody>
       </SettingsGroup>
 
