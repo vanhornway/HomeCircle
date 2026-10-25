@@ -2,7 +2,7 @@
 window.HOMECIRCLE_CHANGELOG = [
   {
     version: '0.13.0',
-    date: '2026-10-26',
+    date: '2026-10-25',
     title: 'Choose your circle’s features, shopping lists, reminders, and photos for the helper',
     items: [
       'Each circle chooses its features: when you make a circle, and any time after in Settings → Features (admins). Turn off chirps, polls, SOS, Locate or anything else your circle doesn’t want, and it disappears from everyone’s phone. Circles you already have keep everything on.',
