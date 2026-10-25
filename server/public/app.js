@@ -161,6 +161,15 @@ function agentButtons(m, who) {
     };
     return h('div', { class: 'agent-actions' }, h('button', { class: 'btn small primary', type: 'button', onclick: () => answer(true) }, 'Save'), h('button', { class: 'btn small', type: 'button', onclick: () => answer(false) }, 'Discard'));
   }
+  const reminder = m.body.reminder;
+  if (typeof reminder?.id === 'string' && !savedLists.has(reminder.id)) {
+    const done = () => {
+      savedLists.add(reminder.id);
+      renderPanel();
+      client.doneAgentReminder(reminder.id, { peer }).catch(fail);
+    };
+    return h('div', { class: 'agent-actions' }, h('button', { class: 'btn small primary', type: 'button', onclick: done }, 'Done'));
+  }
   const choice = m.body.fileChoice;
   if (choice?.by === client.account?.memberId && typeof choice.id === 'string' && !savedLists.has(choice.id)) {
     const answer = (keep) => {

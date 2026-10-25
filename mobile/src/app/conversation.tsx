@@ -293,6 +293,19 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             ))}
           </View>
         ) : null}
+        {who?.kind === 'agent' && typeof m.body?.reminder?.id === 'string' && !savedLists.has(m.body.reminder.id) ? (
+          <Button
+            small
+            variant="primary"
+            title="Done"
+            onPress={() => {
+              const id = m.body!.reminder.id as string;
+              setSavedLists((s) => new Set(s).add(id));
+              client.doneAgentReminder(id, { peer }).catch((e) => setError(errorText(e)));
+            }}
+            style={{ marginTop: 6 }}
+          />
+        ) : null}
         {m.body?.nudge === true && !mine ? (
           <Button small variant="primary" title="Open setup check" onPress={() => router.push('/setup-check')} style={{ marginTop: 6 }} />
         ) : null}

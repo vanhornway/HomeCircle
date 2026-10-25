@@ -180,6 +180,8 @@ function AgentReady({ name }: { name: string }) {
 
       <SettingsGroup>
         <SettingsRow icon="🧠" title={`What ${name} remembers`} detail="Search, browse, edit or delete notes and calendars" href="/agent-memory" />
+        {client.feature('shoppingLists') ? <SettingsRow icon="🛒" title="Shopping lists" detail="One per store; usual items first" href="/lists" /> : null}
+        {client.feature('reminders') ? <SettingsRow icon="⏰" title="Reminders" detail="Car registration and the like, to every admin" href="/reminders" /> : null}
         <SettingsRow
           icon="💬"
           title={`Chat with ${name} privately`}

@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CircleClient, Message } from '@homecircle/core';
 import { Avatar, Button } from '../../components/ui';
 import { ServerBanner } from '../../components/ServerBanner';
+import { getClient } from '../../lib/circle';
 import { initials, useAllCircles } from '../../lib/useCircle';
 import { unreadIn } from '../../lib/unread';
 import { useSettings } from '../../lib/storage';
@@ -44,6 +45,8 @@ function preview(client: CircleClient, m: Message | undefined, group: boolean) {
 export default function Chats() {
   const t = useTheme();
   const clients = useAllCircles();
+  // The circle on screen (for its helper's lists and reminders).
+  const active = clients.length ? getClient() : null;
   const { showPlaceAlerts } = useSettings();
   const [picking, setPicking] = useState(false);
   const lastOf = (c: CircleClient, peer: string | null) => c.conversation(peer).filter((m) => showPlaceAlerts || m.kind !== 'event').at(-1);
@@ -92,6 +95,13 @@ export default function Chats() {
         <Button title="New message" variant="primary" small onPress={() => setPicking(true)} />
       </View>
       <ServerBanner style={{ marginHorizontal: 16, marginBottom: 6 }} />
+      {/* The helper's shopping lists and reminders, for the circle on screen. */}
+      {active?.agent && (active.feature('shoppingLists') || active.feature('reminders')) ? (
+        <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 8 }}>
+          {active.feature('shoppingLists') ? <Shortcut icon="🛒" label="Shopping lists" onPress={() => router.push('/lists')} /> : null}
+          {active.feature('reminders') ? <Shortcut icon="⏰" label="Reminders" onPress={() => router.push('/reminders')} /> : null}
+        </View>
+      ) : null}
       <FlatList
         data={rows}
         keyExtractor={(r) => r.key}
@@ -174,6 +184,20 @@ export default function Chats() {
         </Pressable>
       </Modal>
     </SafeAreaView>
+  );
+}
+
+function Shortcut({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
+  const t = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => ({ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, paddingHorizontal: 14, borderRadius: 14, backgroundColor: pressed ? t.surface2 : t.surface, borderWidth: 1, borderColor: t.line })}
+    >
+      <Text style={{ fontSize: 20 }}>{icon}</Text>
+      <Text style={{ color: t.text, fontSize: 15, fontWeight: '600' }}>{label}</Text>
+    </Pressable>
   );
 }
 
