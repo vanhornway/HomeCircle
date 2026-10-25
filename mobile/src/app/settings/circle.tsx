@@ -87,7 +87,7 @@ export default function CircleSettings() {
         ) : null}
       </SettingsGroup>
 
-      {client.isAdmin ? (
+      {client.isAdmin && client.feature('circleHealth') ? (
         <SettingsGroup>
           <SettingsRow icon="📋" title="Circle health" detail="How each member’s phone is set up; nudge them to fix problems" href="/circle-health" />
         </SettingsGroup>

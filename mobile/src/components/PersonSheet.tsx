@@ -89,37 +89,41 @@ export function PersonSheet({ client, memberId, onClose }: { client: CircleClien
                   <Text style={{ color: t.muted, fontSize: 14 }}>This is you. Change how you share, and your most visited places, in Settings.</Text>
                 ) : (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 }}>
-                    {tile(
-                      'navigate',
-                      'Directions',
-                      loc ? `Location from ${timeAgo(loc.ts)}` : paused ? 'Sharing is paused' : 'No location yet',
-                      () => loc && openDirections(m.name, loc, () => locatePerson(client, m.id)),
-                      !loc,
-                    )}
-                    {tile(
-                      'locate',
-                      'Locate',
-                      state === 'sent'
-                        ? 'Sent · waiting for their phone…'
-                        : state === 'delivered'
-                          ? 'Delivered · locating…'
-                          : state === 'updated'
-                            ? 'Updated just now'
-                            : state === 'no-reply'
-                              ? 'No reply yet · try again'
-                              : state === 'cooldown'
-                                ? 'Asked recently'
-                                : 'Get a fresh location',
-                      () => locatePerson(client, m.id),
-                      !!paused || !canLocate(state),
-                    )}
-                    {tile('checkin', checking ? 'Sending…' : 'Check in', 'Ask “where are you?”', askCheckIn, checking)}
-                    {tile('chat', 'Message', 'Only you two can read it', go(() => router.push({ pathname: '/conversation', params: { circle: client.circleId!, peer: m.id } })))}
-                    {tile('bell', 'Alert me', 'When they arrive or leave', () => setAlerting(true))}
-                    {tile('bird', 'Chirp', 'A sound they’ll know is you', go(() => chirpWithChoice(client, m.id)))}
+                    {/* Only what this circle has on. */}
+                    {client.feature('locationSharing') &&
+                      tile(
+                        'navigate',
+                        'Directions',
+                        loc ? `Location from ${timeAgo(loc.ts)}` : paused ? 'Sharing is paused' : 'No location yet',
+                        () => loc && openDirections(m.name, loc, () => locatePerson(client, m.id)),
+                        !loc,
+                      )}
+                    {client.feature('locate') &&
+                      tile(
+                        'locate',
+                        'Locate',
+                        state === 'sent'
+                          ? 'Sent · waiting for their phone…'
+                          : state === 'delivered'
+                            ? 'Delivered · locating…'
+                            : state === 'updated'
+                              ? 'Updated just now'
+                              : state === 'no-reply'
+                                ? 'No reply yet · try again'
+                                : state === 'cooldown'
+                                  ? 'Asked recently'
+                                  : 'Get a fresh location',
+                        () => locatePerson(client, m.id),
+                        !!paused || !canLocate(state),
+                      )}
+                    {client.feature('checkIns') && tile('checkin', checking ? 'Sending…' : 'Check in', 'Ask “where are you?”', askCheckIn, checking)}
+                    {client.feature('directMessages') &&
+                      tile('chat', 'Message', 'Only you two can read it', go(() => router.push({ pathname: '/conversation', params: { circle: client.circleId!, peer: m.id } })))}
+                    {client.feature('placeAlerts') && tile('bell', 'Alert me', 'When they arrive or leave', () => setAlerting(true))}
+                    {client.feature('chirps') && tile('bird', 'Chirp', 'A sound they’ll know is you', go(() => chirpWithChoice(client, m.id)))}
                   </View>
                 )}
-                {!m.isMe && client.frequent.get(m.id)?.places.length ? (
+                {!m.isMe && client.feature('frequentPlaces') && client.frequent.get(m.id)?.places.length ? (
                   <View style={{ gap: 8 }}>
                     <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700' }}>MOST VISITED · LAST 30 DAYS</Text>
                     {client.frequent

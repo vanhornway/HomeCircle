@@ -5,6 +5,7 @@ import { Avatar, H1, Screen } from '../../components/ui';
 import { ServerBanner } from '../../components/ServerBanner';
 import { RejoinBanner } from '../../components/RejoinBanner';
 import { SettingsGroup, SettingsRow } from '../../components/SettingsKit';
+import { FEATURES } from '@homecircle/core';
 import { CHIRP_NAMES } from '../../lib/chirp';
 import { useCircles } from '../../lib/circle';
 import { APP_VERSION, checkForUpdate, downloadUpdate, useNewerVersion } from '../../lib/updates';
@@ -58,28 +59,38 @@ export default function SettingsTab() {
 
       <SettingsGroup title="Circle">
         <SettingsRow icon="👥" title={circle} detail={`${people === 1 ? '1 person' : `${people} people`}${client.isAdmin ? ' · invite, history, members' : ' · people, history, leave'}`} href="/settings/circle" />
+        <SettingsRow
+          icon="🧩"
+          title="Features"
+          detail={`${FEATURES.filter((f) => client.feature(f.id)).length} of ${FEATURES.length} on${client.isAdmin ? ' · choose what this circle has' : ''}`}
+          href="/settings/features"
+        />
         <SettingsRow icon="🏡" title="Your circles" detail={clients.length > 1 ? `${plural(clients.length, 'circle')} · switch, and how much each sees` : 'How much your circle sees, or join another'} href="/settings/circles" />
       </SettingsGroup>
 
       <SettingsGroup title="You">
         <SettingsRow icon="📍" title="Location sharing" detail={settings.sharing ? `On · about every ${settings.intervalMinutes} min · place alerts` : 'Paused · place alerts, most visited'} href="/settings/location" />
         <SettingsRow icon="🔔" title="Notifications" detail={settings.showPreviews ? 'Showing message text' : 'Hiding message text'} href="/settings/notifications" />
-        <SettingsRow
-          icon="🐦"
-          title="Chirps & SOS"
-          detail={`${myChirp ? `Your chirp: ${CHIRP_NAMES[myChirp]}` : 'Pick your chirp'} · SOS ${settings.sosThroughDnd ? 'rings through Do Not Disturb' : 'follows Do Not Disturb'}`}
-          href="/settings/chirps"
-        />
+        {clients.some((c) => c.feature('chirps') || c.feature('sos')) ? (
+          <SettingsRow
+            icon="🐦"
+            title="Chirps & SOS"
+            detail={`${myChirp ? `Your chirp: ${CHIRP_NAMES[myChirp]}` : 'Pick your chirp'} · SOS ${settings.sosThroughDnd ? 'rings through Do Not Disturb' : 'follows Do Not Disturb'}`}
+            href="/settings/chirps"
+          />
+        ) : null}
       </SettingsGroup>
 
-      <SettingsGroup title="Helper">
-        <SettingsRow
-          icon="🤖"
-          title={agent?.name ?? invited?.name ?? 'Circle agent'}
-          detail={agent ? 'Memory, calendars, AI provider and budget' : invited ? 'Invited, waiting for it to join' : client.isAdmin ? 'Add an optional helper that remembers for your circle' : 'Not added to this circle'}
-          href="/settings/agent"
-        />
-      </SettingsGroup>
+      {client.feature('agent') ? (
+        <SettingsGroup title="Helper">
+          <SettingsRow
+            icon="🤖"
+            title={agent?.name ?? invited?.name ?? 'Circle agent'}
+            detail={agent ? 'Memory, calendars, AI provider and budget' : invited ? 'Invited, waiting for it to join' : client.isAdmin ? 'Add an optional helper that remembers for your circle' : 'Not added to this circle'}
+            href="/settings/agent"
+          />
+        </SettingsGroup>
+      ) : null}
 
       <SettingsGroup title="This phone">
         <SettingsRow icon="📱" title="This phone" detail="Setup check, diagnostics, server address" href="/settings/phone" />

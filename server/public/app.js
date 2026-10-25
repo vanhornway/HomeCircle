@@ -2,7 +2,7 @@
 // server only ever hands us ciphertext.
 import * as L from '/vendor/leaflet/leaflet-src.esm.js';
 import qrcode from '/vendor/qrcode.mjs';
-import { ACCOUNT_KEY, CircleClient, EMOJI_GROUPS, QUICK_REACTIONS, isEmojiOnly } from '/core/index.js';
+import { ACCOUNT_KEY, CircleClient, EMOJI_GROUPS, FEATURES, FEATURE_GROUPS, QUICK_REACTIONS, isEmojiOnly } from '/core/index.js';
 
 const root = document.getElementById('root');
 const SERVER = location.origin;
@@ -993,11 +993,15 @@ function peopleView() {
             loc
               ? h('a', { class: 'icon-btn', href: directionsUrl(loc), target: '_blank', rel: 'noopener noreferrer', title: `Directions to ${m.name}`, 'aria-label': `Directions to ${m.name}`, onclick: (e) => e.stopPropagation() }, '➤')
               : null,
-            iconBtn(`Message ${m.name}`, '💬', () => {
-              ui.peer = m.id;
-              setTab('chat');
-            }),
-            iconBtn(state === 'asking' ? `Asking ${m.name}…` : `Locate ${m.name}`, state === 'asking' ? '…' : '⌖', () => requestLocations([m.id]), !!paused || state !== 'idle'),
+            client.feature('directMessages')
+              ? iconBtn(`Message ${m.name}`, '💬', () => {
+                  ui.peer = m.id;
+                  setTab('chat');
+                })
+              : null,
+            !client.feature('locate')
+              ? null
+              : iconBtn(state === 'asking' ? `Asking ${m.name}…` : `Locate ${m.name}`, state === 'asking' ? '…' : '⌖', () => requestLocations([m.id]), !!paused || state !== 'idle'),
           )
         : null,
     );
@@ -1010,7 +1014,9 @@ function peopleView() {
     h(
       'div',
       { class: 'panel-actions' },
-      h('button', { class: 'btn primary', disabled: everyone !== 'idle' || members.length < 2, onclick: () => requestLocations() }, everyone !== 'idle' ? 'Asked everyone' : 'Refresh everyone'),
+      client.feature('locate')
+        ? h('button', { class: 'btn primary', disabled: everyone !== 'idle' || members.length < 2, onclick: () => requestLocations() }, everyone !== 'idle' ? 'Asked everyone' : 'Refresh everyone')
+        : null,
       client.isAdmin ? h('button', { class: 'btn', onclick: () => setTab('settings') }, 'Invite') : null,
     ),
     list,
@@ -1292,7 +1298,7 @@ function chatView() {
       h(
         'button',
         {
-          class: 'btn emoji-toggle',
+          class: 'btn emoji-toggle poll-btn',
           type: 'button',
           title: 'New poll',
           'aria-label': 'New poll',
@@ -1376,13 +1382,17 @@ function chatView() {
   }
   const form = ui.chatForm;
   const agentHere = client.agent && (!ui.peer || ui.peer === client.agent.id);
-  form.querySelector('.attach-btn').classList.toggle('hidden', !agentHere);
+  form.querySelector('.attach-btn').classList.toggle('hidden', !agentHere || !client.feature('uploads'));
+  form.querySelector('.poll-btn').classList.toggle('hidden', !client.feature('polls'));
+  // This kind of chat turned off: no box to write in (the helper's own chat always works).
+  const canWrite = ui.peer ? (client.agent && ui.peer === client.agent.id) || client.feature('directMessages') : client.feature('groupChat');
   const input = form.querySelector(':scope > input:not([type=file])');
   input.placeholder = ui.peer ? `Message ${peerName}` : 'Message your circle';
   const refocus = document.activeElement === input || ui.focusChat;
   ui.focusChat = false;
   if (refocus) setTimeout(() => input.focus(), 0);
-  const askBtn = ui.peer
+  const askBtn =
+    ui.peer && client.feature('checkIns')
     ? h(
         'button',
         {
@@ -1394,7 +1404,8 @@ function chatView() {
         '📍 Where are you?',
       )
     : null;
-  return h('div', { class: 'chat' }, h('div', { class: 'chat-top' }, picker, askBtn), log, form);
+  const closed = h('p', { class: 'muted chat-closed' }, `${ui.peer ? 'Direct messages are' : 'The group chat is'} turned off in this circle. An admin can turn it on in Settings.`);
+  return h('div', { class: 'chat' }, h('div', { class: 'chat-top' }, picker, askBtn), log, canWrite ? form : closed);
 }
 
 /** A photo at most 1600 px on its longest side, as JPEG bytes (smaller to send, and readable by the helper). */
@@ -1867,6 +1878,37 @@ function settingsView() {
       ),
     );
   }
+
+  // What this circle has: admins tick features on and off; others see the list.
+  const features = client.features;
+  sections.push(
+    h(
+      'div',
+      { class: 'section' },
+      h('h3', {}, 'Features'),
+      h('p', { class: 'muted small' }, client.isAdmin ? 'Turn off what your circle doesn’t want; it disappears from everyone’s phone.' : 'Chosen by the circle’s admins.'),
+      FEATURE_GROUPS.map((group) =>
+        h(
+          'fieldset',
+          { class: 'feature-group' },
+          h('legend', {}, group),
+          FEATURES.filter((f) => f.group === group).map((f) =>
+            h(
+              'label',
+              { class: 'feature-row', title: f.detail },
+              h('input', {
+                type: 'checkbox',
+                checked: features[f.id],
+                disabled: !client.isAdmin,
+                onchange: (e) => client.setFeatures({ ...features, [f.id]: e.target.checked }).catch((ex) => toast(errorText(ex))),
+              }),
+              h('span', {}, f.label, h('span', { class: 'muted small' }, ` · ${f.detail}`)),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 
   sections.push(circlesSection());
 

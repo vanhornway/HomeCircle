@@ -67,15 +67,29 @@ export function SettingsRow({ icon, title, detail, href, onPress, badge }: { ico
 }
 
 /** A row with a switch: title, what it means right now, and the switch. */
-export function ToggleRow({ title, detail, value, onChange, danger }: { title: string; detail?: string; value: boolean; onChange: (v: boolean) => void; danger?: boolean }) {
+export function ToggleRow({
+  title,
+  detail,
+  value,
+  onChange,
+  danger,
+  disabled,
+}: {
+  title: string;
+  detail?: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+  danger?: boolean;
+  disabled?: boolean;
+}) {
   const t = useTheme();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, paddingHorizontal: 14, paddingVertical: 10 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, paddingHorizontal: 14, paddingVertical: 10, opacity: disabled ? 0.6 : 1 }}>
       <View style={{ flex: 1 }}>
         <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>{title}</Text>
         {detail ? <Text style={{ color: t.muted, fontSize: 13, marginTop: 2, lineHeight: 18 }}>{detail}</Text> : null}
       </View>
-      <Switch accessibilityLabel={title} value={value} onValueChange={onChange} trackColor={{ true: danger ? t.danger : t.brand }} />
+      <Switch accessibilityLabel={title} value={value} onValueChange={onChange} disabled={disabled} trackColor={{ true: danger ? t.danger : t.brand }} />
     </View>
   );
 }

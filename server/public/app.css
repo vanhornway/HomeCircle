@@ -142,6 +142,11 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 .bubble-row.mine .bubble { background: var(--brand); color: var(--brand-ink); }
 .bubble a { color: var(--brand); text-decoration: underline; }
 .agent-actions { display: flex; gap: 8px; margin-top: 6px; }
+.feature-group { border: none; padding: 0; margin: 10px 0 0; }
+.feature-group legend { font-weight: 700; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+.feature-row { display: flex; gap: 8px; align-items: flex-start; padding: 4px 0; }
+.feature-row input { margin-top: 3px; }
+.chat-closed { text-align: center; padding: 12px; }
 .bubble-row.mine .bubble a { color: inherit; }
 .bubble-time { font-size: 11px; color: var(--muted); margin: 2px 6px 0; }
 .bubble-line { display: flex; align-items: center; gap: 4px; }

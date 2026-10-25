@@ -55,7 +55,7 @@ export async function flushOutbox(): Promise<number> {
 export async function sharingClients(): Promise<CircleClient[]> {
   const settings = await getSettings();
   if (!settings.sharing) return [];
-  return (await loadedClients()).filter((c) => !settings.pausedCircles.includes(c.circleId!));
+  return (await loadedClients()).filter((c) => !settings.pausedCircles.includes(c.circleId!) && c.feature('locationSharing'));
 }
 
 /**

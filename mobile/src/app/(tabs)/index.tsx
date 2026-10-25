@@ -14,7 +14,7 @@ import { SosButton } from '../../components/SosButton';
 import { RejoinBanner } from '../../components/RejoinBanner';
 import { PersonSheet } from '../../components/PersonSheet';
 import { useServerState } from '../../lib/connection';
-import { initials, useCircle } from '../../lib/useCircle';
+import { initials, useAllCircles, useCircle } from '../../lib/useCircle';
 import { chirpWithChoice } from '../../lib/chirp';
 import { canLocate, everyoneCoolingDown, isAsking, memberState, locatePerson, locateState, lowBattery, refreshEveryone, statusLine, useLocateVersion } from '../../lib/people';
 import { DEFAULT_SETTINGS, getSettings } from '../../lib/storage';
@@ -25,6 +25,7 @@ const STALE_MS = 2 * 3600_000;
 export default function MapTab() {
   const t = useTheme();
   const client = useCircle();
+  const allCircles = useAllCircles(['circle']);
   const server = useServerState();
   const [tiles, setTiles] = useState(DEFAULT_SETTINGS);
   const [focus, setFocus] = useState<{ lat: number; lng: number; key: number } | null>(null);
@@ -100,7 +101,8 @@ export default function MapTab() {
             setSheet(id);
           }}
         />
-        <SosButton style={{ position: 'absolute', right: 16, bottom: 34 }} />
+        {/* SOS goes to every circle on this phone that has it on. */}
+        {allCircles.some((c) => c.feature('sos')) ? <SosButton style={{ position: 'absolute', right: 16, bottom: 34 }} /> : null}
         <SafeAreaView edges={['top']} style={{ position: 'absolute', left: 12, right: 12, top: 0 }} pointerEvents="box-none">
           <View
             style={{
@@ -142,18 +144,22 @@ export default function MapTab() {
       <View style={{ flex: 1, backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, marginTop: -18, paddingTop: 16 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 6 }}>
           <Text style={{ flex: 1, color: t.text, fontSize: 20, fontWeight: '700' }}>People</Text>
-          <View style={{ marginRight: 8 }}>
-            <IconButton icon="birds" label="Chirp everyone" disabled={members.length < 2} onPress={() => chirpWithChoice(client, null)} />
-          </View>
+          {client.feature('chirps') ? (
+            <View style={{ marginRight: 8 }}>
+              <IconButton icon="birds" label="Chirp everyone" disabled={members.length < 2} onPress={() => chirpWithChoice(client, null)} />
+            </View>
+          ) : null}
           {/* Just an icon, to leave room in this row for more. */}
-          <IconButton
-            icon="refresh"
-            primary
-            label={everyoneCooling ? 'Asked everyone for a fresh location' : 'Refresh everyone’s location'}
-            done={everyoneCooling}
-            disabled={everyoneCooling || members.length < 2}
-            onPress={() => refreshEveryone(client)}
-          />
+          {client.feature('locate') ? (
+            <IconButton
+              icon="refresh"
+              primary
+              label={everyoneCooling ? 'Asked everyone for a fresh location' : 'Refresh everyone’s location'}
+              done={everyoneCooling}
+              disabled={everyoneCooling || members.length < 2}
+              onPress={() => refreshEveryone(client)}
+            />
+          ) : null}
         </View>
         <FlatList
           data={members}
@@ -197,7 +203,7 @@ export default function MapTab() {
                     {statusLine(client, m, now)}
                   </Text>
                 </View>
-                {!m.isMe ? (
+                {!m.isMe && client.feature('locate') ? (
                   <IconButton
                     icon="locate"
                     label={`Locate ${m.name}`}

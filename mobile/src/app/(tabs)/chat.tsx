@@ -61,7 +61,9 @@ export default function Chats() {
       last: lastOf(c, null),
       unread: unreadIn(c, null),
     };
-    const dms = c.directPeers().map((peer): Row => {
+    // Direct chats: if the circle has them, the helper's own chat, and check-ins (which come as direct messages).
+    const dmOn = (peer: string) => c.feature('directMessages') || peer === c.agent?.id || c.feature('checkIns');
+    const dms = c.directPeers().filter(dmOn).map((peer): Row => {
       const m = c.members.get(peer);
       return {
         key: `${c.circleId}:${peer}`,
@@ -74,7 +76,7 @@ export default function Chats() {
         unread: unreadIn(c, peer),
       };
     });
-    return [group, ...dms];
+    return [...(c.feature('groupChat') ? [group] : []), ...dms];
   });
   rows.sort((a, b) => (b.last?.seq ?? 0) - (a.last?.seq ?? 0));
 
@@ -158,8 +160,8 @@ export default function Chats() {
                       <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700', marginHorizontal: 18, marginTop: 12, marginBottom: 4 }}>
                         {c.circle.name.toUpperCase()}
                       </Text>
-                      <PickRow title={`Everyone in ${c.circle.name}`} subtitle="Group chat" onPress={() => open(c, null)} />
-                      {others.map((m) => (
+                      {c.feature('groupChat') ? <PickRow title={`Everyone in ${c.circle.name}`} subtitle="Group chat" onPress={() => open(c, null)} /> : null}
+                      {(c.feature('directMessages') ? others : []).map((m) => (
                         <PickRow key={m.id} title={m.name} subtitle="Direct message" color={m.color} onPress={() => open(c, m.id)} />
                       ))}
                       {others.length ? null : <Text style={{ color: t.muted, marginHorizontal: 18, fontSize: 14 }}>No one else here yet.</Text>}

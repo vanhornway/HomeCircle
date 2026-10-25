@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { router } from 'expo-router';
-import { CircleClient } from '@homecircle/core';
+import { View } from 'react-native';
+import { CircleClient, defaultFeatures } from '@homecircle/core';
+import { FeatureChooser } from '../components/FeaturePicker';
 import { Button, ErrorText, Field, H1, LockNote, P, Screen } from '../components/ui';
 import { addCircle, allClients, draftClient, errorText } from '../lib/circle';
 import { updateSettings } from '../lib/storage';
@@ -10,6 +12,7 @@ export default function Setup() {
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [circleName, setCircleName] = useState('');
+  const [features, setFeatures] = useState(defaultFeatures);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,7 +27,7 @@ export default function Setup() {
       }
       const first = allClients().length === 0;
       const client = draftClient();
-      await client.createCircle({ serverUrl: info.server, setupToken: code, name, circleName });
+      await client.createCircle({ serverUrl: info.server, setupToken: code, name, circleName, features });
       await addCircle(client);
       if (first) {
         await updateSettings({ tileUrl: info.tileUrl, tileAttribution: info.tileAttribution });
@@ -49,6 +52,9 @@ export default function Setup() {
       <Field label="Setup code" value={code} onChangeText={setCode} placeholder="From your server logs" autoCapitalize="none" autoCorrect={false} />
       <Field label="Your name" value={name} onChangeText={setName} placeholder="e.g. Sam" autoComplete="given-name" />
       <Field label="Circle name" value={circleName} onChangeText={setCircleName} placeholder="e.g. The Parkers" />
+      <View style={{ marginBottom: 18 }}>
+        <FeatureChooser value={features} onChange={setFeatures} />
+      </View>
       <Button title="Create my circle" variant="primary" loading={busy} disabled={!server || !code || !name} onPress={submit} />
       <ErrorText>{error}</ErrorText>
       <Button

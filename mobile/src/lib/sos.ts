@@ -84,8 +84,9 @@ export async function startMySos(): Promise<void> {
   if (await mySos()) return;
   const clients = await loadedClients();
   const ids: Record<string, string> = {};
-  const sent = await Promise.allSettled(clients.map(async (c) => (ids[c.circleId!] = await c.startSos())));
-  if (!sent.some((r) => r.status === 'fulfilled')) throw (sent[0] as PromiseRejectedResult)?.reason ?? new Error('No circle on this phone');
+  // Only circles that have SOS on.
+  const sent = await Promise.allSettled(clients.filter((c) => c.feature('sos')).map(async (c) => (ids[c.circleId!] = await c.startSos())));
+  if (!sent.some((r) => r.status === 'fulfilled')) throw (sent[0] as PromiseRejectedResult)?.reason ?? new Error('SOS is turned off in your circles');
   diag('sos:start', { circles: `${Object.keys(ids).length}/${clients.length}` });
   await save({ startedAt: Date.now(), ids, places: [], reached: [], at: null });
   await Location.startLocationUpdatesAsync(SOS_TASK, {

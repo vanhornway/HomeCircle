@@ -80,26 +80,28 @@ export default function LocationSettings() {
         </GroupBody>
       </SettingsGroup>
 
-      <SettingsGroup title="Place alerts">
-        <ToggleRow
-          title="Announce my arrivals"
-          detail={
-            settings.announcePlaces
-              ? 'Your circles’ chats get “Sam arrived at Home” when you arrive at or leave a place.'
-              : 'Your phone won’t post when you arrive or leave. Your location still shows on the map.'
-          }
-          value={settings.announcePlaces}
-          onChange={(v) => updateSettings({ announcePlaces: v })}
-        />
-        <ToggleRow
-          title="Show others’ arrivals"
-          detail={settings.showPlaceAlerts ? 'You see and get notified when others arrive or leave.' : 'Hidden on this phone, and no notifications. Others still see them.'}
-          value={settings.showPlaceAlerts}
-          onChange={(v) => updateSettings({ showPlaceAlerts: v })}
-        />
-      </SettingsGroup>
+      {clients.some((c) => c.feature('placeAlerts')) ? (
+        <SettingsGroup title="Place alerts">
+          <ToggleRow
+            title="Announce my arrivals"
+            detail={
+              settings.announcePlaces
+                ? 'Your circles’ chats get “Sam arrived at Home” when you arrive at or leave a place.'
+                : 'Your phone won’t post when you arrive or leave. Your location still shows on the map.'
+            }
+            value={settings.announcePlaces}
+            onChange={(v) => updateSettings({ announcePlaces: v })}
+          />
+          <ToggleRow
+            title="Show others’ arrivals"
+            detail={settings.showPlaceAlerts ? 'You see and get notified when others arrive or leave.' : 'Hidden on this phone, and no notifications. Others still see them.'}
+            value={settings.showPlaceAlerts}
+            onChange={(v) => updateSettings({ showPlaceAlerts: v })}
+          />
+        </SettingsGroup>
+      ) : null}
 
-      <FrequentSettings clients={clients} settings={settings} onChange={() => {}} />
+      {clients.some((c) => c.feature('frequentPlaces')) ? <FrequentSettings clients={clients} settings={settings} onChange={() => {}} /> : null}
     </SettingsPage>
   );
 }

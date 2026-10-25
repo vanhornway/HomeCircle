@@ -64,7 +64,7 @@ export async function upload(
 ): Promise<boolean> {
   const settings = await getSettings();
   // During an SOS: every circle on this phone, exact, paused or not.
-  const targets = everyone ? await loadedClients() : await sharingClients();
+  const targets = everyone ? (await loadedClients()).filter((c) => c.feature('sos')) : await sharingClients();
   if (!targets.length) return false;
   const here = { lat: loc.coords.latitude, lng: loc.coords.longitude };
   const last = await getLastUpload();
@@ -92,7 +92,7 @@ export async function upload(
         ...pos,
         speed: approx ? null : loc.coords.speed,
         ...battery,
-        trigger: lowDue ? 'low_battery' : trigger,
+        trigger: lowDue && client.feature('lowBattery') ? 'low_battery' : trigger,
         placeId: approx ? null : (placeIds[client.circleId!] ?? null),
         approx,
         power: health.power,

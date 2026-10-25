@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Alert, Text, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { CircleClient, type PendingRejoin, type RecoverableCircle, type ServerInfo } from '@homecircle/core';
+import { CircleClient, defaultFeatures, type PendingRejoin, type RecoverableCircle, type ServerInfo } from '@homecircle/core';
+import { FeatureChooser } from '../components/FeaturePicker';
 import { Button, Card, ErrorText, Field, H1, LockNote, P, Screen } from '../components/ui';
 import { addCircle, allClients, clientForCircle, draftClient, errorText, serverHost, setActiveCircle } from '../lib/circle';
 import { clearPendingRejoin, getPendingRejoin, setPendingRejoin } from '../lib/rejoin';
@@ -44,6 +45,7 @@ export default function Recover() {
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [circleName, setCircleName] = useState('');
+  const [features, setFeatures] = useState(defaultFeatures);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [waitNote, setWaitNote] = useState<string | null>(null);
@@ -260,6 +262,9 @@ export default function Recover() {
       <Text style={{ color: t.text, fontSize: 17, fontWeight: '700', marginTop: 18, marginBottom: 10 }}>Start a new circle</Text>
       <Field label="Your name" value={name} onChangeText={setName} placeholder="e.g. Sam" autoComplete="given-name" />
       <Field label="Circle name" value={circleName} onChangeText={setCircleName} placeholder="e.g. The Parkers" />
+      <View style={{ marginBottom: 18 }}>
+        <FeatureChooser value={features} onChange={setFeatures} />
+      </View>
       <Button
         title="Create circle"
         variant="primary"
@@ -268,7 +273,7 @@ export default function Recover() {
         onPress={() =>
           run(async () => {
             const client = draftClient();
-            await client.createCircle({ serverUrl: server.info.server, setupToken: server.code, name, circleName });
+            await client.createCircle({ serverUrl: server.info.server, setupToken: server.code, name, circleName, features });
             await opened(client, server.info);
           })
         }

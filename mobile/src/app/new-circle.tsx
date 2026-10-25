@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { Text } from 'react-native';
+import { Text, View } from 'react-native';
+import { defaultFeatures } from '@homecircle/core';
 import { router, useLocalSearchParams } from 'expo-router';
+import { FeatureChooser } from '../components/FeaturePicker';
 import { Button, ErrorText, Field, LockNote, P, Screen } from '../components/ui';
 import { addCircle, draftClient, errorText, getClient, useCircles } from '../lib/circle';
 import { useTheme } from '../theme';
@@ -20,6 +22,7 @@ export default function NewCircle() {
       : clients.find((c) => c.isServerAdmin);
   const [circleName, setCircleName] = useState('');
   const [name, setName] = useState(admin?.me?.name || '');
+  const [features, setFeatures] = useState(defaultFeatures);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,7 +32,7 @@ export default function NewCircle() {
     setError(null);
     try {
       const client = draftClient();
-      await client.createCircle({ serverUrl: admin.serverUrl, admin, name, circleName });
+      await client.createCircle({ serverUrl: admin.serverUrl, admin, name, circleName, features });
       await addCircle(client);
       router.back();
       router.push('/invite');
@@ -59,6 +62,9 @@ export default function NewCircle() {
       <Field label="Circle name" value={circleName} onChangeText={setCircleName} placeholder="e.g. Parents & siblings" autoFocus />
       <Field label="Your name in this circle" value={name} onChangeText={setName} placeholder="What they call you" autoComplete="given-name" />
       <Text style={{ color: t.muted, fontSize: 13, marginBottom: 16 }}>On {admin.serverUrl?.replace(/^https?:\/\//, '')}</Text>
+      <View style={{ marginBottom: 18 }}>
+        <FeatureChooser value={features} onChange={setFeatures} />
+      </View>
       <Button title="Create circle" variant="primary" loading={busy} disabled={!circleName.trim() || !name.trim()} onPress={submit} />
       <ErrorText>{error}</ErrorText>
       <LockNote>You’ll own the new circle and can invite people to it next. Your other circles stay exactly as they are.</LockNote>

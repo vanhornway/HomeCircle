@@ -70,13 +70,18 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   // Sending the helper a photo or file: the 📎 choices, and the file on its way.
   const [attachOpen, setAttachOpen] = useState(false);
   const [sendingFile, setSendingFile] = useState<string | null>(null);
-  const canAttach = !!agent && (withAgent || (!peer && asking));
+  // Writing here: the circle has this kind of chat (the helper's own chat always works).
+  const canWrite = peer ? withAgent || client.feature('directMessages') : client.feature('groupChat');
+  const canAttach = !!agent && client.feature('uploads') && (withAgent || (!peer && asking));
   useLocateVersion();
   const list = useRef<FlatList<ChatRow>>(null);
   const me = client.account?.memberId;
   const key = conversationKey(client.circleId!, peer);
   const other = peer ? client.members.get(peer) : null;
-  const { showPlaceAlerts, readReceipts } = useSettings();
+  const settings = useSettings();
+  const showPlaceAlerts = settings.showPlaceAlerts;
+  // Read ticks: only if the circle has them and you share yours.
+  const readReceipts = settings.readReceipts && client.feature('readReceipts');
   const all = client.conversation(peer).filter((m) => showPlaceAlerts || m.kind !== 'event');
   // More than MOVEMENT_RUN arrived/left alerts in a row fold into one
   // "Movement" row, so they don't take over the screen. Tap to open it.
@@ -355,21 +360,25 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
         </View>
         {peer && other && !other.removed ? (
           <View style={{ flexDirection: 'row', gap: 6, marginRight: 6 }}>
-            <IconButton
-              icon="navigate"
-              label={`Directions to ${title}`}
-              disabled={!peerLoc}
-              onPress={() => peerLoc && openDirections(title, peerLoc, () => locatePerson(client, peer))}
-            />
-            <IconButton
-              icon="locate"
-              label={`Locate ${title}`}
-              busy={isAsking(locState)}
-              done={locState === 'updated'}
-              disabled={!canLocate(locState) || client.paused.has(peer)}
-              onPress={() => locatePerson(client, peer)}
-            />
-            <IconButton icon="checkin" label={`Ask ${title} to check in`} onPress={ask} />
+            {client.feature('locationSharing') ? (
+              <IconButton
+                icon="navigate"
+                label={`Directions to ${title}`}
+                disabled={!peerLoc}
+                onPress={() => peerLoc && openDirections(title, peerLoc, () => locatePerson(client, peer))}
+              />
+            ) : null}
+            {client.feature('locate') ? (
+              <IconButton
+                icon="locate"
+                label={`Locate ${title}`}
+                busy={isAsking(locState)}
+                done={locState === 'updated'}
+                disabled={!canLocate(locState) || client.paused.has(peer)}
+                onPress={() => locatePerson(client, peer)}
+              />
+            ) : null}
+            {client.feature('checkIns') ? <IconButton icon="checkin" label={`Ask ${title} to check in`} onPress={ask} /> : null}
           </View>
         ) : null}
       </View>
@@ -422,108 +431,116 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             ))}
           </View>
         ) : null}
-        <SafeAreaView edges={['bottom']} style={{ backgroundColor: t.surface }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 10, borderTopWidth: 1, borderTopColor: t.line }}>
-            <Pressable
-              accessibilityLabel={pickerOpen ? 'Hide emoji' : 'Emoji'}
-              onPress={() => {
-                if (!pickerOpen) Keyboard.dismiss();
-                setPickerOpen((v) => !v);
-              }}
-              style={{ width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: pickerOpen ? t.brandSoft : 'transparent' }}
-            >
-              <Text style={{ fontSize: 26 }}>😊</Text>
-            </Pressable>
-            {agent && !peer && !text.trim() ? (
+        {!canWrite ? (
+          <SafeAreaView edges={['bottom']} style={{ backgroundColor: t.surface, borderTopWidth: 1, borderTopColor: t.line, padding: 14 }}>
+            <Text style={{ color: t.muted, fontSize: 14, textAlign: 'center' }}>
+              {peer ? 'Direct messages are turned off in this circle.' : 'The group chat is turned off in this circle.'} An admin can turn it on in Settings.
+            </Text>
+          </SafeAreaView>
+        ) : (
+          <SafeAreaView edges={['bottom']} style={{ backgroundColor: t.surface }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 10, borderTopWidth: 1, borderTopColor: t.line }}>
               <Pressable
-                accessibilityLabel={asking ? `Stop asking ${agent.name}` : `Ask ${agent.name}`}
-                accessibilityState={{ selected: asking }}
-                onPress={() => setAsking((v) => !v)}
-                style={{ width: 40, height: 48, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginLeft: -6, backgroundColor: asking ? t.brandSoft : 'transparent' }}
+                accessibilityLabel={pickerOpen ? 'Hide emoji' : 'Emoji'}
+                onPress={() => {
+                  if (!pickerOpen) Keyboard.dismiss();
+                  setPickerOpen((v) => !v);
+                }}
+                style={{ width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: pickerOpen ? t.brandSoft : 'transparent' }}
               >
-                <Text style={{ fontSize: 24 }}>🤖</Text>
+                <Text style={{ fontSize: 26 }}>😊</Text>
+              </Pressable>
+              {agent && !peer && !text.trim() ? (
+                <Pressable
+                  accessibilityLabel={asking ? `Stop asking ${agent.name}` : `Ask ${agent.name}`}
+                  accessibilityState={{ selected: asking }}
+                  onPress={() => setAsking((v) => !v)}
+                  style={{ width: 40, height: 48, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginLeft: -6, backgroundColor: asking ? t.brandSoft : 'transparent' }}
+                >
+                  <Text style={{ fontSize: 24 }}>🤖</Text>
+                </Pressable>
+              ) : null}
+              {canAttach && !text.trim() ? (
+                <Pressable
+                  accessibilityLabel={`Send ${agent!.name} a photo or file`}
+                  accessibilityState={{ expanded: attachOpen }}
+                  disabled={!!sendingFile}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setPickerOpen(false);
+                    setAttachOpen((v) => !v);
+                  }}
+                  style={{ width: 40, height: 48, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginLeft: -6, backgroundColor: attachOpen ? t.brandSoft : 'transparent' }}
+                >
+                  <Text style={{ fontSize: 22 }}>📎</Text>
+                </Pressable>
+              ) : null}
+              {text.trim() || withAgent || canAttach || !client.feature('polls') ? null : (
+                <Pressable
+                  accessibilityLabel="New poll"
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setPickerOpen(false);
+                    setPollOpen(true);
+                  }}
+                  style={{ width: 40, height: 48, alignItems: 'center', justifyContent: 'center', marginLeft: -6 }}
+                >
+                  <Text style={{ fontSize: 24 }}>📊</Text>
+                </Pressable>
+              )}
+              <TextInput
+                value={text}
+                onChangeText={setText}
+                onFocus={() => setPickerOpen(false)}
+                placeholder={withAgent ? `Ask ${title} anything` : asking && agent ? `Ask ${agent.name}…` : peer ? `Message ${title}` : 'Message your circle'}
+                placeholderTextColor={t.muted}
+                multiline
+                maxLength={4000}
+                style={{ flex: 1, minHeight: 48, maxHeight: 130, backgroundColor: t.bg, borderRadius: 24, paddingHorizontal: 16, paddingTop: 13, paddingBottom: 13, fontSize: 17, color: t.text }}
+              />
+              <Pressable
+                accessibilityLabel="Send"
+                onPress={send}
+                disabled={!text.trim()}
+                style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: t.brand, alignItems: 'center', justifyContent: 'center', opacity: text.trim() ? 1 : 0.5 }}
+              >
+                <Icon name="send" color={t.brandInk} size={22} />
+              </Pressable>
+            </View>
+            {agent && !peer && /^\/\S*$/.test(text) && `/${agent.name}`.toLowerCase().startsWith(text.toLowerCase()) ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setText(`/${agent.name} `)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 10, marginBottom: 8, padding: 10, borderRadius: 12, backgroundColor: t.brandSoft }}
+              >
+                <Text style={{ fontSize: 18 }}>🤖</Text>
+                <Text style={{ color: t.brand, fontSize: 16, fontWeight: '700' }}>/{agent.name}</Text>
+                <Text style={{ color: t.muted, fontSize: 13 }}>ask the circle’s helper</Text>
               </Pressable>
             ) : null}
-            {canAttach && !text.trim() ? (
-              <Pressable
-                accessibilityLabel={`Send ${agent!.name} a photo or file`}
-                accessibilityState={{ expanded: attachOpen }}
-                disabled={!!sendingFile}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  setPickerOpen(false);
-                  setAttachOpen((v) => !v);
-                }}
-                style={{ width: 40, height: 48, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginLeft: -6, backgroundColor: attachOpen ? t.brandSoft : 'transparent' }}
-              >
-                <Text style={{ fontSize: 22 }}>📎</Text>
-              </Pressable>
-            ) : null}
-            {text.trim() || withAgent || canAttach ? null : (
-              <Pressable
-                accessibilityLabel="New poll"
-                onPress={() => {
-                  Keyboard.dismiss();
-                  setPickerOpen(false);
-                  setPollOpen(true);
-                }}
-                style={{ width: 40, height: 48, alignItems: 'center', justifyContent: 'center', marginLeft: -6 }}
-              >
-                <Text style={{ fontSize: 24 }}>📊</Text>
-              </Pressable>
-            )}
-            <TextInput
-              value={text}
-              onChangeText={setText}
-              onFocus={() => setPickerOpen(false)}
-              placeholder={withAgent ? `Ask ${title} anything` : asking && agent ? `Ask ${agent.name}…` : peer ? `Message ${title}` : 'Message your circle'}
-              placeholderTextColor={t.muted}
-              multiline
-              maxLength={4000}
-              style={{ flex: 1, minHeight: 48, maxHeight: 130, backgroundColor: t.bg, borderRadius: 24, paddingHorizontal: 16, paddingTop: 13, paddingBottom: 13, fontSize: 17, color: t.text }}
-            />
-            <Pressable
-              accessibilityLabel="Send"
-              onPress={send}
-              disabled={!text.trim()}
-              style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: t.brand, alignItems: 'center', justifyContent: 'center', opacity: text.trim() ? 1 : 0.5 }}
-            >
-              <Icon name="send" color={t.brandInk} size={22} />
-            </Pressable>
-          </View>
-          {agent && !peer && /^\/\S*$/.test(text) && `/${agent.name}`.toLowerCase().startsWith(text.toLowerCase()) ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setText(`/${agent.name} `)}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 10, marginBottom: 8, padding: 10, borderRadius: 12, backgroundColor: t.brandSoft }}
-            >
-              <Text style={{ fontSize: 18 }}>🤖</Text>
-              <Text style={{ color: t.brand, fontSize: 16, fontWeight: '700' }}>/{agent.name}</Text>
-              <Text style={{ color: t.muted, fontSize: 13 }}>ask the circle’s helper</Text>
-            </Pressable>
-          ) : null}
-          {pickerOpen ? (
-            <ScrollView style={{ maxHeight: 280, backgroundColor: t.surface }} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
-              {EMOJI_GROUPS.map((g) => (
-                <View key={g.name}>
-                  <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700', marginTop: 10, marginBottom: 4, marginLeft: 4 }}>{g.name}</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-                    {g.emojis.map((e) => (
-                      <Pressable
-                        key={e}
-                        accessibilityLabel={`Insert ${e}`}
-                        onPress={() => setText((v) => v + e)}
-                        style={({ pressed }) => ({ width: '12.5%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: pressed ? t.surface2 : 'transparent' })}
-                      >
-                        <Text style={{ fontSize: 28 }}>{e}</Text>
-                      </Pressable>
-                    ))}
+            {pickerOpen ? (
+              <ScrollView style={{ maxHeight: 280, backgroundColor: t.surface }} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
+                {EMOJI_GROUPS.map((g) => (
+                  <View key={g.name}>
+                    <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700', marginTop: 10, marginBottom: 4, marginLeft: 4 }}>{g.name}</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                      {g.emojis.map((e) => (
+                        <Pressable
+                          key={e}
+                          accessibilityLabel={`Insert ${e}`}
+                          onPress={() => setText((v) => v + e)}
+                          style={({ pressed }) => ({ width: '12.5%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: pressed ? t.surface2 : 'transparent' })}
+                        >
+                          <Text style={{ fontSize: 28 }}>{e}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
                   </View>
-                </View>
-              ))}
-            </ScrollView>
-          ) : null}
-        </SafeAreaView>
+                ))}
+              </ScrollView>
+            ) : null}
+          </SafeAreaView>
+        )}
       </KeyboardAvoidingView>
 
       <CreatePoll
