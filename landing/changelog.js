@@ -1,6 +1,19 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.12.0',
+    date: '2026-10-25',
+    title: 'Calendar PDFs, dreaming, and tappable links',
+    items: [
+      'The circle agent reads calendar PDFs: send it a link to a public PDF (a school calendar, a sports schedule, or a Google Drive or Dropbox share link). It lists the dates it found, and whoever sent it taps Save or Discard. It checks the PDF every 6 hours and asks again only if the file changes.',
+      'Dreaming: an admin types “/Chirya/dream” (with your agent’s name) or taps Dream in Memory, and the agent goes over everything the circle shares. It sorts each note into people, places, events, schedules, decisions or facts, gives it a clearer title and dates, links notes to each other, and merges duplicates. One Undo takes it all back.',
+      'Memory is grouped by kind, with a count for each, and lists calendars and PDFs together.',
+      'Links in messages open in your browser, in the app and on the web page.',
+      'Settings shows the app’s version and build, and checks for a new one when you tap it.',
+      'Fixed: with Claude as the AI provider, the agent answered every question with an “Invalid schema” error.',
+    ],
+  },
+  {
     version: '0.11.0',
     date: '2026-10-24',
     title: 'SOS, a circle helper, and ticks',

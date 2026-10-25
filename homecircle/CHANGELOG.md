@@ -2,6 +2,20 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.12.0
+
+- The circle agent reads calendar PDFs (public links, including Google Drive
+  and Dropbox share links, up to 15 MB). The text is read on this server and
+  names are swapped out before the AI lists the dates; whoever sent it saves
+  or discards them. A PDF is read again only when the file changes.
+- Dreaming: admins ask "/<name> dream" (or tap Dream in the app's Memory) to
+  have the agent sort, tidy, link and de-duplicate the circle's shared
+  memory. One Undo takes it back.
+- The web page: links in messages are clickable, and the agent's messages
+  have Undo, Save and Discard.
+- ws 8.22.0 (security fixes for the live connection).
+- Needs the HomeCircle app 0.12.0 for Save, Discard and Dream on phones.
+
 ## 0.11.1
 
 - Fixed: with Claude as the AI provider, the circle agent answered every
