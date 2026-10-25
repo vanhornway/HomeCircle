@@ -11,6 +11,7 @@ import { CircleSwitcher } from '../../components/CircleSwitcher';
 import { UpdateBanner } from '../../components/UpdateBanner';
 import { SosBanner } from '../../components/SosBanner';
 import { SosButton } from '../../components/SosButton';
+import { WeatherTile } from '../../components/WeatherTile';
 import { RejoinBanner } from '../../components/RejoinBanner';
 import { PersonSheet } from '../../components/PersonSheet';
 import { useServerState } from '../../lib/connection';
@@ -30,6 +31,8 @@ export default function MapTab() {
   const [tiles, setTiles] = useState(DEFAULT_SETTINGS);
   const [focus, setFocus] = useState<{ lat: number; lng: number; key: number } | null>(null);
   const [sheet, setSheet] = useState<string | null>(null);
+  // The person last tapped on the map or in People: the weather tile shows where they are.
+  const [selected, setSelected] = useState<string | null>(null);
   // Clock for "5 min ago" labels and Locate progress.
   const [now, setNow] = useState(() => Date.now());
   useLocateVersion();
@@ -82,6 +85,7 @@ export default function MapTab() {
 
   const everyoneCooling = everyoneCoolingDown(client, now);
   const focusOn = (id: string) => {
+    setSelected(id);
     const loc = client.locations.get(id);
     if (loc) setFocus((f) => ({ lat: loc.lat, lng: loc.lng, key: (f?.key ?? 0) + 1 }));
   };
@@ -104,21 +108,28 @@ export default function MapTab() {
         {/* SOS goes to every circle on this phone that has it on. */}
         {allCircles.some((c) => c.feature('sos')) ? <SosButton style={{ position: 'absolute', right: 16, bottom: 34 }} /> : null}
         <SafeAreaView edges={['top']} style={{ position: 'absolute', left: 12, right: 12, top: 0 }} pointerEvents="box-none">
-          <View
-            style={{
-              alignSelf: 'flex-start',
-              backgroundColor: t.surface,
-              borderRadius: 999,
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              marginTop: 8,
-              shadowColor: '#000',
-              shadowOpacity: 0.12,
-              shadowRadius: 8,
-              elevation: 3,
-            }}
-          >
-            <CircleSwitcher />
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }} pointerEvents="box-none">
+            <View
+              style={{
+                backgroundColor: t.surface,
+                borderRadius: 999,
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                marginTop: 8,
+                shadowColor: '#000',
+                shadowOpacity: 0.12,
+                shadowRadius: 8,
+                elevation: 3,
+              }}
+            >
+              <CircleSwitcher />
+            </View>
+            {/* The weather plugin, if this circle has it: always the top-right corner. */}
+            {client.feature('weather') ? (
+              <View style={{ marginTop: 8 }}>
+                <WeatherTile client={client} memberId={selected} />
+              </View>
+            ) : null}
           </View>
           <SosBanner style={{ marginTop: 10 }} />
           <ServerBanner style={{ marginTop: 10 }} />

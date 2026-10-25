@@ -39,11 +39,13 @@ const label = (id: FeatureId) => FEATURES.find((f) => f.id === id)?.label ?? id;
  * making a circle and in Settings → Features; read-only for non-admins.
  */
 export function FeaturePicker({ value, onChange, readOnly = false }: { value: Features; onChange: (next: Features) => void; readOnly?: boolean }) {
+  // Only what this server knows (an older one has no plugins).
+  const shown = FEATURES.filter((f) => f.id in value);
   return (
     <>
-      {FEATURE_GROUPS.map((group) => (
+      {FEATURE_GROUPS.filter((group) => shown.some((f) => f.group === group)).map((group) => (
         <SettingsGroup key={group} title={group}>
-          {FEATURES.filter((f) => f.group === group).map((f) => {
+          {shown.filter((f) => f.group === group).map((f) => {
             const blocked = f.needs && !value[f.needs];
             return (
               <ToggleRow

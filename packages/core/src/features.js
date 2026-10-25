@@ -21,9 +21,11 @@ export const FEATURES = [
   { id: 'shoppingLists', group: 'Helper', label: 'Shopping lists', detail: 'Shared lists per store, usual items first.', on: true, needs: 'agent' },
   { id: 'reminders', group: 'Helper', label: 'Long-term reminders', detail: 'Car registration and the like, to every admin.', on: true, needs: 'agent' },
   { id: 'uploads', group: 'Helper', label: 'Photos and files to the helper', detail: 'Send it a photo, PDF, document or sheet to read.', on: false, needs: 'agent' },
+  // Plugins: parts of the server a circle can add (0.14+).
+  { id: 'weather', group: 'Plugins', label: 'Weather', detail: 'The weather where the person you select is, in the corner of the map.', on: false },
 ];
 
-export const FEATURE_GROUPS = ['Location', 'Chat', 'Alerts', 'Helper'];
+export const FEATURE_GROUPS = ['Location', 'Chat', 'Alerts', 'Helper', 'Plugins'];
 const IDS = new Set(FEATURES.map((f) => f.id));
 
 /** What a new circle starts with: { id: true | false }. */

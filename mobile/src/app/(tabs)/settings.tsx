@@ -62,7 +62,7 @@ export default function SettingsTab() {
         <SettingsRow
           icon="🧩"
           title="Features"
-          detail={`${FEATURES.filter((f) => client.feature(f.id)).length} of ${FEATURES.length} on${client.isAdmin ? ' · choose what this circle has' : ''}`}
+          detail={`${FEATURES.filter((f) => f.id in client.features && client.feature(f.id)).length} of ${FEATURES.filter((f) => f.id in client.features).length} on${client.isAdmin ? ' · choose what this circle has' : ''}`}
           href="/settings/features"
         />
         <SettingsRow icon="🏡" title="Your circles" detail={clients.length > 1 ? `${plural(clients.length, 'circle')} · switch, and how much each sees` : 'How much your circle sees, or join another'} href="/settings/circles" />

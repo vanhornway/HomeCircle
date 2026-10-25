@@ -83,6 +83,8 @@ export interface Settings {
   sosThroughDnd: boolean;
   /** Send read receipts (and see others'). Delivered ticks always show. */
   readReceipts: boolean;
+  /** Weather tile temperatures: from the phone's region, or always °F or °C. */
+  weatherUnits: 'auto' | 'f' | 'c';
   /** Map tiles, from the server's /info. */
   tileUrl: string;
   tileAttribution: string;
@@ -108,6 +110,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chirpFlash: true,
   sosThroughDnd: false,
   readReceipts: true,
+  weatherUnits: 'auto',
   tileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   tileAttribution: '&copy; OpenStreetMap contributors',
 };

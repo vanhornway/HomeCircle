@@ -19,6 +19,7 @@ import {
 } from './http.js';
 import { isPushToken } from './push.js';
 import { MAX_FILE_BYTES } from './files.js';
+import { PLUGINS, mountPlugins } from './plugins/index.js';
 import { allFeatures, cleanFeatures, hasFeature, resolveFeatures } from '../../packages/core/src/features.js';
 
 const MAX_MEMBERS = 50;
@@ -137,6 +138,8 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       frequentPlaces: true,
       // The optional AI helper runs here (0.11+).
       agent: !!agentHost,
+      // Plugins this server has (0.14+): an app shows only these in Features.
+      plugins: PLUGINS.map((p) => p.id),
       push: push.enabled,
       tileUrl: config.tileUrl,
       tileAttribution: config.tileAttribution,
@@ -893,6 +896,9 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     hub.broadcast(me.circleId, { type: 'place_deleted', id }, me.id);
     return { ok: true };
   });
+
+  // --- plugins (weather, …): each behind its feature -----------------------
+  mountPlugins(r, { requireFeature, fetchImpl: config.pluginFetch, log });
 
   return r;
 }

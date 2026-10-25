@@ -115,6 +115,8 @@ export class Api {
   downloadFile = (id) => this.bytes('GET', `/files/${encodeURIComponent(id)}`);
   deleteFile = (id) => this.req('DELETE', `/files/${encodeURIComponent(id)}`);
   keepFile = (id) => this.req('POST', `/files/${encodeURIComponent(id)}/keep`);
+  /** The weather plugin: only a grid cell is sent (rounded here too, to 0.1°). */
+  weather = (lat, lng) => this.req('GET', `/plugins/weather/now?lat=${Math.round(lat * 10) / 10}&lng=${Math.round(lng * 10) / 10}`);
   chirps = () => this.req('GET', '/chirps');
   // Recovery with the setup code (no account needed), and rejoin requests.
   recover = (setupToken) => this.req('POST', '/recover', { setupToken });

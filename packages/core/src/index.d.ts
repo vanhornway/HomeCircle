@@ -255,8 +255,22 @@ export class Api {
   putPush(token: string | null, platform: string): Promise<{ ok: true }>;
   listInvites(): Promise<{ invites: { id: string; createdBy: string; createdAt: number; expiresAt: number }[] }>;
   deleteInvite(id: string): Promise<{ ok: true }>;
+  /** The weather plugin, for a grid cell (lat and lng rounded to 0.1°). */
+  weather(lat: number, lng: number): Promise<Weather>;
   [key: string]: any;
 }
+
+/** What the weather plugin answers. Temperatures in °C. */
+export type Weather = {
+  cell: { lat: number; lng: number };
+  at: string | null;
+  timezone: string | null;
+  now: { temp: number | null; feels: number | null; code: number | null; day: boolean };
+  today: { high: number | null; low: number | null; rain: number | null };
+  hours: { time: string; temp: number | null; rain: number | null; code: number | null; day: boolean }[];
+  units: 'C';
+  source: string;
+};
 
 export const ACCOUNT_KEY: string;
 
@@ -513,9 +527,10 @@ export type FeatureId =
   | 'agent'
   | 'shoppingLists'
   | 'reminders'
-  | 'uploads';
+  | 'uploads'
+  | 'weather';
 export type Features = Record<FeatureId, boolean>;
-export type FeatureInfo = { id: FeatureId; group: 'Location' | 'Chat' | 'Alerts' | 'Helper'; label: string; detail: string; on: boolean; needs?: FeatureId };
+export type FeatureInfo = { id: FeatureId; group: 'Location' | 'Chat' | 'Alerts' | 'Helper' | 'Plugins'; label: string; detail: string; on: boolean; needs?: FeatureId };
 export const FEATURES: FeatureInfo[];
 export const FEATURE_GROUPS: FeatureInfo['group'][];
 export function defaultFeatures(): Features;
