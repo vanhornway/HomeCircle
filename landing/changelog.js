@@ -1,6 +1,16 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.14.0',
+    date: '2026-10-25',
+    title: 'Plugins, starting with weather',
+    items: [
+      'Plugins: optional extras an admin turns on per circle, in Settings → Features → Plugins.',
+      'Weather: tap someone on the map and see the weather where they are, in the top-right corner: the temperature and how it feels, today’s high and low, the chance of rain and the sky in words. Tap it for the next 12 hours, and to switch between °F and °C.',
+      'Only a rough area (about 10 km) is used to look the weather up, and the town is named on your phone. Weather data from Open-Meteo.',
+    ],
+  },
+  {
     version: '0.13.0',
     date: '2026-10-25',
     title: 'Choose your circle’s features, shopping lists, reminders, and photos for the helper',

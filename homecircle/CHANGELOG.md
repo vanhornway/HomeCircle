@@ -2,6 +2,16 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.14.0
+
+- Plugins: optional parts of the server that a circle's admins turn on in
+  Settings → Features → Plugins. A plugin can only call the outside hosts
+  it declares, and answers only circles that have it on.
+- Weather plugin: phones send a 0.1° grid cell (about 10 km); the server
+  asks Open-Meteo (free, no account or key; needs outbound HTTPS to
+  api.open-meteo.com) and keeps each cell 15 minutes. Who asked isn't kept.
+- Needs the HomeCircle app 0.14.0 for the weather tile.
+
 ## 0.13.0
 
 - Per-circle features: admins choose what each circle has; the server
