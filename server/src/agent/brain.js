@@ -11,6 +11,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { calendarUrl, fetchPublic, parseIcs, freeStretches, isDayOff } from './calendar.js';
 import { isPdf, pdfText } from './pdf.js';
 import { readFile } from './read-file.js';
+import { addItems, createList, doneShopping, emptyLists, findList, listText, parseListCommand, recordBought, removeItems, splitItems, viewList } from './lists.js';
+import { addReminder, cleanReminder, dueMessage, fmtDue, markDone, reminderLine } from './reminders.js';
 
 const DAY = 86400_000;
 const iso = (d) => d.toISOString().slice(0, 10);
@@ -48,15 +50,26 @@ const TAGS_RULE =
 export const UNDERSTAND = {
   type: 'object',
   properties: {
-    intent: { type: 'string', enum: ['free_time', 'recall', 'remember', 'tidy', 'other'] },
+    intent: { type: 'string', enum: ['free_time', 'recall', 'remember', 'tidy', 'list', 'reminder', 'other'] },
     people: { type: 'array', items: { type: 'string' } },
     days: orNull({ type: 'integer' }),
     from: orNull({ type: 'string' }),
     to: orNull({ type: 'string' }),
     keywords: { type: 'array', items: { type: 'string' } },
     remember: { type: 'array', items: NOTE_ITEM },
+    // A shopping list: which (store name), what to do, which items.
+    list: orNull({ type: 'string' }),
+    listAction: orNull({ type: 'string', enum: ['show', 'add', 'remove'] }),
+    items: { type: 'array', items: { type: 'string' } },
+    // A long-term reminder to set up.
+    reminder: orNull({
+      type: 'object',
+      properties: { title: { type: 'string' }, due: { type: 'string' }, repeat: { type: 'string', enum: ['none', 'yearly'] } },
+      required: ['title', 'due', 'repeat'],
+      additionalProperties: false,
+    }),
   },
-  required: ['intent', 'people', 'days', 'from', 'to', 'keywords', 'remember'],
+  required: ['intent', 'people', 'days', 'from', 'to', 'keywords', 'remember', 'list', 'listAction', 'items', 'reminder'],
   additionalProperties: false,
 };
 // What a dream changes in a batch of shared notes (refs are n1, n2… in the batch).
@@ -90,12 +103,19 @@ export const UPLOAD = {
   properties: {
     title: { type: 'string' },
     summary: { type: 'string' },
+    // A shop's receipt: the store and what was bought (for the shopping lists).
+    receipt: orNull({
+      type: 'object',
+      properties: { store: { type: 'string' }, items: { type: 'array', items: { type: 'string' } } },
+      required: ['store', 'items'],
+      additionalProperties: false,
+    }),
     calendar: { type: 'boolean' },
     school: { type: 'boolean' },
     events: { type: 'array', items: EVENT_ITEM },
     notes: { type: 'array', items: NOTE_ITEM },
   },
-  required: ['title', 'summary', 'calendar', 'school', 'events', 'notes'],
+  required: ['title', 'summary', 'receipt', 'calendar', 'school', 'events', 'notes'],
   additionalProperties: false,
 };
 
@@ -140,7 +160,12 @@ export class Brain {
 
   /** Handle one message, one at a time (so notes and budgets don't race). */
   handle(msg) {
-    this.queue = this.queue.then(() => this._handle(msg)).catch((e) => this.log('agent: handling failed', e?.message ?? e));
+    return this.enqueue(() => this._handle(msg));
+  }
+
+  /** Run something in turn with the messages (so lists and reminders aren't changed twice at once). */
+  enqueue(fn) {
+    this.queue = this.queue.then(fn).catch((e) => this.log('agent: handling failed', e?.message ?? e));
     return this.queue;
   }
 
@@ -177,6 +202,8 @@ export class Brain {
     if (typeof body.agentName === 'string' && body.agentName && body.agentName !== this.config.name) {
       this.memory.setSetting('config', { ...this.config, name: body.agentName.slice(0, 24) });
     }
+    // Where the family is, so reminders come in the morning there.
+    if (typeof body.tz === 'string' && body.tz !== this.config.tz && validTimeZone(body.tz)) this.memory.setSetting('config', { ...this.config, tz: body.tz });
   }
 
   _nameOf(id) {
@@ -284,6 +311,7 @@ export class Brain {
       if (b.saveFound) return await this._saveFound(msg, b.saveFound);
       if (b.upload) return await this._readUpload(msg);
       if (b.fileChoice) return await this._fileChoice(msg, b.fileChoice);
+      if (b.reminderDone) return await this._reminderDone(msg, b.reminderDone);
       if (b.remember) return await this._remember(msg);
       if (typeof b.ask === 'string') return await this._ask(msg);
     } catch (e) {
@@ -365,6 +393,12 @@ export class Brain {
     if (/^undo\b/i.test(text)) return this._undo(msg, this.memory.getSetting(`last:${msg.from}`) ?? []);
     if (/^forget (the )?(.+)$/i.test(text)) return this._forget(msg, text.match(/^forget (?:the )?(.+)$/i)[1]);
     if (DREAM_RE.test(text)) return this._dream(msg);
+    if (this.agent.feature('shoppingLists')) {
+      const cmd = parseListCommand(text);
+      // "add X to Y" without the word list only for a list that exists ("add the dentist to my calendar" isn't one).
+      if (cmd && (cmd.action === 'lists' || findList(this._lists(), cmd.list) || /\blist\b/i.test(text))) return this._listCommand(msg, cmd);
+    }
+    if (this.agent.feature('reminders') && /^(?:(?:show|list)\s+)?(?:my |our |the |all )?reminders$/i.test(text)) return this._listReminders(msg);
 
     const s = this._swapper(msg.from);
     const asker = this._nameOf(msg.from);
@@ -381,6 +415,10 @@ export class Brain {
     if (saved.length) this.memory.setSetting(`last:${msg.from}`, saved.map((n) => n.id));
     // "Can you tidy up your memory?", "re-tag everything": the same as dream.
     if (plan.intent === 'tidy') return this._dream(msg);
+    if (plan.intent === 'list' && plan.list && this.agent.feature('shoppingLists')) {
+      return this._listCommand(msg, { action: plan.listAction ?? 'show', list: s.unmask(plan.list), items: (plan.items ?? []).map((i) => s.unmask(i)) });
+    }
+    if (plan.intent === 'reminder' && plan.reminder && this.agent.feature('reminders')) return this._addReminderFromChat(msg, { ...plan.reminder, title: s.unmask(plan.reminder.title) });
     if (plan.intent === 'remember' && saved.length) {
       return this.reply(msg, `📌 Remembered: ${saved.map((n) => n.title).join('; ')}`, { undo: saved.map((n) => n.id) });
     }
@@ -411,7 +449,9 @@ export class Brain {
     return [
       `You read messages a family sends their helper, ${this.name}, and say what each one needs. Today is ${iso(d)} (${d.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' })}).`,
       'People and places appear as stand-ins (Person A, Place 1): copy them exactly as written.',
-      'intent: "free_time" when they ask when people are free or available (days = how many days in a row, null if not said); "recall" for a question to answer from what was kept before; "remember" when they tell you something to keep (a fact, a decision, a date, a schedule, who someone is); "tidy" when they ask you to dream, or to tidy, sort, organize, clean up or re-tag what you remember; "other" for anything else.',
+      'intent: "free_time" when they ask when people are free or available (days = how many days in a row, null if not said); "recall" for a question to answer from what was kept before; "remember" when they tell you something to keep (a fact, a decision, a date, a schedule, who someone is); "tidy" when they ask you to dream, or to tidy, sort, organize, clean up or re-tag what you remember; "list" for a shopping list (what’s on it, add to it, take off it); "reminder" when they ask to be reminded of something far ahead (a registration, renewal, payment, appointment); "other" for anything else.',
+      'list: the store or list name ("Costco", "desi store"), else null. listAction: show, add or remove, else null. items: the things to add or remove, one per entry.',
+      'reminder: for a reminder, its title (short, like "Car registration"), due (YYYY-MM-DD, the next time it falls) and repeat ("yearly" if it comes every year, like a registration or renewal, else "none"); else null.',
       'people: who the message is about, as written ("Person B"), or a group word as written ("kids", "everyone").',
       'from/to: a date range the question is about, YYYY-MM-DD, or null. keywords: a few words to search notes with.',
       'remember: notes to keep, only for things stated as facts or decisions (never for questions). One note per thing; title short; body one or two sentences that link people and places as [[Person A]] or [[Place 1]]. For "Person B and Person C are our kids", one person note each with role "kid". Dates as YYYY-MM-DD.',
@@ -800,6 +840,17 @@ export class Brain {
       if (found.file) await this.agent.deleteFile(found.file.id).catch(() => {});
       return this.reply(back, found.replaces ? `Kept the dates I had for ${found.title}.` : found.file ? 'Discarded, and deleted the file from the server.' : 'Discarded.');
     }
+    if (found.receipt) {
+      // What was bought: counted for that store's list (made if it's new), and off the list.
+      const state = this._lists();
+      const now = this.now().getTime();
+      const list = findList(state, found.receipt.store) ?? createList(state, found.receipt.store, msg.from, now);
+      recordBought(state, list, found.receipt.items, now);
+      const gone = removeItems(list, found.receipt.items);
+      this._saveLists(state);
+      await this.reply(back, `🧾 Counted ${found.receipt.items.length} items as bought at ${list.name}${gone.length ? `, and took ${gone.map((i) => i.name).join(', ')} off the list` : ''}. Your usual ${list.name} items now go first.`);
+      return this._askAboutFile(back, found.file, [], msg.from);
+    }
     if (found.file && !found.calendar) {
       const saved = this._save(found.notes, { scope: found.scope, by: msg.from });
       this.memory.setSetting(`last:${msg.from}`, saved.map((n) => n.id));
@@ -815,6 +866,105 @@ export class Brain {
     if (found.forWho) return this._storeSource(back, found, found.forWho);
     this.memory.setSetting(`pending:${msg.from}`, found);
     await this.reply(back, `Whose calendar is it? Answer “/${this.name} for Kid” (or “for Kid and Sam”).`);
+  }
+
+  // --- shopping lists -------------------------------------------------------
+
+  _lists() {
+    return this.memory.getSetting('shopping') ?? emptyLists();
+  }
+
+  _saveLists(state) {
+    this.memory.setSetting('shopping', state);
+  }
+
+  /** "what's on the Costco list", "add milk to Costco", "remove eggs from Costco", "shopping lists". */
+  async _listCommand(msg, { action, list: name, items }) {
+    const state = this._lists();
+    const now = this.now().getTime();
+    if (action === 'lists') {
+      if (!state.lists.length) return this.reply(msg, '🛒 No shopping lists yet. Say “/' + this.name + ' add milk to the Costco list” or open Shopping lists in the app.');
+      return this.reply(msg, `🛒 Shopping lists:\n${state.lists.map((l) => `• ${l.name}: ${l.items.filter((i) => !i.ticked).length} to get`).join('\n')}`);
+    }
+    let list = findList(state, name);
+    if (!list) {
+      if (action !== 'add') return this.reply(msg, `There’s no ${name} list yet.${state.lists.length ? ` Lists: ${state.lists.map((l) => l.name).join(', ')}.` : ''}`);
+      list = createList(state, name.replace(/\b(list|shopping)\b/gi, '').trim() || name, msg.from, now);
+    }
+    if (action === 'add' && items.length) {
+      const added = addItems(state, list, items, msg.from, now);
+      this._saveLists(state);
+      return this.reply(msg, added.length ? `🛒 Added to ${list.name}: ${added.map((i) => i.name).join(', ')}.` : `🛒 Already on ${list.name}.`);
+    }
+    if (action === 'remove' && items.length) {
+      const gone = removeItems(list, items);
+      this._saveLists(state);
+      return this.reply(msg, gone.length ? `🛒 Took off ${list.name}: ${gone.map((i) => i.name).join(', ')}.` : `🛒 That wasn’t on ${list.name}.`);
+    }
+    return this.reply(msg, listText(state, list));
+  }
+
+  // --- long-term reminders ----------------------------------------------------
+
+  _reminders() {
+    return this.memory.getSetting('reminders') ?? [];
+  }
+
+  _saveReminders(list) {
+    this.memory.setSetting('reminders', list);
+  }
+
+  async _listReminders(msg) {
+    const list = this._reminders().filter((r) => !r.done);
+    if (!list.length) return this.reply(msg, `⏰ No reminders yet. Say “/${this.name} remind us about car registration on Nov 30 every year”, or add one in the app.`);
+    return this.reply(msg, `⏰ Reminders:\n${list.sort((a, b) => a.due.localeCompare(b.due)).map(reminderLine).join('\n')}`);
+  }
+
+  async _addReminderFromChat(msg, r) {
+    const list = this._reminders();
+    const rem = addReminder(list, r, msg.from, this.now().getTime());
+    this._saveReminders(list);
+    await this.reply(
+      msg,
+      `⏰ I’ll remind every admin about ${rem.title}: 30, 7 and 1 days before ${fmtDue(rem.due)}, on the day, then every few days until someone taps Done.${rem.repeat === 'yearly' ? ' It comes back every year.' : ''}`,
+    );
+  }
+
+  /** Today where the family is (the time zone their phones sent), and the hour there. */
+  _localNow() {
+    const tz = this.config.tz || 'UTC';
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(this.now()).map((p) => [p.type, p.value]));
+    return { today: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour) };
+  }
+
+  /**
+   * From 9 in the morning (their time): tell every admin, and whoever added
+   * it, about reminders that are coming up or overdue. Each reminder keeps
+   * what it already said, so checking every half hour sends each once.
+   */
+  async checkReminders() {
+    if (!this.agent.feature('reminders')) return;
+    const { today, hour } = this._localNow();
+    if (hour < 9) return;
+    const list = this._reminders();
+    const admins = this.agent.people().filter((p) => this.agent.isAdmin(p.id)).map((p) => p.id);
+    for (const r of list) {
+      const text = dueMessage(r, today);
+      if (!text) continue;
+      const to = new Set([...admins, r.createdBy].filter((id) => this.agent.people().some((p) => p.id === id)));
+      for (const id of to) await this.agent.send(id, { text, thread: 'dm', reminder: { id: r.id } }).catch(() => {});
+    }
+    this._saveReminders(list);
+  }
+
+  async _reminderDone(msg, { id }) {
+    const list = this._reminders();
+    const r = list.find((x) => x.id === id);
+    if (!r) return this.reply(msg, 'That reminder is gone.');
+    if (r.done) return this.reply(msg, `${r.title} was already marked done.`);
+    markDone(r, msg.from, this.now().getTime());
+    this._saveReminders(list);
+    await this.reply(msg, r.done ? `✅ ${r.title} is done.` : `✅ ${r.title} is done. Next one: ${fmtDue(r.due)}; I’ll remind you again before then.`);
   }
 
   // --- files people send --------------------------------------------------
@@ -858,6 +1008,19 @@ export class Brain {
       })
       .sort((a, b) => a.start.localeCompare(b.start));
     const notes = (out.notes ?? []).filter((n) => n.title || n.body).map((n) => ({ ...unmaskNote(n, s), source: `file: ${file.name}` }));
+    // A receipt: what was bought feeds the shopping lists.
+    const receiptItems = (out.receipt?.items ?? []).map((i) => s.unmask(String(i)).slice(0, 60)).filter(Boolean);
+    if (receiptItems.length && this.agent.feature('shoppingLists')) {
+      const store = s.unmask(String(out.receipt.store || 'Store')).slice(0, 40);
+      const id = randomBytes(6).toString('base64url');
+      this.memory.setSetting(`found:${id}`, { file, title: store, receipt: { store, items: receiptItems }, thread: msg.body.thread, replyTo: msg.body.replyTo ?? null, scope: this._scopeFor(msg), by: msg.from });
+      const shown = receiptItems.slice(0, 25).join(', ');
+      return this.reply(
+        msg,
+        `🧾 ${store} receipt: ${receiptItems.length} item${receiptItems.length === 1 ? '' : 's'}: ${shown}${receiptItems.length > 25 ? ', …' : ''}.\nSave to count these as bought at ${store}, so your usual items go first on that list (and anything bought comes off it). Or Discard.`,
+        { save: { id, by: msg.from } },
+      );
+    }
     const calendar = !!out.calendar && events.length >= 3;
     if (!calendar && !notes.length) {
       await this.agent.deleteFile(file.id).catch(() => {});
@@ -900,6 +1063,7 @@ export class Brain {
       `You read a file a family sent their helper, ${this.name}: a photo, a scan, a document or a spreadsheet. Today is ${this.today()}.`,
       'Read all of it, including handwriting and text in pictures. People and places in text appear as stand-ins (Person A, Place 1): copy them exactly as written.',
       'title: what the file is, short ("Lincoln Elementary 2026–27 calendar", "Soccer team contacts"). summary: one or two sentences on what it says.',
+      'If it is a shop’s receipt: receipt with the store’s name ("Costco") and every item bought, in plain words a family would put on a shopping list ("milk", "paper towels", not codes or prices); then events and notes are empty. Otherwise receipt null.',
       'If it is a calendar or schedule with many dates (a school calendar, a season schedule): calendar true, and events with summary, start and end (YYYY-MM-DD, end null for one day) and off: true for days without school or activity. school: true for a school calendar.',
       'Otherwise notes: one note per thing worth remembering (a date, a deadline, contact details, a decision, a list, a recipe), each with type, a short title, a body of one to three sentences linking people and places as [[Person A]], people, start/end when dated, and role null. Skip what isn’t worth keeping.',
       TAGS_RULE,
@@ -1045,6 +1209,57 @@ export class Brain {
         this.memory.setSetting('config', next);
         return this._rpcReply(msg, true, { ok: true });
       }
+      // Shopping lists (the app's Shopping lists screen): anyone in the circle.
+      case 'lists':
+      case 'listCreate':
+      case 'listRename':
+      case 'listDelete':
+      case 'itemAdd':
+      case 'itemTick':
+      case 'itemRemove':
+      case 'doneShopping': {
+        if (!this.agent.feature('shoppingLists')) throw new BrainError('Shopping lists are turned off in this circle');
+        const state = this._lists();
+        const list = op === 'lists' || op === 'listCreate' ? null : (state.lists.find((l) => l.id === args.listId) ?? null);
+        if (op !== 'lists' && op !== 'listCreate' && !list) throw new BrainError('That list is gone');
+        if (op === 'listCreate') createList(state, args.name, by, now);
+        if (op === 'listRename') list.name = String(args.name || '').trim().slice(0, 40) || list.name;
+        if (op === 'listDelete') {
+          if (list.createdBy !== by && !this.agent.isAdmin(by)) throw new BrainError('Only whoever made the list, or an admin, can delete it');
+          state.lists = state.lists.filter((l) => l !== list);
+          delete state.bought[list.id];
+        }
+        if (op === 'itemAdd') addItems(state, list, (Array.isArray(args.names) ? args.names : splitItems(args.names)).map(String), by, now);
+        if (op === 'itemTick') {
+          const item = list.items.find((i) => i.id === args.itemId);
+          if (item) item.ticked = !!args.ticked;
+        }
+        if (op === 'itemRemove') list.items = list.items.filter((i) => i.id !== args.itemId);
+        if (op === 'doneShopping') doneShopping(state, list, now);
+        if (op !== 'lists') this._saveLists(state);
+        return this._rpcReply(msg, true, state.lists.map((l) => viewList(state, l)));
+      }
+      // Reminders (the app's Reminders screen): anyone adds; every admin is reminded.
+      case 'reminders':
+      case 'reminderAdd':
+      case 'reminderUpdate':
+      case 'reminderDone':
+      case 'reminderRemove': {
+        if (!this.agent.feature('reminders')) throw new BrainError('Reminders are turned off in this circle');
+        const list = this._reminders();
+        const r = op === 'reminders' || op === 'reminderAdd' ? null : (list.find((x) => x.id === args.id) ?? null);
+        if (op !== 'reminders' && op !== 'reminderAdd' && !r) throw new BrainError('That reminder is gone');
+        if (op === 'reminderAdd') addReminder(list, args, by, now);
+        if (op === 'reminderUpdate') {
+          const next = cleanReminder({ ...r, ...pick(args, ['title', 'due', 'repeat', 'note']) });
+          if (next.due !== r.due) Object.assign(r, { sent: [], lastNag: null, done: false });
+          Object.assign(r, next);
+        }
+        if (op === 'reminderDone') markDone(r, by, now);
+        if (op === 'reminderRemove') list.splice(list.indexOf(r), 1);
+        if (op !== 'reminders') this._saveReminders(list);
+        return this._rpcReply(msg, true, list.map((x) => ({ ...x, createdByName: this._nameOf(x.createdBy) })).sort((a, b) => Number(a.done) - Number(b.done) || a.due.localeCompare(b.due)));
+      }
       case 'deleteFile':
         await this._deleteKeptFile(String(args.id), by);
         return this._rpcReply(msg, true, null);
@@ -1106,4 +1321,13 @@ export function exportMarkdown(notes) {
     files[path] = `${front}# ${n.title}\n\n${n.body}\n`;
   }
   return files;
+}
+
+function validTimeZone(tz) {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
 }

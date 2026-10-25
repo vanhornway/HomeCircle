@@ -33,6 +33,9 @@ async function fakeLlm(cfg, { system, messages, schema }) {
       return json({ title: 'Swim meets', summary: 'The season’s meets.', calendar: true, school: false, events, notes: [] });
     }
     if (/\[image\]/.test(text) && /blank/.test(text)) return json({ title: 'A blank page', summary: 'Nothing on it.', calendar: false, school: false, events: [], notes: [] });
+    if (/\[image\]/.test(text) && /receipt/.test(text)) {
+      return json({ title: 'Costco receipt', summary: 'A Costco trip.', receipt: { store: 'Costco', items: ['Milk', 'Paper towels', 'Eggs'] }, calendar: false, school: false, events: [], notes: [] });
+    }
     if (/\[image\]/.test(text)) {
       return json({
         title: 'Soccer team sheet',
@@ -63,6 +66,12 @@ async function fakeLlm(cfg, { system, messages, schema }) {
       });
     }
     if (/free/.test(text)) return json({ intent: 'free_time', people: ['kids'], days: 5, from: null, to: null, keywords: ['vacation'], remember: [] });
+    if (/remind/.test(text)) {
+      return json({ intent: 'reminder', people: [], days: null, from: null, to: null, keywords: [], remember: [], list: null, listAction: null, items: [], reminder: { title: 'Car registration', due: '2026-11-30', repeat: 'yearly' } });
+    }
+    if (/need .* from the desi/.test(text)) {
+      return json({ intent: 'list', people: [], days: null, from: null, to: null, keywords: [], remember: [], list: 'desi store', listAction: 'add', items: ['paneer', 'chai'], reminder: null });
+    }
     if (/decided|Tahoe/.test(text)) return json({ intent: 'recall', people: [], days: null, from: null, to: null, keywords: ['tahoe'], remember: [] });
     return json({ intent: 'other', people: [], days: null, from: null, to: null, keywords: [], remember: [] });
   }
@@ -195,7 +204,7 @@ async function until(c, pred) {
     if (hit) return hit;
     await settle(100);
   }
-  throw new Error('timed out');
+  throw new Error(`timed out; last from agent: ${JSON.stringify(lastFromAgent(c)?.body?.text)}; agent DM: ${JSON.stringify(c.agent ? [...c.conversation(c.agent.id)].at(-1)?.body?.text : null)}`);
 }
 const lastFromAgent = (c) => (c.agent ? [...c.conversation(null)].reverse().find((m) => m.from === c.agent.id) : null);
 
@@ -418,6 +427,61 @@ test('a PDF with no text says so', async () => {
   await mom.askAgent(`${calUrl.replace('lincoln.ics', 'scan.pdf')}`);
   const a = await until(mom, (c) => (/no text in it/.test(lastFromAgent(c)?.body.text) ? lastFromAgent(c) : null));
   assert.ok(a);
+});
+
+test('shopping lists: in chat and from the app; a receipt counts as bought and puts usual items first', async () => {
+  const peer = mom.agent.id;
+  const fromAgentDm = (c, re) => [...c.conversation(c.agent.id)].reverse().find((m) => m.from === c.agent.id && re.test(m.body?.text ?? ''));
+  // In the group, plain words, no AI.
+  const calls = sentToAi.length;
+  await dad.askAgent('add milk, eggs and bananas to the Costco list');
+  await until(dad, (c) => (lastFromAgent(c)?.body.text === '🛒 Added to Costco: milk, eggs, bananas.' ? 1 : null));
+  await mom.askAgent('remove bananas from costco');
+  await until(mom, (c) => (lastFromAgent(c)?.body.text === '🛒 Took off Costco: bananas.' ? 1 : null));
+  assert.equal(sentToAi.length, calls);
+  // Other wording goes through the AI.
+  await mom.askAgent('we need paneer and chai from the desi store');
+  await until(mom, (c) => (lastFromAgent(c)?.body.text === '🛒 Added to desi store: paneer, chai.' ? 1 : null));
+
+  // The app: tick, Done shopping.
+  let lists = await dad.agentRpc('lists');
+  const costco = lists.find((l) => l.name === 'Costco');
+  lists = await dad.agentRpc('itemTick', { listId: costco.id, itemId: costco.items.find((i) => i.name === 'eggs').id, ticked: true });
+  lists = await dad.agentRpc('doneShopping', { listId: costco.id });
+  assert.deepEqual(lists.find((l) => l.id === costco.id).items.map((i) => i.name), ['milk']);
+
+  // A receipt: Milk comes off the list; what's bought often goes first.
+  await mom.sendFileToAgent(new Uint8Array([0xff, 0xd8, 9, 9, 9, 9]), { name: 'costco-receipt.jpg', mime: 'image/jpeg' }, { peer });
+  const r = await until(mom, (c) => fromAgentDm(c, /^🧾 Costco receipt: 3 items: Milk, Paper towels, Eggs\./));
+  await mom.saveAgentFound(r.body.save.id, true, { peer });
+  await until(mom, (c) => fromAgentDm(c, /Counted 3 items as bought at Costco, and took milk off the list/));
+  const ask = await until(mom, (c) => fromAgentDm(c, /^Delete “costco-receipt\.jpg”/));
+  await mom.answerAgentFile(ask.body.fileChoice.id, false, { peer });
+  lists = await mom.agentRpc('itemAdd', { listId: costco.id, names: ['batteries', 'Eggs'] });
+  const view = lists.find((l) => l.id === costco.id);
+  // Eggs were bought twice (Done shopping and the receipt): first. Paper towels, once: not suggested yet.
+  assert.deepEqual(view.items.map((i) => i.name), ['Eggs', 'batteries']);
+  assert.deepEqual(view.usual, []);
+  await mom.askAgent("what's on the Costco list?");
+  await until(mom, (c) => (lastFromAgent(c)?.body.text === '🛒 Costco:\n• Eggs\n• batteries' ? 1 : null));
+});
+
+test('reminders: set in chat, sent to admins and whoever set it in the morning, Done moves a yearly one on', async () => {
+  await dad.askAgent('remind us to renew the car registration on Nov 30 every year');
+  await until(dad, (c) => (/I’ll remind every admin about Car registration/.test(lastFromAgent(c)?.body.text) ? 1 : null));
+  await app.agentHost.refresh();
+  const dm = (c) => [...c.conversation(c.agent.id)].reverse().find((m) => m.body?.reminder);
+  const toMom = await until(mom, dm);
+  const toDad = await until(dad, dm);
+  assert.match(toMom.body.text, /^⏰ Car registration is due in \d+ days \(Nov 30, 2026\)\.$/);
+  assert.equal(toDad.body.reminder.id, toMom.body.reminder.id);
+  // Once a day: a second check the same day sends nothing new.
+  await app.agentHost.refresh();
+  await mom.doneAgentReminder(toMom.body.reminder.id, { peer: mom.agent.id });
+  await until(mom, (c) => [...c.conversation(c.agent.id)].reverse().find((m) => /Car registration is done\. Next one: Nov 30, 2027/.test(m.body?.text ?? '')));
+  const [rem] = await dad.agentRpc('reminders');
+  assert.deepEqual([rem.due, rem.repeat, rem.createdByName], ['2027-11-30', 'yearly', 'Dad']);
+  assert.equal(mom.conversation(mom.agent.id).filter((m) => m.body?.reminder).length, 1);
 });
 
 test('spending: per person for admins, and a hard stop at the budget', async () => {

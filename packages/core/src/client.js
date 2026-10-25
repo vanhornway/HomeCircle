@@ -1183,7 +1183,14 @@ export class CircleClient {
   }
 
   _agentContext() {
-    return { asker: this.myName, agentName: this.circle?.agent?.name, people: this.memberList().map((m) => ({ id: m.id, name: m.name })) };
+    // The time zone, so reminders come at a sensible hour where the family is.
+    let tz = null;
+    try {
+      tz = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+    } catch {
+      // not known on this device
+    }
+    return { asker: this.myName, agentName: this.circle?.agent?.name, people: this.memberList().map((m) => ({ id: m.id, name: m.name })), tz };
   }
 
   /** Whether this server can run an agent: { available, running }. */
@@ -1278,6 +1285,13 @@ export class CircleClient {
     const agent = this.agent;
     if (!agent) throw new Error('This circle has no agent');
     await this._post('chat', { fileChoice: { id: choiceId, keep: !!keep }, thread: peer ? 'dm' : 'group', agentCopy: true, ...this._agentContext() }, { to: agent.id, silent: true });
+  }
+
+  /** Done on a reminder the helper sent (a yearly one moves to next year). */
+  async doneAgentReminder(reminderId, { peer = null } = {}) {
+    const agent = this.agent;
+    if (!agent) throw new Error('This circle has no agent');
+    await this._post('chat', { reminderDone: { id: reminderId }, thread: peer ? 'dm' : 'group', agentCopy: true, ...this._agentContext() }, { to: agent.id, silent: true });
   }
 
   /** A kept file's bytes ({ id, key } from its note in Memory). */
@@ -1449,6 +1463,8 @@ export class CircleClient {
    * refuses repeats (409), which counts as delivered.
    */
   async sendEvent(body, { id } = {}) {
+    // Arrived/left alerts only where the circle has place alerts on.
+    if (body?.type === 'place' && !this.feature('placeAlerts')) return;
     try {
       await this._post('event', body, id ? { id } : {});
     } catch (e) {
@@ -1572,6 +1588,7 @@ export class CircleClient {
    * circle key: [{ id, name, kind, lat, lng, visits, hours, lastAt }].
    */
   async shareFrequent(places) {
+    if (!this.feature('frequentPlaces')) return;
     const clean = places.slice(0, MAX_FREQUENT).map(cleanFrequent).filter(Boolean);
     await this.api.putFrequent(this._seal('frequent', { places: clean }));
   }

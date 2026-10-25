@@ -435,6 +435,8 @@ export class CircleClient {
   sendFileToAgent(bytes: Uint8Array, file: { name: string; mime: string }, opts?: { peer?: string | null }): Promise<string>;
   /** After a file was read and saved: delete it from the server, or keep it. */
   answerAgentFile(choiceId: string, keep: boolean, opts?: { peer?: string | null }): Promise<void>;
+  /** Done on a reminder the helper sent (a yearly one moves to next year). */
+  doneAgentReminder(reminderId: string, opts?: { peer?: string | null }): Promise<void>;
   /** A kept file's bytes ({ id, key } from its note in Memory). */
   openAgentFile(file: { id: string; key: string }): Promise<Uint8Array>;
   /** Save (ok) or Discard a list the agent found, such as the dates in a calendar PDF. */

@@ -82,7 +82,10 @@ export class AgentHost {
 
   /** Re-read due calendars in every circle. */
   async refresh() {
-    for (const c of this.circles.values()) await c.brain.refreshSources().catch((e) => this.log('agent: refresh failed', e.message));
+    for (const c of this.circles.values()) {
+      await c.brain.refreshSources().catch((e) => this.log('agent: refresh failed', e.message));
+      await c.brain.enqueue(() => c.brain.checkReminders());
+    }
   }
 
   hasAgent(circleId) {

@@ -5,6 +5,7 @@
 // sealed with a key it shares with one person.
 import { Api, ApiError } from './api.js';
 import { decryptFile, deriveInvite, directKey, generateIdentity, open, parseInviteLink, randomId, seal } from './crypto.js';
+import { hasFeature } from './features.js';
 
 const STORAGE_KEY = 'homecircle.agent';
 
@@ -104,9 +105,16 @@ export class AgentClient {
       if (!pinned && !m.removed) known[m.id] = { signPub: m.signPub, boxPub: m.boxPub };
       this.members.set(m.id, { id: m.id, role: m.role, kind: m.kind || 'person', removed: !!m.removed, keyChanged, signPub: m.signPub, boxPub: m.boxPub });
     }
+    // Which features the circle has (null from servers before they could be chosen: all of them).
+    this.features = st.features ?? null;
     await this._save();
     this.emit('members', this.members);
     return st;
+  }
+
+  /** Whether the circle has a feature on (shopping lists, reminders, files…). */
+  feature(id) {
+    return hasFeature(this.features, id);
   }
 
   /** The people in the circle (not the agent), who can talk to it. */
@@ -200,7 +208,7 @@ export class AgentClient {
           // Removed from the circle: nothing to refresh any more (it would fail).
           if (e.type === 'removed' && e.memberId === this.memberId) return this.emit('removed', {});
           if (e.type === 'message' && e.message?.to === this.memberId) await this.fetchMessages();
-          else if (e.type === 'members_changed' || e.type === 'removed' || e.type === 'key_rotated') await this.refresh();
+          else if (e.type === 'members_changed' || e.type === 'removed' || e.type === 'key_rotated' || e.type === 'circle') await this.refresh();
         } catch (err) {
           this.onError(err);
         }
