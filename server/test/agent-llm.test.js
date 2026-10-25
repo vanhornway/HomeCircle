@@ -71,6 +71,12 @@ test('Anthropic: a refusal is reported, not shown as an answer; a bad key says s
     () => complete(cfg, { system: 's', messages: [{ role: 'user', content: 'x' }] }, { anthropicBaseUrl: base }),
     (e) => e instanceof LlmError && e.auth,
   );
+  // Other errors show the provider's sentence, not its status code and JSON.
+  reply = () => ({ status: 400, body: { type: 'error', error: { type: 'invalid_request_error', message: 'max_tokens: too large' } } });
+  await assert.rejects(
+    () => complete(cfg, { system: 's', messages: [{ role: 'user', content: 'x' }] }, { anthropicBaseUrl: base }),
+    (e) => e instanceof LlmError && e.message === 'The AI provider said: max_tokens: too large',
+  );
 });
 
 test('OpenAI-style providers: chat completions, JSON mode, cost from usage', async () => {

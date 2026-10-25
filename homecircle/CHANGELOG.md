@@ -2,6 +2,12 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.11.1
+
+- Fixed: with Claude as the AI provider, the circle agent answered every
+  question with an "Invalid schema" error from Anthropic. Errors from the
+  provider now show its plain message instead of raw JSON.
+
 ## 0.11.0
 
 - The circle agent (optional AI helper): switch on `run_agent`, and each

@@ -85,7 +85,8 @@ async function completeAnthropic(cfg, { system, messages, schema, maxTokens }, b
   } catch (e) {
     if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) throw new LlmError('The AI provider didn’t accept the API key', { status: e.status, auth: true });
     if (e instanceof Anthropic.RateLimitError) throw new LlmError('The AI provider is busy (rate limited). Try again in a minute.', { status: 429 });
-    if (e instanceof Anthropic.APIError) throw new LlmError(`The AI provider said: ${e.message}`.slice(0, 300), { status: e.status ?? null });
+    // The provider's own sentence, not the status code and JSON around it.
+    if (e instanceof Anthropic.APIError) throw new LlmError(`The AI provider said: ${e.error?.error?.message ?? e.message}`.slice(0, 300), { status: e.status ?? null });
     throw new LlmError(`Couldn’t reach the AI provider: ${e?.message ?? e}`.slice(0, 300));
   }
   const u = res.usage ?? {};

@@ -19,7 +19,10 @@ const fmtDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-US', { m
 const fmtRange = (r) => (r.start === r.end ? fmtDay(r.start) : r.start.slice(0, 7) === r.end.slice(0, 7) ? `${fmtDay(r.start)}–${Number(r.end.slice(8))}` : `${fmtDay(r.start)}–${fmtDay(r.end)}`);
 const names = (list) => (list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`);
 
-// What the AI returns when it reads a message.
+// What the AI returns when it reads a message. Anthropic's structured output
+// rejects type lists like ['string', 'null'] next to an enum, so anything
+// that may be null is written as anyOf [that type, null].
+const orNull = (schema) => ({ anyOf: [schema, { type: 'null' }] });
 const NOTE_ITEM = {
   type: 'object',
   properties: {
@@ -27,28 +30,28 @@ const NOTE_ITEM = {
     title: { type: 'string' },
     body: { type: 'string' },
     people: { type: 'array', items: { type: 'string' } },
-    start: { type: ['string', 'null'] },
-    end: { type: ['string', 'null'] },
-    role: { type: ['string', 'null'], enum: ['kid', 'adult', null] },
+    start: orNull({ type: 'string' }),
+    end: orNull({ type: 'string' }),
+    role: orNull({ type: 'string', enum: ['kid', 'adult'] }),
   },
   required: ['type', 'title', 'body', 'people', 'start', 'end', 'role'],
   additionalProperties: false,
 };
-const UNDERSTAND = {
+export const UNDERSTAND = {
   type: 'object',
   properties: {
     intent: { type: 'string', enum: ['free_time', 'recall', 'remember', 'other'] },
     people: { type: 'array', items: { type: 'string' } },
-    days: { type: ['integer', 'null'] },
-    from: { type: ['string', 'null'] },
-    to: { type: ['string', 'null'] },
+    days: orNull({ type: 'integer' }),
+    from: orNull({ type: 'string' }),
+    to: orNull({ type: 'string' }),
     keywords: { type: 'array', items: { type: 'string' } },
     remember: { type: 'array', items: NOTE_ITEM },
   },
   required: ['intent', 'people', 'days', 'from', 'to', 'keywords', 'remember'],
   additionalProperties: false,
 };
-const NOTES_ONLY = { type: 'object', properties: { notes: { type: 'array', items: NOTE_ITEM } }, required: ['notes'], additionalProperties: false };
+export const NOTES_ONLY = { type: 'object', properties: { notes: { type: 'array', items: NOTE_ITEM } }, required: ['notes'], additionalProperties: false };
 
 export class Brain {
   /**
