@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/index.js';
 import { LlmError } from '../src/agent/llm.js';
+import { makePdf } from '../src/agent/pdf.js';
 import { CircleClient } from '../../packages/core/src/index.js';
 
 const SETUP = 'test-setup-token-agent-e2e';
@@ -47,6 +48,11 @@ async function fakeLlm(cfg, { system, messages, schema }) {
     if (/decided|Tahoe/.test(text)) return json({ intent: 'recall', people: [], days: null, from: null, to: null, keywords: ['tahoe'], remember: [] });
     return json({ intent: 'other', people: [], days: null, from: null, to: null, keywords: [], remember: [] });
   }
+  if (schema?.properties?.events) {
+    // A calendar PDF: the test's lines are "YYYY-MM-DD[..YYYY-MM-DD] What".
+    const events = [...text.matchAll(/^(\d{4}-\d{2}-\d{2})(?:\.\.(\d{4}-\d{2}-\d{2}))? (.+)$/gm)].map(([, start, end, summary]) => ({ summary, start, end: end ?? null, off: /no practice|break/i.test(summary) }));
+    return json({ title: text.match(/^(.+Club.*)$/m)?.[1] ?? 'Calendar', school: false, events });
+  }
   if (schema?.properties?.notes) {
     return json({ notes: [{ type: 'event', title: 'Dentist', body: `Dentist for ${text.match(/Person [A-Z]/g)?.[1] ?? 'someone'} at 3:30.`, people: [], start: '2026-11-14', end: null, role: null }] });
   }
@@ -73,6 +79,7 @@ class MemoryStorage {
 }
 
 let ics = '';
+let pdf = makePdf([['Riverside Swim Club 2026-27', '2026-12-05 Swim meet', '2027-01-16..2027-01-17 Winter invitational']]);
 const school = (extra = '') => `BEGIN:VCALENDAR
 BEGIN:VEVENT
 UID:first
@@ -106,6 +113,10 @@ END:VCALENDAR`;
 before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'homecircle-agent-e2e-'));
   calendar = createServer((req, res) => {
+    if (req.url.endsWith('.pdf')) {
+      res.writeHead(200, { 'Content-Type': 'application/pdf' });
+      return res.end(pdf);
+    }
     res.writeHead(200, { 'Content-Type': 'text/calendar' });
     res.end(ics);
   });
@@ -249,6 +260,48 @@ END:VEVENT
   await app.agentHost.refresh();
   const dm = await until(mom, (c) => [...c.conversation(c.agent.id)].reverse().find((m) => /changed/.test(m.body?.text ?? '')));
   assert.equal(dm.body.text, '📅 Kid and Sam’s school calendar changed: added “Teacher Work Day - No School” (Nov 20).');
+});
+
+test('a calendar PDF: the dates are listed for a check, saved on OK, read again only when it changes', async () => {
+  const pdfUrl = calUrl.replace('lincoln.ics', 'swim.pdf');
+  await mom.askAgent(`${pdfUrl} for Sam`);
+  const list = await until(mom, (c) => (lastFromAgent(c)?.body.save ? lastFromAgent(c) : null));
+  assert.equal(list.body.text, '📄 Riverside Swim Club 2026-27: I found 2 dates.\n• Dec 5: Swim meet\n• Jan 16–17: Winter invitational\nCheck them, then Save (you can fix any later in Memory) or Discard.');
+  assert.equal(list.body.save.by, mom.account.memberId);
+  // Only the person who added it can save it; nothing is kept until then.
+  await dad.saveAgentFound(list.body.save.id, true);
+  await until(dad, (c) => (/isn’t yours/.test(lastFromAgent(c)?.body.text) ? 1 : null));
+  assert.equal((await mom.agentRpc('list', { type: 'source' })).filter((n) => n.data?.format === 'pdf').length, 0);
+  await mom.saveAgentFound(list.body.save.id, true);
+  const added = await until(mom, (c) => (/Added Sam’s calendar/.test(lastFromAgent(c)?.body.text) ? lastFromAgent(c) : null));
+  assert.equal(added.body.text, '📅 Added Sam’s calendar: 2 events; next: Swim meet (Dec 5). I’ll check it for changes every 6 hours.');
+  const [src] = (await mom.agentRpc('list', { type: 'source' })).filter((n) => n.data?.format === 'pdf');
+  assert.equal(src.data.count, 2);
+
+  // Unchanged: no AI call. Changed: whoever added it gets the new list to check.
+  const calls = sentToAi.length;
+  now = new Date(now.getTime() + 7 * 3600_000);
+  await app.agentHost.refresh();
+  assert.equal(sentToAi.length, calls);
+  pdf = makePdf([['Riverside Swim Club 2026-27', '2026-12-05 Swim meet', '2026-12-12 Holiday party']]);
+  now = new Date(now.getTime() + 7 * 3600_000);
+  await app.agentHost.refresh();
+  const changed = await until(mom, (c) => [...c.conversation(c.agent.id)].reverse().find((m) => m.body?.save && /changed/.test(m.body.text)));
+  assert.match(changed.body.text, /^📄 Sam’s calendar changed\. This is what it says now:\n• Dec 5: Swim meet\n• Dec 12: Holiday party\n/);
+  await mom.saveAgentFound(changed.body.save.id, true, { peer: mom.agent.id });
+  await until(mom, (c) => [...c.conversation(c.agent.id)].reverse().find((m) => /Updated Sam’s calendar: 2 dates/.test(m.body?.text ?? '')));
+  // The same file again later: not read again.
+  const after = sentToAi.length;
+  now = new Date(now.getTime() + 7 * 3600_000);
+  await app.agentHost.refresh();
+  assert.equal(sentToAi.length, after);
+});
+
+test('a PDF with no text says so', async () => {
+  pdf = makePdf([['']]);
+  await mom.askAgent(`${calUrl.replace('lincoln.ics', 'scan.pdf')}`);
+  const a = await until(mom, (c) => (/no text in it/.test(lastFromAgent(c)?.body.text) ? lastFromAgent(c) : null));
+  assert.ok(a);
 });
 
 test('spending: per person for admins, and a hard stop at the budget', async () => {

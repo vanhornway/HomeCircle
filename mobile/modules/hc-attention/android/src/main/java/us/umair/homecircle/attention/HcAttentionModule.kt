@@ -24,6 +24,12 @@ class HcAttentionModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("HcAttention")
 
+    // The installed build number (versionCode), shown next to the version in Settings.
+    Function("buildNumber") {
+      val info = context.packageManager.getPackageInfo(context.packageName, 0)
+      if (android.os.Build.VERSION.SDK_INT >= 28) info.longVersionCode.toString() else @Suppress("DEPRECATION") info.versionCode.toString()
+    }
+
     // True while Do Not Disturb (any interruption filter) is limiting alerts.
     Function("isDoNotDisturbOn") {
       val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

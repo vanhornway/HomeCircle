@@ -3,7 +3,7 @@
 // real API rejects (like a type list next to an enum) would only show up live.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { UNDERSTAND, NOTES_ONLY } from '../src/agent/brain.js';
+import { UNDERSTAND, NOTES_ONLY, PDF_EVENTS } from '../src/agent/brain.js';
 
 const TYPES = new Set(['object', 'array', 'string', 'integer', 'number', 'boolean', 'null']);
 const UNSUPPORTED = ['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf', 'minLength', 'maxLength', 'minItems', 'maxItems', 'uniqueItems', 'pattern'];
@@ -29,6 +29,7 @@ function problems(s, at = '$') {
 test('the schemas the agent sends follow the structured-output rules', () => {
   assert.deepEqual(problems(UNDERSTAND), []);
   assert.deepEqual(problems(NOTES_ONLY), []);
+  assert.deepEqual(problems(PDF_EVENTS), []);
 });
 
 test('the check catches what the API rejected: an enum next to a type list', () => {

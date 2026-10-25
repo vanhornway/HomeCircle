@@ -8,6 +8,7 @@ type Native = {
   preview(name: string): boolean;
   playAlarm(name: string, times: number): boolean;
   stopAlarm(): void;
+  buildNumber(): string;
 };
 
 const native = requireOptionalNativeModule<Native>('HcAttention');
@@ -57,5 +58,14 @@ export function previewSound(name: string): boolean {
     return native?.preview(name) ?? false;
   } catch {
     return false;
+  }
+}
+
+/** The installed build number, or null where the native module isn't there. */
+export function buildNumber(): string | null {
+  try {
+    return native?.buildNumber() ?? null;
+  } catch {
+    return null;
   }
 }

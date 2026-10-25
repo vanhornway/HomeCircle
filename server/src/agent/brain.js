@@ -6,7 +6,9 @@
 // them: everyone in the group for a group question, only you for a direct one.
 import { complete as llmComplete, cleanProviderConfig, LlmError, PROVIDERS } from './llm.js';
 import { nameSwapper } from './names.js';
+import { createHash, randomBytes } from 'node:crypto';
 import { calendarUrl, fetchPublic, parseIcs, freeStretches, isDayOff } from './calendar.js';
+import { isPdf, pdfText } from './pdf.js';
 
 const DAY = 86400_000;
 const iso = (d) => d.toISOString().slice(0, 10);
@@ -49,6 +51,25 @@ export const UNDERSTAND = {
     remember: { type: 'array', items: NOTE_ITEM },
   },
   required: ['intent', 'people', 'days', 'from', 'to', 'keywords', 'remember'],
+  additionalProperties: false,
+};
+// What the AI lists from a calendar PDF.
+export const PDF_EVENTS = {
+  type: 'object',
+  properties: {
+    title: { type: 'string' },
+    school: { type: 'boolean' },
+    events: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { summary: { type: 'string' }, start: { type: 'string' }, end: orNull({ type: 'string' }), off: { type: 'boolean' } },
+        required: ['summary', 'start', 'end', 'off'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['title', 'school', 'events'],
   additionalProperties: false,
 };
 export const NOTES_ONLY = { type: 'object', properties: { notes: { type: 'array', items: NOTE_ITEM } }, required: ['notes'], additionalProperties: false };
@@ -214,6 +235,7 @@ export class Brain {
     try {
       if (b.rpc) return await this._rpc(msg);
       if (b.undo) return await this._undo(msg, b.undo);
+      if (b.saveFound) return await this._saveFound(msg, b.saveFound);
       if (b.remember) return await this._remember(msg);
       if (typeof b.ask === 'string') return await this._ask(msg);
     } catch (e) {
@@ -411,11 +433,9 @@ export class Brain {
     } catch (e) {
       throw new BrainError(`I couldn’t read that link: ${e.message}.${link.note ? ` ${link.note}` : ''}`);
     }
+    if (isPdf(doc.bytes, doc.type)) return this._readPdf(msg, link.url, doc.bytes, rest);
     const text = doc.bytes.toString('utf8');
-    if (!/BEGIN:VCALENDAR/.test(text)) {
-      const pdf = /pdf/i.test(doc.type) || doc.bytes.subarray(0, 5).toString() === '%PDF-';
-      throw new BrainError(pdf ? 'That’s a PDF. Reading PDFs comes in a later update; share the school’s calendar link (.ics) if it has one.' : 'That link isn’t a calendar I can read. Share its iCal (.ics) or webcal address.');
-    }
+    if (!/BEGIN:VCALENDAR/.test(text)) throw new BrainError('That link isn’t a calendar I can read. Share its iCal (.ics) or webcal address, or a PDF of the calendar.');
     const t = this.now();
     // A year back, so a school calendar's first day (months ago) still marks where the school year starts.
     const events = parseIcs(text, { from: iso(new Date(t.getTime() - 365 * DAY)), to: iso(new Date(t.getTime() + 450 * DAY)) });
@@ -439,8 +459,8 @@ export class Brain {
       .map((s) => s.trim().replace(/^(the|my|our)\s+/i, ''))
       .filter(Boolean)
       .slice(0, 8);
-    const offDays = src.events.filter((e) => isDayOff(e.summary));
-    const kind = offDays.length >= 3 ? 'school' : 'calendar';
+    const offDays = src.events.filter((e) => e.off ?? isDayOff(e.summary));
+    const kind = src.school || offDays.length >= 3 ? 'school' : 'calendar';
     const label = `${names(forNames)}’s ${kind === 'school' ? 'school calendar' : 'calendar'}`;
     const note = this.memory.add(
       {
@@ -448,8 +468,8 @@ export class Brain {
         title: label,
         body: `${kind === 'school' ? 'School calendar' : 'Calendar'} for ${forNames.map((n) => `[[${n}]]`).join(', ')}.`,
         people: forNames,
-        data: { url: src.url, kind, for: forNames, events: src.events, fetchedAt: src.fetchedAt },
-        source: 'calendar link',
+        data: { url: src.url, kind, for: forNames, events: src.events, fetchedAt: src.fetchedAt, ...(src.pdf ? { format: 'pdf', hash: src.hash, name: src.title } : {}) },
+        source: src.pdf ? 'calendar PDF' : 'calendar link',
       },
       { scope: src.scope, by: msg.from, now: this.now().getTime() },
     );
@@ -496,6 +516,10 @@ export class Brain {
       let events;
       try {
         const doc = await fetchPublic(d.url, { fetchImpl: this.fetchImpl, allowPrivate: this.allowPrivateFetch });
+        if (d.format === 'pdf') {
+          await this._refreshPdf(src, doc.bytes, now);
+          continue;
+        }
         events = parseIcs(doc.bytes.toString('utf8'), { from: iso(new Date(now - 365 * DAY)), to: iso(new Date(now + 450 * DAY)) });
       } catch (e) {
         this.log('agent: calendar refresh failed', e.message);
@@ -517,6 +541,119 @@ export class Brain {
       const to = new Set([...(src.scope === 'circle' ? this._idsFor(d.for ?? []) : []), src.createdBy].filter(Boolean));
       for (const id of to) await this.agent.send(id, { text, thread: 'dm' }).catch(() => {});
     }
+  }
+
+  // --- calendar PDFs --------------------------------------------------------
+  // The text is read here; the AI lists the dates (names swapped out). The
+  // person who added it sees the list and saves it, or discards it.
+
+  async _pdfEvents(by, bytes) {
+    if (!this._provider()) throw new BrainError(`Reading a PDF needs the AI: an admin can add a provider in the ${this.name} settings.`);
+    let doc;
+    try {
+      doc = await pdfText(bytes);
+    } catch (e) {
+      throw new BrainError(e.message);
+    }
+    if (doc.text.replace(/--- page \d+ ---/g, '').trim().length < 40) {
+      throw new BrainError('That PDF has no text in it (it’s probably a scan or a picture), so I can’t read its dates. A calendar link (.ics), or a PDF made from a document, works.');
+    }
+    const s = this._swapper(by);
+    const res = await this._ai(by, {
+      system: [
+        `You read a calendar from a PDF (a school calendar, a sports or activity schedule) and list its dated entries. Today is ${this.today()}.`,
+        'People and places appear as stand-ins (Person A, Place 1): copy them exactly as written.',
+        'Each entry: summary (short, as written), start as YYYY-MM-DD, end as YYYY-MM-DD for a range (inclusive) or null for one day, and off: true when there is no school or activity that day for students (holidays, breaks, no school, teacher work or staff development days). Early release and half days are not off.',
+        'Work the year out from the calendar (in a 2026–27 school year, August to December are 2026 and January to July are 2027). Always include the first and last day of school if listed. Skip anything without a date.',
+        'title: the calendar’s name as printed. school: true for a school calendar.',
+      ].join('\n'),
+      messages: [{ role: 'user', content: s.mask(doc.text) }],
+      schema: PDF_EVENTS,
+      maxTokens: 8000,
+    });
+    const day = /^\d{4}-\d{2}-\d{2}$/;
+    const events = (res.json?.events ?? [])
+      .filter((e) => day.test(e.start ?? '') && e.summary)
+      .map((e) => {
+        const summary = s.unmask(String(e.summary)).slice(0, 120);
+        const end = day.test(e.end ?? '') && e.end >= e.start ? e.end : e.start;
+        return { uid: `pdf:${summary}@${e.start}`, summary, start: e.start, end, time: null, allDay: true, off: !!e.off };
+      })
+      .sort((a, b) => a.start.localeCompare(b.start));
+    if (!events.length) throw new BrainError('I couldn’t find any dates in that PDF.');
+    return { title: s.unmask(String(res.json?.title || 'Calendar')).slice(0, 80), school: !!res.json?.school, events, truncated: doc.truncated };
+  }
+
+  /** The list the person who added a PDF checks before it's saved. */
+  _foundText(title, events, { truncated = false, changed = false } = {}) {
+    const shown = events.slice(0, 40).map((e) => `• ${fmtRange(e)}: ${e.summary}${e.off ? ' (off)' : ''}`);
+    return [
+      changed ? `📄 ${title} changed. This is what it says now:` : `📄 ${title}: I found ${events.length} date${events.length === 1 ? '' : 's'}.`,
+      ...shown,
+      events.length > shown.length ? `…and ${events.length - shown.length} more.` : null,
+      truncated ? 'It’s long, so I only read the first part.' : null,
+      changed ? 'Save to use the new dates, or Discard to keep the old ones.' : 'Check them, then Save (you can fix any later in Memory) or Discard.',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  async _readPdf(msg, url, bytes, rest) {
+    const found = await this._pdfEvents(msg.from, bytes);
+    const id = randomBytes(6).toString('base64url');
+    this.memory.setSetting(`found:${id}`, {
+      url,
+      pdf: true,
+      hash: createHash('sha256').update(bytes).digest('hex'),
+      title: found.title,
+      school: found.school,
+      events: found.events,
+      fetchedAt: this.now().getTime(),
+      thread: msg.body.thread,
+      replyTo: msg.body.replyTo ?? null,
+      scope: this._scopeFor(msg),
+      by: msg.from,
+      forWho: rest.match(/\bfor\s+([^.?!]+)/i)?.[1]?.trim() || null,
+    });
+    await this.reply(msg, this._foundText(found.title, found.events, found), { save: { id, by: msg.from } });
+  }
+
+  /** Save or Discard on a list: only the person it was shown to. */
+  async _saveFound(msg, { id, ok }) {
+    const key = `found:${String(id)}`;
+    const found = this.memory.getSetting(key);
+    if (!found || found.by !== msg.from) return this.reply(msg, 'That list is gone, or isn’t yours to save.');
+    this.memory.setSetting(key, null);
+    const back = { ...msg, body: { ...msg.body, thread: found.thread, replyTo: found.replyTo } };
+    if (!ok) return this.reply(back, found.replaces ? `Kept the dates I had for ${found.title}.` : 'Discarded.');
+    if (found.replaces) {
+      const src = this.memory.get(found.replaces, { by: msg.from });
+      if (!src) return this.reply(back, 'That calendar was removed in the meantime.');
+      this.memory.update(src.id, { data: { ...src.data, events: found.events, hash: found.hash, fetchedAt: found.fetchedAt } }, { by: msg.from, now: this.now().getTime() });
+      return this.reply(back, `📅 Updated ${src.title}: ${found.events.length} dates.`, { undo: [src.id] });
+    }
+    if (found.forWho) return this._storeSource(back, found, found.forWho);
+    this.memory.setSetting(`pending:${msg.from}`, found);
+    await this.reply(back, `Whose calendar is it? Answer “/${this.name} for Kid” (or “for Kid and Sam”).`);
+  }
+
+  /** A PDF is read again only when the file changed; whoever added it checks the new list. */
+  async _refreshPdf(src, bytes, now) {
+    const d = src.data;
+    const hash = createHash('sha256').update(bytes).digest('hex');
+    const by = src.createdBy;
+    const as = src.scope === 'circle' ? by : src.scope;
+    this.memory.update(src.id, { data: { ...d, fetchedAt: now, ...(hash === d.hash ? {} : { seenHash: hash }) } }, { by: as, now });
+    if (hash === d.hash || hash === d.seenHash) return;
+    let found;
+    try {
+      found = await this._pdfEvents(by, bytes);
+    } catch (e) {
+      return this.log('agent: calendar PDF re-read failed', e.message);
+    }
+    const id = randomBytes(6).toString('base64url');
+    this.memory.setSetting(`found:${id}`, { ...found, title: src.title, hash, fetchedAt: now, replaces: src.id, by, thread: 'dm', replyTo: null });
+    await this.agent.send(by, { text: this._foundText(src.title, found.events, { ...found, changed: true }), thread: 'dm', save: { id, by } }).catch(() => {});
   }
 
   _privateSources() {

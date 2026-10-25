@@ -125,6 +125,48 @@ function h(tag, props, ...children) {
   return el;
 }
 
+// Message text with its web addresses as links (opened in a new tab). Same
+// rules as the app's LinkedText: http(s):// or www., minus closing punctuation.
+const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"]+/gi;
+function linked(text) {
+  const s = String(text ?? '');
+  const out = [];
+  let last = 0;
+  for (const m of s.matchAll(URL_RE)) {
+    let link = m[0];
+    const tail = link.match(/[.,;:!?)\]}'’”]+$/)?.[0] ?? '';
+    const keep = tail.startsWith(')') && link.includes('(') ? 1 : 0;
+    link = link.slice(0, link.length - tail.length + keep);
+    if (m.index > last) out.push(s.slice(last, m.index));
+    out.push(h('a', { href: /^https?:/i.test(link) ? link : `https://${link}`, target: '_blank', rel: 'noopener noreferrer' }, link));
+    last = m.index + link.length;
+  }
+  if (last < s.length) out.push(s.slice(last));
+  return out;
+}
+
+// Under an agent's message: Undo for what it just saved, and Save / Discard on
+// a list it found (the dates in a calendar PDF), for the person it's for.
+const savedLists = new Set();
+function agentButtons(m, who) {
+  if (who?.kind !== 'agent') return null;
+  const peer = ui.peer || null;
+  const fail = (ex) => toast(errorText(ex));
+  const save = m.body.save;
+  if (save?.by === client.account?.memberId && typeof save.id === 'string' && !savedLists.has(save.id)) {
+    const answer = (ok) => {
+      savedLists.add(save.id);
+      renderPanel();
+      client.saveAgentFound(save.id, ok, { peer }).catch(fail);
+    };
+    return h('div', { class: 'agent-actions' }, h('button', { class: 'btn small primary', type: 'button', onclick: () => answer(true) }, 'Save'), h('button', { class: 'btn small', type: 'button', onclick: () => answer(false) }, 'Discard'));
+  }
+  if (Array.isArray(m.body.undo) && m.body.undo.length) {
+    return h('div', { class: 'agent-actions' }, h('button', { class: 'btn small', type: 'button', onclick: () => client.undoAgent(m.body.undo, { peer }).catch(fail) }, 'Undo'));
+  }
+  return null;
+}
+
 function mount(...nodes) {
   root.className = '';
   root.replaceChildren(...nodes);
@@ -1141,7 +1183,7 @@ function chatView() {
           h(
             'div',
             { class: 'bubble-line' },
-            h('div', { class: `bubble${big ? ' big' : ''}` }, m.body.text),
+            h('div', { class: `bubble${big ? ' big' : ''}` }, big ? m.body.text : linked(m.body.text)),
             h(
               'button',
               {
@@ -1193,6 +1235,7 @@ function chatView() {
                   'I’m OK',
                 )
             : null,
+          agentButtons(m, who),
           h('div', { class: 'bubble-time' }, clock(m.ts)),
         ),
       );

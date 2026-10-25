@@ -5,14 +5,15 @@
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 
-const MAX_BYTES = 5 * 1024 * 1024;
+const MAX_BYTES = 15 * 1024 * 1024;
 const MAX_OCCURRENCES = 500;
 
 // --- addresses -----------------------------------------------------------
 
 /**
- * A calendar address people paste, made fetchable: webcal:// → https://, and
- * a Google Calendar share or embed link → its public iCal address. Returns
+ * A calendar address people paste, made fetchable: webcal:// → https://, a
+ * Google Calendar share or embed link → its public iCal address, and a Google
+ * Drive or Dropbox share link → the file itself. Returns
  * { url, note? } or throws with what to do instead.
  */
 export function calendarUrl(input) {
@@ -43,6 +44,13 @@ export function calendarUrl(input) {
       url: `https://calendar.google.com/calendar/ical/${encodeURIComponent(id)}/public/basic.ics`,
       note: 'If this calendar isn’t public, use its “Secret address in iCal format” from Google Calendar’s settings instead.',
     };
+  }
+  // A Google Drive or Dropbox share link opens a page about the file; these get the file itself.
+  const drive = u.hostname === 'drive.google.com' && (u.pathname.match(/^\/file\/d\/([\w-]+)/)?.[1] ?? u.searchParams.get('id'));
+  if (drive) return { url: `https://drive.google.com/uc?export=download&id=${encodeURIComponent(drive)}`, note: 'The file has to be shared as “Anyone with the link”.' };
+  if (/(^|\.)dropbox\.com$/.test(u.hostname) && u.searchParams.has('dl')) {
+    u.searchParams.set('dl', '1');
+    return { url: u.toString() };
   }
   return { url: u.toString() };
 }
@@ -95,7 +103,7 @@ export async function fetchPublic(url, { fetchImpl = fetch, allowPrivate = false
       let size = 0;
       for await (const chunk of res.body) {
         size += chunk.length;
-        if (size > MAX_BYTES) throw new Error('That file is too big (over 5 MB)');
+        if (size > MAX_BYTES) throw new Error('That file is too big (over 15 MB)');
         chunks.push(chunk);
       }
       return { bytes: Buffer.concat(chunks), type: res.headers.get('content-type') || '', url: current };
@@ -256,7 +264,8 @@ export function freeStretches(people, { days, from, horizon = 365, limit = 3 }) 
     const first = school.reduce((m, e) => (m && m < e.start ? m : e.start), null);
     const last = school.reduce((m, e) => (m && m > e.end ? m : e.end), null);
     const off = new Set();
-    for (const e of school) if (isDayOff(e.summary)) for (let d = e.start; d <= e.end; d = addDays(d, 1)) off.add(d);
+    // A PDF's dates come marked off or not; a calendar feed's are judged by their names.
+    for (const e of school) if (e.off ?? isDayOff(e.summary)) for (let d = e.start; d <= e.end; d = addDays(d, 1)) off.add(d);
     // A calendar rarely lists next year yet: assume it starts when this one did.
     const nextYear = first ? `${Number(first.slice(0, 4)) + 1}${first.slice(4)}` : null;
     return { set, first, last, nextYear, off, busy: p.busy ?? [] };

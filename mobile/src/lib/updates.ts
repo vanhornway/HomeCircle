@@ -108,3 +108,15 @@ export function useAvailableUpdate(): string | null {
     () => (Date.now() < state.hiddenUntil ? null : available()),
   );
 }
+
+/** The newer version for Settings, even while the banner is hidden. */
+export function useNewerVersion(): string | null {
+  return useSyncExternalStore(
+    (l) => {
+      listeners.add(l);
+      load();
+      return () => listeners.delete(l);
+    },
+    () => available(),
+  );
+}

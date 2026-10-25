@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Avatar, H1, Screen } from '../../components/ui';
@@ -6,6 +7,8 @@ import { RejoinBanner } from '../../components/RejoinBanner';
 import { SettingsGroup, SettingsRow } from '../../components/SettingsKit';
 import { CHIRP_NAMES } from '../../lib/chirp';
 import { useCircles } from '../../lib/circle';
+import { APP_VERSION, checkForUpdate, downloadUpdate, useNewerVersion } from '../../lib/updates';
+import { buildNumber } from '../../../modules/hc-attention/src/HcAttentionModule';
 import { useSettings } from '../../lib/storage';
 import { useCircle } from '../../lib/useCircle';
 import { useTheme } from '../../theme';
@@ -24,6 +27,9 @@ export default function SettingsTab() {
   const agent = client.agent;
   const invited = client.agentInvited;
   const myChirp = settings.myChirp ?? me?.chirp ?? null;
+  const newer = useNewerVersion();
+  const build = buildNumber();
+  const [checked, setChecked] = useState<'checking' | 'latest' | null>(null);
 
   return (
     <Screen>
@@ -77,6 +83,16 @@ export default function SettingsTab() {
 
       <SettingsGroup title="This phone">
         <SettingsRow icon="📱" title="This phone" detail="Setup check, diagnostics, server address" href="/settings/phone" />
+        <SettingsRow
+          icon="ℹ️"
+          title={`HomeCircle ${APP_VERSION}${build ? ` · build ${build}` : ''}`}
+          detail={newer ? `${newer} is out. Tap to download` : checked === 'checking' ? 'Checking…' : checked === 'latest' ? 'You have the latest version' : 'Tap to check for a new version'}
+          onPress={() => {
+            if (newer) return downloadUpdate();
+            setChecked('checking');
+            checkForUpdate({ force: true }).then((v) => setChecked(v ? null : 'latest'));
+          }}
+        />
       </SettingsGroup>
     </Screen>
   );

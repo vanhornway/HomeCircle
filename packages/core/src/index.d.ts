@@ -425,6 +425,8 @@ export class CircleClient {
   rememberWithAgent(messageId: string): Promise<void>;
   /** Undo what the agent just remembered. */
   undoAgent(noteIds: string[], opts?: { peer?: string | null }): Promise<void>;
+  /** Save (ok) or Discard a list the agent found, such as the dates in a calendar PDF. */
+  saveAgentFound(id: string, ok: boolean, opts?: { peer?: string | null }): Promise<void>;
   /** A request the app makes of the agent (Memory screen, settings), sealed for it; resolves with its answer. */
   agentRpc<T = any>(op: string, args?: Record<string, unknown>, opts?: { timeoutMs?: number }): Promise<T>;
   fetchPlaces(): Promise<Map<string, Place>>;

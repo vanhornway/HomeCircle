@@ -12,6 +12,9 @@ test('calendar addresses: webcal, Google share links, and what doesn’t work', 
   assert.equal(calendarUrl(`https://calendar.google.com/calendar/embed?src=${encodeURIComponent(id)}`).url, calendarUrl(share).url);
   assert.throws(() => calendarUrl('https://calendar.google.com/calendar/u/0/r'), /iCal format/);
   assert.throws(() => calendarUrl('ftp://example.com/cal.ics'), /http/);
+  // Shared files: the file itself, not the page about it.
+  assert.equal(calendarUrl('https://drive.google.com/file/d/1AbC-dEf_9/view?usp=sharing').url, 'https://drive.google.com/uc?export=download&id=1AbC-dEf_9');
+  assert.equal(calendarUrl('https://www.dropbox.com/scl/fi/xyz/cal.pdf?rlkey=k&dl=0').url, 'https://www.dropbox.com/scl/fi/xyz/cal.pdf?rlkey=k&dl=1');
 });
 
 const ICS = `BEGIN:VCALENDAR
@@ -93,6 +96,15 @@ test('free stretches: everyone off school and not booked, for N days in a row', 
   assert.deepEqual(freeStretches([kid, sam], { days: 5, from: '2026-11-10', limit: 1 }), [{ start: '2026-12-19', end: '2027-01-03' }]);
   // Outside the school year (summer) every day is free.
   assert.deepEqual(freeStretches([kid], { days: 10, from: '2027-06-10', limit: 1 })[0].start, '2027-06-12');
+});
+
+test('free stretches: a PDF’s dates count as off when marked off, whatever they’re called', () => {
+  const day = (summary, start, end, off) => ({ summary, start, end: end ?? start, allDay: true, off });
+  const school = [day('First day', '2026-08-19', null, false), day('Fall recess', '2026-10-12', '2026-10-16', true), day('Last day', '2027-06-11', null, false)];
+  assert.deepEqual(freeStretches([{ school, busy: [] }], { days: 9, from: '2026-10-01', limit: 1 }), [{ start: '2026-10-10', end: '2026-10-18' }]);
+  // Not marked off: a school week like any other.
+  const notOff = school.map((e) => ({ ...e, off: false }));
+  assert.notDeepEqual(freeStretches([{ school: notOff, busy: [] }], { days: 9, from: '2026-10-01', limit: 1 }), [{ start: '2026-10-10', end: '2026-10-18' }]);
 });
 
 test('only public addresses are fetched (never the home network)', async () => {

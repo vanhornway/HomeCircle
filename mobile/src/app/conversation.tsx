@@ -9,6 +9,7 @@ import { shareNow } from '../lib/location';
 import { ServerBanner } from '../components/ServerBanner';
 import { PollCard } from '../components/PollCard';
 import { CreatePoll } from '../components/CreatePoll';
+import { LinkedText } from '../components/LinkedText';
 import { clientForCircle, errorText, useCircles } from '../lib/circle';
 import { initials } from '../lib/useCircle';
 import { setVisibleConversation } from '../lib/notify';
@@ -62,6 +63,8 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   const [asking, setAsking] = useState(false);
   const [pollOpen, setPollOpen] = useState(false);
   const [reactingTo, setReactingTo] = useState<Message | null>(null);
+  // Lists from the agent (dates in a PDF) answered on this screen: no buttons twice.
+  const [savedLists, setSavedLists] = useState<Set<string>>(() => new Set());
   const [checkingIn, setCheckingIn] = useState<string | null>(null);
   useLocateVersion();
   const list = useRef<FlatList<ChatRow>>(null);
@@ -220,10 +223,31 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             opacity: pressed ? 0.75 : 1,
           })}
         >
-          <Text style={big ? { fontSize: 44, lineHeight: 54 } : { color: mine ? t.brandInk : t.text, fontSize: 17, lineHeight: 23 }}>{m.body?.text}</Text>
+          {big ? (
+            <Text style={{ fontSize: 44, lineHeight: 54 }}>{m.body?.text}</Text>
+          ) : (
+            <LinkedText text={String(m.body?.text ?? '')} style={{ color: mine ? t.brandInk : t.text, fontSize: 17, lineHeight: 23 }} linkColor={mine ? t.brandInk : t.brand} />
+          )}
         </Pressable>
         {who?.kind === 'agent' && Array.isArray(m.body?.undo) && m.body.undo.length ? (
           <Button small title="Undo" onPress={() => client.undoAgent(m.body!.undo, { peer }).catch((e) => setError(errorText(e)))} style={{ marginTop: 6 }} />
+        ) : null}
+        {who?.kind === 'agent' && m.body?.save?.by === me && typeof m.body.save.id === 'string' && !savedLists.has(m.body.save.id) ? (
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+            {[true, false].map((ok) => (
+              <Button
+                key={String(ok)}
+                small
+                variant={ok ? 'primary' : undefined}
+                title={ok ? 'Save' : 'Discard'}
+                onPress={() => {
+                  const id = m.body!.save.id as string;
+                  setSavedLists((s) => new Set(s).add(id));
+                  client.saveAgentFound(id, ok, { peer }).catch((e) => setError(errorText(e)));
+                }}
+              />
+            ))}
+          </View>
         ) : null}
         {m.body?.nudge === true && !mine ? (
           <Button small variant="primary" title="Open setup check" onPress={() => router.push('/setup-check')} style={{ marginTop: 6 }} />

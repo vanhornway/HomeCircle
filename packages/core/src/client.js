@@ -1225,6 +1225,13 @@ export class CircleClient {
     await this._post('chat', { undo: noteIds, thread: peer ? 'dm' : 'group', agentCopy: true, ...this._agentContext() }, { to: agent.id, silent: true });
   }
 
+  /** Save (ok) or Discard a list the agent found (the dates in a calendar PDF). */
+  async saveAgentFound(id, ok, { peer = null } = {}) {
+    const agent = this.agent;
+    if (!agent) throw new Error('This circle has no agent');
+    await this._post('chat', { saveFound: { id, ok: !!ok }, thread: peer ? 'dm' : 'group', agentCopy: true, ...this._agentContext() }, { to: agent.id, silent: true });
+  }
+
   /**
    * Ask the agent. In the group (`peer` null) everyone sees the question as
    * "/Name …" and the answer; only the agent gets the question sealed for it.
