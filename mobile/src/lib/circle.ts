@@ -3,6 +3,7 @@
 // circle at a time, and background tasks work across all of them.
 import { useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { fetch as expoFetch } from 'expo/fetch';
 import { ACCOUNT_KEY, CircleClient } from '@homecircle/core';
 import { diag } from './diagnostics';
 import { secureStorage } from './storage';
@@ -27,6 +28,8 @@ function makeClient(accountKey: string): CircleClient {
   const client = new CircleClient({
     storage: secureStorage,
     accountKey,
+    // Files for the helper go up and down as raw bytes, which React Native's own fetch can't do.
+    binaryFetchImpl: expoFetch,
     onError: (e) => {
       if (__DEV__) console.warn('[homecircle]', e.message);
     },

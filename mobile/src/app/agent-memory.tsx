@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Pressable, ScrollView, SectionList, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Pressable, ScrollView, SectionList, Text, TextInput, View } from 'react-native';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { Stack, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Tag } from '../components/ui';
@@ -14,11 +16,14 @@ type Note = {
   title: string;
   body: string;
   people: string[];
+  tags?: string[];
   start: string | null;
   end: string | null;
-  data: { role?: string; kind?: string; count?: number; for?: string[]; fetchedAt?: number; format?: string } | null;
+  data: { role?: string; kind?: string; count?: number; for?: string[]; fetchedAt?: number; format?: string; file?: KeptFile } | null;
   updatedAt: number;
 };
+// A file kept with its notes: encrypted on the server, opened with its key.
+type KeptFile = { id: string; key: string; name: string; mime: string; size: number };
 type Detail = { note: Note; history: { at: number; by: string; change: string }[]; linked: Note[] };
 
 // The kinds of note, in the order All shows them.
@@ -157,6 +162,7 @@ export default function AgentMemory() {
                   </Text>
                   {n.scope === me ? <Tag label="Private" /> : null}
                   {n.data?.role ? <Tag label={n.data.role} /> : null}
+                  {n.data?.file ? <Tag label="📎 file" /> : null}
                 </View>
                 {when(n) ? <Text style={{ color: t.brand, fontSize: 13 }}>{when(n)}</Text> : null}
                 <Text style={{ color: t.muted, fontSize: 14 }} numberOfLines={2}>
@@ -187,8 +193,26 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [priv, setPriv] = useState(false);
+  const [tags, setTags] = useState('');
   const [busy, setBusy] = useState(false);
+  // A kept file being opened: an image is shown here, anything else goes to another app.
+  const [opening, setOpening] = useState(false);
+  const [viewing, setViewing] = useState<string | null>(null);
+  const opened = useRef<File[]>([]);
   const fail = (e: unknown) => Alert.alert('Couldn’t do that', errorText(e));
+  // The decrypted copies are only for looking at: gone when the note closes.
+  useEffect(
+    () => () => {
+      for (const f of opened.current) {
+        try {
+          f.delete();
+        } catch {
+          // already gone
+        }
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!id) return;
@@ -198,6 +222,7 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
         setDetail(d);
         setTitle(d.note.title);
         setBody(d.note.body);
+        setTags((d.note.tags ?? []).join(', '));
       })
       .catch((e) => {
         Alert.alert('Couldn’t open it', errorText(e));
@@ -214,8 +239,40 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
       .catch(fail)
       .finally(() => setBusy(false));
   };
+  const tagList = tags
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
   const save = () =>
-    run(id ? client.agentRpc('update', { id, patch: { title: title.trim(), body } }) : client.agentRpc('add', { note: { type: 'fact', title: title.trim(), body }, private: priv }));
+    run(
+      id
+        ? client.agentRpc('update', { id, patch: { title: title.trim(), body, tags: tagList } })
+        : client.agentRpc('add', { note: { type: 'fact', title: title.trim(), body, tags: tagList }, private: priv }),
+    );
+  const file = detail?.note.data?.file ?? null;
+  const openFile = async () => {
+    if (!file) return;
+    setOpening(true);
+    try {
+      const bytes = await client.openAgentFile(file);
+      const copy = new File(Paths.cache, `hc-${file.id}-${file.name.replace(/[^\w.-]+/g, '_')}`);
+      if (copy.exists) copy.delete();
+      copy.create();
+      await copy.write(bytes);
+      opened.current.push(copy);
+      if (file.mime.startsWith('image/')) setViewing(copy.uri);
+      else await Sharing.shareAsync(copy.uri, { mimeType: file.mime || undefined, dialogTitle: file.name });
+    } catch (e) {
+      fail(e);
+    } finally {
+      setOpening(false);
+    }
+  };
+  const deleteFile = () =>
+    Alert.alert(`Delete “${file?.name}”?`, 'It’s deleted from the server. The notes stay.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => id && run(client.agentRpc('deleteFile', { id })) },
+    ]);
   const remove = () =>
     Alert.alert('Delete this note?', 'You can undo it from its history afterwards.', [
       { text: 'Cancel', style: 'cancel' },
@@ -253,6 +310,27 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
                 multiline
                 style={[input, { minHeight: 140, textAlignVertical: 'top' }]}
               />
+              <TextInput
+                value={tags}
+                onChangeText={setTags}
+                placeholder="Tags, to find it by: school, dentist, travel"
+                placeholderTextColor={t.muted}
+                autoCapitalize="none"
+                accessibilityLabel="Tags, separated by commas"
+                style={input}
+              />
+              {file ? (
+                <View style={{ gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: t.line, backgroundColor: t.surface }}>
+                  <Text style={{ color: t.text, fontSize: 15, fontWeight: '600' }} numberOfLines={1}>
+                    📎 {file.name}
+                  </Text>
+                  <Text style={{ color: t.muted, fontSize: 13 }}>Kept on the server, encrypted · {file.size > 1e6 ? `${(file.size / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(file.size / 1e3))} KB`}</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <Button small variant="primary" title="Open" loading={opening} onPress={openFile} style={{ flex: 1 }} />
+                    <Button small title="Delete file" onPress={deleteFile} style={{ flex: 1 }} />
+                  </View>
+                </View>
+              ) : null}
               {!id ? (
                 <Pressable accessibilityRole="switch" accessibilityState={{ checked: priv }} onPress={() => setPriv((v) => !v)} style={{ flexDirection: 'row', gap: 10, alignItems: 'center', minHeight: 44 }}>
                   <Text style={{ fontSize: 18 }}>{priv ? '☑️' : '⬜️'}</Text>
@@ -288,6 +366,13 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
           </KeyboardAvoidingView>
         )}
       </SafeAreaView>
+      {viewing ? (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setViewing(null)}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Close the photo" onPress={() => setViewing(null)} style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center' }}>
+            <Image source={{ uri: viewing }} resizeMode="contain" style={{ width: '100%', height: '100%' }} accessibilityLabel={file?.name} />
+          </Pressable>
+        </Modal>
+      ) : null}
     </Modal>
   );
 }

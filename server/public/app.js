@@ -161,6 +161,15 @@ function agentButtons(m, who) {
     };
     return h('div', { class: 'agent-actions' }, h('button', { class: 'btn small primary', type: 'button', onclick: () => answer(true) }, 'Save'), h('button', { class: 'btn small', type: 'button', onclick: () => answer(false) }, 'Discard'));
   }
+  const choice = m.body.fileChoice;
+  if (choice?.by === client.account?.memberId && typeof choice.id === 'string' && !savedLists.has(choice.id)) {
+    const answer = (keep) => {
+      savedLists.add(choice.id);
+      renderPanel();
+      client.answerAgentFile(choice.id, keep, { peer }).catch(fail);
+    };
+    return h('div', { class: 'agent-actions' }, h('button', { class: 'btn small primary', type: 'button', onclick: () => answer(false) }, 'Delete file'), h('button', { class: 'btn small', type: 'button', onclick: () => answer(true) }, 'Keep it'));
+  }
   if (Array.isArray(m.body.undo) && m.body.undo.length) {
     return h('div', { class: 'agent-actions' }, h('button', { class: 'btn small', type: 'button', onclick: () => client.undoAgent(m.body.undo, { peer }).catch(fail) }, 'Undo'));
   }
@@ -1295,9 +1304,41 @@ function chatView() {
         },
         '📊',
       ),
+      // A photo or file for the circle's helper (shown only where the helper is).
+      h(
+        'button',
+        {
+          class: 'btn emoji-toggle attach-btn',
+          type: 'button',
+          title: 'Send the helper a photo or file',
+          'aria-label': 'Send the helper a photo or file',
+          onclick: () => fileInput.click(),
+        },
+        '📎',
+      ),
       input,
       h('button', { class: 'btn primary', type: 'submit' }, 'Send'),
     );
+    const fileInput = h('input', {
+      type: 'file',
+      class: 'hidden',
+      accept: 'image/*,application/pdf,.docx,.xlsx,.csv,.txt,.md',
+      onchange: async () => {
+        const f = fileInput.files?.[0];
+        fileInput.value = '';
+        if (!f) return;
+        try {
+          const photo = f.type.startsWith('image/');
+          const bytes = photo ? await smallJpeg(f) : new Uint8Array(await f.arrayBuffer());
+          const name = photo ? `${f.name.replace(/\.[^.]+$/, '') || 'photo'}.jpg` : f.name;
+          toast(`Sending ${name}, encrypted…`);
+          await client.sendFileToAgent(bytes, { name, mime: photo ? 'image/jpeg' : f.type }, { peer: ui.peer || null });
+        } catch (ex) {
+          toast(errorText(ex));
+        }
+      },
+    });
+    ui.chatForm.append(fileInput);
     // Emoji picker: inserts at the cursor and keeps the draft.
     const picker = h(
       'div',
@@ -1334,7 +1375,9 @@ function chatView() {
     ui.chatForm.prepend(ui.pollForm);
   }
   const form = ui.chatForm;
-  const input = form.querySelector(':scope > input');
+  const agentHere = client.agent && (!ui.peer || ui.peer === client.agent.id);
+  form.querySelector('.attach-btn').classList.toggle('hidden', !agentHere);
+  const input = form.querySelector(':scope > input:not([type=file])');
   input.placeholder = ui.peer ? `Message ${peerName}` : 'Message your circle';
   const refocus = document.activeElement === input || ui.focusChat;
   ui.focusChat = false;
@@ -1352,6 +1395,18 @@ function chatView() {
       )
     : null;
   return h('div', { class: 'chat' }, h('div', { class: 'chat-top' }, picker, askBtn), log, form);
+}
+
+/** A photo at most 1600 px on its longest side, as JPEG bytes (smaller to send, and readable by the helper). */
+async function smallJpeg(file) {
+  const img = await createImageBitmap(file).catch(() => {
+    throw new Error('This browser can’t open that photo. Send it as a JPEG or PNG.');
+  });
+  const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+  const canvas = h('canvas', { width: Math.round(img.width * scale), height: Math.round(img.height * scale) });
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+  return new Uint8Array(await blob.arrayBuffer());
 }
 
 /** "/Jarvis when…" or "/agent when…" → "when…", else null. */

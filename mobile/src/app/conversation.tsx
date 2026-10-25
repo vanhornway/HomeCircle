@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { AppState, FlatList, Keyboard, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, AppState, FlatList, Keyboard, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { EMOJI_GROUPS, QUICK_REACTIONS, isEmojiOnly, type CircleClient, type Message } from '@homecircle/core';
 import { Avatar, Button, Icon, IconButton } from '../components/ui';
@@ -10,6 +10,7 @@ import { ServerBanner } from '../components/ServerBanner';
 import { PollCard } from '../components/PollCard';
 import { CreatePoll } from '../components/CreatePoll';
 import { LinkedText } from '../components/LinkedText';
+import { pickDocument, pickPhoto } from '../lib/upload';
 import { clientForCircle, errorText, useCircles } from '../lib/circle';
 import { initials } from '../lib/useCircle';
 import { setVisibleConversation } from '../lib/notify';
@@ -66,6 +67,10 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   // Lists from the agent (dates in a PDF) answered on this screen: no buttons twice.
   const [savedLists, setSavedLists] = useState<Set<string>>(() => new Set());
   const [checkingIn, setCheckingIn] = useState<string | null>(null);
+  // Sending the helper a photo or file: the 📎 choices, and the file on its way.
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [sendingFile, setSendingFile] = useState<string | null>(null);
+  const canAttach = !!agent && (withAgent || (!peer && asking));
   useLocateVersion();
   const list = useRef<FlatList<ChatRow>>(null);
   const me = client.account?.memberId;
@@ -111,6 +116,23 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     } catch (e) {
       setText(value);
       setError(errorText(e));
+    }
+  };
+
+  const attach = async (from: 'camera' | 'library' | 'file') => {
+    setAttachOpen(false);
+    setError(null);
+    try {
+      const picked = from === 'file' ? await pickDocument() : await pickPhoto(from);
+      if (!picked) return;
+      setSendingFile(picked.name);
+      await client.sendFileToAgent(picked.bytes, { name: picked.name, mime: picked.mime }, { peer: withAgent ? peer : null });
+      setAsking(false);
+      list.current?.scrollToOffset({ offset: 0, animated: true });
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setSendingFile(null);
     }
   };
 
@@ -249,6 +271,23 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             ))}
           </View>
         ) : null}
+        {who?.kind === 'agent' && m.body?.fileChoice?.by === me && typeof m.body.fileChoice.id === 'string' && !savedLists.has(m.body.fileChoice.id) ? (
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+            {[false, true].map((keep) => (
+              <Button
+                key={String(keep)}
+                small
+                variant={keep ? undefined : 'primary'}
+                title={keep ? 'Keep it' : 'Delete file'}
+                onPress={() => {
+                  const id = m.body!.fileChoice.id as string;
+                  setSavedLists((s) => new Set(s).add(id));
+                  client.answerAgentFile(id, keep, { peer }).catch((e) => setError(errorText(e)));
+                }}
+              />
+            ))}
+          </View>
+        ) : null}
         {m.body?.nudge === true && !mine ? (
           <Button small variant="primary" title="Open setup check" onPress={() => router.push('/setup-check')} style={{ marginTop: 6 }} />
         ) : null}
@@ -356,6 +395,33 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
           keyboardShouldPersistTaps="handled"
         />
         {error ? <Text style={{ color: t.danger, paddingHorizontal: 16, fontSize: 15 }}>{error}</Text> : null}
+        {sendingFile ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 6 }}>
+            <ActivityIndicator color={t.brand} />
+            <Text style={{ color: t.muted, fontSize: 14 }}>Sending {sendingFile}, encrypted…</Text>
+          </View>
+        ) : null}
+        {attachOpen && agent ? (
+          <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: t.surface, borderTopWidth: 1, borderTopColor: t.line }}>
+            {(
+              [
+                ['camera', '📷', 'Take a photo'],
+                ['library', '🖼️', 'Choose a photo'],
+                ['file', '📄', 'PDF, doc or sheet'],
+              ] as const
+            ).map(([from, icon, label]) => (
+              <Pressable
+                key={from}
+                accessibilityRole="button"
+                onPress={() => attach(from)}
+                style={({ pressed }) => ({ flex: 1, minHeight: 64, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 2, backgroundColor: pressed ? t.surface2 : t.bg })}
+              >
+                <Text style={{ fontSize: 22 }}>{icon}</Text>
+                <Text style={{ color: t.text, fontSize: 13, fontWeight: '600', textAlign: 'center' }}>{label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
         <SafeAreaView edges={['bottom']} style={{ backgroundColor: t.surface }}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 10, borderTopWidth: 1, borderTopColor: t.line }}>
             <Pressable
@@ -378,7 +444,22 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
                 <Text style={{ fontSize: 24 }}>🤖</Text>
               </Pressable>
             ) : null}
-            {text.trim() || withAgent ? null : (
+            {canAttach && !text.trim() ? (
+              <Pressable
+                accessibilityLabel={`Send ${agent!.name} a photo or file`}
+                accessibilityState={{ expanded: attachOpen }}
+                disabled={!!sendingFile}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setPickerOpen(false);
+                  setAttachOpen((v) => !v);
+                }}
+                style={{ width: 40, height: 48, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginLeft: -6, backgroundColor: attachOpen ? t.brandSoft : 'transparent' }}
+              >
+                <Text style={{ fontSize: 22 }}>📎</Text>
+              </Pressable>
+            ) : null}
+            {text.trim() || withAgent || canAttach ? null : (
               <Pressable
                 accessibilityLabel="New poll"
                 onPress={() => {

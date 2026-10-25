@@ -87,7 +87,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "HomeCircle uses the camera only to scan invite QR codes.",
+          "cameraPermission": "HomeCircle uses the camera to scan invite QR codes and, when you choose, to take a photo for your circle’s helper.",
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
@@ -100,6 +100,14 @@
           "android": {
             "extraProguardRules": "# WorkManager (pulled in by expo-background-task) creates its Room database by reflection;\n# without these rules R8 strips it and the app crashes on launch.\n-keep class * extends androidx.room.RoomDatabase { <init>(); }\n-keep class androidx.work.impl.** { *; }\n"
           }
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "HomeCircle lets you send a photo to your circle’s helper, only when you pick one.",
+          "cameraPermission": "HomeCircle uses the camera to scan invite QR codes and, when you choose, to take a photo for your circle’s helper.",
+          "microphonePermission": false
         }
       ]
     ],
