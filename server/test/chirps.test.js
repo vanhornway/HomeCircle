@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/index.js';
-import { CircleClient, CHIRP_SOUNDS } from '../../packages/core/src/index.js';
+import { CircleClient, CHIRP_SOUNDS, allFeatures } from '../../packages/core/src/index.js';
 
 const SETUP = 'test-setup-token-chirp';
 let app;
@@ -79,7 +79,7 @@ test('the server says it supports chirps and most visited places', async () => {
 });
 
 test('a chirp reaches one person with the sender’s own sound', async () => {
-  await mom.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'Family' });
+  await mom.createCircle({ features: allFeatures(), serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'Family' });
   await dad.joinWithInvite((await mom.createInvite()).link, { name: 'Dad' });
   await kid.joinWithInvite((await mom.createInvite()).link, { name: 'Kid' });
   await mom.setChirp('wren');
@@ -136,7 +136,7 @@ test('three chirps in a row, then 30 minutes off; separately for a person and fo
 
 test('chirps go only to members of this circle', async () => {
   const other = client();
-  await other.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Stranger', circleName: 'Elsewhere' });
+  await other.createCircle({ features: allFeatures(), serverUrl: url, setupToken: SETUP, name: 'Stranger', circleName: 'Elsewhere' });
   await assert.rejects(() => other.chirp(dad.account.memberId), (e) => e.status === 404);
   await assert.rejects(() => other.chirp(null), (e) => e.status === 409 && e.code === 'nobody');
   await other.deleteCircle();

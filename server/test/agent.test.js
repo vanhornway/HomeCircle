@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/index.js';
-import { AgentClient, CircleClient } from '../../packages/core/src/index.js';
+import { AgentClient, CircleClient, allFeatures } from '../../packages/core/src/index.js';
 
 const SETUP = 'test-setup-token-agent';
 let app;
@@ -68,7 +68,7 @@ const sync = async () => {
 };
 
 test('an admin invites the agent by name; the invite carries no circle key', async () => {
-  await mom.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'Family' });
+  await mom.createCircle({ features: allFeatures(), serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'Family' });
   await dad.joinWithInvite((await mom.createInvite()).link, { name: 'Dad' });
   await mom.refresh();
   await mom.sendChat('Secret group plans');

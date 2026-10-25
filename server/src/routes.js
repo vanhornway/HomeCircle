@@ -19,6 +19,7 @@ import {
 } from './http.js';
 import { isPushToken } from './push.js';
 import { MAX_FILE_BYTES } from './files.js';
+import { allFeatures, cleanFeatures, hasFeature, resolveFeatures } from '../../packages/core/src/features.js';
 
 const MAX_MEMBERS = 50;
 const MAX_OPEN_INVITES = 20;
@@ -38,6 +39,7 @@ const DEFAULT_RETENTION_DAYS = 90;
 const NO_PROFILE = { epoch: 0, nonce: 'A'.repeat(32), ct: 'AA' };
 
 const isAdmin = (m) => m.role === 'owner' || m.role === 'admin';
+
 const requireAdmin = (m) => isAdmin(m) || fail(403, 'forbidden', 'Only circle admins can do that');
 
 export function buildRoutes({ config, store, hub, push, log, agentHost = null, files = null }) {
@@ -49,6 +51,13 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
 
   // Guessing the setup code: a few dozen tries per hour from one address.
   const setupCodeLimiter = new RateLimiter(30, 3600_000);
+
+  // A feature the circle's admins turned off: refused here too, not only hidden in the apps.
+  const requireFeature = (me, id, what) => {
+    if (!hasFeature(resolveFeatures(store.circle(me.circleId)?.features), id)) {
+      fail(403, 'feature_off', `${what} ${/s$/.test(what) ? 'are' : 'is'} turned off in this circle. An admin can turn ${/s$/.test(what) ? 'them' : 'it'} on in Settings.`);
+    }
+  };
 
   const limitPublic = (ctx) => {
     const wait = publicLimiter.take(ctx.ip);
@@ -144,13 +153,16 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     const circle = vEnvelope(body.circle, 'circle', 2048);
     if (member.profile.epoch !== 1 || circle.epoch !== 1) fail(400, 'invalid', 'envelopes must use epoch 1');
     if (store.circleExists(circleId) || store.memberExists(member.id)) fail(409, 'conflict', 'Circle or member id already exists');
-    return { circleId, member, circle };
+    // The features the owner chose; an app from before features could be
+    // chosen gets everything, as it had before (it can't show the choice).
+    const features = body.features && typeof body.features === 'object' ? resolveFeatures(body.features) : allFeatures();
+    return { circleId, member, circle, features };
   };
-  const insertCircle = ({ circleId, member, circle }) => {
+  const insertCircle = ({ circleId, member, circle, features }) => {
     const { token, tokenHash } = newToken();
     const now = Date.now();
     store.tx(() => {
-      store.insertCircle({ id: circleId, env: circle, by: member.id, now, retentionDays: Math.min(DEFAULT_RETENTION_DAYS, config.maxRetentionDays) });
+      store.insertCircle({ id: circleId, env: circle, by: member.id, now, retentionDays: Math.min(DEFAULT_RETENTION_DAYS, config.maxRetentionDays), features });
       store.insertMember({ ...member, circleId, role: 'owner', serverAdmin: true, tokenHash, now });
     });
     return { memberId: member.id, token };
@@ -358,6 +370,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       rotationNeeded: circle.rotationNeeded,
       retentionDays: Math.min(circle.retentionDays, config.maxRetentionDays),
       retentionChoices: RETENTION_CHOICES.filter((d) => d <= config.maxRetentionDays),
+      features: resolveFeatures(circle.features),
       circle: { env: circle.env, by: circle.by },
       me: me.id,
       serverAdmin: me.serverAdmin,
@@ -398,6 +411,17 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     hub.broadcast(me.circleId, { type: 'circle' });
     log(`message retention set to ${days} days`);
     return { ok: true, retentionDays: days };
+  });
+
+  // Which features the circle has: admins choose. Phones hide what's off;
+  // the server also refuses what goes through it (chirps, Locate, …).
+  r.add('PUT', '/circle/features', ({ me, body }) => {
+    requireAdmin(me);
+    const features = resolveFeatures({ ...resolveFeatures(store.circle(me.circleId).features), ...cleanFeatures(body.features) });
+    store.setFeatures(me.circleId, features);
+    hub.broadcast(me.circleId, { type: 'circle' });
+    log('circle features changed');
+    return { ok: true, features };
   });
 
   // The owner can delete their circle and everything in it.
@@ -479,6 +503,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     const authHash = vBytes(body.authHash, 'authHash', 32);
     // An agent's invite carries no circle key: the agent never reads the chat.
     const agent = body.agent === true;
+    if (agent) requireFeature(me, 'agent', 'The circle helper');
     if (agent && store.activeMembers(me.circleId).some((m) => m.kind === 'agent')) fail(409, 'agent_exists', 'This circle already has an agent');
     const wrapped = agent ? null : vBox(body.wrapped, 'wrapped', 2048);
     const now = Date.now();
@@ -606,6 +631,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   // cooldown, so asking for one person doesn't block asking for another or
   // refreshing everyone.
   r.add('POST', '/locations/request', ({ me, body }) => {
+    requireFeature(me, 'locate', 'Locate');
     const others = store.activeMembers(me.circleId).filter((m) => m.id !== me.id);
     const wanted = Array.isArray(body.targets) ? new Set(body.targets) : null;
     let targets;
@@ -648,6 +674,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   r.add('GET', '/frequent', ({ me }) => ({ frequent: store.frequent(me.circleId) }));
 
   r.add('PUT', '/frequent/me', ({ me, body }) => {
+    requireFeature(me, 'frequentPlaces', 'Most visited places');
     const env = vEnvelope(body, 'frequent', 8192);
     currentEpoch(me.circleId, env.epoch);
     const now = Date.now();
@@ -682,6 +709,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   };
 
   r.add('POST', '/chirps', ({ me, body }) => {
+    requireFeature(me, 'chirps', 'Chirps');
     const to = body.to == null ? null : vId(body.to, 'to');
     const flash = body.flash === true;
     const others = store.activeMembers(me.circleId).filter((m) => m.id !== me.id);
@@ -718,6 +746,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
 
   r.add('POST', '/agent-host/setup', async ({ me, body }) => {
     requireAdmin(me);
+    requireFeature(me, 'agent', 'The circle helper');
     if (!agentHost) fail(404, 'no_agent_host', 'This server doesn’t run agents. Turn on AGENT=true (or run_agent in the Home Assistant app) first.');
     const from = vBytes(body.from, 'from', 32);
     if (from !== me.boxPub) fail(400, 'invalid', 'from must be your own key');
@@ -748,6 +777,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     '/files',
     ({ me, body }) => {
       if (!files || !agentHost || !agentOf(me.circleId)) fail(404, 'no_agent', 'This circle has no agent to send files to');
+      requireFeature(me, 'uploads', 'Sending files to the helper');
       if (!Buffer.isBuffer(body) || body.length < 40) fail(400, 'invalid', 'Send the encrypted file as the request body');
       if (store.unkeptFilesBy(me.id) >= 20) fail(429, 'rate_limited', 'You have 20 files waiting for an answer. Save or discard some first.', { retryAfter: 3600 });
       if ((store.circleBytes.get(me.circleId) || 0) + store.circleFileBytes(me.circleId) + body.length > config.maxCircleBytes) {

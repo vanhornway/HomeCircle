@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { WebSocket } from 'ws';
 import { clientIp } from '../src/http.js';
 import { createApp } from '../src/index.js';
-import { CircleClient } from '../../packages/core/src/index.js';
+import { CircleClient, allFeatures } from '../../packages/core/src/index.js';
 
 const req = (xff, remote = '10.0.0.9') => ({ headers: xff == null ? {} : { 'x-forwarded-for': xff }, socket: { remoteAddress: remote } });
 
@@ -70,7 +70,7 @@ const start = async (limits) => {
 };
 const newCircle = async (url) => {
   const c = new CircleClient({ storage: new MemoryStorage() });
-  await c.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'Family' });
+  await c.createCircle({ features: allFeatures(), serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'Family' });
   return c;
 };
 

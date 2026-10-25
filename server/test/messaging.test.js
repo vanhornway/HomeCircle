@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/index.js';
-import { CircleClient, seal, directKey, approximate, placeState, distanceM } from '../../packages/core/src/index.js';
+import { CircleClient, seal, directKey, approximate, placeState, distanceM, allFeatures } from '../../packages/core/src/index.js';
 
 const SETUP = 'test-setup-token-789';
 let app;
@@ -63,7 +63,7 @@ before(async () => {
   });
   await new Promise((r) => app.server.listen(0, '127.0.0.1', r));
   url = `http://127.0.0.1:${app.server.address().port}`;
-  await mom.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'Family' });
+  await mom.createCircle({ features: allFeatures(), serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'Family' });
   await dad.joinWithInvite((await mom.createInvite()).link, { name: 'Dad' });
   await kid.joinWithInvite((await mom.createInvite()).link, { name: 'Kid' });
   await Promise.all([mom, dad, kid].map((c) => c.start()));
@@ -256,7 +256,7 @@ test('at most 6 Locates per person per hour, even without the 60-second cooldown
   const url2 = `http://127.0.0.1:${app2.server.address().port}`;
   const a = client();
   const b = client();
-  await a.createCircle({ serverUrl: url2, setupToken: SETUP, name: 'A', circleName: 'Cap' });
+  await a.createCircle({ features: allFeatures(), serverUrl: url2, setupToken: SETUP, name: 'A', circleName: 'Cap' });
   await b.joinWithInvite((await a.createInvite()).link, { name: 'B' });
   await a.refresh();
   let ok = 0;

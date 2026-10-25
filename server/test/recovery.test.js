@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/index.js';
-import { CircleClient } from '../../packages/core/src/index.js';
+import { CircleClient, allFeatures } from '../../packages/core/src/index.js';
 
 const SETUP = 'test-setup-token-789';
 let app;
@@ -76,7 +76,7 @@ const back = client();
 let circleId;
 
 test('the setup code is checked, and lists circles without their names', async () => {
-  await lostPhone.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Umair', circleName: 'Family' });
+  await lostPhone.createCircle({ features: allFeatures(), serverUrl: url, setupToken: SETUP, name: 'Umair', circleName: 'Family' });
   circleId = lostPhone.circleId;
   await wife.joinWithInvite((await lostPhone.createInvite()).link, { name: 'Sara' });
   wife.connect();
@@ -150,7 +150,7 @@ test('after removing the old phone, the key rotates and everyone keeps reading',
 
 test('the setup code starts a new circle and deletes an abandoned one', async () => {
   const extra = client();
-  await extra.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Umair', circleName: 'Old test' });
+  await extra.createCircle({ features: allFeatures(), serverUrl: url, setupToken: SETUP, name: 'Umair', circleName: 'Old test' });
   assert.equal((await CircleClient.recoverCircles(url, SETUP)).circles.length, 2);
   await CircleClient.recoverDeleteCircle(url, SETUP, extra.circleId);
   const { circles } = await CircleClient.recoverCircles(url, SETUP);

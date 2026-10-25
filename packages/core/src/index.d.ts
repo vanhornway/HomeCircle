@@ -324,7 +324,7 @@ export class CircleClient {
   /** Forget this device's keys. The reason goes with the 'signedOut' event (default 'signed_out'). */
   signOut(reason?: SignOutReason): Promise<void>;
   /** With the server's setup code (any time), or `admin`: a client already on that server that can create circles. */
-  createCircle(opts: { serverUrl: string; setupToken?: string; admin?: CircleClient; name: string; circleName: string }): Promise<void>;
+  createCircle(opts: { serverUrl: string; setupToken?: string; admin?: CircleClient; name: string; circleName: string; features?: Features }): Promise<void>;
   previewInvite(link: string): Promise<InvitePreview>;
   joinWithInvite(link: string, opts: { name: string }): Promise<void>;
   /** Join once a member approved the request: 'joined'. Otherwise its status. */
@@ -372,6 +372,12 @@ export class CircleClient {
   readonly retention: { days: number | null; choices: number[] };
   /** Admins: change how long messages are kept. */
   setRetention(days: number): Promise<void>;
+  /** The circle's features: which are on. */
+  readonly features: Features;
+  /** Whether a feature works in this circle (on, and so is whatever it needs). */
+  feature(id: FeatureId): boolean;
+  /** Admins: turn features on or off. */
+  setFeatures(features: Partial<Features>): Promise<void>;
   /** Stop sharing with this circle; it sees that you paused. */
   pauseSharing(reason?: string): Promise<void>;
   /** Pass a stable id to retry safely; a repeat the server already has counts as delivered. */
@@ -486,3 +492,32 @@ export function toB64(bytes: Uint8Array): string;
 export function fromB64(str: string): Uint8Array;
 export function utf8Encode(str: string): Uint8Array;
 export function utf8Decode(bytes: Uint8Array): string;
+
+/** Every feature a circle can turn on or off. */
+export type FeatureId =
+  | 'locationSharing'
+  | 'locate'
+  | 'placeAlerts'
+  | 'checkIns'
+  | 'frequentPlaces'
+  | 'lowBattery'
+  | 'groupChat'
+  | 'directMessages'
+  | 'polls'
+  | 'readReceipts'
+  | 'chirps'
+  | 'sos'
+  | 'circleHealth'
+  | 'agent'
+  | 'shoppingLists'
+  | 'reminders'
+  | 'uploads';
+export type Features = Record<FeatureId, boolean>;
+export type FeatureInfo = { id: FeatureId; group: 'Location' | 'Chat' | 'Alerts' | 'Helper'; label: string; detail: string; on: boolean; needs?: FeatureId };
+export const FEATURES: FeatureInfo[];
+export const FEATURE_GROUPS: FeatureInfo['group'][];
+export function defaultFeatures(): Features;
+export function allFeatures(): Features;
+export function cleanFeatures(input: unknown): Partial<Features>;
+export function resolveFeatures(stored: unknown): Features;
+export function hasFeature(features: Partial<Features> | null | undefined, id: FeatureId): boolean;

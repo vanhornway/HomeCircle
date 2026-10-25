@@ -29,6 +29,7 @@ import {
   appInviteLink,
 } from './crypto.js';
 import { isValidReaction } from './emoji.js';
+import { allFeatures, cleanFeatures, defaultFeatures, hasFeature, resolveFeatures } from './features.js';
 
 // Storage key for the account. A device in several circles keeps one
 // CircleClient per circle, each with its own key (see `accountKey`).
@@ -265,6 +266,22 @@ export class CircleClient {
     await this.refresh();
   }
 
+  /** The circle's features ({ id: on }); everything on until the server says (older servers). */
+  get features() {
+    return this.state?.features ?? allFeatures();
+  }
+
+  /** Whether a feature works in this circle (on, and so is whatever it needs). */
+  feature(id) {
+    return hasFeature(this.features, id);
+  }
+
+  /** Admins: turn features on or off ({ id: true | false }). */
+  async setFeatures(features) {
+    await this.api.putFeatures(cleanFeatures(features));
+    await this.refresh();
+  }
+
   _profileBody() {
     const a = this.account;
     return {
@@ -281,7 +298,7 @@ export class CircleClient {
    * `setupToken`. Later circles on the same server are created by a server
    * admin: pass `admin`, a CircleClient already in a circle on that server.
    */
-  async createCircle({ serverUrl, setupToken, admin, name, circleName }) {
+  async createCircle({ serverUrl, setupToken, admin, name, circleName, features = defaultFeatures() }) {
     const server = normalizeServerUrl(serverUrl);
     const identity = generateIdentity();
     const memberId = randomId();
@@ -309,6 +326,7 @@ export class CircleClient {
           profile: this._seal('profile', this._profileBody()),
         },
         circle: this._seal('circle', { name: cleanName(circleName) || 'Our Circle' }),
+        features: resolveFeatures(features),
       };
       const res = admin
         ? await this._makeApi(server, admin.account.token).createCircle(body)

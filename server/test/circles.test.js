@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/index.js';
 import { openDb } from '../src/db.js';
-import { CircleClient } from '../../packages/core/src/index.js';
+import { CircleClient, allFeatures } from '../../packages/core/src/index.js';
 
 const SETUP = 'test-setup-token-456';
 let app;
@@ -78,7 +78,7 @@ const wife = client();
 const dad = client();
 
 test('the server admin creates a second circle; others cannot', async () => {
-  await me.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Umair', circleName: 'Home' });
+  await me.createCircle({ features: allFeatures(), serverUrl: url, setupToken: SETUP, name: 'Umair', circleName: 'Home' });
   assert.equal(me.isServerAdmin, true);
   const info = await CircleClient.serverInfo(url);
   assert.equal(info.multiCircle, true);
@@ -87,17 +87,17 @@ test('the server admin creates a second circle; others cannot', async () => {
   await wife.joinWithInvite((await me.createInvite()).link, { name: 'Sara' });
   assert.equal(wife.isServerAdmin, false);
   await assert.rejects(
-    () => client().createCircle({ serverUrl: url, admin: wife, name: 'Sara', circleName: 'Mine' }),
+    () => client().createCircle({ features: allFeatures(), serverUrl: url, admin: wife, name: 'Sara', circleName: 'Mine' }),
     (e) => e.status === 403,
   );
   // The setup code keeps working after the first circle, for a separate circle.
   const viaCode = client();
-  await viaCode.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Umair', circleName: 'Second' });
+  await viaCode.createCircle({ features: allFeatures(), serverUrl: url, setupToken: SETUP, name: 'Umair', circleName: 'Second' });
   assert.notEqual(viaCode.circleId, me.circleId);
   assert.equal(viaCode.isServerAdmin, true);
   await viaCode.deleteCircle();
 
-  await meParents.createCircle({ serverUrl: url, admin: me, name: 'Umair', circleName: 'Parents & siblings' });
+  await meParents.createCircle({ features: allFeatures(), serverUrl: url, admin: me, name: 'Umair', circleName: 'Parents & siblings' });
   assert.equal(meParents.me.role, 'owner');
   assert.equal(meParents.isServerAdmin, true);
   assert.notEqual(meParents.circleId, me.circleId);

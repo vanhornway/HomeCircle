@@ -3,6 +3,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { allFeatures } from '../../packages/core/src/features.js';
 
 // One server hosts any number of circles. Every row belongs to exactly one
 // circle (directly, or through its member), and every query is scoped to it.
@@ -163,6 +164,11 @@ function migrateToMultiCircle(db) {
   add('invites', 'kind', "TEXT NOT NULL DEFAULT 'person'");
   // Delivered ticks (0.11): every message up to this seq has reached the member's phone.
   add('members', 'delivered_seq', 'INTEGER NOT NULL DEFAULT 0');
+  // Which features a circle has (0.13): circles from before keep everything on.
+  if (!cols('circles').includes('features')) {
+    db.exec('ALTER TABLE circles ADD COLUMN features TEXT');
+    db.prepare('UPDATE circles SET features = ?').run(JSON.stringify(allFeatures()));
+  }
 
   const meta = (k) => db.prepare('SELECT v FROM meta WHERE k = ?').get(k)?.v ?? null;
   const circleId = meta('circle_id');
@@ -270,14 +276,18 @@ export class Store {
     const rows = this.q('SELECT id FROM circles LIMIT 2').all();
     return rows.length === 1 ? rows[0].id : null;
   }
-  insertCircle({ id, env, by, now, retentionDays }) {
-    this.q('INSERT INTO circles (id, epoch, rotation_needed, retention_days, env, env_by, created_at) VALUES (?, 1, 0, ?, ?, ?, ?)').run(
+  insertCircle({ id, env, by, now, retentionDays, features }) {
+    this.q('INSERT INTO circles (id, epoch, rotation_needed, retention_days, env, env_by, created_at, features) VALUES (?, 1, 0, ?, ?, ?, ?, ?)').run(
       id,
       retentionDays,
       JSON.stringify(env),
       by,
       now,
+      JSON.stringify(features),
     );
+  }
+  setFeatures(id, features) {
+    this.q('UPDATE circles SET features = ? WHERE id = ?').run(JSON.stringify(features), id);
   }
   setRetention(id, days) {
     this.q('UPDATE circles SET retention_days = ? WHERE id = ?').run(days, id);
@@ -290,6 +300,7 @@ export class Store {
         epoch: r.epoch,
         rotationNeeded: r.rotation_needed === 1,
         retentionDays: r.retention_days,
+        features: parse(r.features),
         env: parse(r.env),
         by: r.env_by,
         createdAt: r.created_at,

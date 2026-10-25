@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/index.js';
-import { CircleClient } from '../../packages/core/src/index.js';
+import { CircleClient, allFeatures } from '../../packages/core/src/index.js';
 
 const SETUP = 'test-setup-token-ticks';
 let app;
@@ -61,7 +61,7 @@ const kid = client();
 const mine = (c, text) => c.messages.find((m) => m.body?.text === text);
 
 test('a group message: sent, then delivered once every phone has it, then read once everyone has read it', async () => {
-  await mom.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'Family' });
+  await mom.createCircle({ features: allFeatures(), serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'Family' });
   await dad.joinWithInvite((await mom.createInvite()).link, { name: 'Dad' });
   await kid.joinWithInvite((await mom.createInvite()).link, { name: 'Kid' });
   await Promise.all([mom, dad, kid].map((c) => c.refresh()));

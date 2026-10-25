@@ -100,6 +100,7 @@ export class Api {
   messages = (after = 0, limit = 200) => this.req('GET', `/messages?after=${after}&limit=${limit}`);
   postMessage = (id, env, { silent = false, to = null } = {}) => this.req('POST', '/messages', { id, ...env, silent, ...(to ? { to } : {}) });
   putRetention = (days) => this.req('PUT', '/circle/retention', { days });
+  putFeatures = (features) => this.req('PUT', '/circle/features', { features });
   places = () => this.req('GET', '/places');
   putPlace = (id, env) => this.req('PUT', `/places/${encodeURIComponent(id)}`, env);
   deletePlace = (id) => this.req('DELETE', `/places/${encodeURIComponent(id)}`);

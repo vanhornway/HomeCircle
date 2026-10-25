@@ -6,7 +6,7 @@ import { mkdtempSync, readFileSync, rmSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/index.js';
-import { CircleClient } from '../../packages/core/src/index.js';
+import { CircleClient, allFeatures } from '../../packages/core/src/index.js';
 
 const SETUP = 'test-setup-token-123';
 let app;
@@ -75,16 +75,16 @@ test('setup: wrong code rejected; the code never joins an existing circle', asyn
   const info = await CircleClient.serverInfo(url);
   assert.equal(info.setup, false);
   await assert.rejects(
-    () => client().createCircle({ serverUrl: url, setupToken: 'nope-nope-nope', name: 'X', circleName: 'Y' }),
+    () => client().createCircle({ features: allFeatures(), serverUrl: url, setupToken: 'nope-nope-nope', name: 'X', circleName: 'Y' }),
     (e) => e.code === 'bad_setup_token',
   );
-  await owner.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'The Parkers' });
+  await owner.createCircle({ features: allFeatures(), serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'The Parkers' });
   assert.equal(owner.me.role, 'owner');
   assert.equal(owner.me.name, 'Mom');
   assert.equal(owner.circle.name, 'The Parkers');
   // Using the code again makes a separate circle; the first one is untouched.
   const eve = client();
-  await eve.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Eve', circleName: 'Hijack' });
+  await eve.createCircle({ features: allFeatures(), serverUrl: url, setupToken: SETUP, name: 'Eve', circleName: 'Hijack' });
   assert.notEqual(eve.circleId, owner.circleId);
   await owner.refresh();
   assert.deepEqual(

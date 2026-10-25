@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { createApp } from '../src/index.js';
 import { LlmError } from '../src/agent/llm.js';
 import { makePdf } from '../src/agent/pdf.js';
-import { CircleClient } from '../../packages/core/src/index.js';
+import { CircleClient, allFeatures } from '../../packages/core/src/index.js';
 
 const SETUP = 'test-setup-token-agent-e2e';
 let app;
@@ -200,7 +200,7 @@ async function until(c, pred) {
 const lastFromAgent = (c) => (c.agent ? [...c.conversation(null)].reverse().find((m) => m.from === c.agent.id) : null);
 
 test('an admin adds the agent: the server only ever sees the invite sealed', async () => {
-  await mom.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'Family' });
+  await mom.createCircle({ features: allFeatures(), serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'Family' });
   await dad.joinWithInvite((await mom.createInvite()).link, { name: 'Dad' });
   await mom.refresh();
   assert.deepEqual(await mom.agentHostStatus(), { available: true, running: false });

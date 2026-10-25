@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Api, CircleClient } from '../../packages/core/src/index.js';
+import { Api, CircleClient, allFeatures } from '../../packages/core/src/index.js';
 import { createApp } from '../src/index.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -53,7 +53,7 @@ test('client catches up on messages missed while disconnected', async () => {
   const owner = new CircleClient({ storage: mem() });
   const bob = new CircleClient({ storage: mem() });
   try {
-    await owner.createCircle({ serverUrl: url, setupToken: 'test-setup-token-123', name: 'Ann', circleName: 'C' });
+    await owner.createCircle({ features: allFeatures(), serverUrl: url, setupToken: 'test-setup-token-123', name: 'Ann', circleName: 'C' });
     await bob.joinWithInvite((await owner.createInvite()).link, { name: 'Bob' });
     await owner.refresh();
     await bob.start();
