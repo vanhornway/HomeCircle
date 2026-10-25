@@ -371,7 +371,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             {subtitle}
           </Text>
         </View>
-        {peer && other && !other.removed ? (
+        {peer && other && !other.removed && other.kind !== 'agent' ? (
           <View style={{ flexDirection: 'row', gap: 6, marginRight: 6 }}>
             {client.feature('locationSharing') ? (
               <IconButton

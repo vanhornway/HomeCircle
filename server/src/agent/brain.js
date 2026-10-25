@@ -1048,7 +1048,12 @@ export class Brain {
       : [
           `📄 ${title}${summary ? `: ${summary}` : ''}`,
           'I’d keep:',
-          ...notes.slice(0, 15).map((n) => `• ${n.title}${n.start ? ` (${fmtRange({ start: n.start, end: n.end || n.start })})` : ''}: ${n.body.replace(/\[\[([^\]]+)\]\]/g, '$1').slice(0, 160)}`),
+          ...notes.slice(0, 15).map((n) => {
+            const body = n.body.replace(/\[\[([^\]]+)\]\]/g, '$1').slice(0, 160);
+            const when = n.start ? ` (${fmtRange({ start: n.start, end: n.end || n.start })})` : '';
+            // "Coach Dana: 555-0100" rather than "Coach Dana: Coach Dana: 555-0100".
+            return body.toLowerCase().startsWith(n.title.toLowerCase()) ? `• ${body}${when}` : `• ${n.title}${when}: ${body}`;
+          }),
           notes.length > 15 ? `…and ${notes.length - 15} more.` : null,
           read.truncated ? 'It’s long, so I only read the first part.' : null,
           'Does this look right? Save it (you can fix anything later in Memory) or Discard.',
@@ -1085,12 +1090,12 @@ export class Brain {
     const back = { ...msg, body: { ...msg.body, thread: ask.thread, replyTo: ask.replyTo } };
     if (!keep) {
       await this.agent.deleteFile(ask.file.id).catch(() => {});
-      return this.reply(back, `🗑️ Deleted “${ask.file.name}” from the server. The notes stay.`);
+      return this.reply(back, `🗑️ Deleted “${ask.file.name}” from the server. What I read stays.`);
     }
     try {
       await this.agent.keepFile(ask.file.id);
     } catch {
-      return this.reply(back, `“${ask.file.name}” is already gone from the server (files nobody keeps are deleted after 7 days). The notes stay.`);
+      return this.reply(back, `“${ask.file.name}” is already gone from the server (files nobody keeps are deleted after 7 days). What I read stays.`);
     }
     const now = this.now().getTime();
     for (const noteId of ask.noteIds) {
