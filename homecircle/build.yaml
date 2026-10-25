@@ -3,6 +3,6 @@
 # Pinned to the server image's commit so each add-on version gets exactly that
 # server, even if Home Assistant has an older :latest cached.
 build_from:
-  aarch64: ghcr.io/vanhornway/homecircle:1b1af7cff6b41d0f0ecea8b4cf98c73ea815143b
-  amd64: ghcr.io/vanhornway/homecircle:1b1af7cff6b41d0f0ecea8b4cf98c73ea815143b
-  armv7: ghcr.io/vanhornway/homecircle:1b1af7cff6b41d0f0ecea8b4cf98c73ea815143b
+  aarch64: ghcr.io/vanhornway/homecircle:3a13029a7f845ac18558ed685f25338c9433a5f6
+  amd64: ghcr.io/vanhornway/homecircle:3a13029a7f845ac18558ed685f25338c9433a5f6
+  armv7: ghcr.io/vanhornway/homecircle:3a13029a7f845ac18558ed685f25338c9433a5f6
