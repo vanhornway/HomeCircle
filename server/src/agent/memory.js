@@ -25,7 +25,14 @@ export function linksIn(text) {
 
 const day = (v) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
 
-/** A note as given, cleaned up: { type, title, body, people, start, end, data, source }. */
+/** Tags as given ("#Dentist", "health care") → ['dentist', 'health care']: lowercase, unique, at most 12. */
+export function cleanTags(tags) {
+  if (!Array.isArray(tags)) return [];
+  const out = tags.map((t) => String(t).toLowerCase().replace(/^#+/, '').replace(/\s+/g, ' ').trim().slice(0, 30)).filter(Boolean);
+  return [...new Set(out)].slice(0, 12);
+}
+
+/** A note as given, cleaned up: { type, title, body, people, tags, start, end, data, source }. */
 export function cleanNote(n) {
   const type = NOTE_TYPES.includes(n?.type) ? n.type : 'fact';
   const title = String(n?.title || '').trim().slice(0, 120);
@@ -39,6 +46,8 @@ export function cleanNote(n) {
     title: title || body.split('\n')[0].slice(0, 80),
     body,
     people,
+    // Words to find it by later: its topic, other words for it, who, where.
+    tags: cleanTags(n?.tags),
     start,
     end: start && end && end < start ? start : end,
     // Anything structured (a calendar's events, a source's URL): kept as is.
@@ -67,8 +76,10 @@ export class Memory {
     this.ix = new DatabaseSync(':memory:');
     this.ix.exec(`
       CREATE TABLE n (id TEXT PRIMARY KEY, scope TEXT, type TEXT, title TEXT, start TEXT, end_ TEXT, archived INTEGER, updated_at INTEGER);
-      CREATE VIRTUAL TABLE t USING fts5(id UNINDEXED, title, body, people, tokenize = 'porter unicode61');
+      CREATE VIRTUAL TABLE t USING fts5(id UNINDEXED, title, body, people, tags, tokenize = 'porter unicode61');
       CREATE TABLE l (src TEXT, dst TEXT);
+      CREATE TABLE g (id TEXT, tag TEXT);
+      CREATE INDEX g_tag ON g (tag);
       CREATE INDEX l_src ON l (src);
       CREATE INDEX l_dst ON l (dst);
       CREATE INDEX n_dates ON n (start, end_);
@@ -77,11 +88,14 @@ export class Memory {
     const q = (sql) => this.ix.prepare(sql);
     this.q = {
       insN: q('INSERT INTO n VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
-      insT: q('INSERT INTO t VALUES (?, ?, ?, ?)'),
+      insT: q('INSERT INTO t VALUES (?, ?, ?, ?, ?)'),
       insL: q('INSERT INTO l VALUES (?, ?)'),
+      insG: q('INSERT INTO g VALUES (?, ?)'),
       delN: q('DELETE FROM n WHERE id = ?'),
       delT: q('DELETE FROM t WHERE id = ?'),
       delL: q('DELETE FROM l WHERE src = ?'),
+      delG: q('DELETE FROM g WHERE id = ?'),
+      tagged: q('SELECT id FROM g WHERE tag = ?'),
       text: q('SELECT id, bm25(t) AS s FROM t WHERE t MATCH ? ORDER BY s LIMIT 60'),
       titled: q('SELECT id FROM n WHERE title = ?'),
       // The most recent notes that link to someone, not all of them.
@@ -120,7 +134,9 @@ export class Memory {
     this.notes.set(note.id, note);
     const archived = note.end && note.end < new Date(Date.now() - DAY).toISOString().slice(0, 10) && ['event', 'schedule'].includes(note.type) ? 1 : 0;
     this.q.insN.run(note.id, note.scope, note.type, note.title.toLowerCase(), note.start, note.end, archived, note.updatedAt);
-    this.q.insT.run(note.id, note.title, note.body, note.people.join(' '));
+    const tags = note.tags ?? [];
+    this.q.insT.run(note.id, note.title, note.body, note.people.join(' '), tags.join(' '));
+    for (const tag of tags) this.q.insG.run(note.id, tag);
     for (const to of new Set([...linksIn(note.body), ...note.people.map((p) => p.toLowerCase())])) this.q.insL.run(note.id, to);
   }
 
@@ -129,6 +145,7 @@ export class Memory {
     this.q.delN.run(id);
     this.q.delT.run(id);
     this.q.delL.run(id);
+    this.q.delG.run(id);
   }
 
   _canSee(note, memberId) {
@@ -222,6 +239,9 @@ export class Memory {
     if (terms.length) {
       const q = terms.map((w) => `"${w}"*`).join(' OR ');
       for (const r of this.q.text.all(q)) add(r.id, 10 + Math.min(10, -r.s * 1e6));
+      // A word that is one of a note's tags (or a two-word tag) is a strong hint.
+      const pairs = terms.slice(1).map((w, i) => `${terms[i]} ${w}`);
+      for (const t of [...terms, ...pairs]) for (const r of this.q.tagged.all(t)) add(r.id, 16);
     }
     // People named in the question: their notes, and notes that link to them.
     for (const p of people.map((x) => String(x).toLowerCase())) {

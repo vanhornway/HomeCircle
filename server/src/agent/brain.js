@@ -6,6 +6,7 @@
 // them: everyone in the group for a group question, only you for a direct one.
 import { complete as llmComplete, cleanProviderConfig, LlmError, PROVIDERS } from './llm.js';
 import { nameSwapper } from './names.js';
+import { cleanTags } from './memory.js';
 import { createHash, randomBytes } from 'node:crypto';
 import { calendarUrl, fetchPublic, parseIcs, freeStretches, isDayOff } from './calendar.js';
 import { isPdf, pdfText } from './pdf.js';
@@ -32,17 +33,21 @@ const NOTE_ITEM = {
     title: { type: 'string' },
     body: { type: 'string' },
     people: { type: 'array', items: { type: 'string' } },
+    tags: { type: 'array', items: { type: 'string' } },
     start: orNull({ type: 'string' }),
     end: orNull({ type: 'string' }),
     role: orNull({ type: 'string', enum: ['kid', 'adult'] }),
   },
-  required: ['type', 'title', 'body', 'people', 'start', 'end', 'role'],
+  required: ['type', 'title', 'body', 'people', 'tags', 'start', 'end', 'role'],
   additionalProperties: false,
 };
+// How the AI is asked to tag a note, wherever notes are made.
+const TAGS_RULE =
+  'tags: 3 to 8 short lowercase words or two-word phrases to find the note by later: its topic (school, health, travel, money, sports…), other words people might search with (dentist → doctor, teeth, appointment), and the kind of thing (birthday, deadline, recipe). People and places go in people and [[links]], not tags.';
 export const UNDERSTAND = {
   type: 'object',
   properties: {
-    intent: { type: 'string', enum: ['free_time', 'recall', 'remember', 'other'] },
+    intent: { type: 'string', enum: ['free_time', 'recall', 'remember', 'tidy', 'other'] },
     people: { type: 'array', items: { type: 'string' } },
     days: orNull({ type: 'integer' }),
     from: orNull({ type: 'string' }),
@@ -69,6 +74,8 @@ export const DREAM = {
   additionalProperties: false,
 };
 const DREAM_BATCH_CHARS = 30_000;
+// "dream", "dreaming", "go dream", "start dreaming", "please dream now" (after the name is dropped).
+const DREAM_RE = /^(?:please\s+|can you\s+|go\s+(?:and\s+)?|start\s+|time to\s+)*(?:dream|dreaming|re-?tag(?: everything)?)\b/i;
 
 // What the AI lists from a calendar PDF.
 export const PDF_EVENTS = {
@@ -318,7 +325,13 @@ export class Brain {
   // --- questions ---------------------------------------------------------
 
   async _ask(msg) {
-    const text = msg.body.ask.trim();
+    // "/Chirya/dream", "Chirya, dream", "/dream" all mean "dream": drop the name and slashes first.
+    const name = this.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const text = msg.body.ask
+      .trim()
+      .replace(new RegExp(`^/?(?:${name}|agent)\\b[\\s/,:]*`, 'i'), '')
+      .replace(/^\/+/, '')
+      .trim();
     // Plain commands, no AI needed.
     const url = text.match(URL_RE)?.[0];
     if (url) return this._addSource(msg, url, text.replace(url, ' '));
@@ -327,7 +340,7 @@ export class Brain {
     if (/^(usage|budget|spending|how much)\b/i.test(text)) return this._usage(msg);
     if (/^undo\b/i.test(text)) return this._undo(msg, this.memory.getSetting(`last:${msg.from}`) ?? []);
     if (/^forget (the )?(.+)$/i.test(text)) return this._forget(msg, text.match(/^forget (?:the )?(.+)$/i)[1]);
-    if (/^\/?dream\b/i.test(text)) return this._dream(msg);
+    if (DREAM_RE.test(text)) return this._dream(msg);
 
     const s = this._swapper(msg.from);
     const asker = this._nameOf(msg.from);
@@ -342,6 +355,8 @@ export class Brain {
     const remember = (plan.remember ?? []).map((n) => unmaskNote(n, s));
     const saved = remember.length ? this._save(remember, { scope: this._scopeFor(msg), by: msg.from }) : [];
     if (saved.length) this.memory.setSetting(`last:${msg.from}`, saved.map((n) => n.id));
+    // "Can you tidy up your memory?", "re-tag everything": the same as dream.
+    if (plan.intent === 'tidy') return this._dream(msg);
     if (plan.intent === 'remember' && saved.length) {
       return this.reply(msg, `📌 Remembered: ${saved.map((n) => n.title).join('; ')}`, { undo: saved.map((n) => n.id) });
     }
@@ -372,10 +387,11 @@ export class Brain {
     return [
       `You read messages a family sends their helper, ${this.name}, and say what each one needs. Today is ${iso(d)} (${d.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' })}).`,
       'People and places appear as stand-ins (Person A, Place 1): copy them exactly as written.',
-      'intent: "free_time" when they ask when people are free or available (days = how many days in a row, null if not said); "recall" for a question to answer from what was kept before; "remember" when they tell you something to keep (a fact, a decision, a date, a schedule, who someone is); "other" for anything else.',
+      'intent: "free_time" when they ask when people are free or available (days = how many days in a row, null if not said); "recall" for a question to answer from what was kept before; "remember" when they tell you something to keep (a fact, a decision, a date, a schedule, who someone is); "tidy" when they ask you to dream, or to tidy, sort, organize, clean up or re-tag what you remember; "other" for anything else.',
       'people: who the message is about, as written ("Person B"), or a group word as written ("kids", "everyone").',
       'from/to: a date range the question is about, YYYY-MM-DD, or null. keywords: a few words to search notes with.',
       'remember: notes to keep, only for things stated as facts or decisions (never for questions). One note per thing; title short; body one or two sentences that link people and places as [[Person A]] or [[Place 1]]. For "Person B and Person C are our kids", one person note each with role "kid". Dates as YYYY-MM-DD.',
+      TAGS_RULE,
     ].join('\n');
   }
 
@@ -581,7 +597,7 @@ export class Brain {
     const s = this._swapper(msg.from);
     const by = msg.from;
     const now = this.now().getTime();
-    const counts = { sorted: 0, merged: 0, added: 0 };
+    const counts = { tagged: 0, sorted: 0, merged: 0, added: 0 };
     const touched = new Set();
     const known = new Set(notes.filter((n) => n.type === 'person' || n.type === 'place').map((n) => n.title.toLowerCase()));
     for (const batch of dreamBatches(notes)) {
@@ -590,7 +606,7 @@ export class Brain {
         .map((n, i) => {
           const when = n.start ? ` | ${n.start}${n.end && n.end !== n.start ? `..${n.end}` : ''}` : '';
           const role = n.data?.role ? ` | ${n.data.role}` : '';
-          return `[n${i + 1}] ${n.type} | ${n.title}${when}${role} | people: ${n.people.join(', ') || '-'}\n${n.body.slice(0, 1500)}`;
+          return `[n${i + 1}] ${n.type} | ${n.title}${when}${role} | people: ${n.people.join(', ') || '-'} | tags: ${(n.tags ?? []).join(', ') || '-'}\n${n.body.slice(0, 1500)}`;
         })
         .join('\n\n');
       const res = await this._ai(by, { system: this._dreamPrompt(), messages: [{ role: 'user', content: s.mask(text) }], schema: DREAM, maxTokens: 8000 });
@@ -620,10 +636,13 @@ export class Brain {
         if (people.join('|') !== old.people.join('|')) patch.people = people;
         for (const k of ['start', 'end']) if (/^\d{4}-\d{2}-\d{2}$/.test(next[k] ?? '') && next[k] !== old[k]) patch[k] = next[k];
         if ((next.type ?? old.type) === 'person' && ['kid', 'adult'].includes(next.role) && next.role !== old.data?.role) patch.data = { ...(old.data ?? {}), role: next.role };
-        if (!Object.keys(patch).length) continue;
-        this.memory.update(old.id, patch, { by, now });
+        const tags = cleanTags(next.tags);
+        const retagged = tags.length > 0 && tags.join('|') !== (old.tags ?? []).join('|');
+        if (!Object.keys(patch).length && !retagged) continue;
+        this.memory.update(old.id, retagged ? { ...patch, tags } : patch, { by, now });
         touched.add(old.id);
-        counts.sorted++;
+        if (retagged) counts.tagged++;
+        if (Object.keys(patch).length) counts.sorted++;
       }
       for (const c of out.create ?? []) {
         const n = unmaskNote(c, s);
@@ -635,6 +654,7 @@ export class Brain {
       }
     }
     const done = [
+      counts.tagged && `${counts.tagged} tagged`,
       counts.sorted && `${counts.sorted} sorted or tidied`,
       counts.merged && `${counts.merged} duplicate${counts.merged === 1 ? '' : 's'} merged`,
       counts.added && `${counts.added} new ${counts.added === 1 ? 'note' : 'notes'} for people and places`,
@@ -648,11 +668,13 @@ export class Brain {
     return [
       `You tidy the shared memory of a family's helper, ${this.name}, the way sleep sorts the day's memories. Today is ${this.today()}.`,
       'Each note is "[ref] type | title | dates | role | people", then its text. People and places appear as stand-ins (Person A, Place 1): copy them exactly as written.',
-      'notes: return only the notes you change, each in full (ref, type, title, body, people, start, end, role). Fix:',
+      'The point is that every note can be found again later: right kind, clear title, good tags, links to the people and places in it.',
+      'notes: return only the notes you change, each in full (ref, type, title, body, people, tags, start, end, role). A note with no tags or poor tags always needs changing. Fix:',
       '- type: person (someone), place (a location: a home, school, shop, restaurant, address), event (happens on a date), schedule (repeats, like practice every Tuesday, or a school year), decision (something the family decided), fact (anything else).',
       '- title: short and clear; a person or place note is titled with its name.',
       '- body: one to three sentences, keeping every fact; link people and places it mentions as [[Person A]] or [[Place 1]]. Never invent anything or drop a fact.',
       '- people: who the note is about. start/end: YYYY-MM-DD when it has a date (end for a range), else null. role: kid or adult for a person note when the notes say so, else null.',
+      `- ${TAGS_RULE}`,
       'merges: notes that say the same thing: keep the best (give its tidied version in notes, with anything the others add) and drop the rest. Only true duplicates.',
       'create: a person or place note for someone or somewhere several notes mention that has no note of its own. Never for anyone or anywhere that already has one.',
     ].join('\n');
@@ -798,9 +820,9 @@ export class Brain {
         return this._rpcReply(msg, true, { note: brief(n), history: this.memory.history(n.id, { by }).map((h) => ({ ...h, by: this._nameOf(h.by) })), linked: linked.map(brief) });
       }
       case 'update':
-        return this._rpcReply(msg, true, brief(this.memory.update(args.id, pick(args.patch, ['title', 'body', 'people', 'start', 'end', 'type']), { by, now })));
+        return this._rpcReply(msg, true, brief(this.memory.update(args.id, pick(args.patch, ['title', 'body', 'people', 'tags', 'start', 'end', 'type']), { by, now })));
       case 'add':
-        return this._rpcReply(msg, true, brief(this.memory.add(pick(args.note, ['title', 'body', 'people', 'start', 'end', 'type']), { scope: args.private ? by : 'circle', by, now })));
+        return this._rpcReply(msg, true, brief(this.memory.add(pick(args.note, ['title', 'body', 'people', 'tags', 'start', 'end', 'type']), { scope: args.private ? by : 'circle', by, now })));
       case 'remove':
         this.memory.remove(args.id, { by, now });
         return this._rpcReply(msg, true, null);
@@ -862,7 +884,7 @@ function pick(o, keys) {
 
 function rawNote(text, by) {
   const t = String(text || '').trim();
-  return { type: 'fact', title: t.split('\n')[0].slice(0, 60), body: by ? `${t}\n\n(from ${by})` : t, people: [], start: null, end: null, role: null };
+  return { type: 'fact', title: t.split('\n')[0].slice(0, 60), body: by ? `${t}\n\n(from ${by})` : t, people: [], tags: [], start: null, end: null, role: null };
 }
 
 const NOTE_TYPES_DREAM = ['person', 'place', 'schedule', 'event', 'decision', 'fact'];
@@ -887,7 +909,7 @@ function dreamBatches(notes) {
 }
 
 function unmaskNote(n, s) {
-  return { ...n, title: s.unmask(n.title), body: s.unmask(n.body), people: (n.people ?? []).map((p) => s.unmask(p)) };
+  return { ...n, title: s.unmask(n.title), body: s.unmask(n.body), people: (n.people ?? []).map((p) => s.unmask(p)), tags: (n.tags ?? []).map((t) => s.unmask(t)) };
 }
 
 /** Notes as Markdown files, one per note, for downloading before the agent is removed. */
@@ -895,7 +917,7 @@ export function exportMarkdown(notes) {
   const files = {};
   const safe = (t) => t.replace(/[\\/:*?"<>|]+/g, '-').slice(0, 80) || 'note';
   for (const n of notes) {
-    const front = ['---', `type: ${n.type}`, n.start ? `start: ${n.start}` : null, n.end && n.end !== n.start ? `end: ${n.end}` : null, n.people.length ? `people: [${n.people.join(', ')}]` : null, '---', '']
+    const front = ['---', `type: ${n.type}`, n.start ? `start: ${n.start}` : null, n.end && n.end !== n.start ? `end: ${n.end}` : null, n.people.length ? `people: [${n.people.join(', ')}]` : null, n.tags?.length ? `tags: [${n.tags.join(', ')}]` : null, '---', '']
       .filter((l) => l != null)
       .join('\n');
     let path = `${n.type}/${safe(n.title)}.md`;
