@@ -67,13 +67,31 @@ export async function complete(cfg, { system, messages, schema = null, maxTokens
 
 const cost = (cfg, inTokens, outTokens) => (inTokens * cfg.inUsd + outTokens * cfg.outUsd) / 1e6;
 
+// A message's content is text, or a list of parts: { type: 'text', text },
+// { type: 'image', mime, data } (base64), { type: 'pdf', data } (base64).
+const toAnthropic = (content) =>
+  typeof content === 'string'
+    ? content
+    : content.map((p) =>
+        p.type === 'image'
+          ? { type: 'image', source: { type: 'base64', media_type: p.mime, data: p.data } }
+          : p.type === 'pdf'
+            ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: p.data } }
+            : { type: 'text', text: p.text },
+      );
+const toOpenAi = (content) => {
+  if (typeof content === 'string') return content;
+  if (content.some((p) => p.type === 'pdf')) throw new LlmError('This AI provider can’t read scanned PDFs. Send a photo of each page instead.');
+  return content.map((p) => (p.type === 'image' ? { type: 'image_url', image_url: { url: `data:${p.mime};base64,${p.data}` } } : { type: 'text', text: p.text }));
+};
+
 async function completeAnthropic(cfg, { system, messages, schema, maxTokens }, baseURL) {
   const client = new Anthropic({ apiKey: cfg.apiKey, ...(baseURL ? { baseURL } : {}), maxRetries: 2, timeout: 120_000 });
   const params = {
     model: cfg.model,
     max_tokens: maxTokens,
     system,
-    messages,
+    messages: messages.map((m) => ({ role: m.role, content: toAnthropic(m.content) })),
     // Short family questions: low effort answers well and costs least.
     output_config: { effort: 'low', ...(schema ? { format: { type: 'json_schema', schema } } : {}) },
   };
@@ -108,7 +126,7 @@ async function completeOpenAiStyle(cfg, { system, messages, schema }, fetchImpl)
     messages: [
       // Not every provider follows a schema, but they all take JSON mode with the shape in the prompt.
       { role: 'system', content: schema ? `${system}\n\nAnswer with only a JSON object matching this schema:\n${JSON.stringify(schema)}` : system },
-      ...messages.map((m) => ({ role: m.role, content: typeof m.content === 'string' ? m.content : m.content.map((b) => b.text ?? '').join('') })),
+      ...messages.map((m) => ({ role: m.role, content: toOpenAi(m.content) })),
     ],
     ...(schema ? { response_format: { type: 'json_object' } } : {}),
   };

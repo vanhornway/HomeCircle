@@ -10,11 +10,37 @@ export class ApiError extends Error {
 }
 
 export class Api {
-  constructor(baseUrl, { token = null, fetchImpl, WebSocketImpl } = {}) {
+  constructor(baseUrl, { token = null, fetchImpl, binaryFetchImpl, WebSocketImpl } = {}) {
     this.baseUrl = baseUrl;
     this.token = token;
     this.fetch = fetchImpl || globalThis.fetch.bind(globalThis);
+    // For files: a fetch that sends and reads raw bytes (React Native's own can't).
+    this.binaryFetch = binaryFetchImpl || this.fetch;
     this.WebSocket = WebSocketImpl || globalThis.WebSocket;
+  }
+
+  /** Send bytes and/or get bytes back (encrypted files). JSON answers are parsed. */
+  async bytes(method, path, body) {
+    const headers = {};
+    if (body !== undefined) headers['Content-Type'] = 'application/octet-stream';
+    if (this.token) headers.Authorization = `Bearer ${this.token}`;
+    let res;
+    try {
+      res = await this.binaryFetch(`${this.baseUrl}/api/v1${path}`, { method, headers, body });
+    } catch (e) {
+      throw new ApiError(0, 'network', "Can't reach the server. Check the address and your internet connection.", { detail: e.message });
+    }
+    const type = res.headers.get('content-type') || '';
+    if (res.ok && type.startsWith('application/octet-stream')) return new Uint8Array(await res.arrayBuffer());
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      /* non-JSON error page from a proxy */
+    }
+    if (!res.ok) throw new ApiError(res.status, data?.error, data?.message || `Server error ${res.status}`, data || {});
+    return data;
   }
 
   async req(method, path, body) {
@@ -84,6 +110,10 @@ export class Api {
   chirp = (body) => this.req('POST', '/chirps', body);
   agentHost = () => this.req('GET', '/agent-host');
   agentSetup = (body) => this.req('POST', '/agent-host/setup', body);
+  uploadFile = (bytes) => this.bytes('POST', '/files', bytes);
+  downloadFile = (id) => this.bytes('GET', `/files/${encodeURIComponent(id)}`);
+  deleteFile = (id) => this.req('DELETE', `/files/${encodeURIComponent(id)}`);
+  keepFile = (id) => this.req('POST', `/files/${encodeURIComponent(id)}/keep`);
   chirps = () => this.req('GET', '/chirps');
   // Recovery with the setup code (no account needed), and rejoin requests.
   recover = (setupToken) => this.req('POST', '/recover', { setupToken });

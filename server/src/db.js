@@ -107,6 +107,14 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS messages_created ON messages (created_at);
+CREATE TABLE IF NOT EXISTS files (
+  id TEXT PRIMARY KEY,
+  circle_id TEXT NOT NULL,
+  uploader_id TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER
+);
 CREATE TABLE IF NOT EXISTS places (
   id TEXT PRIMARY KEY,
   circle_id TEXT,
@@ -522,6 +530,34 @@ export class Store {
   /** Count each circle's stored message bytes again (after a prune). */
   countCircleBytes() {
     this.circleBytes = new Map(this.q('SELECT circle_id AS c, SUM(LENGTH(env)) AS b FROM messages GROUP BY circle_id').all().map((r) => [r.c, r.b]));
+  }
+
+  // files sent to the agent (the bytes are on disk; see files.js)
+  insertFile({ id, circleId, uploaderId, size, now, expiresAt }) {
+    this.q('INSERT INTO files (id, circle_id, uploader_id, size, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, circleId, uploaderId, size, now, expiresAt);
+  }
+  file(id) {
+    const r = this.q('SELECT * FROM files WHERE id = ?').get(id);
+    return r && { id: r.id, circleId: r.circle_id, uploaderId: r.uploader_id, size: r.size, createdAt: r.created_at, expiresAt: r.expires_at };
+  }
+  deleteFileRow(id) {
+    this.q('DELETE FROM files WHERE id = ?').run(id);
+  }
+  keepFile(id) {
+    this.q('UPDATE files SET expires_at = NULL WHERE id = ?').run(id);
+  }
+  circleFileIds(circleId) {
+    return this.q('SELECT id FROM files WHERE circle_id = ?').all(circleId).map((r) => r.id);
+  }
+  expiredFileIds(now) {
+    return this.q('SELECT id FROM files WHERE expires_at IS NOT NULL AND expires_at < ?').all(now).map((r) => r.id);
+  }
+  circleFileBytes(circleId) {
+    return this.q('SELECT COALESCE(SUM(size), 0) AS b FROM files WHERE circle_id = ?').get(circleId).b;
+  }
+  /** Files a member sent that nobody has kept or deleted yet. */
+  unkeptFilesBy(memberId) {
+    return this.q('SELECT COUNT(*) AS n FROM files WHERE uploader_id = ? AND expires_at IS NOT NULL').get(memberId).n;
   }
 
   /** Messages a member posted since `since`, for the daily limit. */

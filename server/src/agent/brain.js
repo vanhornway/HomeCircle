@@ -10,6 +10,7 @@ import { cleanTags } from './memory.js';
 import { createHash, randomBytes } from 'node:crypto';
 import { calendarUrl, fetchPublic, parseIcs, freeStretches, isDayOff } from './calendar.js';
 import { isPdf, pdfText } from './pdf.js';
+import { readFile } from './read-file.js';
 
 const DAY = 86400_000;
 const iso = (d) => d.toISOString().slice(0, 10);
@@ -76,6 +77,27 @@ export const DREAM = {
 const DREAM_BATCH_CHARS = 30_000;
 // "dream", "dreaming", "go dream", "start dreaming", "please dream now" (after the name is dropped).
 const DREAM_RE = /^(?:please\s+|can you\s+|go\s+(?:and\s+)?|start\s+|time to\s+)*(?:dream|dreaming|re-?tag(?: everything)?)\b/i;
+
+// What the AI makes of a file someone sent (a photo, a scan, a document, a sheet).
+const EVENT_ITEM = {
+  type: 'object',
+  properties: { summary: { type: 'string' }, start: { type: 'string' }, end: orNull({ type: 'string' }), off: { type: 'boolean' } },
+  required: ['summary', 'start', 'end', 'off'],
+  additionalProperties: false,
+};
+export const UPLOAD = {
+  type: 'object',
+  properties: {
+    title: { type: 'string' },
+    summary: { type: 'string' },
+    calendar: { type: 'boolean' },
+    school: { type: 'boolean' },
+    events: { type: 'array', items: EVENT_ITEM },
+    notes: { type: 'array', items: NOTE_ITEM },
+  },
+  required: ['title', 'summary', 'calendar', 'school', 'events', 'notes'],
+  additionalProperties: false,
+};
 
 // What the AI lists from a calendar PDF.
 export const PDF_EVENTS = {
@@ -260,6 +282,8 @@ export class Brain {
       if (b.rpc) return await this._rpc(msg);
       if (b.undo) return await this._undo(msg, b.undo);
       if (b.saveFound) return await this._saveFound(msg, b.saveFound);
+      if (b.upload) return await this._readUpload(msg);
+      if (b.fileChoice) return await this._fileChoice(msg, b.fileChoice);
       if (b.remember) return await this._remember(msg);
       if (typeof b.ask === 'string') return await this._ask(msg);
     } catch (e) {
@@ -502,18 +526,27 @@ export class Brain {
         title: label,
         body: `${kind === 'school' ? 'School calendar' : 'Calendar'} for ${forNames.map((n) => `[[${n}]]`).join(', ')}.`,
         people: forNames,
-        data: { url: src.url, kind, for: forNames, events: src.events, fetchedAt: src.fetchedAt, ...(src.pdf ? { format: 'pdf', hash: src.hash, name: src.title } : {}) },
-        source: src.pdf ? 'calendar PDF' : 'calendar link',
+        data: {
+          url: src.url ?? null,
+          kind,
+          for: forNames,
+          events: src.events,
+          fetchedAt: src.fetchedAt,
+          ...(src.pdf ? { format: 'pdf', hash: src.hash, name: src.title } : {}),
+          // From a file someone sent: nothing to check again later.
+          ...(src.file ? { format: 'file', name: src.file.name } : {}),
+        },
+        source: src.file ? `file: ${src.file.name}` : src.pdf ? 'calendar PDF' : 'calendar link',
       },
       { scope: src.scope, by: msg.from, now: this.now().getTime() },
     );
     const next = (kind === 'school' ? offDays : src.events).find((e) => e.end >= this.today());
     const detail = kind === 'school' ? `${offDays.length} days off listed` : `${src.events.length} events`;
-    await this.reply(
-      { ...msg, body: { ...msg.body, thread: src.thread, replyTo: src.replyTo } },
-      `📅 Added ${label}: ${detail}${next ? `; next: ${next.summary} (${fmtRange(next)})` : ''}. I’ll check it for changes every 6 hours.`,
-      { undo: [note.id] },
-    );
+    const back = { ...msg, body: { ...msg.body, thread: src.thread, replyTo: src.replyTo } };
+    await this.reply(back, `📅 Added ${label}: ${detail}${next ? `; next: ${next.summary} (${fmtRange(next)})` : ''}.${src.url ? ' I’ll check it for changes every 6 hours.' : ''}`, {
+      undo: [note.id],
+    });
+    if (src.file) await this._askAboutFile(back, src.file, [note.id], msg.from);
   }
 
   async _listSources(msg) {
@@ -762,7 +795,17 @@ export class Brain {
     if (!found || found.by !== msg.from) return this.reply(msg, 'That list is gone, or isn’t yours to save.');
     this.memory.setSetting(key, null);
     const back = { ...msg, body: { ...msg.body, thread: found.thread, replyTo: found.replyTo } };
-    if (!ok) return this.reply(back, found.replaces ? `Kept the dates I had for ${found.title}.` : 'Discarded.');
+    if (!ok) {
+      // A file whose reading was discarded isn't worth keeping.
+      if (found.file) await this.agent.deleteFile(found.file.id).catch(() => {});
+      return this.reply(back, found.replaces ? `Kept the dates I had for ${found.title}.` : found.file ? 'Discarded, and deleted the file from the server.' : 'Discarded.');
+    }
+    if (found.file && !found.calendar) {
+      const saved = this._save(found.notes, { scope: found.scope, by: msg.from });
+      this.memory.setSetting(`last:${msg.from}`, saved.map((n) => n.id));
+      await this.reply(back, `📌 Saved: ${saved.map((n) => n.title).join('; ')}`, { undo: saved.map((n) => n.id) });
+      return this._askAboutFile(back, found.file, saved.map((n) => n.id), msg.from);
+    }
     if (found.replaces) {
       const src = this.memory.get(found.replaces, { by: msg.from });
       if (!src) return this.reply(back, 'That calendar was removed in the meantime.');
@@ -772,6 +815,141 @@ export class Brain {
     if (found.forWho) return this._storeSource(back, found, found.forWho);
     this.memory.setSetting(`pending:${msg.from}`, found);
     await this.reply(back, `Whose calendar is it? Answer “/${this.name} for Kid” (or “for Kid and Sam”).`);
+  }
+
+  // --- files people send --------------------------------------------------
+  // A photo, scan, document or sheet, encrypted for the agent. It's read
+  // (text here with names swapped out; a photo by the AI as it is), and what
+  // matters is listed for the sender to check: Save or Discard. After a Save
+  // they choose to delete the file from the server or keep it with the notes.
+
+  async _readUpload(msg) {
+    const u = msg.body.upload ?? {};
+    if (typeof u.id !== 'string' || typeof u.key !== 'string') throw new BrainError('That file didn’t come through. Try sending it again.');
+    const file = { id: u.id, key: u.key, name: String(u.name || 'file').slice(0, 120), mime: String(u.mime || '').slice(0, 100), size: Number(u.size) || 0 };
+    if (!this._provider()) {
+      await this.agent.deleteFile(file.id).catch(() => {});
+      throw new BrainError(`Reading files needs the AI: an admin can add a provider in the ${this.name} settings.`);
+    }
+    let read;
+    try {
+      read = await readFile(await this.agent.readFile(file), file);
+    } catch (e) {
+      await this.agent.deleteFile(file.id).catch(() => {});
+      throw new BrainError(e instanceof BrainError ? e.message : /couldn’t|can’t|too big|isn’t/.test(e.message) ? e.message : 'I couldn’t open that file. Try sending it again.');
+    }
+    const s = this._swapper(msg.from);
+    const intro = `${this._nameOf(msg.from)} sent ${read.kind === 'image' ? 'a photo' : read.kind === 'pdf' ? 'a scanned PDF' : read.what} named “${file.name}”.${msg.body.ask ? ` They said: ${msg.body.ask}` : ''}`;
+    const content =
+      read.kind === 'text'
+        ? s.mask(`${intro}\n\n${read.text}`)
+        : [
+            { type: 'text', text: s.mask(intro) },
+            read.kind === 'image' ? { type: 'image', mime: read.mime, data: read.data } : { type: 'pdf', data: read.data },
+          ];
+    const res = await this._ai(msg.from, { system: this._uploadPrompt(), messages: [{ role: 'user', content }], schema: UPLOAD, maxTokens: 8000 });
+    const out = res.json ?? {};
+    const day = /^\d{4}-\d{2}-\d{2}$/;
+    const events = (out.events ?? [])
+      .filter((e) => day.test(e.start ?? '') && e.summary)
+      .map((e) => {
+        const summary = s.unmask(String(e.summary)).slice(0, 120);
+        return { uid: `file:${summary}@${e.start}`, summary, start: e.start, end: day.test(e.end ?? '') && e.end >= e.start ? e.end : e.start, time: null, allDay: true, off: !!e.off };
+      })
+      .sort((a, b) => a.start.localeCompare(b.start));
+    const notes = (out.notes ?? []).filter((n) => n.title || n.body).map((n) => ({ ...unmaskNote(n, s), source: `file: ${file.name}` }));
+    const calendar = !!out.calendar && events.length >= 3;
+    if (!calendar && !notes.length) {
+      await this.agent.deleteFile(file.id).catch(() => {});
+      return this.reply(msg, `I read “${file.name}” but found nothing to keep${out.summary ? `: ${s.unmask(out.summary)}` : '.'} I deleted the file.`);
+    }
+    const title = s.unmask(String(out.title || file.name)).slice(0, 80);
+    const summary = s.unmask(String(out.summary || '')).slice(0, 400);
+    const id = randomBytes(6).toString('base64url');
+    this.memory.setSetting(`found:${id}`, {
+      file,
+      title,
+      calendar,
+      school: !!out.school,
+      events,
+      notes,
+      fetchedAt: this.now().getTime(),
+      thread: msg.body.thread,
+      replyTo: msg.body.replyTo ?? null,
+      scope: this._scopeFor(msg),
+      by: msg.from,
+      forWho: String(msg.body.ask || '').match(/\bfor\s+([^.?!]+)/i)?.[1]?.trim() || null,
+    });
+    const text = calendar
+      ? this._foundText(title, events, { truncated: read.truncated })
+      : [
+          `📄 ${title}${summary ? `: ${summary}` : ''}`,
+          'I’d keep:',
+          ...notes.slice(0, 15).map((n) => `• ${n.title}${n.start ? ` (${fmtRange({ start: n.start, end: n.end || n.start })})` : ''}: ${n.body.replace(/\[\[([^\]]+)\]\]/g, '$1').slice(0, 160)}`),
+          notes.length > 15 ? `…and ${notes.length - 15} more.` : null,
+          read.truncated ? 'It’s long, so I only read the first part.' : null,
+          'Does this look right? Save it (you can fix anything later in Memory) or Discard.',
+        ]
+          .filter(Boolean)
+          .join('\n');
+    await this.reply(msg, text, { save: { id, by: msg.from } });
+  }
+
+  _uploadPrompt() {
+    return [
+      `You read a file a family sent their helper, ${this.name}: a photo, a scan, a document or a spreadsheet. Today is ${this.today()}.`,
+      'Read all of it, including handwriting and text in pictures. People and places in text appear as stand-ins (Person A, Place 1): copy them exactly as written.',
+      'title: what the file is, short ("Lincoln Elementary 2026–27 calendar", "Soccer team contacts"). summary: one or two sentences on what it says.',
+      'If it is a calendar or schedule with many dates (a school calendar, a season schedule): calendar true, and events with summary, start and end (YYYY-MM-DD, end null for one day) and off: true for days without school or activity. school: true for a school calendar.',
+      'Otherwise notes: one note per thing worth remembering (a date, a deadline, contact details, a decision, a list, a recipe), each with type, a short title, a body of one to three sentences linking people and places as [[Person A]], people, start/end when dated, and role null. Skip what isn’t worth keeping.',
+      TAGS_RULE,
+    ].join('\n');
+  }
+
+  /** After a Save: delete the file from the server, or keep it with its notes. Only the sender is asked. */
+  async _askAboutFile(msg, file, noteIds, by) {
+    const id = randomBytes(6).toString('base64url');
+    this.memory.setSetting(`file:${id}`, { file, noteIds, by, thread: msg.body.thread, replyTo: msg.body.replyTo ?? null });
+    await this.reply(msg, `Delete “${file.name}” from the server? What I read stays either way. If you keep it, it’s in Memory with the notes, where you can open or delete it later.`, { fileChoice: { id, by } });
+  }
+
+  async _fileChoice(msg, { id, keep }) {
+    const key = `file:${String(id)}`;
+    const ask = this.memory.getSetting(key);
+    if (!ask || ask.by !== msg.from) return this.reply(msg, 'That question is gone, or isn’t yours to answer.');
+    this.memory.setSetting(key, null);
+    const back = { ...msg, body: { ...msg.body, thread: ask.thread, replyTo: ask.replyTo } };
+    if (!keep) {
+      await this.agent.deleteFile(ask.file.id).catch(() => {});
+      return this.reply(back, `🗑️ Deleted “${ask.file.name}” from the server. The notes stay.`);
+    }
+    try {
+      await this.agent.keepFile(ask.file.id);
+    } catch {
+      return this.reply(back, `“${ask.file.name}” is already gone from the server (files nobody keeps are deleted after 7 days). The notes stay.`);
+    }
+    const now = this.now().getTime();
+    for (const noteId of ask.noteIds) {
+      const n = this.memory.get(noteId, { by: msg.from });
+      if (n) this.memory.update(n.id, { data: { ...(n.data ?? {}), file: ask.file } }, { by: msg.from, now });
+    }
+    await this.reply(back, `📎 Kept “${ask.file.name}”. It’s in Memory with the notes.`);
+  }
+
+  /** Delete a kept file from the server (from Memory), and from every note it's attached to. */
+  async _deleteKeptFile(noteId, by) {
+    const n = this.memory.get(noteId, { by });
+    const file = n?.data?.file;
+    if (!file) throw new BrainError('That note has no file');
+    await this.agent.deleteFile(file.id).catch((e) => {
+      if (e?.status !== 404) throw e;
+    });
+    const now = this.now().getTime();
+    for (const other of this.memory.list({ by })) {
+      if (other.data?.file?.id !== file.id) continue;
+      const { file: _gone, ...rest } = other.data;
+      this.memory.update(other.id, { data: Object.keys(rest).length ? rest : null }, { by, now });
+    }
   }
 
   /** A PDF is read again only when the file changed; whoever added it checks the new list. */
@@ -867,6 +1045,9 @@ export class Brain {
         this.memory.setSetting('config', next);
         return this._rpcReply(msg, true, { ok: true });
       }
+      case 'deleteFile':
+        await this._deleteKeptFile(String(args.id), by);
+        return this._rpcReply(msg, true, null);
       case 'export':
         // Everything this person can see, as linked Markdown files ({ path: text }).
         return this._rpcReply(msg, true, exportMarkdown(this.memory.list({ by })));

@@ -18,6 +18,7 @@ import {
   RateLimiter,
 } from './http.js';
 import { isPushToken } from './push.js';
+import { MAX_FILE_BYTES } from './files.js';
 
 const MAX_MEMBERS = 50;
 const MAX_OPEN_INVITES = 20;
@@ -39,7 +40,7 @@ const NO_PROFILE = { epoch: 0, nonce: 'A'.repeat(32), ct: 'AA' };
 const isAdmin = (m) => m.role === 'owner' || m.role === 'admin';
 const requireAdmin = (m) => isAdmin(m) || fail(403, 'forbidden', 'Only circle admins can do that');
 
-export function buildRoutes({ config, store, hub, push, log, agentHost = null }) {
+export function buildRoutes({ config, store, hub, push, log, agentHost = null, files = null }) {
   const r = new Router();
   const publicLimiter = new RateLimiter(20, 60_000);
   const requestLimiter = new RateLimiter(1, config.locationRequestCooldown * 1000);
@@ -405,6 +406,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null })
     const circleId = me.circleId;
     hub.broadcast(circleId, { type: 'circle_deleted' }, me.id);
     const memberIds = store.tx(() => store.deleteCircle(circleId));
+    files?.removeCircle(circleId);
     for (const id of memberIds) hub.disconnect(id);
     log('circle deleted');
     return { ok: true };
@@ -446,6 +448,8 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null })
         store.revokeAllInvites(me.circleId, now);
       }
     });
+    // Files were only ever for the agent (and only it had their keys).
+    if (agent) files?.removeCircle(me.circleId);
     hub.send(target.id, { type: 'removed', memberId: target.id });
     hub.disconnect(target.id);
     hub.broadcast(me.circleId, { type: 'removed', memberId: target.id });
@@ -727,6 +731,62 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null })
     }
   });
 
+  // --- files for the agent -----------------------------------------------
+  // A photo or document someone sends the agent, encrypted on their phone.
+  // The server only stores ciphertext; the key goes to the agent sealed in a
+  // direct message. Kept or deleted by the agent when the sender chooses.
+
+  const agentOf = (circleId) => store.activeMembers(circleId).find((m) => m.kind === 'agent') ?? null;
+  const fileFor = (me, id) => {
+    const f = /^[A-Za-z0-9_-]{16,40}$/.test(String(id)) ? store.file(id) : null;
+    if (!f || f.circleId !== me.circleId) fail(404, 'not_found', 'No such file');
+    return f;
+  };
+
+  r.add(
+    'POST',
+    '/files',
+    ({ me, body }) => {
+      if (!files || !agentHost || !agentOf(me.circleId)) fail(404, 'no_agent', 'This circle has no agent to send files to');
+      if (!Buffer.isBuffer(body) || body.length < 40) fail(400, 'invalid', 'Send the encrypted file as the request body');
+      if (store.unkeptFilesBy(me.id) >= 20) fail(429, 'rate_limited', 'You have 20 files waiting for an answer. Save or discard some first.', { retryAfter: 3600 });
+      if ((store.circleBytes.get(me.circleId) || 0) + store.circleFileBytes(me.circleId) + body.length > config.maxCircleBytes) {
+        fail(507, 'circle_full', 'This circle’s storage is full. Delete files you no longer need in Memory.');
+      }
+      const id = randomBytes(18).toString('base64url');
+      files.save({ id, circleId: me.circleId, uploaderId: me.id, bytes: body, now: Date.now() });
+      return { id };
+    },
+    { raw: MAX_FILE_BYTES },
+  );
+
+  // Anyone in the circle can fetch the ciphertext (only those given the key can read it).
+  r.add('GET', '/files/:id', ({ me, params }) => files.read(fileFor(me, params.id).id), { agent: true });
+
+  // The agent keeps a file when the sender says so; otherwise it goes after 7 days.
+  r.add(
+    'POST',
+    '/files/:id/keep',
+    ({ me, params }) => {
+      if (me.kind !== 'agent') fail(403, 'forbidden', 'Only the agent keeps files');
+      store.keepFile(fileFor(me, params.id).id);
+      return { ok: true };
+    },
+    { agent: true },
+  );
+
+  r.add(
+    'DELETE',
+    '/files/:id',
+    ({ me, params }) => {
+      const f = fileFor(me, params.id);
+      if (me.kind !== 'agent' && f.uploaderId !== me.id && !isAdmin(me)) fail(403, 'forbidden', 'Only whoever sent it, the agent or an admin can delete it');
+      files.remove(f.id);
+      return { ok: true };
+    },
+    { agent: true },
+  );
+
   // --- messages ----------------------------------------------------------
 
   r.add('GET', '/messages', ({ me, query }) => {
@@ -756,7 +816,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null })
     if (store.messageExists(id)) fail(409, 'conflict', 'Duplicate message id');
     const now = Date.now();
     // Storage limits, so one device (or a stolen one) can't fill the disk.
-    if ((store.circleBytes.get(me.circleId) || 0) > config.maxCircleBytes) {
+    if ((store.circleBytes.get(me.circleId) || 0) + (files ? store.circleFileBytes(me.circleId) : 0) > config.maxCircleBytes) {
       fail(507, 'circle_full', 'This circle’s message storage is full. Older messages are deleted as they expire; an admin can shorten how long messages are kept.');
     }
     if (store.messagesFromSince(me.id, now - 86400_000) >= config.maxMessagesPerDay) {

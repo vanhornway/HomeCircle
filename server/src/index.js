@@ -8,7 +8,8 @@ import { Push } from './push.js';
 import { buildRoutes } from './routes.js';
 import { createStatic } from './static.js';
 import { AgentHost } from './agent/host.js';
-import { HttpError, sendJson, readJson, sha256, clientIp, RateLimiter } from './http.js';
+import { createFiles } from './files.js';
+import { HttpError, sendJson, readJson, readRaw, sha256, clientIp, RateLimiter } from './http.js';
 
 // Logs never include IPs, tokens or payloads.
 const log = (...args) => console.log(new Date().toISOString(), ...args);
@@ -41,7 +42,8 @@ export function createApp(config) {
   const writeLimiter = new RateLimiter(config.writesPerMinute, 60_000);
   const push = new Push(config, store, log);
   const agentHost = config.agent ? new AgentHost({ dataDir: config.dataDir, log, brainOptions: config.agentBrainOptions }) : null;
-  const router = buildRoutes({ config, store, hub, push, log, agentHost });
+  const files = createFiles({ dataDir: config.dataDir, store });
+  const router = buildRoutes({ config, store, hub, push, log, agentHost, files });
   const serveStatic = config.webClient ? createStatic(config) : null;
 
   const server = createServer(async (req, res) => {
@@ -79,11 +81,16 @@ export function createApp(config) {
           const now = Date.now();
           if (!me.lastSeenAt || now - me.lastSeenAt > 60_000) store.touchMember(me.id, now);
         }
-        const body = ['POST', 'PUT', 'PATCH'].includes(req.method) ? await readJson(req) : {};
+        const body = route.raw ? await readRaw(req, route.raw) : ['POST', 'PUT', 'PATCH'].includes(req.method) ? await readJson(req) : {};
         const ctx = { ip: clientIp(req, config.trustProxy) };
         const result = await route.handler({ me, body, params, query: url.searchParams, ctx });
         const headers = { ...secureHeaders };
         if (route.cors) headers['Access-Control-Allow-Origin'] = '*';
+        // A file (ciphertext) goes back as bytes.
+        if (Buffer.isBuffer(result)) {
+          res.writeHead(200, { ...headers, 'Content-Type': 'application/octet-stream', 'Content-Length': result.length, 'Cache-Control': 'no-store' });
+          return res.end(result);
+        }
         return sendJson(res, 200, result ?? { ok: true }, headers);
       }
       if (serveStatic && (await serveStatic(req, res, path))) return;
@@ -99,7 +106,8 @@ export function createApp(config) {
   // Requests are small: a client that trickles its headers or body is cut
   // off instead of holding a connection open (Node's defaults are minutes).
   server.headersTimeout = 15_000;
-  server.requestTimeout = 30_000;
+  // Two minutes for a whole request: a 15 MB file on a slow phone connection.
+  server.requestTimeout = 120_000;
   hub.attach(server);
 
   const prune = () => {
@@ -111,6 +119,7 @@ export function createApp(config) {
     // A chirp is only worth playing right away; one nobody collected in 10
     // minutes is dropped. Limits are kept until their 30 minutes are over.
     store.pruneChirps(now - 10 * 60_000, now - 30 * 60_000);
+    files.prune(now);
   };
   prune();
   const pruneTimer = setInterval(prune, 3600_000);

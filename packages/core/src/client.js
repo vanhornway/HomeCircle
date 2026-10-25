@@ -24,6 +24,8 @@ import {
   parseInviteLink,
   inviteLink,
   sealToKey,
+  encryptFile,
+  decryptFile,
   appInviteLink,
 } from './crypto.js';
 import { isValidReaction } from './emoji.js';
@@ -68,10 +70,11 @@ export class CircleClient {
    * @param {{getItem(k:string):Promise<string|null>, setItem(k:string,v:string):Promise<void>, removeItem(k:string):Promise<void>}} opts.storage
    * @param {string} [opts.accountKey] where this circle's account is stored
    */
-  constructor({ storage, accountKey = ACCOUNT_KEY, fetchImpl, WebSocketImpl, onError = () => {} }) {
+  constructor({ storage, accountKey = ACCOUNT_KEY, fetchImpl, binaryFetchImpl, WebSocketImpl, onError = () => {} }) {
     this.storage = storage;
     this.accountKey = accountKey;
     this.fetchImpl = fetchImpl;
+    this.binaryFetchImpl = binaryFetchImpl;
     this.WebSocketImpl = WebSocketImpl;
     this.onError = onError;
     this.listeners = new Map();
@@ -163,7 +166,7 @@ export class CircleClient {
   }
 
   _makeApi(server, token = null) {
-    return new Api(server, { token, fetchImpl: this.fetchImpl, WebSocketImpl: this.WebSocketImpl });
+    return new Api(server, { token, fetchImpl: this.fetchImpl, binaryFetchImpl: this.binaryFetchImpl, WebSocketImpl: this.WebSocketImpl });
   }
 
   async load() {
@@ -1223,6 +1226,45 @@ export class CircleClient {
     const agent = this.agent;
     if (!agent) throw new Error('This circle has no agent');
     await this._post('chat', { undo: noteIds, thread: peer ? 'dm' : 'group', agentCopy: true, ...this._agentContext() }, { to: agent.id, silent: true });
+  }
+
+  /**
+   * Send the agent a file (a photo, a PDF, a document, a spreadsheet). It's
+   * encrypted here with a key of its own; the server stores only that, and
+   * the key goes to the agent sealed for it. In the group (`peer` null)
+   * everyone sees "/Name 📎 file" and the agent's answer; in a chat with the
+   * agent, only you do.
+   */
+  async sendFileToAgent(bytes, { name, mime }, { peer = null } = {}) {
+    const agent = this.agent;
+    if (!agent) throw new Error('This circle has no agent');
+    if (peer && peer !== agent.id) throw new Error('Send files to the agent in the group or in a chat with it');
+    if (!(bytes instanceof Uint8Array) || !bytes.length) throw new Error('That file is empty');
+    if (bytes.length > 15 * 1024 * 1024) throw new Error('That file is too big (over 15 MB)');
+    const fileName = String(name || 'file').replace(/[\r\n/\\]+/g, ' ').slice(0, 120);
+    const { key, data } = encryptFile(bytes);
+    const { id: fileId } = await this.api.uploadFile(data);
+    const upload = { id: fileId, key, name: fileName, mime: String(mime || 'application/octet-stream').slice(0, 100), size: bytes.length };
+    const id = randomId(12);
+    if (peer) {
+      await this._post('chat', { text: `📎 ${fileName}`, upload, thread: 'dm', ...this._agentContext() }, { to: agent.id, id });
+      return id;
+    }
+    await this._post('chat', { text: `/${agent.name} 📎 ${fileName}`, agentAsk: true }, { id });
+    await this._post('chat', { upload, thread: 'group', replyTo: id, agentCopy: true, ...this._agentContext() }, { to: agent.id, silent: true });
+    return id;
+  }
+
+  /** After a file was read and saved: delete it from the server, or keep it (it then shows in Memory). */
+  async answerAgentFile(choiceId, keep, { peer = null } = {}) {
+    const agent = this.agent;
+    if (!agent) throw new Error('This circle has no agent');
+    await this._post('chat', { fileChoice: { id: choiceId, keep: !!keep }, thread: peer ? 'dm' : 'group', agentCopy: true, ...this._agentContext() }, { to: agent.id, silent: true });
+  }
+
+  /** A kept file's bytes ({ id, key } from its note in Memory). */
+  async openAgentFile({ id, key }) {
+    return decryptFile(await this.api.downloadFile(id), key);
   }
 
   /** Save (ok) or Discard a list the agent found (the dates in a calendar PDF). */

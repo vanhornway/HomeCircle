@@ -130,6 +130,27 @@ export function sealToKey(obj, theirBoxPub, myBoxSecret) {
   return { nonce: toB64(nonce), ct: toB64(ct) };
 }
 
+/**
+ * A file for the agent, encrypted with a key of its own: { key, data }, data
+ * being the nonce then the ciphertext. Only whoever gets the key can read it.
+ */
+export function encryptFile(bytes) {
+  const key = nacl.randomBytes(nacl.secretbox.keyLength);
+  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+  const ct = nacl.secretbox(bytes, nonce, key);
+  const data = new Uint8Array(nonce.length + ct.length);
+  data.set(nonce);
+  data.set(ct, nonce.length);
+  return { key: toB64(key), data };
+}
+
+export function decryptFile(data, key) {
+  const n = nacl.secretbox.nonceLength;
+  const plain = data.length > n ? nacl.secretbox.open(data.subarray(n), data.subarray(0, n), fromB64(key)) : null;
+  if (!plain) throw new CryptoError('file');
+  return plain;
+}
+
 export function newInviteSecret() {
   return toB64(nacl.randomBytes(32));
 }

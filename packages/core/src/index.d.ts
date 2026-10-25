@@ -248,7 +248,7 @@ export class ApiError extends Error {
 }
 
 export class Api {
-  constructor(baseUrl: string, opts?: { token?: string | null; fetchImpl?: typeof fetch; WebSocketImpl?: any });
+  constructor(baseUrl: string, opts?: { token?: string | null; fetchImpl?: typeof fetch; binaryFetchImpl?: (url: string, init?: any) => Promise<any>; WebSocketImpl?: any });
   baseUrl: string;
   token: string | null;
   info(): Promise<Omit<ServerInfo, 'server'>>;
@@ -264,7 +264,7 @@ export const ACCOUNT_KEY: string;
 export type SignOutReason = 'signed_out' | 'left' | 'deleted_circle' | 'removed' | 'circle_deleted' | 'unrecognized';
 
 export class CircleClient {
-  constructor(opts: { storage: Storage; accountKey?: string; fetchImpl?: typeof fetch; WebSocketImpl?: any; onError?: (e: Error) => void });
+  constructor(opts: { storage: Storage; accountKey?: string; fetchImpl?: typeof fetch; binaryFetchImpl?: (url: string, init?: any) => Promise<any>; WebSocketImpl?: any; onError?: (e: Error) => void });
   /** Where this circle's account is stored. */
   readonly accountKey: string;
   static serverInfo(serverUrl: string, fetchImpl?: typeof fetch): Promise<ServerInfo>;
@@ -425,6 +425,12 @@ export class CircleClient {
   rememberWithAgent(messageId: string): Promise<void>;
   /** Undo what the agent just remembered. */
   undoAgent(noteIds: string[], opts?: { peer?: string | null }): Promise<void>;
+  /** Send the agent a photo, PDF, document or spreadsheet, encrypted for it. Returns the visible message's id. */
+  sendFileToAgent(bytes: Uint8Array, file: { name: string; mime: string }, opts?: { peer?: string | null }): Promise<string>;
+  /** After a file was read and saved: delete it from the server, or keep it. */
+  answerAgentFile(choiceId: string, keep: boolean, opts?: { peer?: string | null }): Promise<void>;
+  /** A kept file's bytes ({ id, key } from its note in Memory). */
+  openAgentFile(file: { id: string; key: string }): Promise<Uint8Array>;
   /** Save (ok) or Discard a list the agent found, such as the dates in a calendar PDF. */
   saveAgentFound(id: string, ok: boolean, opts?: { peer?: string | null }): Promise<void>;
   /** A request the app makes of the agent (Memory screen, settings), sealed for it; resolves with its answer. */

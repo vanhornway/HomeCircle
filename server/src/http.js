@@ -25,6 +25,29 @@ export function sendJson(res, status, data, headers = {}) {
   res.end(body);
 }
 
+/** The request body as bytes, up to `limit` (an encrypted file). */
+export function readRaw(req, limit) {
+  return new Promise((resolve, reject) => {
+    if (Number(req.headers['content-length']) > limit) {
+      reject(new HttpError(413, 'too_large', 'That file is too big'));
+      return;
+    }
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > limit) {
+        reject(new HttpError(413, 'too_large', 'That file is too big'));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
 export function readJson(req, limit = 256 * 1024) {
   return new Promise((resolve, reject) => {
     let size = 0;
@@ -56,7 +79,7 @@ export class Router {
   constructor() {
     this.routes = [];
   }
-  add(method, pattern, handler, { auth = true, cors = false, agent = false } = {}) {
+  add(method, pattern, handler, { auth = true, cors = false, agent = false, raw = 0 } = {}) {
     const keys = [];
     const re = new RegExp(
       `^${pattern.replace(/:([a-z]+)/gi, (_, k) => {
@@ -64,7 +87,7 @@ export class Router {
         return '([^/]+)';
       })}$`,
     );
-    this.routes.push({ method, re, keys, handler, auth, cors, agent });
+    this.routes.push({ method, re, keys, handler, auth, cors, agent, raw });
   }
   match(method, path) {
     let pathMatched = false;

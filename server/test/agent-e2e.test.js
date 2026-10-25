@@ -2,7 +2,7 @@
 // talking to it, a fake AI provider (no real calls), and a calendar feed.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, existsSync, readdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -24,8 +24,26 @@ let now = new Date('2026-11-02T17:00:00Z');
 
 /** A fake provider: reads the (masked) request and answers like a model would. */
 async function fakeLlm(cfg, { system, messages, schema }) {
-  const text = messages.map((m) => m.content).join('\n');
+  // A photo or scan arrives as a part; the fake "sees" it as [image] or [pdf].
+  const text = messages.map((m) => (typeof m.content === 'string' ? m.content : m.content.map((p) => (p.type === 'text' ? p.text : `[${p.type}]`)).join('\n'))).join('\n');
   sentToAi.push(`${system}\n${text}`);
+  if (schema?.properties?.calendar) {
+    if (/date,what/.test(text)) {
+      const events = [...text.matchAll(/^(\d{4}-\d{2}-\d{2}),(.+)$/gm)].map(([, start, summary]) => ({ summary, start, end: null, off: false }));
+      return json({ title: 'Swim meets', summary: 'The season’s meets.', calendar: true, school: false, events, notes: [] });
+    }
+    if (/\[image\]/.test(text) && /blank/.test(text)) return json({ title: 'A blank page', summary: 'Nothing on it.', calendar: false, school: false, events: [], notes: [] });
+    if (/\[image\]/.test(text)) {
+      return json({
+        title: 'Soccer team sheet',
+        summary: 'The coach’s phone number.',
+        calendar: false,
+        school: false,
+        events: [],
+        notes: [{ type: 'fact', title: 'Soccer contacts', body: 'Coach Dana: 555-0100.', people: [], tags: ['soccer', 'contacts', 'coach'], start: null, end: null, role: null }],
+      });
+    }
+  }
   if (/Reply with the word OK/.test(system)) {
     if (cfg.apiKey === 'sk-wrong') throw new LlmError('The AI provider didn’t accept the API key', { status: 401, auth: true });
     return { text: 'OK', json: null, usd: 0.0001, refused: false };
@@ -342,6 +360,59 @@ test('a dream (admins only) sorts, merges and adds, and one Undo takes it all ba
   assert.deepEqual((await mom.agentRpc('list')).map((n) => `${n.type}:${n.title}`).sort(), before);
 });
 
+test('a photo: read, checked, saved; then the file is kept (and opens) or deleted', async () => {
+  const photo = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...Array.from({ length: 500 }, (_, i) => i % 256)]);
+  const peer = mom.agent.id;
+  const fromAgentDm = (c, re) => [...c.conversation(c.agent.id)].reverse().find((m) => m.from === c.agent.id && re.test(m.body?.text ?? ''));
+  await mom.sendFileToAgent(photo, { name: 'team-sheet.jpg', mime: 'image/jpeg' }, { peer });
+  const list = await until(mom, (c) => fromAgentDm(c, /I’d keep/));
+  assert.equal(list.body.text, '📄 Soccer team sheet: The coach’s phone number.\nI’d keep:\n• Soccer contacts: Coach Dana: 555-0100.\nDoes this look right? Save it (you can fix anything later in Memory) or Discard.');
+  // The AI was sent the photo itself; the server only ever had ciphertext.
+  assert.match(sentToAi.at(-1), /\[image\]/);
+  const [stored] = readdirSync(join(dir, 'files'));
+  assert.ok(!Buffer.from(readFileSync(join(dir, 'files', stored))).includes(Buffer.from(photo.subarray(4, 100))));
+
+  await mom.saveAgentFound(list.body.save.id, true, { peer });
+  const ask = await until(mom, (c) => fromAgentDm(c, /^Delete “team-sheet\.jpg”/));
+  assert.equal(ask.body.fileChoice.by, mom.account.memberId);
+  await mom.answerAgentFile(ask.body.fileChoice.id, true, { peer });
+  await until(mom, (c) => fromAgentDm(c, /Kept “team-sheet\.jpg”/));
+  const note = (await mom.agentRpc('list')).find((n) => n.title === 'Soccer contacts');
+  assert.deepEqual(note.tags, ['soccer', 'contacts', 'coach']);
+  assert.deepEqual(await mom.openAgentFile(note.data.file), photo);
+  // Kept files stay past 7 days; deleting it from Memory removes it from the server.
+  await mom.agentRpc('deleteFile', { id: note.id });
+  assert.equal((await mom.agentRpc('get', { id: note.id })).note.data?.file, undefined);
+  await assert.rejects(() => mom.openAgentFile(note.data.file), (e) => e.status === 404);
+});
+
+test('a discarded or empty reading deletes the file; a sheet of dates becomes a calendar', async () => {
+  const peer = mom.agent.id;
+  const fromAgentDm = (c, re) => [...c.conversation(c.agent.id)].reverse().find((m) => m.from === c.agent.id && re.test(m.body?.text ?? ''));
+  const before = readdirSync(join(dir, 'files')).length;
+  await mom.sendFileToAgent(new Uint8Array([0xff, 0xd8, 1, 2, 3, 4, 5, 6, 7, 8]), { name: 'blank page.jpg', mime: 'image/jpeg' }, { peer });
+  await until(mom, (c) => fromAgentDm(c, /found nothing to keep.*I deleted the file/));
+  assert.equal(readdirSync(join(dir, 'files')).length, before);
+
+  // In the group: everyone sees "/Jarvis 📎 …" and the answer; only the sender gets Save.
+  const csv = new TextEncoder().encode('date,what\n2026-12-05,Home meet\n2027-01-16,Away meet\n2027-02-06,Finals');
+  await mom.sendFileToAgent(csv, { name: 'meets.csv', mime: 'text/csv' });
+  const list = await until(dad, (c) => (lastFromAgent(c)?.body.save ? lastFromAgent(c) : null));
+  assert.match(list.body.text, /^📄 Swim meets: I found 3 dates\.\n• Dec 5: Home meet/);
+  assert.notEqual(list.body.save.by, dad.account.memberId);
+  assert.ok(dad.conversation(null).some((m) => m.body?.text === '/Jarvis 📎 meets.csv'));
+  await mom.saveAgentFound(list.body.save.id, true);
+  await until(mom, (c) => (/Whose calendar is it/.test(lastFromAgent(c)?.body.text) ? 1 : null));
+  await mom.askAgent('for Sam');
+  const ask = await until(mom, (c) => (lastFromAgent(c)?.body.fileChoice ? lastFromAgent(c) : null));
+  assert.ok(mom.conversation(null).some((m) => /📅 Added Sam’s calendar: 3 events; next: Home meet \(Dec 5\)\.$/.test(m.body?.text ?? '')));
+  await mom.answerAgentFile(ask.body.fileChoice.id, false);
+  await until(mom, (c) => (/Deleted “meets\.csv” from the server/.test(lastFromAgent(c)?.body.text) ? 1 : null));
+  assert.equal(readdirSync(join(dir, 'files')).length, before);
+  // Dad can't answer a question that was for Mom.
+  assert.equal(ask.body.fileChoice.by, mom.account.memberId);
+});
+
 test('a PDF with no text says so', async () => {
   pdf = makePdf([['']]);
   await mom.askAgent(`${calUrl.replace('lincoln.ics', 'scan.pdf')}`);
@@ -363,8 +434,19 @@ test('spending: per person for admins, and a hard stop at the budget', async () 
 test('export, then removing the agent deletes its memory', async () => {
   const files = await mom.agentRpc('export');
   assert.ok(files['person/Kid.md'].includes('role') || files['person/Kid.md'].includes('# Kid'));
+  // A file still waiting: only its sender, the agent or an admin may delete it.
+  const { id: waiting } = await dad.api.uploadFile(new Uint8Array(64).fill(7));
+  await assert.rejects(() => dad.api.deleteFile('x'.repeat(24)), (e) => e.status === 404);
+  const carol = client();
+  await carol.joinWithInvite((await mom.createInvite()).link, { name: 'Carol' });
+  await assert.rejects(() => carol.api.deleteFile(waiting), (e) => e.status === 403);
+  assert.equal(readdirSync(join(dir, 'files')).length, 1);
+  // Removing the agent removes every file that was for it.
   await mom.removeAgent();
   await settle(500);
+  assert.deepEqual(readdirSync(join(dir, 'files')), []);
+  await assert.rejects(() => dad.api.uploadFile(new Uint8Array(64)), (e) => e.status === 404 && e.code === 'no_agent');
+  carol.disconnect();
   assert.equal(existsSync(join(dir, 'agent', mom.circleId)), false);
   assert.ok(!readdirSync(join(dir, 'agent')).includes(mom.circleId));
   await dad.refresh();
