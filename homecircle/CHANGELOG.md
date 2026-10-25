@@ -2,6 +2,19 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.13.0
+
+- Per-circle features: admins choose what each circle has; the server
+  refuses what goes through it while off (chirps, Locate, most visited
+  places, the helper, files). Existing circles keep everything on.
+- Files for the helper: stored encrypted under the app's data (`files/`),
+  up to 15 MB each, counted in the circle's storage; unkept files are
+  deleted after 7 days, and all of them when the helper is removed.
+  Requests may now take up to 2 minutes (uploads from slow phones).
+- The helper: tags, shopping lists, long-term reminders (sent from 9 in the
+  morning where the family is), receipts, photos, Word documents and sheets.
+- Needs the HomeCircle app 0.13.0.
+
 ## 0.12.0
 
 - The circle agent reads calendar PDFs (public links, including Google Drive

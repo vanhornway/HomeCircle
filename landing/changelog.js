@@ -1,6 +1,19 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.13.0',
+    date: '2026-10-26',
+    title: 'Choose your circle’s features, shopping lists, reminders, and photos for the helper',
+    items: [
+      'Each circle chooses its features: when you make a circle, and any time after in Settings → Features (admins). Turn off chirps, polls, SOS, Locate or anything else your circle doesn’t want, and it disappears from everyone’s phone. Circles you already have keep everything on.',
+      'Shopping lists in the helper: one per store (Costco, the desi store…). Anyone adds, ticks and removes items; Done shopping clears what was bought. The things you buy most go to the top and are suggested. Ask in chat too: “/Chirya what’s on the Costco list?”, “/Chirya add milk to Costco”.',
+      'Send the helper a receipt and it counts what you bought, so your usual items go first.',
+      'Long-term reminders: car registration, passports, insurance. Anyone adds one; every admin is reminded 30, 7 and 1 days before, on the day, and every few days after until someone taps Done. Yearly ones come back next year.',
+      'Photos and files for the helper (📎 in its chat, or while asking it): a flyer, a school letter, a PDF, a Word document or a spreadsheet. It reads it, shows what it would keep, and you Save or Discard. Then delete the file from the server, or keep it with the notes. Files are encrypted on your phone.',
+      'The helper tags everything it remembers, so it’s easier to find later; dreaming adds or fixes tags on what’s already there. “/Chirya/dream” in its own chat now works too.',
+    ],
+  },
+  {
     version: '0.12.0',
     date: '2026-10-25',
     title: 'Calendar PDFs, dreaming, and tappable links',
