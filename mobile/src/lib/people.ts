@@ -66,6 +66,14 @@ export function statusLine(client: CircleClient, m: Member, now = Date.now()): s
   return bits.join(' · ');
 }
 
+/** "Charging · updates about every 3 min while moving, 15 min when still" (phones on 0.17+). */
+export function cadenceLine(loc: MemberLocation | undefined | null): string | null {
+  const c = loc?.cadence;
+  if (!c) return null;
+  const m = (min: number) => (min < 1 ? `${Math.round(min * 60)} s` : min < 90 ? `${Math.round(min)} min` : `${Math.round(min / 60)} h`);
+  return `${c.charging ? 'Charging · ' : ''}updates about every ${m(c.moving)} while moving, ${m(c.still)} when still${c.limited ? ' (saving battery)' : ''}`;
+}
+
 /** Open Google Maps (Android) or Apple Maps (iOS) with directions to someone's last location. */
 export function openDirections(name: string, loc: MemberLocation, onLocate?: () => void) {
   const go = () => {

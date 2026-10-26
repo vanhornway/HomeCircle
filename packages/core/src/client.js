@@ -781,6 +781,7 @@ export class CircleClient {
       perm: b.perm === 'always' || b.perm === 'foreground' ? b.perm : null,
       precise: typeof b.precise === 'boolean' ? b.precise : null,
       app: typeof b.app === 'string' ? b.app.slice(0, 16) : null,
+      cadence: cleanCadence(b.cadence),
       ts: msg.ts,
       receivedAt: updatedAt,
     };
@@ -800,10 +801,13 @@ export class CircleClient {
   }
 
   /** Upload this device's location, encrypted. */
-  async shareLocation({ lat, lng, accuracy, battery, charging, speed, trigger = 'update', placeId = null, approx = false, power, perm, precise, app, ts }) {
+  async shareLocation({ lat, lng, accuracy, battery, charging, speed, trigger = 'update', placeId = null, approx = false, power, perm, precise, app, cadence, ts }) {
     const body = { lat, lng, accuracy, battery, charging, speed, trigger, placeId };
     // Which HomeCircle app the phone runs, for Circle health (0.16+).
     if (typeof app === 'string' && app) body.app = app.slice(0, 16);
+    // How often this phone updates now (0.17+): { stop, moving, still } in
+    // minutes, and whether charging or the battery budget changes it.
+    if (cadence && typeof cadence === 'object') body.cadence = cleanCadence(cadence);
     if (approx) body.approx = true;
     if (power) body.power = power;
     if (perm) body.perm = perm;
@@ -1968,6 +1972,17 @@ export class CircleClient {
         break;
     }
   }
+}
+
+/** { stop, moving, still, charging, limited } or null: what a phone said about how often it updates. */
+function cleanCadence(c) {
+  if (!c || typeof c !== 'object') return null;
+  const min = (v) => (Number.isFinite(v) && v > 0 && v <= 24 * 60 ? Math.round(v * 10) / 10 : null);
+  const moving = min(c.moving);
+  const still = min(c.still);
+  if (moving == null || still == null) return null;
+  const stop = Number.isInteger(c.stop) && c.stop >= 1 && c.stop <= 6 ? c.stop : 'custom';
+  return { stop, moving, still, charging: c.charging === true, limited: c.limited === true };
 }
 
 function cleanName(s) {

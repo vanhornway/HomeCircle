@@ -135,3 +135,16 @@ test('catching up runs one at a time, however often it is asked', async () => {
   assert.equal(most, 1);
   mom.refresh = realRefresh;
 });
+
+test('a phone says how often it updates; the circle reads it back, cleaned', async () => {
+  const reader = new CircleClient({ storage: new MemoryStorage() });
+  await reader.joinWithInvite((await mom.createInvite()).link, { name: 'Reader' });
+  await mom.refresh();
+  await mom.shareLocation({ lat: 37.33, lng: -121.88, accuracy: 10, battery: 0.8, charging: true, cadence: { stop: 4, moving: 0.5, still: 15, charging: true, limited: false } });
+  await reader.fetchLocations();
+  assert.deepEqual(reader.locations.get(mom.account.memberId).cadence, { stop: 4, moving: 0.5, still: 15, charging: true, limited: false });
+  // Nonsense from a phone is dropped, not shown.
+  await mom.shareLocation({ lat: 37.33, lng: -121.88, cadence: { stop: 9, moving: -1, still: 'x' } });
+  await reader.fetchLocations();
+  assert.equal(reader.locations.get(mom.account.memberId).cadence, null);
+});

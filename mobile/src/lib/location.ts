@@ -128,6 +128,13 @@ export async function upload(
         perm: health.perm,
         precise: health.precise,
         app: APP_VERSION,
+        cadence: {
+          stop: policy.stop,
+          moving: policy.movingGapMs / 60_000,
+          still: stillIntervalFor(policy, motion, last, here) / 60_000,
+          charging: policy.reason === 'charging',
+          limited: policy.budgetLimited,
+        },
         ts: loc.timestamp,
       });
     }),

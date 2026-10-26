@@ -81,6 +81,8 @@ export interface MemberLocation {
   precise: boolean | null;
   /** The HomeCircle app version that phone runs (0.16+; null from older apps). */
   app: string | null;
+  /** How often that phone updates now (minutes), its slider stop, and whether charging or its battery budget changes it (0.17+). */
+  cadence: { stop: number | 'custom'; moving: number; still: number; charging: boolean; limited: boolean } | null;
   ts: number;
   receivedAt: number;
 }
@@ -395,6 +397,8 @@ export class CircleClient {
     precise?: boolean;
     /** This phone's HomeCircle app version (shown in Circle health). */
     app?: string;
+    /** How often this phone updates now, in minutes (shown under its name). */
+    cadence?: { stop: number | 'custom'; moving: number; still: number; charging: boolean; limited: boolean };
     ts?: number;
   }): Promise<void>;
   /** Remove this device's location from the circle (stop sharing with it). */

@@ -18,7 +18,7 @@ import { Drawer, useDrawer } from '../../components/Drawer';
 import { useServerState } from '../../lib/connection';
 import { initials, useCircle } from '../../lib/useCircle';
 import { chirpWithChoice } from '../../lib/chirp';
-import { canLocate, everyoneCoolingDown, isAsking, memberState, locatePerson, locateState, lowBattery, refreshEveryone, statusLine, useLocateVersion } from '../../lib/people';
+import { cadenceLine, canLocate, everyoneCoolingDown, isAsking, memberState, locatePerson, locateState, lowBattery, refreshEveryone, statusLine, useLocateVersion } from '../../lib/people';
 import { DEFAULT_SETTINGS, getSettings } from '../../lib/storage';
 import { useTheme } from '../../theme';
 
@@ -225,6 +225,11 @@ export default function MapTab() {
                   <Text style={{ color: t.muted, fontSize: 14, marginTop: 2, lineHeight: 19 }} numberOfLines={2}>
                     {statusLine(client, m, now)}
                   </Text>
+                  {cadenceLine(loc) ? (
+                    <Text style={{ color: t.muted, fontSize: 12, marginTop: 1 }} numberOfLines={1}>
+                      {cadenceLine(loc)}
+                    </Text>
+                  ) : null}
                 </View>
                 {!m.isMe && client.feature('locate') ? (
                   <IconButton
