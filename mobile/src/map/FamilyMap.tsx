@@ -1,7 +1,7 @@
 // Private map: Leaflet runs inside a WebView with no external scripts. Only
 // map tiles are fetched (from the tile server your HomeCircle server names).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { AppState, StyleSheet, View } from 'react-native';
 import { WebView as RNWebView, type WebViewMessageEvent } from 'react-native-webview';
 import Constants from 'expo-constants';
 import { LEAFLET_CSS, LEAFLET_JS } from './leafletAssets.generated';
@@ -74,7 +74,27 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
 <script>
 (function(){
   var map = L.map('map', {zoomControl:false, worldCopyJump:true}).setView([30,0], 2);
-  L.tileLayer(${JSON.stringify(tileUrl)}, {maxZoom:19, attribution:${JSON.stringify(attribution)}, referrerPolicy:'strict-origin'}).addTo(map);
+  var tiles = L.tileLayer(${JSON.stringify(tileUrl)}, {maxZoom:19, attribution:${JSON.stringify(attribution)}, referrerPolicy:'strict-origin'}).addTo(map);
+  // A tile that fails (slow mobile data, a busy tile server) is asked for
+  // again after 1, 4, 9, 16 and 25 s; otherwise it stays a blank square.
+  function retry(img, n){
+    if (n > 5 || !img.parentNode) return;
+    img._tries = n;
+    setTimeout(function(){
+      if (!img.parentNode || img.complete && img.naturalWidth) return;
+      var u = img.src.replace(/([?&])r=[0-9]+/, '').replace(/[?&]$/, '');
+      img.src = u + (u.indexOf('?') < 0 ? '?' : '&') + 'r=' + n;
+    }, 1000 * n * n);
+  }
+  tiles.on('tileerror', function(e){ retry(e.tile, (e.tile._tries || 0) + 1); });
+  // Back online, or back in the app: every square that's still blank, again.
+  function retryMissing(){
+    Object.keys(tiles._tiles || {}).forEach(function(k){
+      var t = tiles._tiles[k];
+      if (t && t.el && !t.loaded) { t.el._tries = 0; retry(t.el, 1); }
+    });
+  }
+  window.addEventListener('online', retryMissing);
   var people = {}, placeLayer = L.layerGroup().addTo(map), pickLayer = L.layerGroup().addTo(map);
   var fitted = false, pick = false;
   function post(m){ window.ReactNativeWebView.postMessage(JSON.stringify(m)); }
@@ -118,6 +138,7 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
     focus: function(lat,lng,zoom){ map.flyTo([lat,lng], zoom || Math.max(map.getZoom(), 15), {duration:.6}); },
     view: function(lat,lng,zoom){ fitted = true; map.setView([lat,lng], zoom, {animate:false}); },
     refit: function(list){ fitted = list.length > 0; if (list.length) hc.fit(list); },
+    retryTiles: function(){ map.invalidateSize(); retryMissing(); },
     pickMode: function(on){ pick = on; },
     picked: function(p){
       pickLayer.clearLayers();
@@ -165,6 +186,12 @@ export function FamilyMap({
     // Only when the circle changes, not on every location.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, run, fitKey]);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'active') run('hc.retryTiles()');
+    });
+    return () => sub.remove();
+  }, [run]);
   const focusKey = focus?.key;
   const focusJs = focus ? `hc.focus(${focus.lat},${focus.lng},${focus.zoom ?? 0})` : null;
   useEffect(() => {
