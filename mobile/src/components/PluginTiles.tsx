@@ -4,6 +4,7 @@ import type { CircleClient } from '@homecircle/core';
 import { usePlaceName } from '../lib/weather';
 import { useTheme } from '../theme';
 import { AirFace } from './AirTile';
+import { PrayerFace } from './PrayerTile';
 import { WeatherFace } from './WeatherTile';
 
 // Every tile is the same size: small on the map, so it hides little of it;
@@ -18,6 +19,7 @@ const SWIPE_PX = 36;
 const FACES = [
   { id: 'weather', name: 'Weather', Face: WeatherFace },
   { id: 'air', name: 'Air and pollen', Face: AirFace },
+  { id: 'prayer', name: 'Prayer times', Face: PrayerFace },
 ] as const;
 
 // Which tile and size you left it at, while the app is open.
@@ -69,7 +71,7 @@ class Swipe {
 
 /**
  * The plugins' tiles in the map's top-right corner, for the selected person
- * (or you): weather, air and pollen, one at a time in the same card. Swipe
+ * (or you): weather, air and pollen, prayer times, one at a time in the same card. Swipe
  * for the next one; double-tap for the bigger view, and again to make it small.
  */
 export function PluginTiles({ client, memberId }: { client: CircleClient; memberId: string | null }) {

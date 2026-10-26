@@ -6,3 +6,4 @@ export * from './emoji.js';
 export * from './places.js';
 export * from './agent.js';
 export * from './features.js';
+export * from './prayer.js';

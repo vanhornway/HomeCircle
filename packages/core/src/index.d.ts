@@ -261,6 +261,8 @@ export class Api {
   weather(lat: number, lng: number): Promise<Weather>;
   /** The air and pollen plugin, the same way. */
   air(lat: number, lng: number): Promise<AirQuality>;
+  /** The prayer times plugin: today's and tomorrow's times at a grid cell, for a madhab. */
+  prayer(lat: number, lng: number, madhab: Madhab): Promise<PrayerDays>;
   pluginSettings(id: string): Promise<PluginSettings>;
   putPluginSettings(id: string, values: Record<string, string>): Promise<{ ok: true; values: PluginSettings['values']; ready: boolean }>;
   homeAssistantLocation(body: { lat: number; lng: number; accuracy?: number | null; battery?: number | null; charging?: boolean | null; speed?: number | null; name: string }): Promise<{ ok: true; entity: string }>;
@@ -288,6 +290,32 @@ export type AirQuality = {
   pollen: { source: 'Open-Meteo' | 'Google'; types: { id: 'tree' | 'grass' | 'weed'; label: string; level: number | null; category: string | null }[] } | null;
   source: string;
 };
+
+/** A madhab: it sets Asr's shadow length, and Shia (Ja'fari) has its own method. */
+export type Madhab = 'shafi' | 'hanafi' | 'maliki' | 'hanbali' | 'shia';
+export const MADHABS: { id: Madhab; label: string }[];
+export const DEFAULT_MADHAB: Madhab;
+export type PrayerId = 'fajr' | 'dhuhr' | 'asr' | 'maghrib' | 'isha';
+/** One day's times as instants (ms since 1970); null where the sun doesn't get there. */
+export type PrayerTimes = Record<PrayerId | 'sunrise' | 'midnight', number | null>;
+export const PRAYERS: { id: PrayerId; name: string; until: 'sunrise' | 'asr' | 'maghrib' | 'isha' | 'midnight' }[];
+export const METHODS: Record<string, { name: string; fajr: number; isha?: number; ishaMinutes?: number; maghrib?: number; maghribMinutes?: number; shia?: boolean }>;
+export function methodFor(timezone: string | null | undefined, madhab?: Madhab): string;
+export function prayerTimes(opts: { lat: number; lng: number; date: string; madhab?: Madhab; method?: string }): PrayerTimes;
+/** What the prayer times plugin answers: today and tomorrow where the cell is, with that day's UTC offset in minutes. */
+export type PrayerDays = {
+  cell: { lat: number; lng: number };
+  timezone: string | null;
+  /** No time zone was found: times are shown by the sun's (longitude ÷ 15). */
+  roughZone: boolean;
+  madhab: Madhab;
+  method: { id: string; name: string };
+  days: { date: string; offset: number; times: PrayerTimes }[];
+  source: string;
+};
+export type PrayerSlot = { id: PrayerId; name: string; until: string; date: string; start: number; end: number | null };
+/** The prayer whose window is open at `now` (or null), and the next one to start. */
+export function prayerNow(days: { date: string; times: PrayerTimes }[], now?: number): { current: PrayerSlot | null; next: PrayerSlot | null };
 
 /** A plugin's settings, as an admin sees them. */
 export type PluginField = { id: string; label: string; secret?: boolean; optional?: boolean; placeholder?: string; help?: string };
@@ -559,6 +587,7 @@ export type FeatureId =
   | 'uploads'
   | 'weather'
   | 'air'
+  | 'prayer'
   | 'homeAssistant';
 export type Features = Record<FeatureId, boolean>;
 export type FeatureInfo = { id: FeatureId; group: 'Location' | 'Chat' | 'Alerts' | 'Helper' | 'Plugins'; label: string; detail: string; on: boolean; needs?: FeatureId };

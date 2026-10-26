@@ -3,6 +3,7 @@ import { Alert, Text } from 'react-native';
 import type { Features } from '@homecircle/core';
 import { FeaturePicker } from '../../components/FeaturePicker';
 import { PluginSetup } from '../../components/PluginSetup';
+import { PrayerSetup } from '../../components/PrayerSetup';
 import { GroupBody, SettingsGroup, SettingsPage } from '../../components/SettingsKit';
 import { errorText } from '../../lib/circle';
 import { useCircle } from '../../lib/useCircle';
@@ -38,8 +39,15 @@ export default function FeatureSettings() {
         value={value}
         onChange={change}
         readOnly={!admin}
-        // Plugins with settings: filled in here once they're on.
-        below={(id) => (admin && !pending && client.feature(id) && (id === 'homeAssistant' || id === 'air') ? <PluginSetup client={client} id={id} /> : null)}
+        // Plugins with settings: filled in here once they're on (prayer times:
+        // each person's own madhab, so everyone, not only admins).
+        below={(id) =>
+          id === 'prayer' && !pending && client.feature(id) ? (
+            <PrayerSetup />
+          ) : admin && !pending && client.feature(id) && (id === 'homeAssistant' || id === 'air') ? (
+            <PluginSetup client={client} id={id} />
+          ) : null
+        }
       />
     </SettingsPage>
   );

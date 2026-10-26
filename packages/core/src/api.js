@@ -135,6 +135,8 @@ export class Api {
   weather = (lat, lng) => this.req('GET', `/plugins/weather/now?lat=${Math.round(lat * 10) / 10}&lng=${Math.round(lng * 10) / 10}`);
   /** Air and pollen, the same way. */
   air = (lat, lng) => this.req('GET', `/plugins/air/now?lat=${Math.round(lat * 10) / 10}&lng=${Math.round(lng * 10) / 10}`);
+  /** The prayer times plugin: today's and tomorrow's times at a grid cell, for a madhab. */
+  prayer = (lat, lng, madhab) => this.req('GET', `/plugins/prayer/times?lat=${Math.round(lat * 10) / 10}&lng=${Math.round(lng * 10) / 10}&madhab=${encodeURIComponent(madhab)}`);
   /** A plugin's settings for this circle (admins): secrets come back only as { set }. */
   pluginSettings = (id) => this.req('GET', `/plugins/${encodeURIComponent(id)}/settings`);
   putPluginSettings = (id, values) => this.req('PUT', `/plugins/${encodeURIComponent(id)}/settings`, { values });

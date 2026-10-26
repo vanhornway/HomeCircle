@@ -2,7 +2,7 @@
 // (the server is sent only the cell, 0.1°), kept 10 minutes and refreshed
 // while shown; and Home Assistant's name for a person.
 import { useEffect, useState } from 'react';
-import type { AirQuality, CircleClient, MemberLocation } from '@homecircle/core';
+import type { AirQuality, CircleClient, Madhab, MemberLocation, PrayerDays } from '@homecircle/core';
 
 const FRESH_MS = 10 * 60_000;
 export const cellKey = (lat: number, lng: number) => `${Math.round(lat * 10) / 10},${Math.round(lng * 10) / 10}`;
@@ -58,6 +58,10 @@ export function useCellData<T>(kind: string, client: CircleClient, loc: MemberLo
 
 /** Air quality and pollen for someone's location. */
 export const useAir = (client: CircleClient, loc: MemberLocation | undefined) => useCellData<AirQuality>('air', client, loc, (lat, lng) => client.api.air(lat, lng));
+
+/** Today's and tomorrow's prayer times where someone is, for your madhab. */
+export const usePrayer = (client: CircleClient, loc: MemberLocation | undefined, madhab: Madhab) =>
+  useCellData<PrayerDays>(`prayer-${madhab}`, client, loc, (lat, lng) => client.api.prayer(lat, lng, madhab));
 
 /** Home Assistant's entity id part for a name ("Maya Ali" → maya_ali). */
 export const slugName = (s: string) =>

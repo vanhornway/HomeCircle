@@ -3,7 +3,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { ChirpSound, Storage } from '@homecircle/core';
+import type { ChirpSound, Madhab, Storage } from '@homecircle/core';
 
 const CHUNK = 1800;
 // Background tasks run while the phone is locked, so keys must be readable
@@ -85,6 +85,8 @@ export interface Settings {
   readReceipts: boolean;
   /** Weather tile temperatures: from the phone's region, or always °F or °C. */
   weatherUnits: 'auto' | 'f' | 'c';
+  /** Your madhab, for the prayer times tile (it sets Asr; Shia has its own method). */
+  prayerMadhab: Madhab;
   /** Send your position to the circle's Home Assistant too (circles with that plugin on). */
   sendToHomeAssistant: boolean;
   /** Map tiles, from the server's /info. */
@@ -113,6 +115,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sosThroughDnd: false,
   readReceipts: true,
   weatherUnits: 'auto',
+  prayerMadhab: 'shafi',
   sendToHomeAssistant: true,
   tileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   tileAttribution: '&copy; OpenStreetMap contributors',

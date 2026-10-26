@@ -108,7 +108,7 @@ const kid = new CircleClient({ storage: new MemoryStorage() });
 
 test('the server lists its plugins; weather is off in a new circle and refused until an admin turns it on', async () => {
   const info = await (await fetch(`${url}/api/v1/info`)).json();
-  assert.deepEqual(info.plugins, ['weather', 'air', 'homeAssistant']);
+  assert.deepEqual(info.plugins, ['weather', 'air', 'prayer', 'homeAssistant']);
   await mom.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'Family', features: defaultFeatures() });
   assert.equal(mom.feature('weather'), false);
   await assert.rejects(() => mom.api.weather(37.3382, -121.8863), (e) => e.status === 403 && /Weather is turned off/.test(e.message));
@@ -131,6 +131,31 @@ test('weather: only a grid cell goes out, the answer is cut to the tile, and it 
   await mom.api.weather(37.31, -121.94);
   assert.equal(asked.length, 1);
   await assert.rejects(() => mom.api.weather(200, 0), (e) => e.status === 400);
+});
+
+test('prayer times: worked out on the server for the madhab asked; only the cell’s time zone is looked up, once a week', async () => {
+  await assert.rejects(() => mom.api.prayer(37.3382, -121.8863, 'hanafi'), (e) => e.status === 403);
+  await mom.setFeatures({ prayer: true });
+  asked.length = 0;
+  const hanafi = await mom.api.prayer(37.3382, -121.8863, 'hanafi');
+  assert.equal(asked.length, 1);
+  assert.match(asked[0], /^https:\/\/api\.open-meteo\.com\/v1\/forecast\?latitude=37\.3&longitude=-121\.9&daily=sunrise/);
+  assert.equal(hanafi.timezone, 'America/Los_Angeles');
+  assert.deepEqual(hanafi.method, { id: 'ISNA', name: 'ISNA (North America)' });
+  assert.equal(hanafi.days.length, 2);
+  const [today] = hanafi.days;
+  assert.ok([-420, -480].includes(today.offset), `offset ${today.offset}`);
+  const order = ['fajr', 'sunrise', 'dhuhr', 'asr', 'maghrib', 'isha', 'midnight'].map((k) => today.times[k]);
+  assert.deepEqual([...order].sort((a, b) => a - b), order);
+  // Shafi'i Asr comes earlier; the zone is already known.
+  const shafi = await mom.api.prayer(37.3382, -121.8863, 'shafi');
+  assert.equal(asked.length, 1);
+  assert.ok(shafi.days[0].times.asr < today.times.asr - 20 * 60_000);
+  // Shia: the Ja'fari method, Maghrib after sunset; an unknown madhab is Shafi'i.
+  const shia = await mom.api.prayer(37.3382, -121.8863, 'shia');
+  assert.equal(shia.method.id, 'JAFARI');
+  assert.ok(shia.days[0].times.maghrib > shafi.days[0].times.maghrib);
+  assert.equal((await mom.api.prayer(37.3382, -121.8863, 'nonsense')).madhab, 'shafi');
 });
 
 test('a plugin can only call the hosts it declared', async () => {
