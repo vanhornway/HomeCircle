@@ -100,7 +100,8 @@ export function PrayerFace({ client, loc, title, big, z }: { client: CircleClien
               </Pill>
               <Pill z={z} bg={current ? NOW.bg : t.surface2}>
                 <Text style={{ color: current ? NOW.ink : t.muted, fontSize: z(11), fontWeight: '700', textAlign: 'center' }} numberOfLines={2}>
-                  {current ? `${current.name} now` : 'Between'}
+                  {/* Windows run Dhuhr → Isha back to back; the gaps are after sunrise and after midnight. */}
+                  {current ? `${current.name} now` : next.id === 'dhuhr' ? 'Fajr ended' : 'Isha ended'}
                 </Text>
               </Pill>
             </View>
