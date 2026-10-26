@@ -1,6 +1,17 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.15.0',
+    date: '2026-10-26',
+    title: 'Swipeable tiles, air and pollen, and Home Assistant',
+    items: [
+      'Turning a feature off now removes it everywhere. The SOS button follows the circle on screen, so a circle with SOS off doesn’t show it. With the helper off, its chat and the shopping list and reminder shortcuts go too. With location sharing off, nobody shows on the map and the Places tab goes; with place alerts off, so does “My alerts”.',
+      'Plugin tiles share one card in the map’s top-right corner, all the same size: swipe for the next one, double-tap for the bigger view with the next 12 hours, and double-tap again to make it small.',
+      'Air and pollen: the air quality where the person you select is (US AQI, with the next 12 hours, PM2.5, PM10 and ozone), anywhere in the world, from Open-Meteo. Pollen for trees, grass and weeds comes from Open-Meteo in Europe; elsewhere, the US included, an admin can add a Google Pollen API key in Settings → Features.',
+      'Home Assistant: turn it on in Settings → Features → Plugins and enter your Home Assistant address and a long-lived access token (in the app, or on the server’s web page). Each person shows up in Home Assistant as a device with a location tracker and a battery sensor, for automations like “lights on when Maya gets home”. Anyone can turn theirs off in Settings → Location sharing.',
+    ],
+  },
+  {
     version: '0.14.0',
     date: '2026-10-25',
     title: 'Plugins, starting with weather',

@@ -2,6 +2,26 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.15.0
+
+- Plugin settings, per circle: admins fill them in under the plugin's switch
+  in Settings → Features (the app or the web page). They're kept on this
+  server; secrets are never sent back to a phone.
+- Air and pollen plugin: air quality from Open-Meteo (free, no key; needs
+  outbound HTTPS to air-quality-api.open-meteo.com), for a 0.1° grid cell,
+  kept 30 minutes. Pollen from Open-Meteo covers Europe; an optional Google
+  Pollen API key (pollen.googleapis.com) covers most other places.
+- Home Assistant plugin: each person becomes a device of Home Assistant's
+  Mobile App integration (`device_tracker.homecircle_<name>`, which Home
+  Assistant puts in your zones, plus battery and charging sensors). As this
+  app, the address `http://homeassistant:8123` is filled in; you add a
+  long-lived access token. Phones send their position to HomeCircle to pass
+  straight on; nothing about where anyone is, is kept. Each person can turn
+  theirs off. See the Documentation tab.
+- Turning a feature off hides it everywhere on phones and the web page (SOS,
+  the helper, the map and Places without location sharing).
+- Needs the HomeCircle app 0.15.0 for the new tiles and Home Assistant.
+
 ## 0.14.0
 
 - Plugins: optional parts of the server that a circle's admins turn on in
