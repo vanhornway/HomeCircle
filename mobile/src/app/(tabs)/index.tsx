@@ -101,6 +101,7 @@ export default function MapTab() {
       <View style={{ flex: 1 }}>
         <FamilyMap
           tileUrl={tiles.tileUrl}
+          fitKey={client.circleId}
           attribution={tiles.tileAttribution}
           members={mapMembers}
           places={places}

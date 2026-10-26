@@ -1460,12 +1460,17 @@ export class CircleClient {
   async fetchMessages() {
     for (;;) {
       const { messages } = await this.api.messages(this.fetchedSeq, 500);
-      for (const [i, m] of messages.entries()) {
+      let since = Date.now();
+      for (const m of messages) {
         this._addMessage(m);
         this.fetchedSeq = Math.max(this.fetchedSeq, m.seq);
-        // Opening a message takes a while on a phone: let the screen draw
-        // and taps through every few, instead of freezing for the whole page.
-        if (i % 10 === 9) await yieldToUi();
+        // Opening a message takes tens of ms on a phone: after every ~12 ms of
+        // it, let the screen draw and taps through, instead of freezing for
+        // the whole page (a first load can be hundreds of messages).
+        if (Date.now() - since > 12) {
+          await yieldToUi();
+          since = Date.now();
+        }
       }
       if (messages.length) this.emit('messages', this.messages);
       if (messages.length < 500) break;

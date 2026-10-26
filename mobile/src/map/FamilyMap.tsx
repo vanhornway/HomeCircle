@@ -41,6 +41,8 @@ export interface MapPlace {
 interface Props {
   tileUrl: string;
   attribution: string;
+  // Changes when the map shows another circle: its people are fitted again.
+  fitKey?: string | null;
   members?: MapMember[];
   places?: MapPlace[];
   /** Change `key` to fly to the same spot again. */
@@ -115,6 +117,7 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
     },
     focus: function(lat,lng,zoom){ map.flyTo([lat,lng], zoom || Math.max(map.getZoom(), 15), {duration:.6}); },
     view: function(lat,lng,zoom){ fitted = true; map.setView([lat,lng], zoom, {animate:false}); },
+    refit: function(list){ fitted = list.length > 0; if (list.length) hc.fit(list); },
     pickMode: function(on){ pick = on; },
     picked: function(p){
       pickLayer.clearLayers();
@@ -130,6 +133,7 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
 
 export function FamilyMap({
   tileUrl,
+  fitKey,
   attribution,
   members = [],
   places = [],
@@ -152,6 +156,15 @@ export function FamilyMap({
   useEffect(() => void run(`hc.places(${JSON.stringify(places)})`), [run, places]);
   useEffect(() => void run(`hc.pickMode(${pickMode})`), [run, pickMode]);
   useEffect(() => void run(`hc.picked(${JSON.stringify(picked)})`), [run, picked]);
+  // Another circle: fit its people (the view kept for page reloads is per circle).
+  const fitted = useRef(fitKey);
+  useEffect(() => {
+    if (!ready || fitted.current === fitKey) return;
+    fitted.current = fitKey;
+    run(`hc.refit(${JSON.stringify(members)})`);
+    // Only when the circle changes, not on every location.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, run, fitKey]);
   const focusKey = focus?.key;
   const focusJs = focus ? `hc.focus(${focus.lat},${focus.lng},${focus.zoom ?? 0})` : null;
   useEffect(() => {

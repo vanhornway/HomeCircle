@@ -1,7 +1,8 @@
 import React from 'react';
-import { KeyboardAvoidingView, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { Pressable, Switch, Text, View } from 'react-native';
 import { router, Stack, type Href } from 'expo-router';
 import { useTheme } from '../theme';
+import { KeyboardScroll } from './KeyboardScroll';
 
 /** A settings page under its own header: scrolls, with the app's padding. */
 export function SettingsPage({ title, children }: { title: string; children: React.ReactNode }) {
@@ -9,12 +10,10 @@ export function SettingsPage({ title, children }: { title: string; children: Rea
   return (
     <>
       <Stack.Screen options={{ headerShown: true, title }} />
-      {/* The keyboard pushes the page up, so the field you're typing in stays in sight. */}
-      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: t.bg }} behavior="padding">
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingTop: 4, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
-          {children}
-        </ScrollView>
-      </KeyboardAvoidingView>
+      {/* The field you're typing in stays above the keyboard. */}
+      <KeyboardScroll style={{ backgroundColor: t.bg }} contentContainerStyle={{ padding: 20, paddingTop: 4, paddingBottom: 48 }}>
+        {children}
+      </KeyboardScroll>
     </>
   );
 }

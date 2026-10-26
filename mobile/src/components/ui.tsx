@@ -2,8 +2,6 @@ import React from 'react';
 import {
   ActivityIndicator,
   Pressable,
-  KeyboardAvoidingView,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -18,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, G, Path, Rect } from 'react-native-svg';
 import { useTheme } from '../theme';
+import { KeyboardScroll } from './KeyboardScroll';
 import { initials } from '../lib/useCircle';
 
 export function Screen({
@@ -33,12 +32,8 @@ export function Screen({
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: t.bg }, style]} edges={['top', 'left', 'right']}>
       {scroll ? (
-        // The keyboard pushes the page up, so the field you're typing in stays in sight.
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-          <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
-            {children}
-          </ScrollView>
-        </KeyboardAvoidingView>
+        // The field you're typing in stays above the keyboard.
+        <KeyboardScroll contentContainerStyle={{ padding: 20, paddingBottom: 48 }}>{children}</KeyboardScroll>
       ) : (
         children
       )}
