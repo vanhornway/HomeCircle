@@ -18,6 +18,7 @@ export const BATTERY_MAH = 5000;
  * - movingRequestPerHour: the 60-second balanced location request left
  *   running while the phone is still (Google doesn't say how much work it
  *   skips; this is the worst case in the analysis, 72 mAh a day)
+ * - stillRequestPerHour: still mode's request, a Wi-Fi/cell check every 10 min
  */
 export const COST_MAH = {
   balancedFix: 0.05,
@@ -28,4 +29,6 @@ export const COST_MAH = {
   fetchCell: 0.4,
   fetchWifi: 0.05,
   movingRequestPerHour: 3,
+  // The request slowed to a check every 10 minutes in still mode.
+  stillRequestPerHour: 0.3,
 } as const;

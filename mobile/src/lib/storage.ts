@@ -140,7 +140,9 @@ const setCached = (s: Settings) => {
 export async function getSettings(): Promise<Settings> {
   try {
     const raw = await AsyncStorage.getItem(SETTINGS_KEY);
-    const s = { ...DEFAULT_SETTINGS, ...(raw ? JSON.parse(raw) : {}) };
+    // A new install starts at the default stop; a phone from before the
+    // slider keeps the stop matching its old interval (locationProfile null).
+    const s = { ...DEFAULT_SETTINGS, ...(raw ? JSON.parse(raw) : { locationProfile: DEFAULT_STOP }) };
     if (JSON.stringify(s) !== JSON.stringify(cached)) setCached(s);
     return s;
   } catch {

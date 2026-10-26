@@ -4,7 +4,7 @@ import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import * as BackgroundTask from 'expo-background-task';
-import { upload, report, freshFix, heartbeatDue, getMotion, leaveStillMode, maybeEnterStillMode, shareNow, LOCATION_TASK, GEOFENCE_TASK, HEARTBEAT_TASK, PUSH_TASK } from '../lib/location';
+import { upload, report, freshFix, heartbeatDue, getMotion, leaveStillMode, maybeEnterStillMode, applyPolicy, shareNow, LOCATION_TASK, GEOFENCE_TASK, HEARTBEAT_TASK, PUSH_TASK } from '../lib/location';
 import { HERE_PREFIX, checkPlaces, flushOutbox } from '../lib/places';
 import { diag } from '../lib/diagnostics';
 import { loadedClients } from '../lib/circle';
@@ -29,6 +29,8 @@ TaskManager.defineTask<{ locations: Location.LocationObject[] }>(LOCATION_TASK, 
   countFixes(data.locations.length);
   try {
     await report(latest, 'update');
+    // Plugged in or unplugged since: GPS on or off, in place.
+    await applyPolicy().catch(() => {});
   } catch (e) {
     log('location upload failed', e);
     diag('error', { where: 'movement', msg: String((e as Error)?.message ?? e).slice(0, 100) });
@@ -51,6 +53,8 @@ TaskManager.defineTask<{ locations: Location.LocationObject[] }>(SOS_TASK, async
 TaskManager.defineTask(HEARTBEAT_TASK, async () => {
   try {
     countWake('heartbeat');
+    // Plugged in or unplugged, another stop, the budget: the request follows.
+    await applyPolicy().catch(() => {});
     // Nothing to send yet (lib/locationPolicy.ts): don't wake the location hardware.
     if (!(await heartbeatDue())) {
       diag('wake:heartbeat', { fix: 'skipped' });

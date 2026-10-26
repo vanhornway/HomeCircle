@@ -41,6 +41,10 @@ const MOTION_KEY = 'homecircle.motion';
 const STILL_AFTER_MS = 10 * 60_000;
 const HERE_RADIUS_M = 250;
 const STILL_KEY = 'homecircle.still';
+// In still mode the request stays, only slower: a check every 10 minutes.
+const STILL_FIX_INTERVAL_MS = 10 * 60_000;
+// The request last asked for, so a wake-up only changes it when the policy did.
+const REQUEST_KEY = 'homecircle.request';
 const MAX_GEOFENCES = 20; // iOS limit per app
 // Smallest radius the OS watches reliably; smaller places are still checked
 // against real positions (lib/places.ts), just not used as OS geofences.
@@ -303,22 +307,21 @@ export async function startBackgroundUpdates(): Promise<SharingMode> {
   const bg = await Location.getBackgroundPermissionsAsync();
   if (bg.status !== 'granted') return 'foreground-only';
 
-  if (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK).catch(() => false)) {
-    await Location.stopLocationUpdatesAsync(LOCATION_TASK);
-  }
-  // Still mode: no location requests until the phone leaves the circle around it.
-  if (await getStillHere()) {
-    if (policy.stillMode) {
-      await registerHeartbeat();
-      return 'background';
-    }
+  // Never stopped and started again here: from the background, expo-location
+  // can't start its foreground service, and Android then allows only a few
+  // updates an hour. Asking again with new options changes the running
+  // request in place and keeps the service.
+  let still = !!(await getStillHere());
+  if (still && !policy.stillMode) {
     // Still mode no longer applies (another stop, or charging): moving mode, no circle.
     await AsyncStorage.removeItem(STILL_KEY);
     syncGeofences().catch(() => {});
+    still = false;
   }
+  const request = requestFor(policy, still);
   await Location.startLocationUpdatesAsync(LOCATION_TASK, {
     // Wi-Fi and cell towers; GPS only while charging (the policy says which).
-    accuracy: policy.movingAccuracy === 'high' ? Location.Accuracy.High : Location.Accuracy.Balanced,
+    accuracy: request.high ? Location.Accuracy.High : Location.Accuracy.Balanced,
     // Never prompt users to turn on Google's "Location Accuracy" (it shares
     // Wi-Fi/sensor data with Google). GPS and network location work without it.
     mayShowUserSettingsDialog: false,
@@ -329,7 +332,8 @@ export async function startBackgroundUpdates(): Promise<SharingMode> {
     // Android, timeInterval is also the *minimum* gap between fixes, so a
     // 15-minute value meant a moving phone reported at most every 15 minutes.
     distanceInterval: MOVING_FIX_DISTANCE_M,
-    timeInterval: MOVING_FIX_INTERVAL_MS, // Android only
+    // Android only. Still mode: a check every 10 minutes is enough to notice leaving.
+    timeInterval: request.intervalMs,
     deferredUpdatesInterval: 0,
     deferredUpdatesDistance: 0,
     activityType: Location.ActivityType.Other,
@@ -341,8 +345,29 @@ export async function startBackgroundUpdates(): Promise<SharingMode> {
       notificationColor: '#2F7D6D',
     },
   });
+  await AsyncStorage.setItem(REQUEST_KEY, JSON.stringify(request));
   await registerHeartbeat();
   return 'background';
+}
+
+/** The location request the policy wants: GPS or not, and how often. */
+function requestFor(policy: Policy, still: boolean) {
+  return { high: policy.movingAccuracy === 'high', intervalMs: still ? STILL_FIX_INTERVAL_MS : MOVING_FIX_INTERVAL_MS };
+}
+
+/**
+ * At every wake-up: if the request the policy wants changed (plugged in or
+ * unplugged, still mode, another stop), change it now, in place.
+ */
+export async function applyPolicy(): Promise<void> {
+  const settings = await getSettings();
+  if (!settings.sharing) return;
+  const [policy, still, applied] = await Promise.all([currentPolicy(), getStillHere(), AsyncStorage.getItem(REQUEST_KEY)]);
+  const want = requestFor(policy, !!still && policy.stillMode);
+  if (applied === JSON.stringify(want) && !(still && !policy.stillMode)) return;
+  if (!(await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK).catch(() => false))) return;
+  diag('location-request', { gps: want.high, everyMin: want.intervalMs / 60_000 });
+  await startBackgroundUpdates();
 }
 
 async function registerHeartbeat() {
@@ -365,13 +390,15 @@ export async function getStillHere(): Promise<{ lat: number; lng: number; since:
 
 /**
  * Still mode, from the heartbeat: still for 10 minutes and the policy allows
- * it, so stop the location request and watch a 250 m circle around the phone.
+ * it, so the location request slows to a check every 10 minutes, and a 250 m
+ * circle around the phone wakes it sooner when it leaves.
  */
 export async function maybeEnterStillMode(): Promise<boolean> {
   const [policy, motion, here] = await Promise.all([currentPolicy(), getMotion(), getStillHere()]);
   if (here || !policy.stillMode || !motion || motion.moving || motion.pending || Date.now() - motion.stillSince < STILL_AFTER_MS) return false;
   await AsyncStorage.setItem(STILL_KEY, JSON.stringify({ lat: motion.lat, lng: motion.lng, since: Date.now() }));
-  if (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK).catch(() => false)) await Location.stopLocationUpdatesAsync(LOCATION_TASK);
+  // The same request, slower (changed in place: the service keeps running).
+  await startBackgroundUpdates();
   await syncGeofences();
   diag('still-mode', { on: true });
   return true;

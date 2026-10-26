@@ -42,8 +42,8 @@ function hardDay(profile: Stop) {
       lastUpload = min;
     }
     const still = min - stillSince;
-    // The 60 s request keeps running unless still mode stops it (after 10 min).
-    if (!(p.stillMode && still >= 10)) used += c.movingRequestPerHour / 60;
+    // The 60 s request keeps running unless still mode slows it to every 10 min (after 10 min still).
+    used += (p.stillMode && still >= 10 ? c.stillRequestPerHour : c.movingRequestPerHour) / 60;
     const interval = p.slowWhenStill && still * 60_000 >= SLOW_AFTER_MS ? Math.max(p.stillIntervalMs, SLOW_STILL_INTERVAL_MS) : p.stillIntervalMs;
     if ((min - lastUpload) * 60_000 >= interval) {
       used += c.task + c.balancedFix + c.uploadCell;
