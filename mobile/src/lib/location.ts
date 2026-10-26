@@ -17,7 +17,7 @@ import * as BackgroundTask from 'expo-background-task';
 import { approximate, distanceM, type CircleClient } from '@homecircle/core';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSettings, getLastUpload, locationProfileOf, setLastUpload, type LastUpload } from './storage';
-import { checkPlaces, geofenceId, sharingClients } from './places';
+import { HERE_PREFIX, checkPlaces, geofenceId, sharingClients } from './places';
 import { diag } from './diagnostics';
 import { APP_VERSION } from './updates';
 import { phoneHealth } from './health';
@@ -36,6 +36,11 @@ export const PUSH_TASK = 'homecircle-push';
 // Farther than this from the last update (or the last fix) counts as moving.
 const MOVED_M = 100;
 const MOTION_KEY = 'homecircle.motion';
+// Still mode: after this long without moving, stop asking for location and
+// watch a circle this big around the phone instead (leaving it wakes us).
+const STILL_AFTER_MS = 10 * 60_000;
+const HERE_RADIUS_M = 250;
+const STILL_KEY = 'homecircle.still';
 const MAX_GEOFENCES = 20; // iOS limit per app
 // Smallest radius the OS watches reliably; smaller places are still checked
 // against real positions (lib/places.ts), just not used as OS geofences.
@@ -301,6 +306,16 @@ export async function startBackgroundUpdates(): Promise<SharingMode> {
   if (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK).catch(() => false)) {
     await Location.stopLocationUpdatesAsync(LOCATION_TASK);
   }
+  // Still mode: no location requests until the phone leaves the circle around it.
+  if (await getStillHere()) {
+    if (policy.stillMode) {
+      await registerHeartbeat();
+      return 'background';
+    }
+    // Still mode no longer applies (another stop, or charging): moving mode, no circle.
+    await AsyncStorage.removeItem(STILL_KEY);
+    syncGeofences().catch(() => {});
+  }
   await Location.startLocationUpdatesAsync(LOCATION_TASK, {
     // Wi-Fi and cell towers; GPS only while charging (the policy says which).
     accuracy: policy.movingAccuracy === 'high' ? Location.Accuracy.High : Location.Accuracy.Balanced,
@@ -326,13 +341,49 @@ export async function startBackgroundUpdates(): Promise<SharingMode> {
       notificationColor: '#2F7D6D',
     },
   });
+  await registerHeartbeat();
+  return 'background';
+}
+
+async function registerHeartbeat() {
   try {
     // As often as Android allows; heartbeatDue() decides whether it does anything.
     await BackgroundTask.registerTaskAsync(HEARTBEAT_TASK, { minimumInterval: 15 });
   } catch {
     /* unavailable (e.g. simulator) */
   }
-  return 'background';
+}
+
+/** Where the phone went still (still mode), or null while it's moving. */
+export async function getStillHere(): Promise<{ lat: number; lng: number; since: number } | null> {
+  try {
+    return JSON.parse((await AsyncStorage.getItem(STILL_KEY)) || 'null');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Still mode, from the heartbeat: still for 10 minutes and the policy allows
+ * it, so stop the location request and watch a 250 m circle around the phone.
+ */
+export async function maybeEnterStillMode(): Promise<boolean> {
+  const [policy, motion, here] = await Promise.all([currentPolicy(), getMotion(), getStillHere()]);
+  if (here || !policy.stillMode || !motion || motion.moving || motion.pending || Date.now() - motion.stillSince < STILL_AFTER_MS) return false;
+  await AsyncStorage.setItem(STILL_KEY, JSON.stringify({ lat: motion.lat, lng: motion.lng, since: Date.now() }));
+  if (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK).catch(() => false)) await Location.stopLocationUpdatesAsync(LOCATION_TASK);
+  await syncGeofences();
+  diag('still-mode', { on: true });
+  return true;
+}
+
+/** Moving again (the phone left the circle around it, or still mode no longer applies): ask for location again. */
+export async function leaveStillMode(why: string) {
+  if (!(await getStillHere())) return;
+  await AsyncStorage.removeItem(STILL_KEY);
+  diag('still-mode', { on: false, why });
+  await startBackgroundUpdates().catch((e) => diag('error', { where: 'still-mode', msg: String(e?.message ?? e).slice(0, 100) }));
+  await syncGeofences();
 }
 
 export async function stopBackgroundUpdates() {
@@ -386,7 +437,9 @@ async function syncGeofencesNow() {
   const last = await getLastUpload();
   const places = [...unique.values()];
   if (last) places.sort((a, b) => distanceM(last, a) - distanceM(last, b));
-  const regions = places.slice(0, MAX_GEOFENCES).map((p) => ({
+  // In still mode, one of them is the circle around the phone.
+  const here = await getStillHere();
+  const regions = places.slice(0, here ? MAX_GEOFENCES - 1 : MAX_GEOFENCES).map((p) => ({
     identifier: p.identifier,
     latitude: p.lat,
     longitude: p.lng,
@@ -394,6 +447,7 @@ async function syncGeofencesNow() {
     notifyOnEnter: true,
     notifyOnExit: true,
   }));
+  if (here) regions.push({ identifier: `${HERE_PREFIX}${Math.round(here.since / 1000)}`, latitude: here.lat, longitude: here.lng, radius: HERE_RADIUS_M, notifyOnEnter: false, notifyOnExit: true });
   const started = await Location.hasStartedGeofencingAsync(GEOFENCE_TASK).catch(() => false);
   if (!settings.sharing || bg?.status !== 'granted' || !regions.length) {
     if (started) await Location.stopGeofencingAsync(GEOFENCE_TASK);

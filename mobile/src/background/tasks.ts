@@ -4,8 +4,8 @@ import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import * as BackgroundTask from 'expo-background-task';
-import { upload, report, freshFix, heartbeatDue, getMotion, shareNow, LOCATION_TASK, GEOFENCE_TASK, HEARTBEAT_TASK, PUSH_TASK } from '../lib/location';
-import { checkPlaces, flushOutbox } from '../lib/places';
+import { upload, report, freshFix, heartbeatDue, getMotion, leaveStillMode, maybeEnterStillMode, shareNow, LOCATION_TASK, GEOFENCE_TASK, HEARTBEAT_TASK, PUSH_TASK } from '../lib/location';
+import { HERE_PREFIX, checkPlaces, flushOutbox } from '../lib/places';
 import { diag } from '../lib/diagnostics';
 import { loadedClients } from '../lib/circle';
 import { ensureNotificationChannels, notifyNewMessages } from '../lib/notify';
@@ -53,6 +53,7 @@ TaskManager.defineTask(HEARTBEAT_TASK, async () => {
     // Nothing to send yet (lib/locationPolicy.ts): don't wake the location hardware.
     if (!(await heartbeatDue())) {
       diag('wake:heartbeat', { fix: 'skipped' });
+      await maybeEnterStillMode().catch(() => false);
       await checkForUpdateInBackground().catch(() => {});
       return BackgroundTask.BackgroundTaskResult.Success;
     }
@@ -69,6 +70,8 @@ TaskManager.defineTask(HEARTBEAT_TASK, async () => {
     // A position held back while moving goes now (the drive's end).
     if (loc) await report(loc, 'update', { force: pending });
     else await flushOutbox().catch(() => 0);
+    // Still for 10 minutes: stop asking for location until the phone moves.
+    await maybeEnterStillMode().catch(() => false);
     // A newer app? At most every 4 hours; says so once per version.
     await checkForUpdateInBackground().catch(() => {});
     return BackgroundTask.BackgroundTaskResult.Success;
@@ -90,6 +93,12 @@ const GEOFENCE_FIX_MAX_AGE_MS = 2 * 60_000;
 // fix is stale or too rough to tell, the OS report decides (lib/places.ts).
 TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Location.LocationRegion }>(GEOFENCE_TASK, async ({ data, error }) => {
   if (error || !data?.region?.identifier) return;
+  // Left the circle around a still phone: moving again.
+  if (data.region.identifier.startsWith(HERE_PREFIX)) {
+    countWake('geofence');
+    if (data.eventType === Location.GeofencingEventType.Exit) await leaveStillMode('left').catch(() => {});
+    return;
+  }
   const action = data.eventType === Location.GeofencingEventType.Enter ? 'arrived' : 'left';
   try {
     const loc = await freshFix(GEOFENCE_FIX_TIMEOUT_MS);
