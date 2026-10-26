@@ -298,6 +298,9 @@ export type PluginSettings = {
   suggested: Record<string, string>;
 };
 
+/** Which circle a chat push is about: a short hash of the receiving member's id (only that phone can match it). */
+export function pushHint(memberId: string): string;
+
 export const ACCOUNT_KEY: string;
 
 /** Why a device's keys were deleted, as passed with the 'signedOut' event. */

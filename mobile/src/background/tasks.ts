@@ -13,6 +13,7 @@ import { collectAndPlay } from '../lib/chirp';
 import { checkForUpdateInBackground } from '../lib/updates';
 import { SOS_TASK, onSosFix } from '../lib/sos';
 import { countFetch, countFixes, countWake, currentNet } from '../lib/energy';
+import { pushHint } from '@homecircle/core';
 
 const log = (...a: unknown[]) => {
   if (__DEV__) console.log('[homecircle:bg]', ...a);
@@ -115,9 +116,9 @@ TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Locati
 });
 
 // Silent pushes from the server carry no content, only what to do:
-// { t: 'loc_req' } someone tapped "Locate"; { t: 'msg' } there's a new
-// message to fetch, decrypt and show. They don't say which circle, so we
-// check them all.
+// { t: 'loc_req' } someone tapped "Locate"; { t: 'msg', c } there's a new
+// message to fetch, decrypt and show, in the circle whose pushHint is c (all
+// circles if none matches, or from an older server).
 TaskManager.defineTask<Notifications.NotificationTaskPayload>(PUSH_TASK, async ({ data, error }) => {
   if (error) return;
   const raw = JSON.stringify(data ?? {});
@@ -134,7 +135,10 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(PUSH_TASK, async (
       await ensureNotificationChannels();
       // One radio wake for the fetches that follow.
       countFetch(await currentNet());
-      for (const client of await loadedClients()) {
+      const hint = raw.match(/\\?"c\\?"\s*:\s*\\?"([A-Za-z0-9_-]{12})/)?.[1];
+      const clients = await loadedClients();
+      const only = hint ? clients.filter((c) => c.account && pushHint(c.account.memberId) === hint) : [];
+      for (const client of only.length ? only : clients) {
         try {
           await client.fetchMessages();
           await notifyNewMessages(client, client.messages);

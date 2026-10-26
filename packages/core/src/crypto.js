@@ -15,6 +15,13 @@ export class CryptoError extends Error {
 export const randomBytes = (n) => nacl.randomBytes(n);
 export const randomId = (bytes = 16) => toB64(nacl.randomBytes(bytes));
 
+/**
+ * Which circle a push is about, in a form only the receiving phone can match:
+ * a short hash of its own member id in that circle. The server puts it in a
+ * chat push; the phone compares it with each of its circles.
+ */
+export const pushHint = (memberId) => toB64(nacl.hash(utf8Encode(`homecircle-push|${memberId}`))).slice(0, 12);
+
 /** Domain-separated key derivation for uniformly random secrets. */
 export function kdf(label, secret) {
   return nacl.hash(concat(utf8Encode(label), secret)).slice(0, 32);
