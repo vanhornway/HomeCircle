@@ -60,11 +60,11 @@ window.HOMECIRCLE_CHANGELOG = [
     title: 'Choose your circle’s features, shopping lists, reminders, and photos for the helper',
     items: [
       'Each circle chooses its features: when you make a circle, and any time after in Settings → Features (admins). Turn off chirps, polls, SOS, Locate or anything else your circle doesn’t want, and it disappears from everyone’s phone. Circles you already have keep everything on.',
-      'Shopping lists in the helper: one per store (Costco, the desi store…). Anyone adds, ticks and removes items; Done shopping clears what was bought. The things you buy most go to the top and are suggested. Ask in chat too: “/Chirya what’s on the Costco list?”, “/Chirya add milk to Costco”.',
+      'Shopping lists in the helper: one per store (Costco, the desi store…). Anyone adds, ticks and removes items; Done shopping clears what was bought. The things you buy most go to the top and are suggested. Ask in chat too: “/Birdie what’s on the Costco list?”, “/Birdie add milk to Costco”.',
       'Send the helper a receipt and it counts what you bought, so your usual items go first.',
       'Long-term reminders: car registration, passports, insurance. Anyone adds one; every admin is reminded 30, 7 and 1 days before, on the day, and every few days after until someone taps Done. Yearly ones come back next year.',
       'Photos and files for the helper (📎 in its chat, or while asking it): a flyer, a school letter, a PDF, a Word document or a spreadsheet. It reads it, shows what it would keep, and you Save or Discard. Then delete the file from the server, or keep it with the notes. Files are encrypted on your phone.',
-      'The helper tags everything it remembers, so it’s easier to find later; dreaming adds or fixes tags on what’s already there. “/Chirya/dream” in its own chat now works too.',
+      'The helper tags everything it remembers, so it’s easier to find later; dreaming adds or fixes tags on what’s already there. “/Birdie/dream” in its own chat now works too.',
     ],
   },
   {
@@ -73,7 +73,7 @@ window.HOMECIRCLE_CHANGELOG = [
     title: 'Calendar PDFs, dreaming, and tappable links',
     items: [
       'The circle agent reads calendar PDFs: send it a link to a public PDF (a school calendar, a sports schedule, or a Google Drive or Dropbox share link). It lists the dates it found, and whoever sent it taps Save or Discard. It checks the PDF every 6 hours and asks again only if the file changes.',
-      'Dreaming: an admin types “/Chirya/dream” (with your agent’s name) or taps Dream in Memory, and the agent goes over everything the circle shares. It sorts each note into people, places, events, schedules, decisions or facts, gives it a clearer title and dates, links notes to each other, and merges duplicates. One Undo takes it all back.',
+      'Dreaming: an admin types “/Birdie/dream” (with your agent’s name) or taps Dream in Memory, and the agent goes over everything the circle shares. It sorts each note into people, places, events, schedules, decisions or facts, gives it a clearer title and dates, links notes to each other, and merges duplicates. One Undo takes it all back.',
       'Memory is grouped by kind, with a count for each, and lists calendars and PDFs together.',
       'Links in messages open in your browser, in the app and on the web page.',
       'Settings shows the app’s version and build, and checks for a new one when you tap it.',
