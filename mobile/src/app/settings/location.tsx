@@ -101,6 +101,21 @@ export default function LocationSettings() {
         </SettingsGroup>
       ) : null}
 
+      {clients.some((c) => c.feature('homeAssistant')) ? (
+        <SettingsGroup title="Home Assistant">
+          <ToggleRow
+            title="Send my location to Home Assistant"
+            detail={
+              settings.sendToHomeAssistant
+                ? 'Your circle’s Home Assistant gets your location with each update, so it can start automations (like lights on when you get home).'
+                : 'Your circle’s Home Assistant doesn’t get your location. Your circle still sees it on the map.'
+            }
+            value={settings.sendToHomeAssistant}
+            onChange={(v) => updateSettings({ sendToHomeAssistant: v })}
+          />
+        </SettingsGroup>
+      ) : null}
+
       {clients.some((c) => c.feature('frequentPlaces')) ? <FrequentSettings clients={clients} settings={settings} onChange={() => {}} /> : null}
     </SettingsPage>
   );

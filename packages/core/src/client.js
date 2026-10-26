@@ -1396,6 +1396,7 @@ export class CircleClient {
    * after a day without one (a phone that died mid-SOS).
    */
   activeSos(now = Date.now()) {
+    if (!this.feature('sos')) return [];
     const open = new Map(); // memberId -> sos
     for (const m of this.messages) {
       const s = m.kind === 'chat' && !m.peer ? m.body?.sos : null;
@@ -1814,6 +1815,10 @@ export class CircleClient {
         break;
       case 'chirp':
         this.emit('chirp');
+        break;
+      case 'plugin':
+        // An admin saved a plugin's settings (Home Assistant: send it your position now).
+        this.emit('plugin', e.id);
         break;
       case 'frequent':
         await this.fetchFrequent();

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { FEATURE_GROUPS, FEATURES, type FeatureId, type Features } from '@homecircle/core';
 import { useTheme } from '../theme';
@@ -38,7 +38,18 @@ const label = (id: FeatureId) => FEATURES.find((f) => f.id === id)?.label ?? id;
  * Every feature a circle can have, by group, with a switch each. Used when
  * making a circle and in Settings → Features; read-only for non-admins.
  */
-export function FeaturePicker({ value, onChange, readOnly = false }: { value: Features; onChange: (next: Features) => void; readOnly?: boolean }) {
+export function FeaturePicker({
+  value,
+  onChange,
+  readOnly = false,
+  below,
+}: {
+  value: Features;
+  onChange: (next: Features) => void;
+  readOnly?: boolean;
+  // Shown under a feature's switch while it's on (a plugin's settings).
+  below?: (id: FeatureId) => ReactNode;
+}) {
   // Only what this server knows (an older one has no plugins).
   const shown = FEATURES.filter((f) => f.id in value);
   return (
@@ -47,7 +58,7 @@ export function FeaturePicker({ value, onChange, readOnly = false }: { value: Fe
         <SettingsGroup key={group} title={group}>
           {shown.filter((f) => f.group === group).map((f) => {
             const blocked = f.needs && !value[f.needs];
-            return (
+            return [
               <ToggleRow
                 key={f.id}
                 title={f.label}
@@ -55,8 +66,9 @@ export function FeaturePicker({ value, onChange, readOnly = false }: { value: Fe
                 value={value[f.id]}
                 disabled={readOnly}
                 onChange={(on) => onChange({ ...value, [f.id]: on })}
-              />
-            );
+              />,
+              value[f.id] && below ? <View key={`${f.id}-below`}>{below(f.id)}</View> : null,
+            ];
           })}
         </SettingsGroup>
       ))}

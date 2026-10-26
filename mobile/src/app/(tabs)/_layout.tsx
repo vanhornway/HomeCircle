@@ -185,10 +185,14 @@ function useCircleLifecycle(circlesKey: string) {
         shareNow('requested').catch(() => {});
       }),
       client.on('places', () => syncGeofences().catch(() => {})),
+      // An admin just set up Home Assistant: send this phone's position there now.
+      client.on('plugin', (id: string) => {
+        if (id === 'homeAssistant') shareNow('requested').catch(() => {});
+      }),
       client.on('newMessage', (m) => {
         notifyNewMessages(client, [m]).catch(() => {});
         // Someone's SOS while the app is open: show it right away.
-        if (m.kind === 'chat' && !m.peer && m.body?.sos?.state === 'start') router.push({ pathname: '/sos', params: { circle: client.circleId!, member: m.from } });
+        if (client.feature('sos') && m.kind === 'chat' && !m.peer && m.body?.sos?.state === 'start') router.push({ pathname: '/sos', params: { circle: client.circleId!, member: m.from } });
       }),
       client.on('chirp', () => {
         client
@@ -264,7 +268,10 @@ export default function TabsLayout() {
   // Restart connections when circles are added or removed (not on switching).
   const { clients } = useCircles();
   useSettings(); // place alerts on/off changes what counts as unread
-  const unread = useAllCircles(['messages']).reduce((n, c) => n + unreadInCircle(c), 0);
+  const all = useAllCircles(['messages', 'circle']);
+  const unread = all.reduce((n, c) => n + unreadInCircle(c), 0);
+  // Places only while a circle on this phone shares locations.
+  const places = !all.length || all.some((c) => c.feature('locationSharing'));
   useCircleLifecycle(clients.map((c) => c.accountKey).join('|'));
   useOpenChatFromNotification();
   // A newer app? Checked at most every 4 hours, on opening and coming back.
@@ -292,7 +299,7 @@ export default function TabsLayout() {
         name="chat"
         options={{ title: 'Chats', tabBarBadge: unread ? (unread > 9 ? '9+' : unread) : undefined, tabBarIcon: ({ color }) => <Icon name="chat" color={color} size={28} /> }}
       />
-      <Tabs.Screen name="places" options={{ title: 'Places', tabBarIcon: ({ color }) => <Icon name="place" color={color} size={28} /> }} />
+      <Tabs.Screen name="places" options={{ href: places ? undefined : null, title: 'Places', tabBarIcon: ({ color }) => <Icon name="place" color={color} size={28} /> }} />
       <Tabs.Screen name="settings" options={{ title: 'Settings', tabBarIcon: ({ color }) => <Icon name="settings" color={color} size={28} /> }} />
     </Tabs>
   );

@@ -95,7 +95,7 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
   }
   const id = client.circleId!;
   // An SOS rings even if you're reading that chat; "safe now" stops it.
-  const sosOf = (m: Message) => (m.seq > last && m.from !== me && m.kind === 'chat' && !m.peer ? m.body?.sos?.state : null);
+  const sosOf = (m: Message) => (client.feature('sos') && m.seq > last && m.from !== me && m.kind === 'chat' && !m.peer ? m.body?.sos?.state : null);
   for (const m of messages) {
     if (sosOf(m) === 'start') await alertSos(client, m).catch(() => {});
     if (sosOf(m) === 'safe') stopAlarm();

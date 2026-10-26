@@ -71,7 +71,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   // The circle's agent: asked with "/Name …", the 🤖 button, or in its own chat.
-  const agent = client.agent;
+  const agent = client.feature('agent') ? client.agent : null;
   const withAgent = !!agent && peer === agent.id;
   const [asking, setAsking] = useState(false);
   const [pollOpen, setPollOpen] = useState(false);

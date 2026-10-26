@@ -1067,7 +1067,7 @@ function renderMarkers() {
   if (!map) return;
   const seen = new Set();
   for (const m of client.memberList()) {
-    const loc = client.locations.get(m.id);
+    const loc = client.feature('locationSharing') ? client.locations.get(m.id) : null;
     if (!loc) continue;
     seen.add(m.id);
     const stale = Date.now() - loc.ts > 2 * 3600_000;
@@ -1115,12 +1115,15 @@ function renderPlaces() {
 
 // --- chat ----------------------------------------------------------------
 
+/** The circle's helper, if the circle has it on. */
+const helper = () => (client.feature('agent') ? client.agent : null);
+
 function chatView() {
   const me = client.account.memberId;
   if (ui.peer && !client.members.get(ui.peer)) ui.peer = null;
   // Group chat, or a direct conversation with one member.
   const others = client.memberList().filter((m) => !m.isMe);
-  const peers = [...new Set([...client.directPeers(), ...others.map((m) => m.id)])];
+  const peers = [...new Set([...client.directPeers(), ...others.map((m) => m.id)])].filter((id) => id !== client.agent?.id || helper());
   const picker = h(
     'select',
     {
@@ -1281,7 +1284,7 @@ function chatView() {
           input.value = '';
           try {
             // The circle's agent: "/Name …" or "/agent …" in the group, or anything in its own chat.
-            const agent = client.agent;
+            const agent = helper();
             const q = agent && !ui.peer ? agentQuestion(text, agent.name) : null;
             if (agent && ui.peer === agent.id) await client.askAgent(text, { peer: ui.peer });
             else if (q) await client.askAgent(q);
@@ -1390,11 +1393,11 @@ function chatView() {
     ui.chatForm.prepend(ui.pollForm);
   }
   const form = ui.chatForm;
-  const agentHere = client.agent && (!ui.peer || ui.peer === client.agent.id);
+  const agentHere = helper() && (!ui.peer || ui.peer === helper().id);
   form.querySelector('.attach-btn').classList.toggle('hidden', !agentHere || !client.feature('uploads'));
   form.querySelector('.poll-btn').classList.toggle('hidden', !client.feature('polls'));
   // This kind of chat turned off: no box to write in (the helper's own chat always works).
-  const canWrite = ui.peer ? (client.agent && ui.peer === client.agent.id) || client.feature('directMessages') : client.feature('groupChat');
+  const canWrite = ui.peer ? (helper() && ui.peer === helper().id) || client.feature('directMessages') : client.feature('groupChat');
   const input = form.querySelector(':scope > input:not([type=file])');
   input.placeholder = ui.peer ? `Message ${peerName}` : 'Message your circle';
   const refocus = document.activeElement === input || ui.focusChat;

@@ -85,6 +85,8 @@ export interface Settings {
   readReceipts: boolean;
   /** Weather tile temperatures: from the phone's region, or always °F or °C. */
   weatherUnits: 'auto' | 'f' | 'c';
+  /** Send your position to the circle's Home Assistant too (circles with that plugin on). */
+  sendToHomeAssistant: boolean;
   /** Map tiles, from the server's /info. */
   tileUrl: string;
   tileAttribution: string;
@@ -111,6 +113,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sosThroughDnd: false,
   readReceipts: true,
   weatherUnits: 'auto',
+  sendToHomeAssistant: true,
   tileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   tileAttribution: '&copy; OpenStreetMap contributors',
 };

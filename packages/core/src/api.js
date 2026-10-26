@@ -117,6 +117,13 @@ export class Api {
   keepFile = (id) => this.req('POST', `/files/${encodeURIComponent(id)}/keep`);
   /** The weather plugin: only a grid cell is sent (rounded here too, to 0.1°). */
   weather = (lat, lng) => this.req('GET', `/plugins/weather/now?lat=${Math.round(lat * 10) / 10}&lng=${Math.round(lng * 10) / 10}`);
+  /** Air and pollen, the same way. */
+  air = (lat, lng) => this.req('GET', `/plugins/air/now?lat=${Math.round(lat * 10) / 10}&lng=${Math.round(lng * 10) / 10}`);
+  /** A plugin's settings for this circle (admins): secrets come back only as { set }. */
+  pluginSettings = (id) => this.req('GET', `/plugins/${encodeURIComponent(id)}/settings`);
+  putPluginSettings = (id, values) => this.req('PUT', `/plugins/${encodeURIComponent(id)}/settings`, { values });
+  /** Your position, for your device in the circle's Home Assistant. */
+  homeAssistantLocation = (body) => this.req('POST', '/plugins/homeAssistant/location', body);
   chirps = () => this.req('GET', '/chirps');
   // Recovery with the setup code (no account needed), and rejoin requests.
   recover = (setupToken) => this.req('POST', '/recover', { setupToken });

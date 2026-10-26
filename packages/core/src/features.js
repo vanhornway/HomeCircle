@@ -23,6 +23,8 @@ export const FEATURES = [
   { id: 'uploads', group: 'Helper', label: 'Photos and files to the helper', detail: 'Send it a photo, PDF, document or sheet to read.', on: false, needs: 'agent' },
   // Plugins: parts of the server a circle can add (0.14+).
   { id: 'weather', group: 'Plugins', label: 'Weather', detail: 'The weather where the person you select is, in the corner of the map.', on: false },
+  { id: 'air', group: 'Plugins', label: 'Air and pollen', detail: 'Air quality and pollen where the person you select is, next to the weather (swipe the tile).', on: false },
+  { id: 'homeAssistant', group: 'Plugins', label: 'Home Assistant', detail: 'Everyone’s location in your Home Assistant, to start automations. Each person can turn theirs off.', on: false, needs: 'locationSharing' },
 ];
 
 export const FEATURE_GROUPS = ['Location', 'Chat', 'Alerts', 'Helper', 'Plugins'];

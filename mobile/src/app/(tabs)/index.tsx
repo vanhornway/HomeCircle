@@ -11,11 +11,11 @@ import { CircleSwitcher } from '../../components/CircleSwitcher';
 import { UpdateBanner } from '../../components/UpdateBanner';
 import { SosBanner } from '../../components/SosBanner';
 import { SosButton } from '../../components/SosButton';
-import { WeatherTile } from '../../components/WeatherTile';
+import { PluginTiles } from '../../components/PluginTiles';
 import { RejoinBanner } from '../../components/RejoinBanner';
 import { PersonSheet } from '../../components/PersonSheet';
 import { useServerState } from '../../lib/connection';
-import { initials, useAllCircles, useCircle } from '../../lib/useCircle';
+import { initials, useCircle } from '../../lib/useCircle';
 import { chirpWithChoice } from '../../lib/chirp';
 import { canLocate, everyoneCoolingDown, isAsking, memberState, locatePerson, locateState, lowBattery, refreshEveryone, statusLine, useLocateVersion } from '../../lib/people';
 import { DEFAULT_SETTINGS, getSettings } from '../../lib/storage';
@@ -26,7 +26,6 @@ const STALE_MS = 2 * 3600_000;
 export default function MapTab() {
   const t = useTheme();
   const client = useCircle();
-  const allCircles = useAllCircles(['circle']);
   const server = useServerState();
   const [tiles, setTiles] = useState(DEFAULT_SETTINGS);
   const [focus, setFocus] = useState<{ lat: number; lng: number; key: number } | null>(null);
@@ -59,8 +58,9 @@ export default function MapTab() {
 
   const members = client.memberList();
   // Circle data is mutated in place, so memoize on content rather than identity.
+  const sharing = client.feature('locationSharing');
   const mapMembersRaw: MapMember[] = members.flatMap((m) => {
-    const loc = client.locations.get(m.id);
+    const loc = sharing ? client.locations.get(m.id) : null;
     if (!loc) return [];
     return [
       {
@@ -105,8 +105,8 @@ export default function MapTab() {
             setSheet(id);
           }}
         />
-        {/* SOS goes to every circle on this phone that has it on. */}
-        {allCircles.some((c) => c.feature('sos')) ? <SosButton style={{ position: 'absolute', right: 16, bottom: 34 }} /> : null}
+        {/* The button follows the circle on screen; an SOS goes to every circle on this phone that has it on. */}
+        {client.feature('sos') ? <SosButton style={{ position: 'absolute', right: 16, bottom: 34 }} /> : null}
         <SafeAreaView edges={['top']} style={{ position: 'absolute', left: 12, right: 12, top: 0 }} pointerEvents="box-none">
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }} pointerEvents="box-none">
             <View
@@ -124,12 +124,10 @@ export default function MapTab() {
             >
               <CircleSwitcher />
             </View>
-            {/* The weather plugin, if this circle has it: always the top-right corner. */}
-            {client.feature('weather') ? (
-              <View style={{ marginTop: 8 }}>
-                <WeatherTile client={client} memberId={selected} />
-              </View>
-            ) : null}
+            {/* The plugins' tiles (weather, air and pollen), if this circle has any: always the top-right corner. */}
+            <View style={{ marginTop: 8 }}>
+              <PluginTiles client={client} memberId={selected} />
+            </View>
           </View>
           <SosBanner style={{ marginTop: 10 }} />
           <ServerBanner style={{ marginTop: 10 }} />

@@ -898,7 +898,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   });
 
   // --- plugins (weather, …): each behind its feature -----------------------
-  mountPlugins(r, { requireFeature, fetchImpl: config.pluginFetch, log });
+  mountPlugins(r, { requireFeature, requireAdmin, store, hub, fetchImpl: config.pluginFetch ?? fetch, log, version: config.version });
 
   return r;
 }

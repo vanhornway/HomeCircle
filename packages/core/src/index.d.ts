@@ -257,6 +257,11 @@ export class Api {
   deleteInvite(id: string): Promise<{ ok: true }>;
   /** The weather plugin, for a grid cell (lat and lng rounded to 0.1°). */
   weather(lat: number, lng: number): Promise<Weather>;
+  /** The air and pollen plugin, the same way. */
+  air(lat: number, lng: number): Promise<AirQuality>;
+  pluginSettings(id: string): Promise<PluginSettings>;
+  putPluginSettings(id: string, values: Record<string, string>): Promise<{ ok: true; values: PluginSettings['values']; ready: boolean }>;
+  homeAssistantLocation(body: { lat: number; lng: number; accuracy?: number | null; battery?: number | null; charging?: boolean | null; speed?: number | null; name: string }): Promise<{ ok: true; entity: string }>;
   [key: string]: any;
 }
 
@@ -270,6 +275,25 @@ export type Weather = {
   hours: { time: string; temp: number | null; rain: number | null; code: number | null; day: boolean }[];
   units: 'C';
   source: string;
+};
+
+/** What the air and pollen plugin answers. Pollen levels: 0 none … 5 very high. */
+export type AirQuality = {
+  cell: { lat: number; lng: number };
+  at: string | null;
+  aqi: { us: number | null; eu: number | null; category: string | null; pm25: number | null; pm10: number | null; ozone: number | null };
+  hours: { time: string; aqi: number | null }[];
+  pollen: { source: 'Open-Meteo' | 'Google'; types: { id: 'tree' | 'grass' | 'weed'; label: string; level: number | null; category: string | null }[] } | null;
+  source: string;
+};
+
+/** A plugin's settings, as an admin sees them. */
+export type PluginField = { id: string; label: string; secret?: boolean; optional?: boolean; placeholder?: string; help?: string };
+export type PluginSettings = {
+  fields: PluginField[];
+  values: Record<string, string | { set: boolean }>;
+  ready: boolean;
+  suggested: Record<string, string>;
 };
 
 export const ACCOUNT_KEY: string;
@@ -528,7 +552,9 @@ export type FeatureId =
   | 'shoppingLists'
   | 'reminders'
   | 'uploads'
-  | 'weather';
+  | 'weather'
+  | 'air'
+  | 'homeAssistant';
 export type Features = Record<FeatureId, boolean>;
 export type FeatureInfo = { id: FeatureId; group: 'Location' | 'Chat' | 'Alerts' | 'Helper' | 'Plugins'; label: string; detail: string; on: boolean; needs?: FeatureId };
 export const FEATURES: FeatureInfo[];

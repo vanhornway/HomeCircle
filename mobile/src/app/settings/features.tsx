@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, Text } from 'react-native';
 import type { Features } from '@homecircle/core';
 import { FeaturePicker } from '../../components/FeaturePicker';
+import { PluginSetup } from '../../components/PluginSetup';
 import { GroupBody, SettingsGroup, SettingsPage } from '../../components/SettingsKit';
 import { errorText } from '../../lib/circle';
 import { useCircle } from '../../lib/useCircle';
@@ -33,7 +34,13 @@ export default function FeatureSettings() {
           </Text>
         </GroupBody>
       </SettingsGroup>
-      <FeaturePicker value={value} onChange={change} readOnly={!admin} />
+      <FeaturePicker
+        value={value}
+        onChange={change}
+        readOnly={!admin}
+        // Plugins with settings: filled in here once they're on.
+        below={(id) => (admin && !pending && client.feature(id) && (id === 'homeAssistant' || id === 'air') ? <PluginSetup client={client} id={id} /> : null)}
+      />
     </SettingsPage>
   );
 }

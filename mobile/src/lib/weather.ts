@@ -5,10 +5,8 @@
 import { useEffect, useState } from 'react';
 import * as Location from 'expo-location';
 import type { CircleClient, MemberLocation, Weather } from '@homecircle/core';
+import { cellKey, useCellData } from './plugins';
 
-const FRESH_MS = 10 * 60_000;
-const cellKey = (lat: number, lng: number) => `${Math.round(lat * 10) / 10},${Math.round(lng * 10) / 10}`;
-const cache = new Map<string, { at: number; data: Weather }>();
 const towns = new Map<string, string | null>();
 
 /** WMO weather codes (what Open-Meteo sends) → words and an icon. */
@@ -43,37 +41,7 @@ export function prefersFahrenheit(choice: 'auto' | 'f' | 'c'): boolean {
 export const deg = (c: number | null, f: boolean) => (c == null ? '–' : `${Math.round(f ? c * 1.8 + 32 : c)}°`);
 
 /** The weather for someone's location, refreshed every 10 minutes while shown. */
-export function useWeather(client: CircleClient, loc: MemberLocation | undefined) {
-  const key = loc ? cellKey(loc.lat, loc.lng) : null;
-  const [state, setState] = useState<{ key: string | null; data: Weather | null; error: string | null }>(() => ({ key, data: key ? (cache.get(key)?.data ?? null) : null, error: null }));
-  useEffect(() => {
-    if (!key || !loc) return;
-    let live = true;
-    const load = () => {
-      const hit = cache.get(key);
-      if (hit && Date.now() - hit.at < FRESH_MS) {
-        setState({ key, data: hit.data, error: null });
-        return;
-      }
-      client.api
-        .weather(loc.lat, loc.lng)
-        .then((data: Weather) => {
-          cache.set(key, { at: Date.now(), data });
-          if (live) setState({ key, data, error: null });
-        })
-        .catch((e: Error) => live && setState({ key, data: cache.get(key)?.data ?? null, error: e.message }));
-    };
-    load();
-    const timer = setInterval(load, FRESH_MS);
-    return () => {
-      live = false;
-      clearInterval(timer);
-    };
-    // loc changes on every update; the cell is what matters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, key]);
-  return state.key === key ? state : { key, data: null, error: null };
-}
+export const useWeather = (client: CircleClient, loc: MemberLocation | undefined) => useCellData<Weather>('weather', client, loc, (lat, lng) => client.api.weather(lat, lng));
 
 /** Where someone is, in words: the circle's place they're at, else the town (named on this phone). */
 export function usePlaceName(client: CircleClient, loc: MemberLocation | undefined): string | null {

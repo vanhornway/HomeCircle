@@ -102,6 +102,24 @@ export async function upload(
       });
     }),
   );
+  if (settings.sendToHomeAssistant) {
+    for (const client of targets.filter((c) => c.feature('homeAssistant'))) {
+      const approx = approxCircles.has(client.circleId!);
+      const pos = approx ? approximate(here) : { ...here, accuracy: loc.coords.accuracy };
+      client.api
+        .homeAssistantLocation({
+          ...pos,
+          speed: approx ? null : loc.coords.speed,
+          battery: battery.battery == null ? null : Math.round(battery.battery * 100),
+          charging: battery.charging,
+          name: client.account?.profile.name ?? 'Someone',
+        })
+        .catch((e: { status?: number; message?: string }) => {
+          // 409: not set up yet. Anything else is worth a line in Diagnostics.
+          if (e.status !== 409) diag('home-assistant-failed', { error: String(e.message ?? '').slice(0, 80) });
+        });
+    }
+  }
   const ok = results.filter((r) => r.status === 'fulfilled').length;
   if (!ok) {
     diag('upload-failed', { trigger, circles: results.length, error: String((results[0] as PromiseRejectedResult).reason?.message ?? '').slice(0, 80) });

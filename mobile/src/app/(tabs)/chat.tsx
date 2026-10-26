@@ -65,7 +65,7 @@ export default function Chats() {
       unread: unreadIn(c, null),
     };
     // Direct chats: if the circle has them, the helper's own chat, and check-ins (which come as direct messages).
-    const dmOn = (peer: string) => c.feature('directMessages') || peer === c.agent?.id || c.feature('checkIns');
+    const dmOn = (peer: string) => (peer === c.agent?.id ? c.feature('agent') : c.feature('directMessages') || c.feature('checkIns'));
     const dms = c.directPeers().filter(dmOn).map((peer): Row => {
       const m = c.members.get(peer);
       return {

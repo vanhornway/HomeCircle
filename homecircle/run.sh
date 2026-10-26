@@ -14,6 +14,8 @@ SETUP_CODE="$(opt setup_code)"
 export DATA_DIR=/data/homecircle
 export PORT=8080
 export TRUST_PROXY=true
+# The Home Assistant plugin offers this Home Assistant's own address.
+export HOMECIRCLE_ADDON=true
 [ -n "$SETUP_CODE" ] && export SETUP_TOKEN="$SETUP_CODE"
 # The circle agent (optional AI helper): runs inside the server when on.
 [ "$(opt run_agent)" = "true" ] && export AGENT=true

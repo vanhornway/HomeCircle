@@ -31,6 +31,8 @@ export default function Places() {
   const clients = useAllCircles(['places', 'locations', 'members', 'circle']);
   const places = sharedPlaces(clients);
   const multi = clients.length > 1;
+  // Arrived and left alerts only in circles that have them.
+  const alerts = clients.some((c) => c.feature('placeAlerts'));
   const settings = useSettings();
   const [adding, setAdding] = useState(false);
   const ruleText = (r: (typeof settings.alertRules)[number]) => {
@@ -63,7 +65,9 @@ export default function Places() {
     <Screen>
       <H1 style={{ marginTop: 4 }}>Places</H1>
       <P muted style={{ marginTop: 6, marginBottom: 18 }}>
-        When someone arrives at or leaves a place, their circle’s group chat gets a message. Each phone detects this itself; the server never learns where your places are.
+        {alerts
+          ? 'When someone arrives at or leaves a place, their circle’s group chat gets a message. Each phone detects this itself; the server never learns where your places are.'
+          : 'Places your circle shares on the map. The server never learns where they are.'}
       </P>
       <Button title="Add a place" variant="primary" onPress={() => router.push('/add-place')} />
       <View style={{ marginTop: 18, gap: 10 }}>
@@ -104,30 +108,34 @@ export default function Places() {
         {!places.length ? <P muted>No places yet. Try Home, School or Work.</P> : null}
       </View>
 
-      <SectionTitle>My alerts</SectionTitle>
-      <Card style={{ gap: 6 }}>
-        {settings.alertRules.map((r) => (
-          <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48 }}>
-            <Icon name="bell" color={t.brand} size={22} />
-            <Text style={{ flex: 1, color: t.text, fontSize: 16 }}>Notify me when {ruleText(r)}</Text>
-            <Button small title="Remove" onPress={() => removeRule(r.id)} />
-          </View>
-        ))}
-        {!settings.alertRules.length ? (
-          <Text style={{ color: t.muted, fontSize: 14, lineHeight: 20 }}>Get a notification when someone arrives at or leaves a place, like “Dad leaves Work”.</Text>
-        ) : null}
-        <Button title="Add an alert" onPress={() => setAdding(true)} style={{ marginTop: 6 }} />
-        <Checkbox
-          checked={settings.notifyAllPlaceAlerts}
-          onChange={(v) => updateSettings({ notifyAllPlaceAlerts: v })}
-          label="Also notify me about everyone else"
-          detail={
-            settings.notifyAllPlaceAlerts
-              ? 'Every arrival and departure in your circles notifies you.'
-              : 'Only the alerts above notify you. Others still show in the group chat.'
-          }
-        />
-      </Card>
+      {alerts ? (
+        <>
+          <SectionTitle>My alerts</SectionTitle>
+          <Card style={{ gap: 6 }}>
+            {settings.alertRules.map((r) => (
+              <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 48 }}>
+                <Icon name="bell" color={t.brand} size={22} />
+                <Text style={{ flex: 1, color: t.text, fontSize: 16 }}>Notify me when {ruleText(r)}</Text>
+                <Button small title="Remove" onPress={() => removeRule(r.id)} />
+              </View>
+            ))}
+            {!settings.alertRules.length ? (
+              <Text style={{ color: t.muted, fontSize: 14, lineHeight: 20 }}>Get a notification when someone arrives at or leaves a place, like “Dad leaves Work”.</Text>
+            ) : null}
+            <Button title="Add an alert" onPress={() => setAdding(true)} style={{ marginTop: 6 }} />
+            <Checkbox
+              checked={settings.notifyAllPlaceAlerts}
+              onChange={(v) => updateSettings({ notifyAllPlaceAlerts: v })}
+              label="Also notify me about everyone else"
+              detail={
+                settings.notifyAllPlaceAlerts
+                  ? 'Every arrival and departure in your circles notifies you.'
+                  : 'Only the alerts above notify you. Others still show in the group chat.'
+              }
+            />
+          </Card>
+        </>
+      ) : null}
       {adding ? <AlertRuleSheet clients={clients} visible onClose={() => setAdding(false)} /> : null}
     </Screen>
   );
