@@ -4,7 +4,7 @@
 // time it sees them), and reads and sends nothing but direct messages, each
 // sealed with a key it shares with one person.
 import { Api, ApiError } from './api.js';
-import { decryptFile, deriveInvite, directKey, generateIdentity, open, parseInviteLink, randomId, seal } from './crypto.js';
+import { decryptFile, deriveInvite, directKey, encryptFile, generateIdentity, open, parseInviteLink, randomId, seal } from './crypto.js';
 import { hasFeature } from './features.js';
 
 const STORAGE_KEY = 'homecircle.agent';
@@ -52,6 +52,13 @@ export class AgentClient {
   /** A file someone sent: fetched from the server and decrypted with the key they sealed to us. */
   async readFile({ id, key }) {
     return decryptFile(await this.api.downloadFile(id), key);
+  }
+
+  /** A file for someone (a memory download): encrypted here, so the server only stores ciphertext. */
+  async sendFile(bytes) {
+    const { key, data } = encryptFile(bytes);
+    const { id } = await this.api.uploadFile(data);
+    return { id, key };
   }
 
   keepFile = (id) => this.api.keepFile(id);

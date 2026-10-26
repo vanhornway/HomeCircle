@@ -4,6 +4,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { strFromU8, unzipSync } from 'fflate';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/index.js';
@@ -543,6 +544,61 @@ test('a memory bigger than one message still loads: the answer comes in parts', 
   assert.equal(big.length, 10);
   assert.equal(big.find((n) => n.title === 'Big note 7').body, body(7));
   for (const n of big) await mom.agentRpc('remove', { id: n.id });
+});
+
+test('Download memory: an Obsidian vault zipped, with calendars, lists, reminders and kept files; private notes only for their owner', async () => {
+  // A private note, and a photo kept with a note (the spending test left the budget spent).
+  await mom.agentRpc('setSettings', { budgetUsd: 100 });
+  await mom.agentRpc('add',{ note: { type: 'fact', title: 'Surprise party', body: 'For [[Dad]], on his birthday.' }, private: true });
+  const peer = mom.agent.id;
+  // Only answers to this test's photo (an earlier test sent one with the same name).
+  const since = Math.max(0, ...mom.conversation(peer).map((m) => m.seq));
+  const fromAgentDm = (c, re) => [...c.conversation(c.agent.id)].reverse().find((m) => m.seq > since && m.from === c.agent.id && re.test(m.body?.text ?? ''));
+  const photo = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...Array.from({ length: 300 }, (_, i) => (i * 7) % 256)]);
+  await mom.sendFileToAgent(photo, { name: 'team-sheet.jpg', mime: 'image/jpeg' }, { peer });
+  const found = await until(mom, (c) => fromAgentDm(c, /I’d keep/));
+  await mom.saveAgentFound(found.body.save.id, true, { peer });
+  const ask = await until(mom, (c) => fromAgentDm(c, /^Delete “team-sheet\.jpg”/));
+  await mom.answerAgentFile(ask.body.fileChoice.id, true, { peer });
+  await until(mom, (c) => fromAgentDm(c, /Kept “team-sheet\.jpg”/));
+
+  const download = async (c) => {
+    const out = await c.agentRpc('exportZip', {}, { timeoutMs: 60_000 });
+    assert.equal(out.parts.length, 1);
+    const zip = unzipSync(await c.openAgentFile(out.parts[0]));
+    await mom.api.deleteFile(out.parts[0].id);
+    return { out, zip, text: (p) => strFromU8(zip[p]) };
+  };
+  const { out, zip, text } = await download(mom);
+  assert.match(out.parts[0].name, /^Jarvis memory \d{4}-\d{2}-\d{2}\.zip$/);
+  const paths = Object.keys(zip);
+  assert.ok(paths.includes('README.md') && paths.includes('Home.md'));
+  // Notes by kind, with properties; calendars also as .ics; lists and reminders as checklists.
+  const party = text('Facts/Surprise party.md');
+  assert.match(party, /^---\ntype: "fact"\nscope: "private"\n/);
+  assert.match(party, /For \[\[Dad\]\], on his birthday\./);
+  const ics = paths.find((p) => p.startsWith('Calendars/') && p.endsWith('.ics'));
+  assert.match(text(ics), /^BEGIN:VCALENDAR\r\n[\s\S]*BEGIN:VEVENT\r\n[\s\S]*SUMMARY:/);
+  assert.match(text(ics.replace(/\.ics$/, '.md')), /## Dates\n\n- \d{4}-\d{2}-\d{2}/);
+  assert.ok(paths.some((p) => p.startsWith('Lists/') && /^- \[[ x]\] /m.test(text(p))));
+  assert.match(text('Reminders.md'), /^- \[[ x]\] .+: due \d{4}-\d{2}-\d{2}/m);
+  // The kept photo, whole, shown in its note.
+  assert.deepEqual(out.missing, []);
+  assert.deepEqual(paths.filter((p) => p.startsWith('Files/')), ['Files/team-sheet.jpg'], JSON.stringify({ paths, files: out.files }));
+  assert.deepEqual(zip['Files/team-sheet.jpg'], photo);
+  assert.ok(paths.some((p) => p.startsWith('Facts/') && text(p).includes('![[Files/team-sheet.jpg]]')));
+  assert.match(text('Home.md'), /- \[\[Facts\/Surprise party\|Surprise party\]\]/);
+
+  // Dad's download has the circle's notes, not Mom's private ones: the party,
+  // and the photo she sent the helper in their own chat.
+  const dadsDownload = await download(dad);
+  assert.ok(Object.keys(dadsDownload.zip).includes('Lists/Costco.md'));
+  assert.ok(!Object.keys(dadsDownload.zip).includes('Facts/Surprise party.md'));
+  assert.ok(!Object.keys(dadsDownload.zip).some((p) => p.startsWith('Files/')));
+
+  // Tidy up for the next test: the kept photo goes too.
+  const kept = (await mom.agentRpc('list')).find((n) => n.data?.file?.name === 'team-sheet.jpg');
+  await mom.agentRpc('deleteFile', { id: kept.id });
 });
 
 test('export, then removing the agent deletes its memory', async () => {

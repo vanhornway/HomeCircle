@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Share, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, Text, TextInput, View } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Button } from '../../components/ui';
 import { GroupBody, SettingsGroup, SettingsPage, SettingsRow } from '../../components/SettingsKit';
 import { errorText } from '../../lib/circle';
+import { downloadMemory } from '../../lib/memoryDownload';
 import { useCircle } from '../../lib/useCircle';
 import { useTheme } from '../../theme';
 
@@ -145,24 +146,22 @@ function AgentReady({ name }: { name: string }) {
   }, [client]);
   useFocusEffect(load);
 
+  // A zip of everything you can see of its memory, as an Obsidian vault.
+  const [downloading, setDownloading] = useState(false);
+  const download = () => {
+    setDownloading(true);
+    return downloadMemory(client)
+      .then((out) => {
+        if (out.missing.length) Alert.alert('Some files weren’t included', `These kept files couldn’t be read back: ${out.missing.join(', ')}. The README in the download lists them too.`);
+      })
+      .catch((e) => Alert.alert('Couldn’t download it', errorText(e)))
+      .finally(() => setDownloading(false));
+  };
+
   const remove = () =>
     Alert.alert(`Remove ${name}?`, 'Its memory is deleted for good. You can download a copy first.', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Download first',
-        onPress: () =>
-          client
-            .agentRpc<Record<string, string>>('export')
-            .then((files) =>
-              Share.share({
-                title: `${name} memory`,
-                message: Object.entries(files)
-                  .map(([path, text]) => `<!-- ${path} -->\n${text}`)
-                  .join('\n\n'),
-              }),
-            )
-            .catch((e) => Alert.alert('Couldn’t download it', errorText(e))),
-      },
+      { text: 'Download first', onPress: download },
       { text: 'Remove', style: 'destructive', onPress: () => client.removeAgent().catch((e) => Alert.alert('Couldn’t remove it', errorText(e))) },
     ]);
 
@@ -180,6 +179,12 @@ function AgentReady({ name }: { name: string }) {
 
       <SettingsGroup>
         <SettingsRow icon="🧠" title={`What ${name} remembers`} detail="Search, browse, edit or delete notes and calendars" href="/agent-memory" />
+        <SettingsRow
+          icon="⬇️"
+          title="Download memory"
+          detail={downloading ? 'Preparing your download…' : 'Everything you can see, as a zip that opens in Obsidian: notes, calendars, lists, reminders and kept files'}
+          onPress={downloading ? undefined : download}
+        />
         {client.feature('shoppingLists') ? <SettingsRow icon="🛒" title="Shopping lists" detail="One per store; usual items first" href="/lists" /> : null}
         {client.feature('reminders') ? <SettingsRow icon="⏰" title="Reminders" detail="Car registration and the like, to every admin" href="/reminders" /> : null}
         <SettingsRow
