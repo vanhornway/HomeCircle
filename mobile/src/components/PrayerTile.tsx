@@ -139,8 +139,8 @@ export function PrayerFace({ client, loc, title, big, z }: { client: CircleClien
                   );
                 })}
               </View>
-              <Text style={{ marginTop: 'auto', color: t.muted, fontSize: 10 }} numberOfLines={3}>
-                {[zoneNote(data, now), `${madhab} · ${data.method.name} · approximate: allow a few minutes`].filter(Boolean).join('\n')}
+              <Text style={{ marginTop: 'auto', color: t.muted, fontSize: 10 }} numberOfLines={2}>
+                {[zoneNote(data, now), `Fajr and Isha: ${data.method.name}`].filter(Boolean).join('\n')}
               </Text>
             </>
           ) : null}
