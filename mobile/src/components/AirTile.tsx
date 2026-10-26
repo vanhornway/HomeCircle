@@ -157,14 +157,8 @@ export function AirFace({ client, loc, title, big, z }: { client: CircleClient; 
               <Text style={{ color: t.muted, fontSize: 11, textAlign: 'center' }}>
                 PM2.5 {data.aqi.pm25 ?? '–'} · PM10 {data.aqi.pm10 ?? '–'} · Ozone {data.aqi.ozone ?? '–'} µg/m³
               </Text>
-              {!data.pollen ? (
-                <Text style={{ color: t.muted, fontSize: 11, textAlign: 'center' }}>
-                  {client.isAdmin ? 'Pollen here needs a Google Pollen key: Settings → Features.' : 'Pollen isn’t available here.'}
-                </Text>
-              ) : null}
-              <Text style={{ marginTop: 'auto', color: t.muted, fontSize: 10 }}>
-                Air: Open-Meteo
-                {data.pollen ? ` · Pollen: ${data.pollen.source}` : ''}
+              <Text style={{ marginTop: 'auto', color: t.muted, fontSize: 10 }} numberOfLines={2}>
+                Air: Open-Meteo · {data.pollen ? `Pollen: ${data.pollen.source}` : client.isAdmin ? 'Pollen here: add a Google key in Features' : 'No pollen data here'}
               </Text>
             </>
           ) : null}

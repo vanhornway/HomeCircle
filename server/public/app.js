@@ -1727,6 +1727,52 @@ function copyButton(text) {
   );
 }
 
+// Plugins with settings an admin fills in (Home Assistant's address and token, a key).
+const PLUGIN_SETTINGS = ['air', 'homeAssistant'];
+
+/** A plugin's settings under its feature: secrets are never shown back, only that one is saved. */
+function pluginSetup(id) {
+  const box = h('div', { class: 'plugin-setup' }, h('span', { class: 'muted small' }, 'Loading…'));
+  client.api
+    .pluginSettings(id)
+    .then((info) => {
+      const inputs = {};
+      const status = h('div', { class: 'muted small' }, info.ready ? (id === 'homeAssistant' ? 'Connected.' : 'Saved.') : '');
+      const save = h('button', { class: 'btn small primary', type: 'button' }, info.ready || id !== 'homeAssistant' ? 'Save' : 'Connect');
+      save.onclick = () => {
+        save.disabled = true;
+        const values = Object.fromEntries(Object.entries(inputs).map(([k, el]) => [k, el.value]));
+        client.api
+          .putPluginSettings(id, values)
+          .then(() => {
+            status.textContent = id === 'homeAssistant' ? 'Connected. Each person shows up in Home Assistant (Settings → Devices & services → Mobile App) once their phone next shares its location.' : 'Saved.';
+            save.textContent = 'Save';
+            for (const f of info.fields) if (f.secret) (inputs[f.id].value = ''), (inputs[f.id].placeholder = 'Saved · type a new one to replace it');
+          })
+          .catch((ex) => (status.textContent = errorText(ex)))
+          .finally(() => (save.disabled = false));
+      };
+      box.replaceChildren(
+        ...info.fields.map((f) => {
+          const set = f.secret && info.values[f.id]?.set;
+          inputs[f.id] = h('input', {
+            class: 'input',
+            type: f.secret ? 'password' : 'text',
+            autocomplete: 'off',
+            spellcheck: 'false',
+            value: f.secret ? '' : info.values[f.id] || info.suggested[f.id] || '',
+            placeholder: set ? 'Saved · type a new one to replace it' : f.placeholder || '',
+          });
+          return h('label', { class: 'field' }, h('span', { class: 'small' }, f.label), inputs[f.id], f.help ? h('span', { class: 'muted small' }, f.help) : null);
+        }),
+        save,
+        status,
+      );
+    })
+    .catch((ex) => box.replaceChildren(h('span', { class: 'muted small' }, errorText(ex))));
+  return box;
+}
+
 function settingsView() {
   const me = client.me;
   const sections = [];
@@ -1904,7 +1950,7 @@ function settingsView() {
           'fieldset',
           { class: 'feature-group' },
           h('legend', {}, group),
-          FEATURES.filter((f) => f.group === group).map((f) =>
+          FEATURES.filter((f) => f.group === group).map((f) => [
             h(
               'label',
               { class: 'feature-row', title: f.detail },
@@ -1916,7 +1962,8 @@ function settingsView() {
               }),
               h('span', {}, f.label, h('span', { class: 'muted small' }, ` · ${f.detail}`)),
             ),
-          ),
+            client.isAdmin && client.feature(f.id) && PLUGIN_SETTINGS.includes(f.id) ? pluginSetup(f.id) : null,
+          ]),
         ),
       ),
     ),

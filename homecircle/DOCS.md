@@ -55,12 +55,35 @@ Tailscale Funnel: a free, secure `https://` address with no router changes.
 | `load_test_setup_code` | Optional: your own setup code for the load-test server (12+ characters). |
 | `load_test_reset` | Deletes the load-test server's data on the next start. Turn it off again afterwards. |
 
+## Everyone's location in Home Assistant (optional)
+
+To start automations when someone arrives or leaves ("lights on when Maya gets
+home"):
+
+1. In Home Assistant: your profile → **Security** → **Long-lived access
+   tokens** → **Create token**, and copy it.
+2. In the HomeCircle app, as a circle admin: **Settings → Features →
+   Plugins → Home Assistant** on. The address is filled in
+   (`http://homeassistant:8123`); paste the token and tap **Connect**.
+3. Each person shows up under **Settings → Devices & services → Mobile App**
+   as *HomeCircle Name*, with `device_tracker.homecircle_name` (Home Assistant
+   puts it in your zones) and a battery sensor. Phones that are open send
+   their location right away; others with their next update.
+
+Use them like any phone's tracker: a **Zone** trigger, or **State** going to
+`home`. Anyone can turn theirs off in the app under **Settings → Location
+sharing → Home Assistant**. To remove someone, delete their device in Home
+Assistant.
+
 ## Good to know
 
 - **Backups:** HomeCircle's data (all encrypted) and the Tailscale login are in
   its app data, which Home Assistant backups include.
 - **Privacy:** messages and locations are encrypted on the phones. Neither
-  Home Assistant, Tailscale nor anyone else can read them.
+  Home Assistant, Tailscale nor anyone else can read them. The one exception
+  is the Home Assistant plugin, if a circle's admin turns it on: then each
+  phone also sends its location to HomeCircle to pass on to your Home
+  Assistant (nothing about where anyone is gets kept).
 - **Family phones don't need Tailscale.** Funnel makes the address reachable
   from anywhere.
 - **Home network only:** without a Tailscale key, HomeCircle still runs at

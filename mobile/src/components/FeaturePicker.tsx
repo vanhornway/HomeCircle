@@ -67,7 +67,7 @@ export function FeaturePicker({
                 disabled={readOnly}
                 onChange={(on) => onChange({ ...value, [f.id]: on })}
               />,
-              value[f.id] && below ? <View key={`${f.id}-below`}>{below(f.id)}</View> : null,
+              (value[f.id] && below?.(f.id)) || null,
             ];
           })}
         </SettingsGroup>
