@@ -12,6 +12,7 @@ import { ensureNotificationChannels, notifyNewMessages } from '../lib/notify';
 import { collectAndPlay } from '../lib/chirp';
 import { checkForUpdateInBackground } from '../lib/updates';
 import { SOS_TASK, onSosFix } from '../lib/sos';
+import { countFetch, countFixes, countWake, currentNet } from '../lib/energy';
 
 const log = (...a: unknown[]) => {
   if (__DEV__) console.log('[homecircle:bg]', ...a);
@@ -23,6 +24,8 @@ TaskManager.defineTask<{ locations: Location.LocationObject[] }>(LOCATION_TASK, 
   if (error || !data?.locations?.length) return;
   const latest = data.locations[data.locations.length - 1];
   diag('wake:movement', { fixes: data.locations.length, accM: Math.round(latest.coords.accuracy ?? 0) });
+  countWake('movement');
+  countFixes(data.locations.length);
   try {
     await report(latest, 'update');
   } catch (e) {
@@ -34,6 +37,8 @@ TaskManager.defineTask<{ locations: Location.LocationObject[] }>(LOCATION_TASK, 
 // During an SOS: a high-accuracy fix every minute, sent to every circle.
 TaskManager.defineTask<{ locations: Location.LocationObject[] }>(SOS_TASK, async ({ data, error }) => {
   if (error || !data?.locations?.length) return;
+  countWake('sos');
+  countFixes(data.locations.length, { high: true });
   try {
     await onSosFix(data.locations[data.locations.length - 1]);
   } catch (e) {
@@ -47,6 +52,7 @@ TaskManager.defineTask(HEARTBEAT_TASK, async () => {
     const fix = await Location.getLastKnownPositionAsync({ maxAge: 5 * 60_000 }).catch(() => null);
     const loc = fix || (await freshFix(15_000));
     diag('wake:heartbeat', { fix: fix ? 'recent' : loc ? 'fresh' : 'none' });
+    countWake('heartbeat');
     if (loc) await report(loc, 'update');
     else await flushOutbox().catch(() => 0);
     // A newer app? At most every 4 hours; says so once per version.
@@ -76,6 +82,7 @@ TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Locati
     const fresh = loc && Date.now() - loc.timestamp <= GEOFENCE_FIX_MAX_AGE_MS ? loc : null;
     const fix = fresh ? { lat: fresh.coords.latitude, lng: fresh.coords.longitude, accuracy: fresh.coords.accuracy ?? null } : null;
     diag('wake:geofence', { action, fix: fresh ? 'fresh' : loc ? 'stale' : 'none', accM: fresh ? Math.round(fresh.coords.accuracy ?? 0) : undefined });
+    countWake('geofence');
     const check = await checkPlaces(fix, { regionId: data.region.identifier, action });
     if (loc) await upload(loc, check.changed && check.action ? check.action : 'update', { force: check.changed, placeIds: check.placeIds });
   } catch (e) {
@@ -93,6 +100,7 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(PUSH_TASK, async (
   const raw = JSON.stringify(data ?? {});
   try {
     diag('wake:push', { type: raw.includes('loc_req') ? 'locate' : raw.includes('rejoin') ? 'rejoin' : raw.includes('chirp') ? 'chirp' : 'message' });
+    countWake('push');
     if (raw.includes('"chirp"') || raw.includes('\\"chirp\\"')) {
       await ensureNotificationChannels();
       await collectAndPlay(await loadedClients());
@@ -101,6 +109,8 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(PUSH_TASK, async (
       await shareNow('requested');
     } else if (/\\?"t\\?"\s*:\s*\\?"msg/.test(raw)) {
       await ensureNotificationChannels();
+      // One radio wake for the fetches that follow.
+      countFetch(await currentNet());
       for (const client of await loadedClients()) {
         try {
           await client.fetchMessages();

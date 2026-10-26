@@ -4,7 +4,28 @@ import { useFocusEffect } from 'expo-router';
 import { Button, Card, P } from '../components/ui';
 import { clearDiagnostics, diagnosticsText, formatEntry, formatGap, readDiagnostics, summarize, type DiagEntry } from '../lib/diagnostics';
 import { errorText, getClient } from '../lib/circle';
+import { energyReport, formatMah, type Counts } from '../lib/energy';
 import { useTheme } from '../theme';
+
+/** "today 9:12" or "Oct 25, 18:40". */
+const sinceText = (t: number) =>
+  new Date(t).toDateString() === new Date().toDateString()
+    ? `today ${new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`
+    : new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+/** What the estimate is made of, in one line. */
+function countsText(c: Counts) {
+  const wakes = Object.entries(c.wakes);
+  const total = wakes.reduce((n, [, v]) => n + v, 0);
+  const up = c.uploads.cell + c.uploads.wifi + c.uploads.other;
+  const fetches = c.fetches.cell + c.fetches.wifi + c.fetches.other;
+  return [
+    `${total} wake-ups${wakes.length ? ` (${wakes.map(([k, v]) => `${k} ${v}`).join(', ')})` : ''}`,
+    `${c.fixes} location fixes and ${c.highFixes} GPS fixes`,
+    `${up} uploads (${c.uploads.cell} on mobile data, ${c.uploads.wifi} on Wi-Fi)`,
+    `${fetches} message fetches (${c.fetches.cell} on mobile data)`,
+  ].join(' · ');
+}
 
 /**
  * This phone's 7-day background log: what woke it, what it sent, and what
@@ -14,8 +35,10 @@ export default function Diagnostics() {
   const t = useTheme();
   const [entries, setEntries] = useState<DiagEntry[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [energy, setEnergy] = useState<Awaited<ReturnType<typeof energyReport>> | null>(null);
   const load = useCallback(() => {
     readDiagnostics().then(setEntries);
+    energyReport().then(setEnergy);
   }, []);
   useFocusEffect(load);
 
@@ -67,6 +90,20 @@ export default function Diagnostics() {
               {stat('Locate requests', s.locateRequests)}
               {stat(s.gapOngoing ? 'Since last upload' : 'Longest without an upload', formatGap(s.longestGapMin))}
               {stat('Errors', s.errors)}
+            </Card>
+          ) : null}
+          {energy ? (
+            <Card style={{ gap: 8 }}>
+              <Text style={{ color: t.text, fontSize: 16, fontWeight: '700' }}>Battery use (estimated)</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                {stat('Today', formatMah(energy.today.mah))}
+                {stat(energy.charging ? 'Charging now' : `Since unplugged (${sinceText(energy.unplugged.since)})`, formatMah(energy.unplugged.mah))}
+              </View>
+              <Text style={{ color: t.muted, fontSize: 13, lineHeight: 18 }}>{countsText(energy.today)}</Text>
+              <Text style={{ color: t.muted, fontSize: 12, lineHeight: 17 }}>
+                Worked out from what HomeCircle did (each wake-up, location fix and upload has a typical cost), for a 5000 mAh battery. Time on the charger isn’t counted
+                against the battery.
+              </Text>
             </Card>
           ) : null}
           {admins.length ? (

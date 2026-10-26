@@ -19,6 +19,7 @@ import { APP_VERSION } from './updates';
 import { phoneHealth } from './health';
 import { recordFix, shareMyPlaces } from './visits';
 import { loadedClients } from './circle';
+import { countFixes, countUpload, currentNet, noteCharging } from './energy';
 
 export { distanceM, sharingClients };
 
@@ -70,6 +71,7 @@ export async function upload(
   const here = { lat: loc.coords.latitude, lng: loc.coords.longitude };
   const last = await getLastUpload();
   const battery = await batteryInfo();
+  noteCharging(battery.charging);
   // Battery about to run out: send one last position (once per step).
   const step = lowBatteryStep(battery);
   const lowDue = step != null && (last?.lowBattery == null || step < last.lowBattery);
@@ -127,6 +129,8 @@ export async function upload(
     diag('upload-failed', { trigger, circles: results.length, error: String((results[0] as PromiseRejectedResult).reason?.message ?? '').slice(0, 80) });
     throw (results[0] as PromiseRejectedResult).reason;
   }
+  // One radio wake for this update (every circle, and Home Assistant, go together).
+  countUpload(await currentNet());
   diag('upload', { trigger: lowDue ? 'low_battery' : trigger, circles: `${ok}/${results.length}`, accM: Math.round(loc.coords.accuracy ?? 0), power: health.power, perm: health.perm });
   await setLastUpload({ ts: Date.now(), ...here, lowBattery: step ?? null });
   return true;
@@ -152,7 +156,10 @@ export async function freshFix(timeoutMs = 20_000): Promise<Location.LocationObj
   const timeout = new Promise<null>((r) => setTimeout(() => r(null), timeoutMs));
   try {
     const fix = await Promise.race([Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High, mayShowUserSettingsDialog: false }), timeout]);
-    if (fix) return fix;
+    if (fix) {
+      countFixes(1, { high: true });
+      return fix;
+    }
   } catch {
     /* fall through */
   }
