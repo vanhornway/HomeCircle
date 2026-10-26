@@ -5,32 +5,11 @@
 // read by the location policy for the daily battery budget. Stays on the phone.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Network from 'expo-network';
+import { BATTERY_MAH, COST_MAH } from './energyCosts';
 
 const KEY = 'homecircle.energy';
 const KEEP_DAYS = 14;
-// What a typical phone holds, for "% of the battery" (apps can't read the real
-// capacity). 1% ≈ 50 mAh.
-export const BATTERY_MAH = 5000;
-
-/**
- * Energy per event, in mAh (central estimates from the battery analysis, for a
- * 5000 mAh Android phone). The one place these figures live.
- * - balancedFix: a Wi-Fi scan plus cell lookup, with the CPU awake
- * - highFix: a short GPS fix (6–20 s), for Locate, geofences, the heartbeat
- * - task: about half a second of CPU to encrypt, store and check places
- * - uploadCell / uploadWifi: one small upload; on mobile data it's the radio
- *   waking up and staying on ~10 s that costs, not the bytes
- * - fetchCell / fetchWifi: fetching new messages after a push, the same way
- */
-export const COST_MAH = {
-  balancedFix: 0.05,
-  highFix: 0.3,
-  task: 0.05,
-  uploadCell: 0.4,
-  uploadWifi: 0.05,
-  fetchCell: 0.4,
-  fetchWifi: 0.05,
-} as const;
+export { BATTERY_MAH, COST_MAH };
 
 export type Net = 'cell' | 'wifi' | 'other';
 export type Counts = {

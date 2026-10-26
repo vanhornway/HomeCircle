@@ -1,8 +1,11 @@
 // Battery-aware location sharing.
 //
-// - Background: the OS wakes us on movement (~250 m) and a background task
-//   runs about every 15 minutes; we upload at most once per interval unless
-//   the phone moved more than 500 m, arrived somewhere or left somewhere.
+// - How often: lib/locationPolicy.ts decides, from the "Location updates"
+//   setting, charging, Battery Saver and the day's battery budget. While
+//   moving, at most one upload per moving gap; when the phone stops, the
+//   final position goes right away; while still, one per still interval.
+// - Background: the OS wakes us on movement (~100 m apart, at most once a
+//   minute) and a background task runs about every 15 minutes.
 // - "Locate" requests from family: one fresh high-accuracy fix, uploaded now.
 // - Places: OS geofences hint that a place may have been crossed; every
 //   position is checked against places too (lib/places.ts).
@@ -12,14 +15,16 @@ import * as Location from 'expo-location';
 import * as Battery from 'expo-battery';
 import * as BackgroundTask from 'expo-background-task';
 import { approximate, distanceM, type CircleClient } from '@homecircle/core';
-import { getSettings, getLastUpload, setLastUpload } from './storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getSettings, getLastUpload, locationProfileOf, setLastUpload, type LastUpload } from './storage';
 import { checkPlaces, geofenceId, sharingClients } from './places';
 import { diag } from './diagnostics';
 import { APP_VERSION } from './updates';
 import { phoneHealth } from './health';
 import { recordFix, shareMyPlaces } from './visits';
 import { loadedClients } from './circle';
-import { countFixes, countUpload, currentNet, noteCharging } from './energy';
+import { countFixes, countUpload, currentNet, noteCharging, usedTodayMah } from './energy';
+import { SLOW_AFTER_MS, SLOW_STILL_INTERVAL_MS, STOPS, effectiveLocationPolicy, type Policy } from './locationPolicy';
 
 export { distanceM, sharingClients };
 
@@ -28,13 +33,16 @@ export const GEOFENCE_TASK = 'homecircle-geofence';
 export const HEARTBEAT_TASK = 'homecircle-heartbeat';
 export const PUSH_TASK = 'homecircle-push';
 
-const MOVE_THRESHOLD_M = 500;
+// Farther than this from the last update (or the last fix) counts as moving.
+const MOVED_M = 100;
+const MOTION_KEY = 'homecircle.motion';
 const MAX_GEOFENCES = 20; // iOS limit per app
 // Smallest radius the OS watches reliably; smaller places are still checked
 // against real positions (lib/places.ts), just not used as OS geofences.
 const MIN_GEOFENCE_RADIUS_M = 150;
-// Android: fastest the OS hands us fixes while moving (250 m apart anyway).
+// Android: fastest the OS hands us fixes while moving (100 m apart anyway).
 const MOVING_FIX_INTERVAL_MS = 60_000;
+const MOVING_FIX_DISTANCE_M = 100;
 
 async function batteryInfo() {
   try {
@@ -75,14 +83,23 @@ export async function upload(
   // Battery about to run out: send one last position (once per step).
   const step = lowBatteryStep(battery);
   const lowDue = step != null && (last?.lowBattery == null || step < last.lowBattery);
-  const intervalMs = settings.intervalMinutes * 60_000;
+  const policy = await currentPolicy(battery);
+  const motion = await noteMotion(here, loc.timestamp || Date.now());
+  const since = last ? Date.now() - last.ts : Infinity;
+  const moved = !last || distanceM(last, here) > MOVED_M;
   const due =
     force ||
     lowDue ||
     !last ||
-    Date.now() - last.ts >= intervalMs - 30_000 ||
-    distanceM(last, here) > MOVE_THRESHOLD_M;
-  if (!due) return false;
+    // Stopped after moving: the final position right away.
+    (motion.justStopped && moved) ||
+    (moved && since >= policy.movingGapMs - 5_000) ||
+    since >= stillIntervalFor(policy, motion, last, here) - 30_000;
+  // Held back by the moving gap: the heartbeat sends it if no later fix does.
+  if (!due) {
+    if (moved) await setPending(true);
+    return false;
+  }
   const approxCircles = new Set(everyone ? [] : settings.approximateCircles);
   // Battery saver, permission level and precise on/off travel with every
   // update, so the circle sees why updates may be slow.
@@ -133,7 +150,68 @@ export async function upload(
   countUpload(await currentNet());
   diag('upload', { trigger: lowDue ? 'low_battery' : trigger, circles: `${ok}/${results.length}`, accM: Math.round(loc.coords.accuracy ?? 0), power: health.power, perm: health.perm });
   await setLastUpload({ ts: Date.now(), ...here, lowBattery: step ?? null });
+  await setPending(false);
   return true;
+}
+
+/** The policy right now: the setting, charging, Battery Saver and the day's budget. */
+export async function currentPolicy(battery?: { battery: number | null; charging: boolean }): Promise<Policy> {
+  const settings = await getSettings();
+  const b = battery ?? (await batteryInfo());
+  const profile = locationProfileOf(settings);
+  const [saver, used] = await Promise.all([Battery.isLowPowerModeEnabledAsync().catch(() => false), usedTodayMah()]);
+  return effectiveLocationPolicy(
+    // A stop always means its own values; Advanced's own values are 'custom'.
+    { locationProfile: profile, location: profile === 'custom' ? settings.location : { ...settings.location, ...STOPS[profile] } },
+    { charging: b.charging, batterySaver: saver, batteryLevel: b.battery, usedTodayMah: used },
+  );
+}
+
+/** Where the phone was at its last fix, since when it's been still, and whether a fix is waiting to be sent. */
+type Motion = { lat: number; lng: number; ts: number; moving: boolean; stillSince: number; pending: boolean };
+
+export async function getMotion(): Promise<Motion | null> {
+  try {
+    return JSON.parse((await AsyncStorage.getItem(MOTION_KEY)) || 'null');
+  } catch {
+    return null;
+  }
+}
+
+/** A new fix: moving (more than 100 m from the last fix) or still, and whether it just stopped. */
+async function noteMotion(here: { lat: number; lng: number }, ts: number): Promise<Motion & { justStopped: boolean }> {
+  const prev = await getMotion();
+  const moving = !!prev && distanceM(prev, here) > MOVED_M;
+  const justStopped = !!prev?.moving && !moving;
+  const next: Motion = { ...here, ts, moving, stillSince: moving ? ts : (prev?.stillSince ?? ts), pending: prev?.pending ?? false };
+  await AsyncStorage.setItem(MOTION_KEY, JSON.stringify(next));
+  return { ...next, justStopped };
+}
+
+async function setPending(pending: boolean) {
+  const m = await getMotion();
+  if (m && m.pending !== pending) await AsyncStorage.setItem(MOTION_KEY, JSON.stringify({ ...m, pending }));
+}
+
+/** The still interval in force: slower after an hour within 100 m of the last update (if the policy allows). */
+export function stillIntervalFor(policy: Policy, motion: Pick<Motion, 'stillSince'> | null, last: LastUpload | null, here?: { lat: number; lng: number }) {
+  const settled = !!motion && Date.now() - motion.stillSince >= SLOW_AFTER_MS && (!here || !last || distanceM(last, here) <= MOVED_M);
+  return policy.slowWhenStill && settled ? Math.max(policy.stillIntervalMs, SLOW_STILL_INTERVAL_MS) : policy.stillIntervalMs;
+}
+
+/**
+ * The heartbeat: whether it's worth waking the location hardware now. Not
+ * when the last update is recent, nothing's waiting to be sent and the
+ * battery doesn't need its last update yet.
+ */
+export async function heartbeatDue(): Promise<boolean> {
+  const [last, motion, battery] = await Promise.all([getLastUpload(), getMotion(), batteryInfo()]);
+  noteCharging(battery.charging);
+  if (!last || motion?.pending) return true;
+  const step = lowBatteryStep(battery);
+  if (step != null && (last.lowBattery == null || step < last.lowBattery)) return true;
+  const policy = await currentPolicy(battery);
+  return Date.now() - last.ts >= stillIntervalFor(policy, motion, last) - 60_000;
 }
 
 /** Check places with this position, then upload it (right away if you arrived or left somewhere). */
@@ -210,6 +288,7 @@ export type SharingMode = 'off' | 'no-permission' | 'foreground-only' | 'backgro
 /** (Re)start background updates using the current settings. */
 export async function startBackgroundUpdates(): Promise<SharingMode> {
   const settings = await getSettings();
+  const policy = await currentPolicy();
   if (!settings.sharing) {
     await stopBackgroundUpdates();
     return 'off';
@@ -223,17 +302,18 @@ export async function startBackgroundUpdates(): Promise<SharingMode> {
     await Location.stopLocationUpdatesAsync(LOCATION_TASK);
   }
   await Location.startLocationUpdatesAsync(LOCATION_TASK, {
-    accuracy: Location.Accuracy.Balanced,
+    // Wi-Fi and cell towers; GPS only while charging (the policy says which).
+    accuracy: policy.movingAccuracy === 'high' ? Location.Accuracy.High : Location.Accuracy.Balanced,
     // Never prompt users to turn on Google's "Location Accuracy" (it shares
     // Wi-Fi/sensor data with Google). GPS and network location work without it.
     mayShowUserSettingsDialog: false,
-    // Hand every 250 m of movement to the task and let upload() decide what's
-    // worth sending. No native batching: expo-location only releases a batch
+    // Hand every 100 m of movement to the task and let upload() decide what's
+    // worth sending (lib/locationPolicy.ts). No native batching: expo-location only releases a batch
     // once BOTH the deferred interval AND distance are met, so someone who
     // drove 3 km in 8 minutes and then sat still was never reported. On
     // Android, timeInterval is also the *minimum* gap between fixes, so a
     // 15-minute value meant a moving phone reported at most every 15 minutes.
-    distanceInterval: 250,
+    distanceInterval: MOVING_FIX_DISTANCE_M,
     timeInterval: MOVING_FIX_INTERVAL_MS, // Android only
     deferredUpdatesInterval: 0,
     deferredUpdatesDistance: 0,
@@ -247,7 +327,8 @@ export async function startBackgroundUpdates(): Promise<SharingMode> {
     },
   });
   try {
-    await BackgroundTask.registerTaskAsync(HEARTBEAT_TASK, { minimumInterval: Math.max(15, settings.intervalMinutes) });
+    // As often as Android allows; heartbeatDue() decides whether it does anything.
+    await BackgroundTask.registerTaskAsync(HEARTBEAT_TASK, { minimumInterval: 15 });
   } catch {
     /* unavailable (e.g. simulator) */
   }

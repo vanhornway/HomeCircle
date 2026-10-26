@@ -4,6 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ChirpSound, Storage } from '@homecircle/core';
+import { DEFAULT_STOP, STOPS, stopForInterval, type LocationProfile, type LocationSettings } from './locationPolicy';
 
 const CHUNK = 1800;
 // Background tasks run while the phone is locked, so keys must be readable
@@ -53,8 +54,16 @@ export interface AlertRule {
 export interface Settings {
   /** Share this phone's location with the circle. */
   sharing: boolean;
-  /** Background update interval. The OS treats this as a minimum. */
+  /** Background update interval from before the location slider (still read when no stop was chosen). */
   intervalMinutes: number;
+  /**
+   * Location updates: a stop on the slider (1 longest battery … 6 most up to
+   * date) or 'custom'. null until one is chosen: the stop matching
+   * intervalMinutes is used (lib/locationPolicy.ts).
+   */
+  locationProfile: LocationProfile | null;
+  /** What Advanced shows: the chosen stop's values or your own, plus charging and Battery Saver. */
+  location: LocationSettings;
   /** Show sender and text in notifications (otherwise just "New message"). */
   showPreviews: boolean;
   /** Circles (by id) this phone doesn't share its location with. */
@@ -98,6 +107,8 @@ const LAST_UPLOAD_KEY = 'homecircle.lastUpload';
 export const DEFAULT_SETTINGS: Settings = {
   sharing: true,
   intervalMinutes: 15,
+  locationProfile: null,
+  location: { ...STOPS[DEFAULT_STOP], fullDetailCharging: true, saveWithBatterySaver: true },
   showPreviews: true,
   pausedCircles: [],
   announcePlaces: true,
@@ -191,4 +202,9 @@ export async function clearDeviceData() {
     'homecircle.geofenceEvents',
     ...keys.filter((k) => k.startsWith('homecircle.lastNotifiedSeq')),
   ]);
+}
+
+/** The stop (or 'custom') in force: the one chosen, or the one matching the old interval setting. */
+export function locationProfileOf(s: Settings): LocationProfile {
+  return s.locationProfile ?? stopForInterval(s.intervalMinutes);
 }

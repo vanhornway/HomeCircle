@@ -4,7 +4,7 @@ import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import * as BackgroundTask from 'expo-background-task';
-import { upload, report, freshFix, shareNow, LOCATION_TASK, GEOFENCE_TASK, HEARTBEAT_TASK, PUSH_TASK } from '../lib/location';
+import { upload, report, freshFix, heartbeatDue, getMotion, shareNow, LOCATION_TASK, GEOFENCE_TASK, HEARTBEAT_TASK, PUSH_TASK } from '../lib/location';
 import { checkPlaces, flushOutbox } from '../lib/places';
 import { diag } from '../lib/diagnostics';
 import { loadedClients } from '../lib/circle';
@@ -49,11 +49,25 @@ TaskManager.defineTask<{ locations: Location.LocationObject[] }>(SOS_TASK, async
 // Periodic heartbeat (~every 15 min) so "last seen" stays fresh when not moving.
 TaskManager.defineTask(HEARTBEAT_TASK, async () => {
   try {
-    const fix = await Location.getLastKnownPositionAsync({ maxAge: 5 * 60_000 }).catch(() => null);
-    const loc = fix || (await freshFix(15_000));
-    diag('wake:heartbeat', { fix: fix ? 'recent' : loc ? 'fresh' : 'none' });
     countWake('heartbeat');
-    if (loc) await report(loc, 'update');
+    // Nothing to send yet (lib/locationPolicy.ts): don't wake the location hardware.
+    if (!(await heartbeatDue())) {
+      diag('wake:heartbeat', { fix: 'skipped' });
+      await checkForUpdateInBackground().catch(() => {});
+      return BackgroundTask.BackgroundTaskResult.Success;
+    }
+    const pending = !!(await getMotion())?.pending;
+    const fix = await Location.getLastKnownPositionAsync({ maxAge: 5 * 60_000 }).catch(() => null);
+    // A position from Wi-Fi and cell towers is enough for "still here".
+    const loc =
+      fix ||
+      (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced, mayShowUserSettingsDialog: false })
+        .then((f) => (countFixes(1), f))
+        .catch(() => null)) ||
+      (await freshFix(15_000));
+    diag('wake:heartbeat', { fix: fix ? 'recent' : loc ? 'fresh' : 'none', pending: pending || undefined });
+    // A position held back while moving goes now (the drive's end).
+    if (loc) await report(loc, 'update', { force: pending });
     else await flushOutbox().catch(() => 0);
     // A newer app? At most every 4 hours; says so once per version.
     await checkForUpdateInBackground().catch(() => {});
