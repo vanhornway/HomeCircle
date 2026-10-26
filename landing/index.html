@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>HomeCircle — private family location sharing</title>
-  <meta name="description" content="See where your family is, chat, and get arrival alerts — on a server you own, end-to-end encrypted.">
+  <title>HomeCircle — your family’s home base, on your server</title>
+  <meta name="description" content="The family map, chat and a helper that remembers, end-to-end encrypted on a server your family owns. No accounts, no ads, open source.">
   <meta name="theme-color" content="#2f7d6d">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
@@ -17,7 +17,9 @@
   <header class="nav">
     <a class="brand" href="#top"><img src="icon.svg" alt="" width="30" height="30">HomeCircle</a>
     <nav>
-      <a href="#how">How it works</a>
+      <a href="#story">Story</a>
+      <a href="#features">Features</a>
+      <a href="#helper">Helper</a>
       <a href="#privacy">Privacy</a>
       <a href="#changelog">What’s new</a>
       <a href="#servers" class="pill">Get your server</a>
@@ -27,12 +29,12 @@
   <main id="top">
     <section class="hero">
       <div class="hero-copy">
-        <p class="eyebrow">Private family location sharing</p>
-        <h1>Your family’s map,<br>on <em>your</em> server.</h1>
-        <p class="lede">See where everyone is, tap <strong>Locate</strong> for a fresh fix, chat, and get alerts when the kids get home. It all runs on a server your family owns, end-to-end encrypted, so no company can see, sell or leak it.</p>
+        <p class="eyebrow">Private, self-hosted, end-to-end encrypted</p>
+        <h1>Your family’s home base, on <em>your</em> server.</h1>
+        <p class="lede">The family map, the chat, and a helper that remembers the school calendar and the shopping list. It all runs on a server your family owns, sealed on your phones, so no company can see, sell or leak it.</p>
         <div class="cta-row">
-          <a class="btn primary" href="#servers">Choose a server</a>
-          <a class="btn" href="#how">See how it works</a>
+          <a class="btn primary" href="#servers">Get your server</a>
+          <a class="btn" href="#story">See what it does</a>
         </div>
         <ul class="ticks">
           <li>Open source</li><li>No accounts, no ads</li><li>iPhone, Android &amp; web</li>
@@ -45,61 +47,146 @@
               <path d="M-10 80 L320 40 M-10 200 L320 170 M-10 300 L320 290 M60 -10 L90 370 M190 -10 L170 370 M260 -10 L280 370" />
               <path class="river" d="M-10 250 C 80 230, 140 280, 320 240" />
             </svg>
-            <div class="place" style="left:58%;top:22%"><span>Home</span></div>
-            <div class="pin" style="left:62%;top:27%;--c:#d9644a">M</div>
-            <div class="pin" style="left:28%;top:58%;--c:#4a6fd9">S</div>
-            <div class="pin pulse" style="left:72%;top:68%;--c:#b0479c">J</div>
+            <div class="tile"><b>68°</b><span>Sunny<br><small>H 74 · L 55</small></span></div>
+            <div class="place" style="left:40%;top:30%"><span>School</span></div>
+            <div class="pin" style="left:44%;top:35%;--c:#b0479c">J</div>
+            <div class="pin" style="left:24%;top:66%;--c:#4a6fd9">S</div>
+            <div class="pin pulse" style="left:72%;top:62%;--c:#d9644a">M</div>
           </div>
           <div class="phone-sheet">
-            <div class="row"><b style="--c:#d9644a">M</b><span><strong>Mom</strong><small>At Home · just now</small></span></div>
+            <div class="row"><b style="--c:#b0479c">J</b><span><strong>Jo</strong><small>At School · 2 min ago</small></span></div>
             <div class="row"><b style="--c:#4a6fd9">S</b><span><strong>Sam</strong><small>±20 m · 6 min ago · 64%</small></span></div>
-            <div class="row"><b style="--c:#b0479c">J</b><span><strong>Jo</strong><small>Updating…</small></span><i>Locate</i></div>
+            <div class="row"><b style="--c:#d9644a">M</b><span><strong>Mom</strong><small>Updating…</small></span><i>Locate</i></div>
           </div>
         </div>
+        <div class="float f-arrive"><span class="dot" style="--c:#b0479c"></span><span><strong>Jo arrived at School</strong><small>8:02 AM</small></span></div>
+        <div class="float f-helper"><span class="bot">✦</span><span><strong>Chirya</strong><small>Costco: milk, eggs, rice. Car registration due in 7 days.</small></span></div>
       </div>
     </section>
 
-    <section id="how" class="section">
-      <h2>Up and running in about ten minutes</h2>
-      <ol class="steps">
+    <section id="story" class="section story">
+      <p class="kicker">How it grew</p>
+      <h2>It started with one question.</h2>
+      <p class="lede small">“Did the kids get home?” HomeCircle began as a family map that’s easy on the battery and tells no one but the family. Then families asked it to do more, one everyday moment at a time.</p>
+      <ol class="chapters">
         <li>
-          <span class="num">1</span>
-          <h3>Pick a server</h3>
-          <p>Deploy HomeCircle with one click on Render or Railway, rent a small VPS, or run it at home on a Raspberry Pi or as a Home Assistant app. One server can hold several circles, like your household and your parents, each kept separate.</p>
+          <span class="ch">1</span>
+          <h3>Where is everyone?</h3>
+          <p>A live family map, arrival alerts for Home and School, and Locate for a fresh fix when you need one.</p>
         </li>
         <li>
-          <span class="num">2</span>
-          <h3>Set up in the app</h3>
-          <p>Open the HomeCircle app, enter your server address and its one-time setup code. Your encryption keys are created on your phone.</p>
+          <span class="ch">2</span>
+          <h3>Are you OK?</h3>
+          <p>A one-tap check-in, an SOS that shares your location every minute, and a last location before a phone dies.</p>
         </li>
         <li>
-          <span class="num">3</span>
-          <h3>Invite your family</h3>
-          <p>Show a QR code or send a private link. Only people who join your server can ever see your location or messages.</p>
+          <span class="ch">3</span>
+          <h3>What’s for dinner?</h3>
+          <p>Group chat, direct messages and polls with live bars. Settle it, spin the wheel, move on.</p>
+        </li>
+        <li>
+          <span class="ch">4</span>
+          <h3>Who remembers?</h3>
+          <p>An optional helper keeps the school calendar, the shopping lists and the renewals, so nobody has to.</p>
         </li>
       </ol>
     </section>
 
-    <section class="section features">
-      <h2>Everything you’d expect, and nothing you wouldn’t</h2>
-      <div class="grid">
-        <article><h3>Live family map</h3><p>Everyone’s latest location, battery and “last seen” time, updated live while the app is open.</p></article>
-        <article><h3>Locate on demand</h3><p>Tap Locate and their phone wakes up, takes one fresh GPS fix and sends it back. No constant tracking needed.</p></article>
-        <article><h3>Easy on battery</h3><p>Updates about every 15 minutes, plus when someone moves far or arrives somewhere. You can choose 5 to 60 minutes.</p></article>
-        <article><h3>Arrival alerts</h3><p>“Jo arrived at School.” Add places by address with a radius in feet. Geofences run on each phone, so the server never learns where your places are.</p></article>
-        <article><h3>Group chats and direct messages</h3><p>Every circle’s group chat and your one-on-one messages in one list, end-to-end encrypted. Direct messages can only be read by the two of you.</p></article>
-        <article><h3>Several circles, one server</h3><p>One for your household, one for your parents and siblings. Each circle is separate, with its own map, chat and key.</p></article>
-        <article><h3>You stay in control</h3><p>Pause sharing anytime (your circle sees that you paused), choose whether your arrivals are announced, and decide how long messages are kept: a day to a year.</p></article>
+    <section id="features" class="section features">
+      <h2>Everything a family shares, in one private place</h2>
+      <p class="lede small">Each circle’s admins choose which of these are on. Keep it to a map, or use all of it.</p>
+      <div class="moments">
+        <article>
+          <div class="m-head"><span class="m-icon" style="--c:#2f7d6d"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></span><h3>Where is everyone</h3></div>
+          <ul>
+            <li><strong>Live family map</strong> with battery and “last seen”, updated live while the app is open.</li>
+            <li><strong>Locate</strong> wakes a phone for one fresh GPS fix. No constant tracking needed.</li>
+            <li><strong>Place alerts:</strong> “Jo arrived at School.” Geofences run on each phone, so the server never learns where your places are.</li>
+            <li><strong>Easy on the battery:</strong> about every 15 minutes, plus big moves and arrivals.</li>
+          </ul>
+        </article>
+        <article>
+          <div class="m-head"><span class="m-icon" style="--c:#c2412d"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg></span><h3>Are you OK?</h3></div>
+          <ul>
+            <li><strong>Check-ins:</strong> “Where are you?” with a one-tap “I’m OK”.</li>
+            <li><strong>SOS:</strong> hold to alert everyone, share your location every minute, and see safe places nearby.</li>
+            <li><strong>Low-battery handoff:</strong> a last location at 10% and 5%.</li>
+            <li><strong>Chirps:</strong> a bird sound or a flash on someone’s phone, quiet during school hours.</li>
+          </ul>
+        </article>
+        <article>
+          <div class="m-head"><span class="m-icon" style="--c:#4a6fd9"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg></span><h3>Talk it over</h3></div>
+          <ul>
+            <li><strong>Group chat and direct messages</strong> in one list. A direct message can be read only by the two of you.</li>
+            <li><strong>Polls</strong> with live bars, emoji options, deadlines and a wheel for ties.</li>
+            <li><strong>Read ticks,</strong> which each person can turn off.</li>
+          </ul>
+        </article>
+        <article>
+          <div class="m-head"><span class="m-icon" style="--c:#b07a12"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></span><h3>Your circle, your rules</h3></div>
+          <ul>
+            <li><strong>Choose the features:</strong> turn off SOS, chirps, polls or Locate and they disappear from everyone’s phone.</li>
+            <li><strong>Several circles, one server:</strong> your household, your parents and siblings, each with its own key.</li>
+            <li><strong>Pause sharing</strong> anytime, and decide how long messages are kept.</li>
+          </ul>
+        </article>
       </div>
+    </section>
+
+    <section id="helper" class="section helper">
+      <div class="helper-copy">
+        <p class="kicker">Optional · off until you add it</p>
+        <h2>It remembers, so you don’t have to.</h2>
+        <p class="lede small">Add a helper to your circle and give it a name. Send it the school calendar, a flyer, a receipt or a question, and it keeps what matters for everyone.</p>
+        <ul class="does">
+          <li><strong>Calendars:</strong> school and sports calendars from a link, a PDF or a photo, checked for changes.</li>
+          <li><strong>“When are the kids free for 5 days?”</strong> Worked out from the calendars it keeps.</li>
+          <li><strong>Shopping lists</strong> per store, with your usual items first.</li>
+          <li><strong>Long-term reminders:</strong> car registration, passports, insurance, to every admin until someone taps Done.</li>
+          <li><strong>Photos and files:</strong> a school letter, a PDF, a spreadsheet. It shows what it would keep; you Save or Discard.</li>
+        </ul>
+        <div class="fence card">
+          <h3>You stay in charge of it</h3>
+          <ul>
+            <li><strong>Your choice of AI:</strong> Claude, OpenAI, Gemini, Mistral or a model on your own machine, with your own key.</li>
+            <li><strong>A monthly budget</strong> you set, paid to the provider directly.</li>
+            <li><strong>Names masked:</strong> your family becomes Person A and Place 1 before anything reaches the AI.</li>
+            <li><strong>It can’t read your chats.</strong> It only sees what someone sends it.</li>
+            <li><strong>Memory you can see:</strong> search, edit, delete and undo every note it keeps.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="chat" aria-hidden="true">
+        <div class="chat-head"><span class="bot">✦</span><span><strong>Chirya</strong><small>Circle helper</small></span></div>
+        <div class="msg me">📎 Lincoln school calendar 2026–27.pdf<br>This is Jo’s school calendar</div>
+        <div class="msg bot-msg">Got it: Jo’s school calendar. 14 days off, next: Thanksgiving break (Nov 25–29). <span class="chips"><i>Save</i><i class="ghost">Discard</i></span></div>
+        <div class="msg me">/Chirya when are the kids free for 5 days?</div>
+        <div class="msg bot-msg">Jo and Sam are both off Nov 25–29 and Dec 21–Jan 1.</div>
+        <div class="msg me">/Chirya add rice and milk to Costco</div>
+        <div class="msg bot-msg">Added. Costco: milk, eggs, rice, paper towels.</div>
+      </div>
+    </section>
+
+    <section id="plugins" class="section plugins">
+      <h2>Add what your family needs</h2>
+      <p class="lede small">Plugins are optional extras an admin turns on for a circle. They show in one small tile on the map: swipe for the next, double-tap for more.</p>
+      <div class="tiles">
+        <article><span class="t-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></span><h3>Weather</h3><p>The weather where the person you select is, with the next 12 hours. Only a rough area is used to look it up.</p></article>
+        <article><span class="t-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h11a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h8"/></svg></span><h3>Air and pollen</h3><p>Air quality and pollen for trees, grass and weeds, wherever they are.</p></article>
+        <article><span class="t-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></span><h3>Prayer times</h3><p>The next of the five daily prayers where each person is, with their own madhab.</p></article>
+        <article><span class="t-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9h-6v-6H9v6H3z"/></svg></span><h3>Home Assistant</h3><p>Everyone’s location in your Home Assistant, for “lights on when Maya gets home”. Each person can turn theirs off.</p></article>
+      </div>
+      <p class="muted small more">More plugins are coming, through a plugin marketplace.</p>
     </section>
 
     <section id="privacy" class="section privacy">
       <div>
         <h2>Private by design, not by promise</h2>
-        <p class="lede small">Most location apps keep every family’s locations on their own servers. HomeCircle flips that: you own the server, and it still can’t read your data.</p>
+        <p class="lede small">Most family apps keep every family’s data on their own servers. HomeCircle flips that: you own the server, and it still can’t read your data.</p>
         <ul class="facts">
           <li><strong>Encrypted on your phone.</strong> Locations, names, messages and places are sealed with a key only your circle holds (XSalsa20-Poly1305 + Ed25519 signatures).</li>
           <li><strong>Your server sees ciphertext.</strong> It stores and relays sealed data, never plaintext. Your hosting provider sees the same.</li>
+          <li><strong>The helper is your choice.</strong> It’s a member of your circle that reads only what you send it, and keeps its memory encrypted with its own key.</li>
           <li><strong>Only your server’s members.</strong> There is no global network and no way to find or add people outside your server.</li>
           <li><strong>Content-free notifications.</strong> Push messages say only “new activity”. Your phone decrypts the details itself.</li>
           <li><strong>No history on the server.</strong> Only each person’s latest location is kept. Old messages expire after 90 days by default.</li>
@@ -112,6 +199,37 @@
         <div class="arrow">🔒 sealed</div>
         <div class="node"><span>📱</span><b>Family phones</b><small>decrypt</small></div>
       </div>
+    </section>
+
+    <section class="section next">
+      <div class="next-strip">
+        <p class="kicker">Coming next · in testing</p>
+        <div class="next-grid">
+          <div><h3>A battery slider</h3><p>From longest battery to most up to date, with a daily budget, and your circle sees how often you update.</p></div>
+          <div><h3>Download the helper’s memory</h3><p>Everything it keeps, as a folder of linked notes you can open in Obsidian, with calendars as .ics files.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="how" class="section">
+      <h2>Up and running in about ten minutes</h2>
+      <ol class="steps">
+        <li>
+          <span class="num">1</span>
+          <h3>Pick a server</h3>
+          <p>Deploy HomeCircle with one click on Render or Railway, rent a small VPS, or run it at home on a Raspberry Pi or as a Home Assistant app. One server can hold several circles, each kept separate.</p>
+        </li>
+        <li>
+          <span class="num">2</span>
+          <h3>Set up in the app</h3>
+          <p>Open the HomeCircle app, enter your server address and its one-time setup code. Your encryption keys are created on your phone.</p>
+        </li>
+        <li>
+          <span class="num">3</span>
+          <h3>Invite your family</h3>
+          <p>Show a QR code or send a private link. Only people who join your server can ever see your location or messages.</p>
+        </li>
+      </ol>
     </section>
 
     <section id="servers" class="section">
@@ -149,9 +267,11 @@
       <h2>Questions</h2>
       <details><summary>Who can see my location?</summary><p>Only people who joined your HomeCircle server with an invite. The server stores your location encrypted, and only the members’ phones hold the key.</p></details>
       <details><summary>Does it drain my battery?</summary><p>No more than necessary. By default your phone shares about every 15 minutes, and more often only when you move a long way, arrive at a saved place, or someone taps Locate. The phone’s low-power location features do the work.</p></details>
+      <details><summary>What does the helper see, and what does it cost?</summary><p>Only what someone sends it: a question with its name, a file, or a message you choose to Remember. It can’t read your chats. Questions go to the AI provider your admin picked, with names swapped out, and your circle pays that provider directly, within a monthly budget you set.</p></details>
+      <details><summary>Do we have to use the helper?</summary><p>No. It’s off until an admin adds it, and the map, chat, SOS and plugins work without it.</p></details>
       <details><summary>What can my hosting provider see?</summary><p>Encrypted data, how many people use the server, and when phones connect. They can’t see names, locations, places or messages.</p></details>
       <details><summary>What if I lose my phone?</summary><p>Another admin removes the old phone from Settings, which changes the circle’s key. Then they invite you again on your new phone. Tip: make a second family member an admin.</p></details>
-      <details><summary>What does it cost?</summary><p>The software is free. Hosting costs roughly $3–7 a month, or nothing extra on a Raspberry Pi you already own.</p></details>
+      <details><summary>What does it cost?</summary><p>The software is free. Hosting costs roughly $3–7 a month, or nothing extra on a Raspberry Pi or Home Assistant you already own.</p></details>
       <details><summary>Can people on other servers find me?</summary><p>No. There’s no directory and no federation. Each server is its own closed circle.</p></details>
     </section>
   </main>
