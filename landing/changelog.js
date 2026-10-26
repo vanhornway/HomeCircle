@@ -6,8 +6,9 @@ window.HOMECIRCLE_CHANGELOG = [
     title: 'Plugins, starting with weather',
     items: [
       'Plugins: optional extras an admin turns on per circle, in Settings → Features → Plugins.',
-      'Weather: tap someone on the map and see the weather where they are, in the top-right corner: the temperature and how it feels, today’s high and low, the chance of rain and the sky in words. Tap it for the next 12 hours, and to switch between °F and °C.',
+      'Weather: tap someone on the map and see the weather where they are, in a small see-through tile in the top-right corner: the temperature and how it feels, today’s high and low, the chance of rain and the sky in words. Tap it for a bigger view with the next 12 hours and °F or °C; tap again to make it small.',
       'Only a rough area (about 10 km) is used to look the weather up, and the town is named on your phone. Weather data from Open-Meteo.',
+      'The helper follows the conversation: it remembers the last 10 messages in each chat and its answers, so you can ask about a file you just sent, or say “this is Maya’s school calendar” and it knows what you mean.',
     ],
   },
   {

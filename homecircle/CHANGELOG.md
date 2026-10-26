@@ -10,6 +10,9 @@ See the full list of changes on <https://homecircle.umair.us/#changelog>.
 - Weather plugin: phones send a 0.1° grid cell (about 10 km); the server
   asks Open-Meteo (free, no account or key; needs outbound HTTPS to
   api.open-meteo.com) and keeps each cell 15 minutes. Who asked isn't kept.
+- The helper keeps each chat's last 10 messages and its answers (sealed with
+  its memory) and reads follow-ups with them: questions about a file just
+  sent, or whose a calendar is ("this is my son's school calendar").
 - Needs the HomeCircle app 0.14.0 for the weather tile.
 
 ## 0.13.0

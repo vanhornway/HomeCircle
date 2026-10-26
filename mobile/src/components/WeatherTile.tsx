@@ -15,6 +15,11 @@ const SKY = {
   fog: ['#8E98A6', '#4C535E'],
 } as const;
 const HIGH_LOW = { bg: '#CFC8F5', ink: '#2B2550' };
+// Small on the map, so it hides little of it; tapped, bigger with the next hours.
+const SMALL = { scale: 0.8, width: 140 };
+const BIG = { scale: 1.1, width: 290 };
+// The card lets the map show through (#RRGGBB + alpha).
+const see = (hex: string) => `${hex}B8`;
 const RAIN = { bg: '#7CCBF2', ink: '#0B3550' };
 
 const hourLabel = (iso: string) => {
@@ -24,8 +29,8 @@ const hourLabel = (iso: string) => {
 
 /**
  * The weather plugin's tile, in the map's top-right corner: the weather where
- * the selected person is (or you), laid out like a watch face. Tap it for the
- * next 12 hours.
+ * the selected person is (or you), laid out like a watch face. Tap it for a
+ * bigger view with the next 12 hours; tap again to make it small.
  */
 export function WeatherTile({ client, memberId }: { client: CircleClient; memberId: string | null }) {
   const t = useTheme();
@@ -42,6 +47,8 @@ export function WeatherTile({ client, memberId }: { client: CircleClient; member
   const sky = data ? describe(data.now.code, data.now.day) : null;
   const square = SKY[sky?.tone ?? 'cloud'][data?.now.day === false ? 1 : 0];
   const title = [who, place].filter(Boolean).join(' · ') || 'Weather';
+  const { scale, width } = open ? BIG : SMALL;
+  const z = (n: number) => Math.round(n * scale);
 
   return (
     <Pressable
@@ -49,32 +56,32 @@ export function WeatherTile({ client, memberId }: { client: CircleClient; member
       accessibilityState={{ expanded: open }}
       accessibilityLabel={data && sky ? `Weather for ${who ?? 'you'}${place ? ` in ${place}` : ''}: ${deg(data.now.temp, f)}, ${sky.text}, high ${deg(data.today.high, f)}, low ${deg(data.today.low, f)}, ${data.today.rain ?? 0}% chance of rain` : 'Weather'}
       onPress={() => setOpen((v) => !v)}
-      style={{ width: open ? 252 : 176, borderRadius: 22, padding: 8, gap: 6, backgroundColor: t.surface, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 10, elevation: 4 }}
+      style={{ width, borderRadius: z(22), padding: z(8), gap: z(6), backgroundColor: see(t.surface), borderWidth: 1, borderColor: see(t.line) }}
     >
-      <Text style={{ color: t.text, fontSize: 13, fontWeight: '700', textAlign: 'center' }} numberOfLines={1}>
+      <Text style={{ color: t.text, fontSize: z(13), fontWeight: '700', textAlign: 'center' }} numberOfLines={1}>
         {title}
       </Text>
       {!data ? (
-        <Text style={{ color: t.muted, fontSize: 13, textAlign: 'center', paddingVertical: 24 }}>{error ? 'Weather unavailable' : 'Weather…'}</Text>
+        <Text style={{ color: t.muted, fontSize: z(13), textAlign: 'center', paddingVertical: z(24) }}>{error ? 'Weather unavailable' : 'Weather…'}</Text>
       ) : (
         <>
-          <View style={{ flexDirection: 'row', gap: 6 }}>
-            <View style={{ flex: 1, height: 100, borderRadius: 18, padding: 8, justifyContent: 'flex-end', backgroundColor: square }}>
-              <Text style={{ position: 'absolute', top: 6, right: 8, fontSize: 20 }}>{sky?.icon}</Text>
-              <Text style={{ color: '#fff', fontSize: 30, fontWeight: '800', lineHeight: 34 }}>{deg(data.now.temp, f)}</Text>
-              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>Feels {deg(data.now.feels, f)}</Text>
+          <View style={{ flexDirection: 'row', gap: z(6) }}>
+            <View style={{ flex: 1, height: z(100), borderRadius: z(18), padding: z(8), justifyContent: 'flex-end', backgroundColor: square }}>
+              <Text style={{ position: 'absolute', top: z(6), right: z(8), fontSize: z(20) }}>{sky?.icon}</Text>
+              <Text style={{ color: '#fff', fontSize: z(30), fontWeight: '800', lineHeight: z(34) }}>{deg(data.now.temp, f)}</Text>
+              <Text style={{ color: '#fff', fontSize: z(11), fontWeight: '600' }}>Feels {deg(data.now.feels, f)}</Text>
             </View>
-            <View style={{ width: 74, gap: 6 }}>
-              <View style={{ flex: 1, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: HIGH_LOW.bg }}>
-                <Text style={{ color: HIGH_LOW.ink, fontSize: 13, fontWeight: '600' }}>↑ {deg(data.today.high, f)}</Text>
-                <Text style={{ color: HIGH_LOW.ink, fontSize: 13, fontWeight: '600' }}>↓ {deg(data.today.low, f)}</Text>
+            <View style={{ width: z(74), gap: z(6) }}>
+              <View style={{ flex: 1, borderRadius: z(22), alignItems: 'center', justifyContent: 'center', backgroundColor: HIGH_LOW.bg }}>
+                <Text style={{ color: HIGH_LOW.ink, fontSize: z(13), fontWeight: '600' }}>↑ {deg(data.today.high, f)}</Text>
+                <Text style={{ color: HIGH_LOW.ink, fontSize: z(13), fontWeight: '600' }}>↓ {deg(data.today.low, f)}</Text>
               </View>
-              <View style={{ flex: 1, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: RAIN.bg }}>
-                <Text style={{ color: RAIN.ink, fontSize: 13, fontWeight: '700' }}>☔ {data.today.rain ?? 0}%</Text>
+              <View style={{ flex: 1, borderRadius: z(22), alignItems: 'center', justifyContent: 'center', backgroundColor: RAIN.bg }}>
+                <Text style={{ color: RAIN.ink, fontSize: z(13), fontWeight: '700' }}>☔ {data.today.rain ?? 0}%</Text>
               </View>
             </View>
           </View>
-          <Text style={{ color: t.text, fontSize: 13, fontWeight: '700', textAlign: 'center' }}>{sky?.text}</Text>
+          <Text style={{ color: t.text, fontSize: z(13), fontWeight: '700', textAlign: 'center' }}>{sky?.text}</Text>
           {open ? (
             <View style={{ gap: 6 }}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingHorizontal: 2 }}>

@@ -28,12 +28,13 @@ async function fakeLlm(cfg, { system, messages, schema }) {
   const text = messages.map((m) => (typeof m.content === 'string' ? m.content : m.content.map((p) => (p.type === 'text' ? p.text : `[${p.type}]`)).join('\n'))).join('\n');
   sentToAi.push(`${system}\n${text}`);
   if (schema?.properties?.calendar) {
+    const sent = text.match(/now sent (.*)$/s)?.[1] ?? text;
     if (/date,what/.test(text)) {
       const events = [...text.matchAll(/^(\d{4}-\d{2}-\d{2}),(.+)$/gm)].map(([, start, summary]) => ({ summary, start, end: null, off: false }));
       return json({ title: 'Swim meets', summary: 'The season’s meets.', calendar: true, school: false, events, notes: [] });
     }
-    if (/\[image\]/.test(text) && /blank/.test(text)) return json({ title: 'A blank page', summary: 'Nothing on it.', calendar: false, school: false, events: [], notes: [] });
-    if (/\[image\]/.test(text) && /receipt/.test(text)) {
+    if (/\[image\]/.test(text) && /blank/.test(sent)) return json({ title: 'A blank page', summary: 'Nothing on it.', calendar: false, school: false, events: [], notes: [] });
+    if (/\[image\]/.test(text) && /receipt/.test(sent)) {
       return json({ title: 'Costco receipt', summary: 'A Costco trip.', receipt: { store: 'Costco', items: ['Milk', 'Paper towels', 'Eggs'] }, calendar: false, school: false, events: [], notes: [] });
     }
     if (/\[image\]/.test(text)) {
@@ -52,9 +53,11 @@ async function fakeLlm(cfg, { system, messages, schema }) {
     return { text: 'OK', json: null, usd: 0.0001, refused: false };
   }
   if (schema?.properties?.intent) {
-    if (/are our kids/.test(text)) {
+    // Only the new message decides what it is; the conversation before it is context.
+    const said = text.match(/now says: (.*)$/s)?.[1] ?? text;
+    if (/are our kids/.test(said)) {
       // New names can't be swapped yet (nobody's told the agent about them).
-      const [a, b] = text.match(/asks: (.+) are our kids/)[1].split(' and ');
+      const [a, b] = said.match(/(.+) are our kids/)[1].split(' and ');
       return json({
         intent: 'remember',
         people: [a, b],
@@ -65,14 +68,18 @@ async function fakeLlm(cfg, { system, messages, schema }) {
         remember: [a, b].map((p) => ({ type: 'person', title: p, body: `${p} is one of the kids.`, people: [], start: null, end: null, role: 'kid' })),
       });
     }
-    if (/free/.test(text)) return json({ intent: 'free_time', people: ['kids'], days: 5, from: null, to: null, keywords: ['vacation'], remember: [] });
-    if (/remind/.test(text)) {
+    if (/^this is .*calendar/.test(said)) {
+      const whose = said.match(/^this is (Person [A-Z]|my son)/)[1];
+      return json({ intent: 'about_file', people: [whose === 'my son' ? 'son' : whose], days: null, from: null, to: null, keywords: [], remember: [] });
+    }
+    if (/free/.test(said)) return json({ intent: 'free_time', people: ['kids'], days: 5, from: null, to: null, keywords: ['vacation'], remember: [] });
+    if (/remind/.test(said)) {
       return json({ intent: 'reminder', people: [], days: null, from: null, to: null, keywords: [], remember: [], list: null, listAction: null, items: [], reminder: { title: 'Car registration', due: '2026-11-30', repeat: 'yearly' } });
     }
-    if (/need .* from the desi/.test(text)) {
+    if (/need .* from the desi/.test(said)) {
       return json({ intent: 'list', people: [], days: null, from: null, to: null, keywords: [], remember: [], list: 'desi store', listAction: 'add', items: ['paneer', 'chai'], reminder: null });
     }
-    if (/decided|Tahoe/.test(text)) return json({ intent: 'recall', people: [], days: null, from: null, to: null, keywords: ['tahoe'], remember: [] });
+    if (/decided|Tahoe/.test(said)) return json({ intent: 'recall', people: [], days: null, from: null, to: null, keywords: ['tahoe'], remember: [] });
     return json({ intent: 'other', people: [], days: null, from: null, to: null, keywords: [], remember: [] });
   }
   if (schema?.properties?.merges) {
@@ -100,7 +107,8 @@ async function fakeLlm(cfg, { system, messages, schema }) {
   // Answers: repeat what was worked out, or the first note.
   const worked = text.match(/Worked out from calendars:\n([^\n]+)/)?.[1];
   const note = text.match(/^- [a-z]+: ([^\n]+)/m)?.[1];
-  return { text: worked ?? note ?? 'I don’t know.', json: null, usd: 0.002, refused: false };
+  const unsaved = text.match(/not saved yet: [^\n]+\n- ([^\n]+)/)?.[1];
+  return { text: worked ?? unsaved ?? note ?? 'I don’t know.', json: null, usd: 0.002, refused: false };
 }
 const json = (o) => ({ text: JSON.stringify(o), json: o, usd: 0.001, refused: false });
 
@@ -420,6 +428,37 @@ test('a discarded or empty reading deletes the file; a sheet of dates becomes a 
   assert.equal(readdirSync(join(dir, 'files')).length, before);
   // Dad can't answer a question that was for Mom.
   assert.equal(ask.body.fileChoice.by, mom.account.memberId);
+});
+
+test('after sending a file, follow-ups are read with the conversation: questions about it, and whose it is', async () => {
+  const peer = mom.agent.id;
+  const fromAgentDm = (c, re) => [...c.conversation(c.agent.id)].reverse().find((m) => m.from === c.agent.id && re.test(m.body?.text ?? ''));
+  const sentBefore = sentToAi.length;
+  const csv = new TextEncoder().encode('date,what\n2026-12-12,Home meet\n2027-01-23,Away meet\n2027-02-13,Finals');
+  await mom.sendFileToAgent(csv, { name: 'season.csv', mime: 'text/csv' }, { peer });
+  const list = await until(mom, (c) => fromAgentDm(c, /^📄 Swim meets/));
+
+  // A question about it before it's saved: the AI gets the conversation and the dates just read.
+  await mom.askAgent('when is the first meet?', { peer });
+  const a = await until(mom, (c) => fromAgentDm(c, /^Dec 12: Home meet$/));
+  assert.ok(a);
+  const asked = sentToAi.findLast((p) => p.includes('now says: when is the first meet?'));
+  assert.match(asked, /Our conversation so far \(oldest first\):\n.*\[sent a file: “season\.csv”\]\n.*📄 Swim meets: I found 3 dates/s);
+
+  // "my son" with two kids: which one?
+  await mom.askAgent('this is my son’s swim calendar', { peer });
+  await until(mom, (c) => fromAgentDm(c, /^Whose is it\? Answer “\/Jarvis for Kid” \(or “for Kid and Sam”\)\.$/));
+  // Named: it's for them, and Save adds it straight away.
+  await mom.askAgent('this is Sam’s swim calendar', { peer });
+  const got = await until(mom, (c) => fromAgentDm(c, /^Got it: Sam’s calendar\. Tap Save to add it\.$/));
+  assert.equal(got.body.save.id, list.body.save.id);
+  // Names never reach the AI, in the conversation either.
+  assert.ok(!sentToAi.slice(sentBefore).some((p) => /\bSam\b/.test(p)));
+  await mom.saveAgentFound(got.body.save.id, true);
+  const ask = await until(mom, (c) => fromAgentDm(c, /^Delete “season\.csv”/));
+  assert.ok(mom.conversation(mom.agent.id).some((m) => /^📅 Added Sam’s calendar: 3 events; next: Home meet \(Dec 12\)\.$/.test(m.body?.text ?? '')));
+  await mom.answerAgentFile(ask.body.fileChoice.id, false);
+  await until(mom, (c) => fromAgentDm(c, /Deleted “season\.csv”/));
 });
 
 test('a PDF with no text says so', async () => {

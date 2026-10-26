@@ -19,6 +19,9 @@ const iso = (d) => d.toISOString().slice(0, 10);
 const URL_RE = /(?:https?|webcals?):\/\/[^\s<>"']+/i;
 const GROUPS = { kids: /^(the )?(kids|children|boys|girls)$/i, everyone: /^(everyone|everybody|all of us|the family|family|us)$/i };
 const MAX_NOTES_IN_PROMPT = 15;
+// What the helper keeps of each chat: the last 10 messages to it and its 10 answers.
+const CHAT_KEEP = 20;
+const KID_RE = /^(?:my |our |the )?(?:kid|child|son|daughter)$/i;
 
 const fmtDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 // "Nov 25–29", or "Dec 19–Jan 3" across months.
@@ -50,7 +53,7 @@ const TAGS_RULE =
 export const UNDERSTAND = {
   type: 'object',
   properties: {
-    intent: { type: 'string', enum: ['free_time', 'recall', 'remember', 'tidy', 'list', 'reminder', 'other'] },
+    intent: { type: 'string', enum: ['free_time', 'recall', 'remember', 'tidy', 'list', 'reminder', 'about_file', 'other'] },
     people: { type: 'array', items: { type: 'string' } },
     days: orNull({ type: 'integer' }),
     from: orNull({ type: 'string' }),
@@ -233,6 +236,7 @@ export class Brain {
 
   /** Answer where the message came from: everyone in the group, or only the sender. */
   async reply(msg, text, extra = {}) {
+    this._log(msg, null, text);
     const body = { text, ...extra };
     if (msg.body.thread === 'group') {
       for (const p of this.agent.people()) await this.agent.send(p.id, { ...body, thread: 'group', replyTo: msg.body.replyTo ?? null }).catch((e) => this.log('agent: send failed', e.message));
@@ -243,6 +247,35 @@ export class Brain {
 
   async _rpcReply(msg, ok, data) {
     await this.agent.send(msg.from, { rpcResult: { id: msg.body.rpc.id, ok, ...(ok ? { data } : { error: data }) }, thread: 'dm', agentCopy: true });
+  }
+
+  // --- the conversation so far ---------------------------------------------
+  // Each chat (someone's DM, or the group) keeps its last messages to the
+  // helper and its answers, sealed like the rest of memory, so a follow-up
+  // ("this is my kid’s school calendar", "and the week after?") is read with
+  // what came before.
+
+  _chatKey(msg) {
+    return msg.body?.thread === 'group' ? 'chat:group' : `chat:${msg.from}`;
+  }
+
+  /** The conversation so far in this chat, oldest first: [{ by (a member id, or null for the helper), text, at }]. */
+  _chat(msg) {
+    return this.memory.getSetting(this._chatKey(msg)) ?? [];
+  }
+
+  _log(msg, by, text) {
+    if (!text) return;
+    const key = this._chatKey(msg);
+    const chat = (this.memory.getSetting(key) ?? []).concat({ by, text: String(text).slice(0, 1500), at: this.now().getTime() });
+    this.memory.setSetting(key, chat.slice(-CHAT_KEEP));
+  }
+
+  /** The conversation as text for the AI (names still in it: mask the result). */
+  _chatText(chat) {
+    if (!chat.length) return '';
+    const lines = chat.map((m) => `${m.by ? this._nameOf(m.by) : this.name}: ${m.text}`);
+    return `Our conversation so far (oldest first):\n${lines.join('\n')}\n\n`;
   }
 
   // --- the AI, within budget ---------------------------------------------
@@ -307,13 +340,16 @@ export class Brain {
     this._learn(b);
     try {
       if (b.rpc) return await this._rpc(msg);
+      // What came before this message, then this message, so the answer can follow on.
+      const chat = this._chat(msg);
+      this._log(msg, msg.from, said(b));
       if (b.undo) return await this._undo(msg, b.undo);
       if (b.saveFound) return await this._saveFound(msg, b.saveFound);
-      if (b.upload) return await this._readUpload(msg);
+      if (b.upload) return await this._readUpload(msg, chat);
       if (b.fileChoice) return await this._fileChoice(msg, b.fileChoice);
       if (b.reminderDone) return await this._reminderDone(msg, b.reminderDone);
       if (b.remember) return await this._remember(msg);
-      if (typeof b.ask === 'string') return await this._ask(msg);
+      if (typeof b.ask === 'string') return await this._ask(msg, chat);
     } catch (e) {
       if (b.rpc) return this._rpcReply(msg, false, e instanceof BrainError || e instanceof LlmError ? e.message : 'Something went wrong');
       const text = e instanceof BrainError || e instanceof LlmError ? e.message : 'Sorry, something went wrong on my side.';
@@ -376,7 +412,7 @@ export class Brain {
 
   // --- questions ---------------------------------------------------------
 
-  async _ask(msg) {
+  async _ask(msg, chat = []) {
     // "/Chirya/dream", "Chirya, dream", "/dream" all mean "dream": drop the name and slashes first.
     const name = this.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const text = msg.body.ask
@@ -387,7 +423,7 @@ export class Brain {
     // Plain commands, no AI needed.
     const url = text.match(URL_RE)?.[0];
     if (url) return this._addSource(msg, url, text.replace(url, ' '));
-    if (/^(?:it'?s|its|that'?s|this is)?\s*for\s+(.+)$/i.test(text) && this.memory.getSetting(`pending:${msg.from}`)) return this._finishSource(msg, text.match(/for\s+(.+)$/i)[1]);
+    if (/^(?:it'?s|its|that'?s|this is)?\s*for\s+(.+)$/i.test(text) && this._waitingFor(msg.from)) return this._aboutLast(msg, [text.match(/for\s+(.+)$/i)[1]], text);
     if (/^(list|show)( (me|my|the))? (sources|calendars)\b/i.test(text)) return this._listSources(msg);
     if (/^(usage|budget|spending|how much)\b/i.test(text)) return this._usage(msg);
     if (/^undo\b/i.test(text)) return this._undo(msg, this.memory.getSetting(`last:${msg.from}`) ?? []);
@@ -404,12 +440,14 @@ export class Brain {
     const asker = this._nameOf(msg.from);
     const u = await this._ai(msg.from, {
       system: this._readerPrompt(),
-      messages: [{ role: 'user', content: s.mask(`${asker} asks: ${text}`) }],
+      messages: [{ role: 'user', content: s.mask(`${this._chatText(chat)}${asker} now says: ${text}`) }],
       schema: UNDERSTAND,
       maxTokens: 2000,
     });
     const plan = u.json ?? { intent: 'other', people: [], days: null, from: null, to: null, keywords: [], remember: [] };
     const wanted = (plan.people ?? []).map((p) => s.unmask(p));
+    // "This is my kid’s school calendar": about what they just sent, still waiting for Save.
+    if (plan.intent === 'about_file' && this._waitingFor(msg.from)) return this._aboutLast(msg, wanted, text);
     const remember = (plan.remember ?? []).map((n) => unmaskNote(n, s));
     const saved = remember.length ? this._save(remember, { scope: this._scopeFor(msg), by: msg.from }) : [];
     if (saved.length) this.memory.setSetting(`last:${msg.from}`, saved.map((n) => n.id));
@@ -436,7 +474,7 @@ export class Brain {
 
     const answer = await this._ai(msg.from, {
       system: this._answerPrompt(),
-      messages: [{ role: 'user', content: s.mask(this._context(notes, worked, asker, text)) }],
+      messages: [{ role: 'user', content: s.mask(this._context(notes, worked, asker, text, { chat, found: this._lastFound(msg.from) })) }],
       maxTokens: 1500,
     });
     let out = s.unmask(answer.text).trim() || 'I don’t know yet.';
@@ -449,10 +487,11 @@ export class Brain {
     return [
       `You read messages a family sends their helper, ${this.name}, and say what each one needs. Today is ${iso(d)} (${d.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' })}).`,
       'People and places appear as stand-ins (Person A, Place 1): copy them exactly as written.',
-      'intent: "free_time" when they ask when people are free or available (days = how many days in a row, null if not said); "recall" for a question to answer from what was kept before; "remember" when they tell you something to keep (a fact, a decision, a date, a schedule, who someone is); "tidy" when they ask you to dream, or to tidy, sort, organize, clean up or re-tag what you remember; "list" for a shopping list (what’s on it, add to it, take off it); "reminder" when they ask to be reminded of something far ahead (a registration, renewal, payment, appointment); "other" for anything else.',
+      'Our conversation so far may come first: use it to understand the new message (what “it”, “that” or “this” is, a follow-up question, a correction), but read only the new message for what to do.',
+      'intent: "free_time" when they ask when people are free or available (days = how many days in a row, null if not said); "recall" for a question to answer from what was kept before; "remember" when they tell you something to keep (a fact, a decision, a date, a schedule, who someone is); "tidy" when they ask you to dream, or to tidy, sort, organize, clean up or re-tag what you remember; "list" for a shopping list (what’s on it, add to it, take off it); "reminder" when they ask to be reminded of something far ahead (a registration, renewal, payment, appointment); "about_file" when they say whose or what the file, photo, PDF or calendar they just sent is (“this is my kid’s school calendar”, “it’s for Person B”), and then remember is empty; "other" for anything else.',
       'list: the store or list name ("Costco", "desi store"), else null. listAction: show, add or remove, else null. items: the things to add or remove, one per entry.',
       'reminder: for a reminder, its title (short, like "Car registration"), due (YYYY-MM-DD, the next time it falls) and repeat ("yearly" if it comes every year, like a registration or renewal, else "none"); else null.',
-      'people: who the message is about, as written ("Person B"), or a group word as written ("kids", "everyone").',
+      'people: who the message is about, as written ("Person B"), or a group word as written ("kids", "everyone", "kid" for one child not named).',
       'from/to: a date range the question is about, YYYY-MM-DD, or null. keywords: a few words to search notes with.',
       'remember: notes to keep, only for things stated as facts or decisions (never for questions). One note per thing; title short; body one or two sentences that link people and places as [[Person A]] or [[Place 1]]. For "Person B and Person C are our kids", one person note each with role "kid". Dates as YYYY-MM-DD.',
       TAGS_RULE,
@@ -461,14 +500,24 @@ export class Brain {
 
   _answerPrompt() {
     return [
-      `You are ${this.name}, a helper for one family. Answer briefly (a few sentences), in the language the question is asked in, using only the notes and results given.`,
+      `You are ${this.name}, a helper for one family. Answer briefly (a few sentences), in the language the question is asked in, using only the notes, results and conversation given.`,
+      'Our conversation so far is there so you can follow on from it: answer the new message, not the earlier ones.',
       'If they don’t answer the question, say so plainly and say what to add (for example, which calendar to share). Never invent dates or facts.',
       'People and places are stand-ins (Person A, Place 1): use them exactly as written. Write dates like "Nov 25–29".',
     ].join('\n');
   }
 
-  _context(notes, worked, asker, question) {
-    const lines = ['Notes:'];
+  _context(notes, worked, asker, question, { chat = [], found = null } = {}) {
+    const lines = [];
+    if (chat.length) lines.push(this._chatText(chat).trim(), '');
+    if (found) {
+      // Sent but not saved yet: not in the notes, but likely what the conversation is about.
+      lines.push(`Just read from what ${asker} sent, not saved yet: ${found.title}`);
+      for (const e of (found.events ?? []).slice(0, 80)) lines.push(`- ${fmtRange(e)}: ${e.summary}${e.off ? ' (off)' : ''}`);
+      for (const n of (found.notes ?? []).slice(0, 20)) lines.push(`- ${n.type}: ${n.title}: ${(n.body || '').slice(0, 300)}`);
+      lines.push('');
+    }
+    lines.push('Notes:');
     for (const n of notes.slice(0, MAX_NOTES_IN_PROMPT)) {
       const when = n.start ? ` (${n.start === n.end || !n.end ? fmtDay(n.start) : `${fmtDay(n.start)}–${fmtDay(n.end)}`})` : '';
       const role = n.data?.role ? ` [${n.data.role}]` : '';
@@ -543,12 +592,6 @@ export class Brain {
     if (forWho) return this._storeSource(msg, pending, forWho);
     this.memory.setSetting(`pending:${msg.from}`, pending);
     await this.reply(msg, `I can read it: ${events.length} events. Whose calendar is it? Answer “/${this.name} for Kid” (or “for Kid and Sam”).`);
-  }
-
-  async _finishSource(msg, who) {
-    const pending = this.memory.getSetting(`pending:${msg.from}`);
-    this.memory.setSetting(`pending:${msg.from}`, null);
-    return this._storeSource(msg, pending, who);
   }
 
   async _storeSource(msg, src, who) {
@@ -825,6 +868,7 @@ export class Brain {
       by: msg.from,
       forWho: rest.match(/\bfor\s+([^.?!]+)/i)?.[1]?.trim() || null,
     });
+    this.memory.setSetting(`lastFound:${msg.from}`, id);
     await this.reply(msg, this._foundText(found.title, found.events, found), { save: { id, by: msg.from } });
   }
 
@@ -834,6 +878,7 @@ export class Brain {
     const found = this.memory.getSetting(key);
     if (!found || found.by !== msg.from) return this.reply(msg, 'That list is gone, or isn’t yours to save.');
     this.memory.setSetting(key, null);
+    if (this.memory.getSetting(`lastFound:${msg.from}`) === String(id)) this.memory.setSetting(`lastFound:${msg.from}`, null);
     const back = { ...msg, body: { ...msg.body, thread: found.thread, replyTo: found.replyTo } };
     if (!ok) {
       // A file whose reading was discarded isn't worth keeping.
@@ -866,6 +911,66 @@ export class Brain {
     if (found.forWho) return this._storeSource(back, found, found.forWho);
     this.memory.setSetting(`pending:${msg.from}`, found);
     await this.reply(back, `Whose calendar is it? Answer “/${this.name} for Kid” (or “for Kid and Sam”).`);
+  }
+
+  /** The list shown last to this person and still waiting for Save, if any. */
+  _lastFound(by) {
+    const id = this.memory.getSetting(`lastFound:${by}`);
+    const found = id ? this.memory.getSetting(`found:${id}`) : null;
+    // A day later it's no longer what the conversation is about (it can still be saved).
+    if (!found || found.by !== by || (found.fetchedAt && this.now().getTime() - found.fetchedAt > DAY)) return null;
+    return { id, ...found };
+  }
+
+  /** Whether something they sent is waiting to be told whose it is. */
+  _waitingFor(by) {
+    const found = this._lastFound(by);
+    return !!(this.memory.getSetting(`pending:${by}`) || (found && !found.receipt));
+  }
+
+  /** Names for "my kid", "the kids", "Sam and Alex"; null when "my kid" can't be told apart. */
+  _whose(wanted, by) {
+    const persons = this.memory.list({ by, type: 'person' });
+    const kids = persons.filter((n) => n.data?.role === 'kid').map((n) => n.title);
+    const known = new Set([...persons.map((n) => n.title), ...Object.values(this.people())]);
+    const out = [];
+    for (const raw of wanted.flatMap((w) => String(w).split(/,|\band\b|&/i))) {
+      const w = raw.trim().replace(/^(?:the|my|our)\s+/i, '').replace(/[’']s$/, '').trim();
+      if (!w) continue;
+      // Someone's name first, as written (a kid may be called Kid; "kid" is any one of them).
+      if (known.has(w)) out.push(w);
+      else if (KID_RE.test(w)) {
+        if (kids.length !== 1) return null;
+        out.push(kids[0]);
+      } else if (GROUPS.kids.test(w)) out.push(...kids);
+      else out.push(w);
+    }
+    return out.length ? [...new Set(out)] : null;
+  }
+
+  /** "This is my kid’s school calendar": whose (and what) the thing they just sent is. */
+  async _aboutLast(msg, wanted, text) {
+    const who = this._whose(wanted, msg.from);
+    const school = /\bschool\b/i.test(text);
+    if (!who) {
+      const kids = this.memory.list({ by: msg.from, type: 'person' }).filter((n) => n.data?.role === 'kid').map((n) => n.title);
+      return this.reply(msg, `Whose is it? Answer “/${this.name} for ${kids[0] ?? 'Kid'}”${kids.length > 1 ? ` (or “for ${names(kids.slice(0, 2))}”)` : ''}.`);
+    }
+    const pending = this.memory.getSetting(`pending:${msg.from}`);
+    if (pending) {
+      // Saved already, and waiting to hear whose it is.
+      this.memory.setSetting(`pending:${msg.from}`, null);
+      return this._storeSource(msg, { ...pending, school: pending.school || school }, who.join(', '));
+    }
+    const { id, ...found } = this._lastFound(msg.from);
+    if (found.pdf || found.calendar) {
+      this.memory.setSetting(`found:${id}`, { ...found, forWho: who.join(', '), school: found.school || school });
+      return this.reply(msg, `Got it: ${names(who)}’s ${found.school || school ? 'school calendar' : 'calendar'}. Tap Save to add it.`, { save: { id, by: msg.from } });
+    }
+    // Notes from a file: each one is about them too.
+    const notes = (found.notes ?? []).map((n) => ({ ...n, people: [...new Set([...(n.people ?? []), ...who])] }));
+    this.memory.setSetting(`found:${id}`, { ...found, notes });
+    return this.reply(msg, `Got it: it’s about ${names(who)}. Tap Save to keep it.`, { save: { id, by: msg.from } });
   }
 
   // --- shopping lists -------------------------------------------------------
@@ -973,7 +1078,7 @@ export class Brain {
   // matters is listed for the sender to check: Save or Discard. After a Save
   // they choose to delete the file from the server or keep it with the notes.
 
-  async _readUpload(msg) {
+  async _readUpload(msg, chat = []) {
     const u = msg.body.upload ?? {};
     if (typeof u.id !== 'string' || typeof u.key !== 'string') throw new BrainError('That file didn’t come through. Try sending it again.');
     const file = { id: u.id, key: u.key, name: String(u.name || 'file').slice(0, 120), mime: String(u.mime || '').slice(0, 100), size: Number(u.size) || 0 };
@@ -989,7 +1094,7 @@ export class Brain {
       throw new BrainError(e instanceof BrainError ? e.message : /couldn’t|can’t|too big|isn’t/.test(e.message) ? e.message : 'I couldn’t open that file. Try sending it again.');
     }
     const s = this._swapper(msg.from);
-    const intro = `${this._nameOf(msg.from)} sent ${read.kind === 'image' ? 'a photo' : read.kind === 'pdf' ? 'a scanned PDF' : read.what} named “${file.name}”.${msg.body.ask ? ` They said: ${msg.body.ask}` : ''}`;
+    const intro = `${this._chatText(chat)}${this._nameOf(msg.from)} now sent ${read.kind === 'image' ? 'a photo' : read.kind === 'pdf' ? 'a scanned PDF' : read.what} named “${file.name}”.${msg.body.ask ? ` They said: ${msg.body.ask}` : ''}`;
     const content =
       read.kind === 'text'
         ? s.mask(`${intro}\n\n${read.text}`)
@@ -1014,6 +1119,7 @@ export class Brain {
       const store = s.unmask(String(out.receipt.store || 'Store')).slice(0, 40);
       const id = randomBytes(6).toString('base64url');
       this.memory.setSetting(`found:${id}`, { file, title: store, receipt: { store, items: receiptItems }, thread: msg.body.thread, replyTo: msg.body.replyTo ?? null, scope: this._scopeFor(msg), by: msg.from });
+      this.memory.setSetting(`lastFound:${msg.from}`, id);
       const shown = receiptItems.slice(0, 25).join(', ');
       return this.reply(
         msg,
@@ -1043,6 +1149,7 @@ export class Brain {
       by: msg.from,
       forWho: String(msg.body.ask || '').match(/\bfor\s+([^.?!]+)/i)?.[1]?.trim() || null,
     });
+    this.memory.setSetting(`lastFound:${msg.from}`, id);
     const text = calendar
       ? this._foundText(title, events, { truncated: read.truncated })
       : [
@@ -1278,6 +1385,18 @@ export class Brain {
 }
 
 export class BrainError extends Error {}
+
+/** What someone's message to the helper says, for the conversation log. */
+function said(b) {
+  if (b.upload) return `[sent a file: “${String(b.upload.name || 'file').slice(0, 120)}”]${b.ask ? ` ${b.ask}` : ''}`;
+  if (typeof b.ask === 'string') return b.ask;
+  if (b.saveFound) return b.saveFound.ok ? '[tapped Save]' : '[tapped Discard]';
+  if (b.fileChoice) return b.fileChoice.keep ? '[tapped Keep the file]' : '[tapped Delete the file]';
+  if (b.reminderDone) return '[tapped Done on a reminder]';
+  if (b.undo) return '[tapped Undo]';
+  if (b.remember) return `[asked you to remember a message] ${String(b.remember.text ?? '').slice(0, 500)}`;
+  return null;
+}
 
 function pick(o, keys) {
   return Object.fromEntries(keys.filter((k) => o && k in o).map((k) => [k, o[k]]));
