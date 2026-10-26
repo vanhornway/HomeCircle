@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { CircleClient, type InvitePreview } from '@homecircle/core';
 import { Button, ErrorText, Field, H1, LockNote, P, Screen } from '../components/ui';
 import { addCircle, allClients, clientForCircle, draftClient, errorText } from '../lib/circle';
+import { enterApp } from '../lib/nav';
 import { updateSettings } from '../lib/storage';
 import { useTheme } from '../theme';
 
@@ -61,9 +62,9 @@ export default function Join() {
       if (first) {
         const info = await CircleClient.serverInfo(client.serverUrl!).catch(() => null);
         if (info) await updateSettings({ tileUrl: info.tileUrl, tileAttribution: info.tileAttribution });
-        router.replace('/permissions');
+        enterApp('/permissions');
       } else {
-        router.replace('/(tabs)');
+        enterApp();
       }
     } catch (e) {
       setError(errorText(e));

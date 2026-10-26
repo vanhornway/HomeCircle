@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { AppState, Linking, Platform, Text, View } from 'react-native';
-import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import { Button, Card, H1, P, Screen } from '../components/ui';
 import { notificationPermission, registerPush } from '../lib/push';
 import { startBackgroundUpdates, shareNow } from '../lib/location';
+import { enterApp } from '../lib/nav';
 import { useTheme } from '../theme';
 
 type Status = 'granted' | 'denied' | 'undetermined';
@@ -48,7 +48,7 @@ export default function Permissions() {
 
   const finish = async () => {
     await startBackgroundUpdates().catch(() => {});
-    router.replace('/(tabs)');
+    enterApp();
   };
 
   const row = (title: string, body: string, status: Status, action: () => void, actionTitle: string) => (

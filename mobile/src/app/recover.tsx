@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Alert, Text, View } from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { CircleClient, defaultFeatures, type PendingRejoin, type RecoverableCircle, type ServerInfo } from '@homecircle/core';
 import { FeatureChooser } from '../components/FeaturePicker';
 import { Button, Card, ErrorText, Field, H1, LockNote, P, Screen } from '../components/ui';
 import { addCircle, allClients, clientForCircle, draftClient, errorText, serverHost, setActiveCircle } from '../lib/circle';
+import { enterApp } from '../lib/nav';
 import { clearPendingRejoin, getPendingRejoin, setPendingRejoin } from '../lib/rejoin';
 import { updateSettings } from '../lib/storage';
 import { timeAgo } from '../lib/useCircle';
@@ -26,9 +27,9 @@ async function opened(client: CircleClient, info?: ServerInfo) {
   await addCircle(client);
   if (first) {
     if (info) await updateSettings({ tileUrl: info.tileUrl, tileAttribution: info.tileAttribution });
-    router.replace('/permissions');
+    enterApp('/permissions');
   } else {
-    router.replace('/(tabs)');
+    enterApp();
   }
 }
 
@@ -225,7 +226,7 @@ export default function Recover() {
                     style={{ flex: 1 }}
                     onPress={async () => {
                       await setActiveCircle(mine.accountKey);
-                      router.replace('/(tabs)');
+                      enterApp();
                     }}
                   />
                 ) : (

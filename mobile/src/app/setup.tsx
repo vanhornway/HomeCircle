@@ -5,6 +5,7 @@ import { CircleClient, defaultFeatures } from '@homecircle/core';
 import { FeatureChooser } from '../components/FeaturePicker';
 import { Button, ErrorText, Field, H1, LockNote, P, Screen } from '../components/ui';
 import { addCircle, allClients, draftClient, errorText } from '../lib/circle';
+import { enterApp } from '../lib/nav';
 import { updateSettings } from '../lib/storage';
 
 export default function Setup() {
@@ -31,9 +32,9 @@ export default function Setup() {
       await addCircle(client);
       if (first) {
         await updateSettings({ tileUrl: info.tileUrl, tileAttribution: info.tileAttribution });
-        router.replace('/permissions');
+        enterApp('/permissions');
       } else {
-        router.replace('/(tabs)');
+        enterApp();
       }
     } catch (e) {
       setError(errorText(e));
