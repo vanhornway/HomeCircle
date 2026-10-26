@@ -1,6 +1,11 @@
 // Prayer times: the five daily prayers for a place and day, from where the sun
 // is. These are approximations meant to show the window for each prayer, not
-// a timetable a mosque would publish (those add a few minutes of caution).
+// a timetable a mosque would publish.
+//
+// Maghrib is 3 minutes after sunset, the caution mosques add (checked against
+// Evergreen Islamic Center, San Jose's 2026 timetable: its Maghrib is 2–4
+// minutes after the sun's sunset), unless the method has its own rule. Asr's
+// window still ends at sunset itself.
 //
 // What changes them:
 // - The madhab sets Asr: Hanafi when a thing's shadow is twice its length
@@ -27,7 +32,9 @@ export const MADHABS = [
 export const DEFAULT_MADHAB = 'shafi';
 
 // fajr/isha: the sun's angle below the horizon, or isha in minutes after
-// maghrib; maghrib: an angle, or minutes after sunset (0 = at sunset).
+// sunset; maghrib: an angle, or minutes after sunset (MAGHRIB_CAUTION_MIN if
+// not given).
+const MAGHRIB_CAUTION_MIN = 3;
 export const METHODS = {
   MWL: { name: 'Muslim World League', fajr: 18, isha: 17 },
   ISNA: { name: 'ISNA (North America)', fajr: 15, isha: 15 },
@@ -100,7 +107,7 @@ function sun(jd) {
 /**
  * Prayer times for one calendar day at a place, as instants (ms since 1970),
  * or null where the sun doesn't reach that angle (polar day or night).
- *   { fajr, sunrise, dhuhr, asr, maghrib, isha, midnight }
+ *   { fajr, sunrise, dhuhr, asr, sunset, maghrib, isha, midnight }
  * `date` is 'YYYY-MM-DD', the day as it is at that place.
  */
 export function prayerTimes({ lat, lng, date, madhab = DEFAULT_MADHAB, method }) {
@@ -146,7 +153,7 @@ export function prayerTimes({ lat, lng, date, madhab = DEFAULT_MADHAB, method })
   const { sunrise, sunset, dhuhr, asr } = g;
   let { fajr } = g;
   let isha = m.ishaMinutes ? sunset + m.ishaMinutes / 60 : g.isha;
-  const maghrib = m.maghrib ? g.maghrib : sunset + (m.maghribMinutes ?? 0) / 60;
+  const maghrib = m.maghrib ? g.maghrib : sunset + (m.maghribMinutes ?? MAGHRIB_CAUTION_MIN) / 60;
 
   // Far from the equator: dawn no earlier, and dusk no later, than a share of the night.
   const night = 24 - (sunset - sunrise);
@@ -165,17 +172,18 @@ export function prayerTimes({ lat, lng, date, madhab = DEFAULT_MADHAB, method })
     sunrise: instant(sunrise),
     dhuhr: instant(dhuhr),
     asr: instant(asr),
+    sunset: instant(sunset),
     maghrib: instant(maghrib),
     isha: instant(isha),
     midnight: instant(midnight),
   };
 }
 
-/** The five prayers in order, each from its time until the next one's window closes. */
+/** The five prayers in order, each from its time until its window closes (Asr's at sunset itself). */
 export const PRAYERS = [
   { id: 'fajr', name: 'Fajr', until: 'sunrise' },
   { id: 'dhuhr', name: 'Dhuhr', until: 'asr' },
-  { id: 'asr', name: 'Asr', until: 'maghrib' },
+  { id: 'asr', name: 'Asr', until: 'sunset' },
   { id: 'maghrib', name: 'Maghrib', until: 'isha' },
   { id: 'isha', name: 'Isha', until: 'midnight' },
 ];

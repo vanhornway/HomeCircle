@@ -30,10 +30,54 @@ for (const [name, lat, lng, zone, madhab, want] of CASES) {
   test(`${name}: within 2 minutes of Aladhan`, () => {
     const times = prayerTimes({ lat, lng, date: '2026-10-26', madhab, method: methodFor(zone, madhab) });
     // Asr far north: Aladhan's is a few minutes later than the shadow rule
-    // worked by hand (London: the sun 18.2° up at 14:15).
-    for (const [k, v] of Object.entries(want)) near(clock(times[k], zone), v, k === 'asr' && lat > 50 ? 4 : 2, `${name} ${k}`);
+    // worked by hand (London: the sun 18.2° up at 14:15). Maghrib: Aladhan's
+    // is sunset itself; ours adds 3 minutes' caution, as mosques do (Shia: the
+    // Ja'fari angle, no caution).
+    for (const [k, v] of Object.entries(want)) {
+      const caution = k === 'maghrib' && madhab !== 'shia' ? 3 : 0;
+      const expected = `${String(Math.floor((minutes(v) + caution) / 60)).padStart(2, '0')}:${String((minutes(v) + caution) % 60).padStart(2, '0')}`;
+      near(clock(times[k], zone), expected, k === 'asr' && lat > 50 ? 4 : 2, `${name} ${k}`);
+    }
   });
 }
+
+// Evergreen Islamic Center, San Jose: the first week of each month of its 2026
+// timetable (eicsanjose.org/yearly-timetable?year=2026), the source of truth
+// for a Hanafi family in San Jose. Sunrise and Maghrib are the sun's; Fajr,
+// Zuhr, Asr and Isha are congregation times, which must fall inside our
+// window for that prayer.
+const EIC = [
+  ['2026-01-05', '6:45', '7:22', '13:30', '15:45', '17:06', '19:30'],
+  ['2026-02-02', '6:30', '7:10', '13:30', '16:15', '17:35', '19:30'],
+  ['2026-03-02', '6:00', '6:37', '13:30', '16:45', '18:05', '19:45'],
+  ['2026-04-06', '6:00', '6:45', '13:30', '18:00', '19:37', '21:15'],
+  ['2026-05-04', '5:30', '6:09', '13:30', '18:15', '20:02', '21:45'],
+  ['2026-06-01', '5:00', '5:48', '13:30', '18:30', '20:25', '22:15'],
+  ['2026-07-06', '5:00', '5:53', '13:30', '18:30', '20:34', '22:15'],
+  ['2026-08-03', '5:30', '6:14', '13:30', '18:30', '20:15', '21:45'],
+  ['2026-09-07', '6:15', '6:43', '13:30', '18:00', '19:29', '21:15'],
+  ['2026-10-05', '6:30', '7:07', '13:30', '17:15', '18:47', '20:15'],
+  ['2026-11-01', '6:00', '6:33', '13:30', '15:45', '17:11', '19:30'],
+  ['2026-12-07', '6:30', '7:09', '13:30', '15:30', '16:51', '19:30'],
+];
+
+test('San Jose, Hanafi, against Evergreen Islamic Center’s 2026 timetable', () => {
+  const zone = 'America/Los_Angeles';
+  const hm = (s) => s.padStart(5, '0');
+  for (const [date, fajr, sunrise, zuhr, asr, maghrib, isha] of EIC) {
+    // The app sends the 0.1° cell around the masjid (2486 Ruby Ave).
+    const t = prayerTimes({ lat: 37.3, lng: -121.8, date, madhab: 'hanafi', method: methodFor(zone, 'hanafi') });
+    const ours = Object.fromEntries(Object.entries(t).map(([k, v]) => [k, minutes(clock(v, zone))]));
+    if (ours.midnight < 12 * 60) ours.midnight += 24 * 60;
+    near(clock(t.sunrise, zone), hm(sunrise), 2, `${date} sunrise`);
+    near(clock(t.maghrib, zone), hm(maghrib), 2, `${date} maghrib`);
+    const inside = (what, at, from, to) => assert.ok(minutes(hm(at)) >= from && minutes(hm(at)) < to, `${date} ${what}: congregation ${at} is outside ${from}–${to}`);
+    inside('fajr', fajr, ours.fajr, ours.sunrise);
+    inside('zuhr', zuhr, ours.dhuhr, ours.asr);
+    inside('asr', asr, ours.asr, ours.sunset);
+    inside('isha', isha, ours.isha, ours.midnight);
+  }
+});
 
 test('each region gets its method; Shia get Ja‘fari, or Tehran’s in Iran', () => {
   assert.equal(methodFor('America/Chicago', 'hanafi'), 'ISNA');

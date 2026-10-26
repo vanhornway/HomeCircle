@@ -297,8 +297,8 @@ export const MADHABS: { id: Madhab; label: string }[];
 export const DEFAULT_MADHAB: Madhab;
 export type PrayerId = 'fajr' | 'dhuhr' | 'asr' | 'maghrib' | 'isha';
 /** One day's times as instants (ms since 1970); null where the sun doesn't get there. */
-export type PrayerTimes = Record<PrayerId | 'sunrise' | 'midnight', number | null>;
-export const PRAYERS: { id: PrayerId; name: string; until: 'sunrise' | 'asr' | 'maghrib' | 'isha' | 'midnight' }[];
+export type PrayerTimes = Record<PrayerId | 'sunrise' | 'sunset' | 'midnight', number | null>;
+export const PRAYERS: { id: PrayerId; name: string; until: 'sunrise' | 'asr' | 'sunset' | 'isha' | 'midnight' }[];
 export const METHODS: Record<string, { name: string; fajr: number; isha?: number; ishaMinutes?: number; maghrib?: number; maghribMinutes?: number; shia?: boolean }>;
 export function methodFor(timezone: string | null | undefined, madhab?: Madhab): string;
 export function prayerTimes(opts: { lat: number; lng: number; date: string; madhab?: Madhab; method?: string }): PrayerTimes;
