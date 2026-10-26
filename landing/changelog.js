@@ -1,6 +1,19 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.17.0',
+    date: '2026-10-26',
+    title: 'Prayer times',
+    items: [
+      'New plugin, Prayer times: the next of the five daily prayers where the person you select is, with a countdown, in the same tile as the weather and air (swipe to it). Double-tap for the day’s five prayers and when each one’s time ends.',
+      'Each person picks their madhab in Settings → Features: Shafi‘i, Hanafi, Maliki, Hanbali or Shia (Ja‘fari). Hanafi Asr comes later; Shia times use the Ja‘fari method.',
+      'Times follow the place, so they stay right while you travel: Fajr and Isha use that region’s usual method, and the times show as the clock reads there.',
+      'Times are approximate, meant as a window to pray in. For San Jose they match Evergreen Islamic Center’s 2026 timetable all year: its congregations fall inside the windows, and Maghrib is within a minute.',
+      'An admin turns it on in Settings → Features.',
+      'Fixed: after joining a circle, Back on the map went to the welcome screen instead of leaving the app.',
+    ],
+  },
+  {
     version: '0.16.0',
     date: '2026-10-26',
     title: 'Faster and steadier with busy circles and slow networks',

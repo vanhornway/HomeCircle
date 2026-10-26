@@ -2,6 +2,17 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.17.0
+
+- New plugin, Prayer times (off until an admin turns it on in Features): the
+  server works out the five daily prayers for a grid cell itself, for the
+  madhab the phone asks for, and asks Open-Meteo only for the cell's time
+  zone (kept a week). Fajr and Isha follow the region's usual method, picked
+  from the time zone; Hanafi Asr uses the two-shadow rule; Shia use the
+  Ja'fari method. Maghrib is 3 minutes after sunset. Checked against
+  Evergreen Islamic Center, San Jose's 2026 timetable.
+- Needs the HomeCircle app 0.17.0 for the tile; older apps keep working.
+
 ## 0.16.0
 
 - Steadier on slow or distant connections: the server forgives one missed
