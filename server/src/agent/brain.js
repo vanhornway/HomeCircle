@@ -21,6 +21,8 @@ const GROUPS = { kids: /^(the )?(kids|children|boys|girls)$/i, everyone: /^(ever
 const MAX_NOTES_IN_PROMPT = 15;
 // What the helper keeps of each chat: the last 10 messages to it and its 10 answers.
 const CHAT_KEEP = 20;
+// Bytes of an app request's answer per message (a message holds about 12 KB).
+const RPC_PART = 8000;
 const KID_RE = /^(?:my |our |the )?(?:kid|child|son|daughter)$/i;
 
 const fmtDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -245,8 +247,26 @@ export class Brain {
     }
   }
 
+  /**
+   * The answer to an app request. A message holds about 12 KB, so a bigger
+   * answer (a whole memory) goes in parts the app puts back together.
+   */
   async _rpcReply(msg, ok, data) {
-    await this.agent.send(msg.from, { rpcResult: { id: msg.body.rpc.id, ok, ...(ok ? { data } : { error: data }) }, thread: 'dm', agentCopy: true });
+    const id = msg.body.rpc.id;
+    const result = { ok, ...(ok ? { data } : { error: data }) };
+    const json = JSON.stringify(result);
+    if (json.length <= RPC_PART) return this.agent.send(msg.from, { rpcResult: { id, ...result }, thread: 'dm', agentCopy: true });
+    const parts = [];
+    for (let i = 0; i < json.length; ) {
+      // Escapes and characters past ASCII take more room: shrink a part until it fits.
+      let end = Math.min(json.length, i + RPC_PART);
+      while (Buffer.byteLength(JSON.stringify(json.slice(i, end))) > RPC_PART) end = i + Math.floor((end - i) * 0.8);
+      parts.push(json.slice(i, end));
+      i = end;
+    }
+    for (const [part, chunk] of parts.entries()) {
+      await this.agent.send(msg.from, { rpcResult: { id, part, parts: parts.length, chunk }, thread: 'dm', agentCopy: true });
+    }
   }
 
   // --- the conversation so far ---------------------------------------------

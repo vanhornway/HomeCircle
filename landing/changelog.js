@@ -9,6 +9,8 @@ window.HOMECIRCLE_CHANGELOG = [
       'Weather: tap someone on the map and see the weather where they are, in a small see-through tile in the top-right corner: the temperature and how it feels, today’s high and low, the chance of rain and the sky in words. Tap it for a bigger view with the next 12 hours and °F or °C; tap again to make it small.',
       'Only a rough area (about 10 km) is used to look the weather up, and the town is named on your phone. Weather data from Open-Meteo.',
       'The helper follows the conversation: it remembers the last 10 messages in each chat and its answers, so you can ask about a file you just sent, or say “this is Maya’s school calendar” and it knows what you mean.',
+      'Fixed: the helper’s Memory showed “Something went wrong” once it remembered a lot (often after a dream).',
+      'Fixed: a chat could jump up and down, or stop with “Something went wrong”, while the app reconnected to the server.',
     ],
   },
   {

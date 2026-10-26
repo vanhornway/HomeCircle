@@ -102,6 +102,8 @@ export class CircleClient {
     this.reads = new Map();
     // agentRpc requests waiting for the agent's answer: id -> callback.
     this._rpcWaiters = new Map();
+    // A big answer arrives in parts: id -> parts so far.
+    this._rpcParts = new Map();
     // messageId -> emoji -> memberId -> { on, seq }
     this.reactions = new Map();
     // pollId -> { votes: Map<memberId, [{ options, seq }]>, added: [], closes: [], spins: [] }
@@ -841,8 +843,11 @@ export class CircleClient {
       // The agent's answer to an app request (agentRpc).
       const r = msg.body.rpcResult;
       if (r && m.from === this.circle?.agent?.id) {
-        this._rpcWaiters.get(r.id)?.(r);
-        this._rpcWaiters.delete(r.id);
+        const whole = this._rpcWhole(r);
+        if (whole) {
+          this._rpcWaiters.get(r.id)?.(whole);
+          this._rpcWaiters.delete(r.id);
+        }
       }
       return { kind: 'agentCopy', id: m.id, from: m.from, to, peer, seq: m.seq, body: msg.body };
     }
@@ -1221,6 +1226,22 @@ export class CircleClient {
    * settings): sealed for it like any message, never shown in a chat.
    * Resolves with its answer; rejects with its error.
    */
+  /** The agent's whole answer, once every part of a big one is here (null until then). */
+  _rpcWhole(r) {
+    if (!(r.parts > 1)) return r;
+    if (!this._rpcWaiters.has(r.id)) return null;
+    const got = this._rpcParts.get(r.id) ?? [];
+    got[r.part] = String(r.chunk ?? '');
+    this._rpcParts.set(r.id, got);
+    if (got.filter((c) => c != null).length < r.parts) return null;
+    this._rpcParts.delete(r.id);
+    try {
+      return JSON.parse(got.join(''));
+    } catch {
+      return { ok: false, error: 'The agent’s answer didn’t come through whole. Try again.' };
+    }
+  }
+
   async agentRpc(op, args = {}, { timeoutMs = 60_000 } = {}) {
     const agent = this.agent;
     if (!agent) throw new Error('This circle has no agent');
@@ -1228,6 +1249,7 @@ export class CircleClient {
     const answer = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this._rpcWaiters.delete(id);
+        this._rpcParts.delete(id);
         reject(new Error(`${agent.name} didn’t answer. Is the server running it?`));
       }, timeoutMs);
       this._rpcWaiters.set(id, (r) => {

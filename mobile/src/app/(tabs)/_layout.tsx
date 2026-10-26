@@ -100,13 +100,15 @@ function useCircleLifecycle(circlesKey: string) {
         retryTimer = null;
       }
       const t0 = Date.now();
-      setServerState({ reconnectingSince: t0 });
+      const active = getClient();
+      // "Reconnecting…" only when the circle on screen is actually offline:
+      // a retry for another circle that can't be reached shouldn't flash it.
+      if (active.status !== 'online') setServerState({ reconnectingSince: t0 });
       const results = new Map<CircleClient, any>();
 
       // The circle on screen first. If it fails right after unlocking (the
       // network is often still waking up), try once more when the grace
       // period ends before showing an error.
-      const active = getClient();
       let activeError = await startOne(active);
       if (activeError && activeError.status !== 401 && alive) {
         await sleep(Math.max(0, t0 + RECONNECT_GRACE_MS - Date.now()));

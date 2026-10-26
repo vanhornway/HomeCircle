@@ -40,6 +40,8 @@ export function createApp(config) {
   const hub = new Hub({ store, log, authTimeoutMs: config.wsAuthTimeoutMs, maxSocketsPerIp: config.maxSocketsPerIp, ipOf: (req) => clientIp(req, config.trustProxy) });
   const requestLimiter = new RateLimiter(config.requestsPerMinute, 60_000);
   const writeLimiter = new RateLimiter(config.writesPerMinute, 60_000);
+  // The helper answers in the group once per member, and big answers in parts.
+  const agentWriteLimiter = new RateLimiter(config.writesPerMinute * 5, 60_000);
   const push = new Push(config, store, log);
   const agentHost = config.agent ? new AgentHost({ dataDir: config.dataDir, log, brainOptions: config.agentBrainOptions }) : null;
   const files = createFiles({ dataDir: config.dataDir, store });
@@ -76,7 +78,7 @@ export function createApp(config) {
           if (!me) throw new HttpError(401, 'unauthorized', 'Your device is not signed in to this circle');
           // A circle's agent reads its state and messages and sends direct messages; nothing else.
           if (me.kind === 'agent' && !route.agent) throw new HttpError(403, 'forbidden', 'Not available to an agent');
-          const wait = requestLimiter.take(me.id) || (req.method === 'GET' ? 0 : writeLimiter.take(me.id));
+          const wait = requestLimiter.take(me.id) || (req.method === 'GET' ? 0 : (me.kind === 'agent' ? agentWriteLimiter : writeLimiter).take(me.id));
           if (wait) throw new HttpError(429, 'rate_limited', 'Too many requests from this device, try again shortly', { retryAfter: wait });
           const now = Date.now();
           if (!me.lastSeenAt || now - me.lastSeenAt > 60_000) store.touchMember(me.id, now);

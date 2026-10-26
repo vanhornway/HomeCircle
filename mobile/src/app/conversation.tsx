@@ -45,9 +45,21 @@ function Gone() {
 function useClientEvents(client: CircleClient) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    const bump = () => setTick((n) => n + 1);
+    // A reconnect sends a burst of these (circle, members, messages…): redraw
+    // the chat once for the burst, not once per event.
+    let queued: ReturnType<typeof setTimeout> | null = null;
+    const bump = () => {
+      if (queued) return;
+      queued = setTimeout(() => {
+        queued = null;
+        setTick((n) => n + 1);
+      }, 50);
+    };
     const offs = ['messages', 'members', 'circle', 'locations', 'status', 'receipts'].map((e) => client.on(e, bump));
-    return () => offs.forEach((off) => off());
+    return () => {
+      if (queued) clearTimeout(queued);
+      offs.forEach((off) => off());
+    };
   }, [client]);
   return tick;
 }
@@ -395,9 +407,12 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
           </View>
         ) : null}
       </View>
-      <ServerBanner style={{ marginHorizontal: 12, marginTop: 10 }} />
       {/* Android draws edge to edge, so the window doesn't shrink for the keyboard: pad on both platforms. */}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+        {/* Over the messages, so "Reconnecting…" coming and going doesn't move them. */}
+        <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 2 }}>
+          <ServerBanner style={{ marginHorizontal: 12, marginTop: 10 }} />
+        </View>
         {rows.length ? null : (
           <View style={{ flex: 1, justifyContent: 'center', padding: 24 }}>
             <Text style={{ color: t.muted, textAlign: 'center', fontSize: 15 }}>
@@ -411,6 +426,10 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
           inverted
           data={rows}
           extraData={tick}
+          // Most chats fit: draw the recent ones in one go, so the list isn't re-measured as it redraws.
+          initialNumToRender={30}
+          maxToRenderPerBatch={30}
+          windowSize={31}
           keyExtractor={(r) => (r.type === 'message' ? r.m.id : r.id)}
           renderItem={renderRow}
           contentContainerStyle={{ padding: 14 }}

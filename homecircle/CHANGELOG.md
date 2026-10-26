@@ -13,6 +13,10 @@ See the full list of changes on <https://homecircle.umair.us/#changelog>.
 - The helper keeps each chat's last 10 messages and its answers (sealed with
   its memory) and reads follow-ups with them: questions about a file just
   sent, or whose a calendar is ("this is my son's school calendar").
+- Fixed: the helper's Memory showed "Something went wrong" once its notes
+  outgrew one message (often after a dream). Big answers now go in parts
+  (needs the HomeCircle app 0.14.0), and the helper may send more messages a
+  minute than a phone.
 - Needs the HomeCircle app 0.14.0 for the weather tile.
 
 ## 0.13.0

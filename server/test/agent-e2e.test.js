@@ -534,6 +534,17 @@ test('spending: per person for admins, and a hard stop at the budget', async () 
   assert.match(a.body.text, /I’m out of budget until Dec 1\. Ask an admin to raise it\./);
 });
 
+test('a memory bigger than one message still loads: the answer comes in parts', async () => {
+  const body = (i) => `Note ${i}: ${'a long “tidied” body with [[links]] and émojis 🧠 '.repeat(60)}`;
+  for (let i = 0; i < 10; i++) await mom.agentRpc('add', { note: { type: 'fact', title: `Big note ${i}`, body: body(i), people: [], tags: ['test'] } });
+  const notes = await mom.agentRpc('list');
+  assert.ok(JSON.stringify(notes).length > 30_000);
+  const big = notes.filter((n) => n.title.startsWith('Big note '));
+  assert.equal(big.length, 10);
+  assert.equal(big.find((n) => n.title === 'Big note 7').body, body(7));
+  for (const n of big) await mom.agentRpc('remove', { id: n.id });
+});
+
 test('export, then removing the agent deletes its memory', async () => {
   const files = await mom.agentRpc('export');
   assert.ok(files['person/Kid.md'].includes('role') || files['person/Kid.md'].includes('# Kid'));
