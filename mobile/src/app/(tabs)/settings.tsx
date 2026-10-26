@@ -10,7 +10,8 @@ import { CHIRP_NAMES } from '../../lib/chirp';
 import { useCircles } from '../../lib/circle';
 import { APP_VERSION, checkForUpdate, downloadUpdate, useNewerVersion } from '../../lib/updates';
 import { buildNumber } from '../../../modules/hc-attention/src/HcAttentionModule';
-import { useSettings } from '../../lib/storage';
+import { locationProfileOf, useSettings } from '../../lib/storage';
+import { STOP_NAMES, type Stop } from '../../lib/locationPolicy';
 import { useCircle } from '../../lib/useCircle';
 import { useTheme } from '../../theme';
 
@@ -69,7 +70,7 @@ export default function SettingsTab() {
       </SettingsGroup>
 
       <SettingsGroup title="You">
-        <SettingsRow icon="📍" title="Location sharing" detail={settings.sharing ? `On · about every ${settings.intervalMinutes} min · place alerts` : 'Paused · place alerts, most visited'} href="/settings/location" />
+        <SettingsRow icon="📍" title="Location sharing" detail={settings.sharing ? `On · ${locationProfileOf(settings) === 'custom' ? 'Custom' : STOP_NAMES[locationProfileOf(settings) as Stop]} · place alerts` : 'Paused · place alerts, most visited'} href="/settings/location" />
         <SettingsRow icon="🔔" title="Notifications" detail={settings.showPreviews ? 'Showing message text' : 'Hiding message text'} href="/settings/notifications" />
         {clients.some((c) => c.feature('chirps') || c.feature('sos')) ? (
           <SettingsRow

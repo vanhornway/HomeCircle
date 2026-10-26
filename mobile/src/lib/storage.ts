@@ -64,6 +64,8 @@ export interface Settings {
   locationProfile: LocationProfile | null;
   /** What Advanced shows: the chosen stop's values or your own, plus charging and Battery Saver. */
   location: LocationSettings;
+  /** Location sharing settings: the last view (Basic or Advanced). */
+  locationView: 'basic' | 'advanced';
   /** Show sender and text in notifications (otherwise just "New message"). */
   showPreviews: boolean;
   /** Circles (by id) this phone doesn't share its location with. */
@@ -109,6 +111,7 @@ export const DEFAULT_SETTINGS: Settings = {
   intervalMinutes: 15,
   locationProfile: null,
   location: { ...STOPS[DEFAULT_STOP], fullDetailCharging: true, saveWithBatterySaver: true },
+  locationView: 'basic',
   showPreviews: true,
   pausedCircles: [],
   announcePlaces: true,
