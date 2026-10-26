@@ -1,6 +1,23 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.16.0',
+    date: '2026-10-26',
+    title: 'Faster and steadier with busy circles and slow networks',
+    items: [
+      'Opens in about a second, even in a busy circle: your phone keeps the messages it has already opened, so it only opens new ones. A circle with 800 messages took over 5 minutes to open before (the app froze and kept saying “Reconnecting…”); now about 1 second, or about 17 seconds the first time after updating, and the app stays usable meanwhile.',
+      'Steadier on slow or far-away connections: the map and people come first, a request that gets no answer is given up after 20 seconds and tried again, a stuck connection is replaced after 15 seconds, and the server forgives a missed heartbeat from a slow phone.',
+      'Fixed: an SOS could switch itself back on after “I’m safe”.',
+      'Fixed: screens sliding in on their own; a notification now opens its chat once, and an old SOS arriving late no longer opens the SOS screen.',
+      'Fixed: parts of the map staying blank; squares that didn’t load are loaded again. The map also fits each circle’s people when you switch circles.',
+      'People is now a drawer on the map: pull it down to see more of the map, up to pick someone.',
+      '“Setup needs attention” is now a small chip under the circle’s name.',
+      'The keyboard no longer covers what you’re typing on settings pages and forms.',
+      'Home Assistant: spaces and stray characters in the address or token are ignored, https:// is added if it’s missing, a token with a changed letter is pointed out plainly, and connecting sends your location right away.',
+      'Circle health shows which app version each phone runs.',
+    ],
+  },
+  {
     version: '0.15.0',
     date: '2026-10-26',
     title: 'Swipeable tiles, air and pollen, and Home Assistant',

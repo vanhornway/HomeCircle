@@ -2,6 +2,19 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.16.0
+
+- Steadier on slow or distant connections: the server forgives one missed
+  heartbeat (a phone is dropped after about 50 s of silence, not 25 s).
+- Home Assistant plugin: spaces and invisible characters in the address or
+  token are removed, `https://` is added when the address has no scheme,
+  and a token with a character a token can't have says which one and where.
+- Phones (app 0.16.0) keep the messages they've opened, so they open in about
+  a second however long the history; they also give up on requests after
+  20 s and retry, and show each person's app version in Circle health.
+- Needs the HomeCircle app 0.16.0 for the phone-side fixes; older apps keep
+  working.
+
 ## 0.15.0
 
 - Plugin settings, per circle: admins fill them in under the plugin's switch
