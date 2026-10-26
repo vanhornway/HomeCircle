@@ -65,14 +65,20 @@ function cleanAgentCard(c) {
 // What _open returns for an envelope signed under another id (a replay).
 const REPLAYED = Symbol('replayed');
 
+/** Let the screen draw and taps through (a macrotask), then carry on. */
+const yieldToUi = () => new Promise((r) => setTimeout(r, 0));
+
 export class CircleClient {
   /**
    * @param {object} opts
    * @param {{getItem(k:string):Promise<string|null>, setItem(k:string,v:string):Promise<void>, removeItem(k:string):Promise<void>}} opts.storage
    * @param {string} [opts.accountKey] where this circle's account is stored
+   * @param {{getItem(k:string):Promise<string|null>, setItem(k:string,v:string):Promise<void>, removeItem(k:string):Promise<void>}} [opts.cache]
+   *   where opened messages are kept between launches (optional; can be big)
    */
-  constructor({ storage, accountKey = ACCOUNT_KEY, fetchImpl, binaryFetchImpl, WebSocketImpl, onError = () => {} }) {
+  constructor({ storage, cache = null, accountKey = ACCOUNT_KEY, fetchImpl, binaryFetchImpl, WebSocketImpl, onError = () => {} }) {
     this.storage = storage;
+    this.cache = cache;
     this.accountKey = accountKey;
     this.fetchImpl = fetchImpl;
     this.binaryFetchImpl = binaryFetchImpl;
@@ -119,6 +125,16 @@ export class CircleClient {
     this.fetchedSeq = 0;
     this.connection = null;
     this.status = 'offline';
+    // Opened envelopes, so the same location, place or profile isn't
+    // decrypted and checked again on every refresh: "from|to|id|ct" -> msg.
+    this._opened = new Map();
+    // Messages as opened, kept on this phone between launches (opts.cache):
+    // a cold start then only opens what's new. seq -> row.
+    this._cacheRows = new Map();
+    this._cacheLoaded = false;
+    this._cacheTimer = null;
+    this._started = false;
+    this._catching = null;
   }
 
   // --- events ------------------------------------------------------------
@@ -193,7 +209,9 @@ export class CircleClient {
    */
   async signOut(reason = 'signed_out') {
     this.disconnect();
+    clearTimeout(this._cacheTimer);
     await this.storage.removeItem(this.accountKey);
+    await this.cache?.removeItem(this._cacheKey).catch(() => {});
     this._reset();
     this.emit('signedOut', { reason });
   }
@@ -689,6 +707,13 @@ export class CircleClient {
   _open(env, from, kinds, to = null, id = undefined) {
     const signPub = this.account.known[from]?.signPub;
     if (!signPub) return null;
+    // The same envelope from the same sender opens to the same thing: checking
+    // a signature is slow on phones (tens of ms), so each is checked once.
+    const memo = typeof env?.ct === 'string' ? `${signPub}|${to ?? ''}|${id ?? ''}|${env.ct}` : null;
+    if (memo && this._opened.has(memo)) {
+      const msg = this._opened.get(memo);
+      return kinds.includes(msg.kind) ? msg : null;
+    }
     let key;
     try {
       key = to ? this._directKey(from === this.account.memberId ? to : from) : this.account.keyring[env.epoch];
@@ -698,6 +723,11 @@ export class CircleClient {
     if (!key) return null;
     try {
       const msg = open(env, { key, signPub, from, to, circle: this.account.circleId, id });
+      if (memo) {
+        this._opened.set(memo, msg);
+        // Oldest out: messages are kept by the cache below, this is for the rest.
+        if (this._opened.size > 3000) this._opened.delete(this._opened.keys().next().value);
+      }
       if (!kinds.includes(msg.kind)) return null;
       return msg;
     } catch (e) {
@@ -750,6 +780,7 @@ export class CircleClient {
       power: b.power === 'saver' ? 'saver' : b.power === 'normal' ? 'normal' : null,
       perm: b.perm === 'always' || b.perm === 'foreground' ? b.perm : null,
       precise: typeof b.precise === 'boolean' ? b.precise : null,
+      app: typeof b.app === 'string' ? b.app.slice(0, 16) : null,
       ts: msg.ts,
       receivedAt: updatedAt,
     };
@@ -769,8 +800,10 @@ export class CircleClient {
   }
 
   /** Upload this device's location, encrypted. */
-  async shareLocation({ lat, lng, accuracy, battery, charging, speed, trigger = 'update', placeId = null, approx = false, power, perm, precise, ts }) {
+  async shareLocation({ lat, lng, accuracy, battery, charging, speed, trigger = 'update', placeId = null, approx = false, power, perm, precise, app, ts }) {
     const body = { lat, lng, accuracy, battery, charging, speed, trigger, placeId };
+    // Which HomeCircle app the phone runs, for Circle health (0.16+).
+    if (typeof app === 'string' && app) body.app = app.slice(0, 16);
     if (approx) body.approx = true;
     if (power) body.power = power;
     if (perm) body.perm = perm;
@@ -822,8 +855,11 @@ export class CircleClient {
     const to = m.to ?? null;
     // Direct messages: the other person in the conversation. null = the group.
     const peer = to ? (m.from === this.account.memberId ? to : m.from) : null;
-    const msg = this._open(m.env, m.from, to ? ['chat', 'reaction'] : ['chat', 'event', 'reaction'], to, m.id);
+    const kinds = to ? ['chat', 'reaction'] : ['chat', 'event', 'reaction'];
+    // From this phone's cache: opened (and checked) on an earlier launch.
+    const msg = m.opened ? (kinds.includes(m.opened.kind) ? m.opened : null) : this._open(m.env, m.from, kinds, to, m.id);
     if (msg === REPLAYED) return false;
+    this._remember(m, msg);
     if (msg?.kind === 'reaction') {
       // A read receipt: "I've read this conversation up to here".
       if (Number.isInteger(msg.body?.read) && msg.body.read > 0) {
@@ -1424,14 +1460,81 @@ export class CircleClient {
   async fetchMessages() {
     for (;;) {
       const { messages } = await this.api.messages(this.fetchedSeq, 500);
-      for (const m of messages) {
+      for (const [i, m] of messages.entries()) {
         this._addMessage(m);
         this.fetchedSeq = Math.max(this.fetchedSeq, m.seq);
+        // Opening a message takes a while on a phone: let the screen draw
+        // and taps through every few, instead of freezing for the whole page.
+        if (i % 10 === 9) await yieldToUi();
       }
+      if (messages.length) this.emit('messages', this.messages);
       if (messages.length < 500) break;
     }
+    this._saveCacheSoon();
     this.emit('messages', this.messages);
     return this.messages;
+  }
+
+  // --- this phone's copy of the messages ----------------------------------
+
+  get _cacheKey() {
+    return `${this.accountKey}.messages`;
+  }
+
+  /** Keep what a message opened to, for the cache (failures keep the envelope, to try again). */
+  _remember(m, msg) {
+    if (!this.cache || !Number.isInteger(m.seq)) return;
+    // The helper's answers to the app (Memory and the like) are never shown: not kept.
+    if (msg?.body?.agentCopy && msg.body.rpcResult) return;
+    this._cacheRows.set(m.seq, {
+      seq: m.seq,
+      id: m.id,
+      from: m.from,
+      to: m.to ?? null,
+      createdAt: m.createdAt,
+      ...(msg ? { opened: msg, env: { nonce: m.env?.nonce, epoch: m.env?.epoch } } : { env: m.env }),
+    });
+    if (!this._cacheTimer) this._saveCacheSoon();
+  }
+
+  /** The messages this phone already opened, back in place without opening them again. */
+  async _loadCache() {
+    if (!this.cache || this._cacheLoaded) return;
+    this._cacheLoaded = true;
+    let c = null;
+    try {
+      c = JSON.parse((await this.cache.getItem(this._cacheKey)) || 'null');
+    } catch (e) {
+      this.onError(e);
+    }
+    if (!c || c.v !== 1 || c.circleId !== this.account.circleId || c.memberId !== this.account.memberId || !Array.isArray(c.rows)) return;
+    for (const [i, row] of c.rows.entries()) {
+      this._addMessage(row);
+      if (i % 200 === 199) await yieldToUi();
+    }
+    // Only messages after these are fetched.
+    this.fetchedSeq = Math.max(this.fetchedSeq, Number(c.fetchedSeq) || 0);
+    this.emit('messages', this.messages);
+  }
+
+  _saveCacheSoon() {
+    if (!this.cache) return;
+    clearTimeout(this._cacheTimer);
+    this._cacheTimer = setTimeout(() => {
+      this._cacheTimer = null;
+      this._saveCache().catch(this.onError);
+    }, 2000);
+  }
+
+  /** Kept as long as the circle keeps messages, and at most the newest 6000. */
+  async _saveCache() {
+    if (!this.cache || !this.account) return;
+    const days = this.state?.retentionDays ?? 90;
+    const since = Date.now() - days * 86400_000;
+    const rows = [...this._cacheRows.values()].filter((r) => !r.createdAt || r.createdAt >= since).sort((a, b) => a.seq - b.seq);
+    const kept = rows.slice(-6000);
+    if (kept.length < this._cacheRows.size) this._cacheRows = new Map(kept.map((r) => [r.seq, r]));
+    await this.cache.setItem(this._cacheKey, JSON.stringify({ v: 1, circleId: this.account.circleId, memberId: this.account.memberId, fetchedSeq: this.fetchedSeq, rows: kept }));
   }
 
   async _post(kind, body, { silent = false, to = null, id = randomId(12) } = {}) {
@@ -1688,11 +1791,24 @@ export class CircleClient {
 
   // --- live connection ---------------------------------------------------
 
-  /** Load everything and keep it live while the app is in the foreground. */
+  /**
+   * Load everything and keep it live while the app is in the foreground.
+   * Started before (coming back to the app): connect again and catch up.
+   * Locations come before messages, and the live connection opens before
+   * the messages are fetched, so the map is right even while a long
+   * history is still being opened.
+   */
   async start() {
+    if (this._started) {
+      this.connect();
+      return this.catchUp();
+    }
     await this.refresh();
-    await Promise.all([this.fetchLocations(), this.fetchMessages(), this.fetchPlaces()]);
+    await this._loadCache();
+    await Promise.all([this.fetchLocations(), this.fetchPlaces()]);
     this.connect();
+    await this.fetchMessages();
+    this._started = true;
   }
 
   connect() {
@@ -1713,10 +1829,29 @@ export class CircleClient {
     });
   }
 
-  /** Fetch whatever changed while the live connection was down. */
-  async catchUp() {
-    await this.refresh();
-    await Promise.all([this.fetchMessages(), this.fetchLocations(), this.fetchPlaces()]);
+  /**
+   * Fetch whatever changed while the live connection was down. One at a
+   * time: asked again while one runs (a flaky network reconnecting over and
+   * over), it runs once more afterwards instead of in parallel.
+   */
+  catchUp() {
+    if (this._catching) {
+      this._catchAgain = true;
+      return this._catching;
+    }
+    this._catching = (async () => {
+      try {
+        do {
+          this._catchAgain = false;
+          await this.refresh();
+          await Promise.all([this.fetchLocations(), this.fetchPlaces()]);
+          await this.fetchMessages();
+        } while (this._catchAgain && this.account);
+      } finally {
+        this._catching = null;
+      }
+    })();
+    return this._catching;
   }
 
   disconnect() {
@@ -1772,6 +1907,7 @@ export class CircleClient {
       }
       case 'message': {
         const m = this._addMessage(e.message);
+        this._saveCacheSoon();
         if (m) {
           this.emit('messages', this.messages);
           if (m.from !== this.account.memberId && m.kind !== 'reaction') this.emit('newMessage', m);

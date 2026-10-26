@@ -93,10 +93,16 @@ export class Hub {
 
   _heartbeat() {
     for (const ws of this.wss.clients) {
+      // Two heartbeats without a word (about 50 s): gone. One missed reply is
+      // forgiven, since a phone on a slow or lossy network (far away, mobile
+      // data) can easily miss one, and dropping it means a full reconnect.
       if (!ws.isAlive) {
-        ws.terminate();
-        continue;
-      }
+        ws.missed = (ws.missed || 0) + 1;
+        if (ws.missed >= 2) {
+          ws.terminate();
+          continue;
+        }
+      } else ws.missed = 0;
       ws.isAlive = false;
       ws.ping();
       // App-level heartbeat too: clients can't see protocol pings, and proxies or

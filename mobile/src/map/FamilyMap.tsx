@@ -114,6 +114,7 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
       });
     },
     focus: function(lat,lng,zoom){ map.flyTo([lat,lng], zoom || Math.max(map.getZoom(), 15), {duration:.6}); },
+    view: function(lat,lng,zoom){ fitted = true; map.setView([lat,lng], zoom, {animate:false}); },
     pickMode: function(on){ pick = on; },
     picked: function(p){
       pickLayer.clearLayers();
@@ -121,6 +122,7 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
     }
   };
   map.on('click', function(e){ if (pick) post({type:'pick', lat:e.latlng.lat, lng:e.latlng.lng}); });
+  map.on('moveend', function(){ var c = map.getCenter(); post({type:'view', lat:c.lat, lng:c.lng, zoom:map.getZoom()}); });
   post({type:'ready'});
 })();
 </script></body></html>`;
@@ -140,6 +142,9 @@ export function FamilyMap({
 }: Props) {
   const ref = useRef<RNWebView>(null);
   const [ready, setReady] = useState(false);
+  // Where the map was (lat, lng, zoom), and a new page if the old one's process died.
+  const view = useRef<{ lat: number; lng: number; zoom: number } | null>(null);
+  const [reloads, setReloads] = useState(0);
   const html = useMemo(() => buildHtml(tileUrl, attribution, dark), [tileUrl, attribution, dark]);
   const run = useCallback((js: string) => ready && ref.current?.injectJavaScript(`try{${js}}catch(e){};true;`), [ready]);
 
@@ -162,7 +167,11 @@ export function FamilyMap({
     } catch {
       return;
     }
-    if (msg.type === 'ready') setReady(true);
+    if (msg.type === 'ready') {
+      const v = view.current;
+      if (v) ref.current?.injectJavaScript(`try{hc.view(${v.lat},${v.lng},${v.zoom})}catch(e){};true;`);
+      setReady(true);
+    } else if (msg.type === 'view' && Number.isFinite(msg.lat) && Number.isFinite(msg.lng) && Number.isFinite(msg.zoom)) view.current = { lat: msg.lat, lng: msg.lng, zoom: msg.zoom };
     else if (msg.type === 'pick' && onPick) onPick({ lat: msg.lat, lng: msg.lng });
     else if (msg.type === 'member' && onMemberPress) onMemberPress(String(msg.id));
   };
@@ -171,7 +180,7 @@ export function FamilyMap({
     <View style={StyleSheet.absoluteFill}>
       <WebView
         ref={ref}
-        key={html.length + (dark ? 'd' : 'l')}
+        key={`${html.length}${dark ? 'd' : 'l'}${reloads}`}
         originWhitelist={['*']}
         // The map page may only ever be itself: block link taps (e.g. attribution).
         onShouldStartLoadWithRequest={(r: { url: string }) => r.url === MAP_BASE_URL || r.url.startsWith('about:')}
@@ -179,6 +188,9 @@ export function FamilyMap({
         applicationNameForUserAgent={APP_NAME_FOR_USER_AGENT}
         onMessage={onMessage}
         onLoadStart={() => setReady(false)}
+        // The page's process died (low memory): start a new one, where the map was.
+        onRenderProcessGone={() => setReloads((n) => n + 1)}
+        onContentProcessDidTerminate={() => setReloads((n) => n + 1)}
         javaScriptEnabled
         domStorageEnabled={false}
         geolocationEnabled={false}

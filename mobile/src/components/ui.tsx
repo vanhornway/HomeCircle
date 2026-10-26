@@ -2,6 +2,7 @@ import React from 'react';
 import {
   ActivityIndicator,
   Pressable,
+  KeyboardAvoidingView,
   ScrollView,
   StyleSheet,
   Text,
@@ -32,9 +33,12 @@ export function Screen({
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: t.bg }, style]} edges={['top', 'left', 'right']}>
       {scroll ? (
-        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
-          {children}
-        </ScrollView>
+        // The keyboard pushes the page up, so the field you're typing in stays in sight.
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+          <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
+            {children}
+          </ScrollView>
+        </KeyboardAvoidingView>
       ) : (
         children
       )}

@@ -13,6 +13,11 @@ import { timeAgo, useAllCircles } from '../lib/useCircle';
 import { useTheme } from '../theme';
 
 const COUNTDOWN = 5;
+// Countdowns already run (by when they were asked for). The SOS screen can be
+// shown again from history or a relaunch: it must never count down and send
+// on its own a second time.
+const counted = new Set<string>();
+const freshCountdown = (asked?: string) => !!asked && !counted.has(asked) && Date.now() - Number(asked) < 60_000;
 const EMERGENCY_NUMBER = '911';
 const clock = (ts: number) => new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
@@ -29,14 +34,17 @@ export default function SosScreen() {
   if (mine && !sent) setSent(true);
   if (circle && member) return <TheirSos circleId={circle} memberId={member} />;
   if (mine === undefined) return null;
-  if (!mine && countdown && !sent) return <Countdown />;
+  if (!mine && !sent && freshCountdown(countdown)) return <Countdown asked={countdown!} />;
   if (!mine) return <Ended text="Your SOS has ended." />;
   return <MySosView />;
 }
 
-function Countdown() {
+function Countdown({ asked }: { asked: string }) {
   const t = useTheme();
   const [left, setLeft] = useState(COUNTDOWN);
+  useEffect(() => {
+    counted.add(asked);
+  }, [asked]);
   const sending = left === 0;
   // One tick a second; Cancel leaves the screen, which stops the clock before it sends.
   useEffect(() => {

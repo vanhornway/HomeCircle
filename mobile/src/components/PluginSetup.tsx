@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import type { CircleClient, PluginSettings } from '@homecircle/core';
 import { errorText } from '../lib/circle';
+import { sendToHomeAssistantNow } from '../lib/location';
 import { slugName } from '../lib/plugins';
 import { useTheme } from '../theme';
 import { Button, ErrorText, Field } from './ui';
@@ -11,6 +12,22 @@ import { Button, ErrorText, Field } from './ui';
  * Features (admins): Home Assistant's address and token, an optional key.
  * Secrets are never shown back, only that one is saved.
  */
+// Spaces, line breaks and invisible characters that keyboards and copying slip
+// into an address or a key (the server tidies them too).
+const STRAY = /[\s\u00A0\u200B-\u200D\u2060\uFEFF]/g;
+function tidyAll(fields: PluginSettings['fields'], values: Record<string, string>) {
+  const out: Record<string, string> = {};
+  for (const f of fields) {
+    const v = values[f.id] ?? '';
+    if (f.secret) out[f.id] = v.replace(STRAY, '');
+    else if (f.id === 'url') {
+      const u = v.replace(STRAY, '');
+      out[f.id] = u && !/^[a-z][a-z0-9+.-]*:\/\//i.test(u) ? `https://${u}` : u;
+    } else out[f.id] = v.trim();
+  }
+  return out;
+}
+
 export function PluginSetup({ client, id }: { client: CircleClient; id: string }) {
   const t = useTheme();
   const [info, setInfo] = useState<PluginSettings | null>(null);
@@ -18,6 +35,8 @@ export function PluginSetup({ client, id }: { client: CircleClient; id: string }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // After connecting Home Assistant: how sending yours went.
+  const [sent, setSent] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -49,12 +68,20 @@ export function PluginSetup({ client, id }: { client: CircleClient; id: string }
     setSaving(true);
     setError(null);
     setSaved(false);
+    setSent(null);
     client.api
-      .putPluginSettings(id, values)
+      .putPluginSettings(id, tidyAll(info.fields, values))
       .then((r: { values: PluginSettings['values']; ready: boolean }) => {
         setInfo({ ...info, values: r.values, ready: r.ready });
         setValues((v) => Object.fromEntries(Object.entries(v).map(([k, x]) => [k, info.fields.find((f) => f.id === k)?.secret ? '' : String(r.values[k] ?? x)])));
         setSaved(true);
+        // Home Assistant: yours goes there now, so you can see it worked.
+        if (id === 'homeAssistant') {
+          setSent('Sending your location to Home Assistant…');
+          sendToHomeAssistantNow(client)
+            .then((r2) => setSent(r2.entity ? `Sent yours: it’s ${r2.entity} in Home Assistant.` : (r2.why ?? null)))
+            .catch((e: Error) => setSent(`Couldn’t send yours yet: ${errorText(e)}`));
+        }
       })
       .catch((e: Error) => setError(errorText(e)))
       .finally(() => setSaving(false));
@@ -73,6 +100,8 @@ export function PluginSetup({ client, id }: { client: CircleClient; id: string }
             secureTextEntry={!!f.secret}
             autoCapitalize="none"
             autoCorrect={false}
+            autoComplete="off"
+            spellCheck={false}
             keyboardType={f.id === 'url' ? 'url' : 'default'}
             style={{ fontSize: 15, minHeight: 48 }}
           />
@@ -96,7 +125,7 @@ export function PluginSetup({ client, id }: { client: CircleClient; id: string }
       {info.ready || id === 'air' ? (
         <Text style={{ color: t.muted, fontSize: 13, lineHeight: 18, marginTop: 6 }}>
           {id === 'homeAssistant'
-            ? `${saved ? 'Connected. ' : 'Connected · '}Each person shows up in Home Assistant (Settings → Devices & services → Mobile App) once their phone next shares its location; open phones do it right away. Yours: device_tracker.homecircle_${slugName(me)}.`
+            ? `${saved ? 'Connected. ' : 'Connected · '}${sent ? `${sent} ` : ''}Everyone else shows up in Home Assistant (Settings → Devices & services → Mobile App) once their phone, on HomeCircle 0.15 or newer, next shares its location. Yours: device_tracker.homecircle_${slugName(me)}.`
             : (info.fields.some(isSet) ? 'Pollen comes from Google. ' : 'Pollen comes from Open-Meteo (Europe only). ') + (saved ? 'Saved.' : '')}
         </Text>
       ) : null}

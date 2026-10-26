@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../src/index.js';
-import { hostFetch } from '../src/plugins/index.js';
+import { hostFetch, tidy } from '../src/plugins/index.js';
 import { CircleClient, defaultFeatures } from '../../packages/core/src/index.js';
 
 const SETUP = 'test-setup-token-plugins';
@@ -239,4 +239,22 @@ test('Home Assistant: each person becomes a Mobile App device with a battery sen
   const kept = JSON.stringify(db.prepare("SELECT v FROM meta WHERE k LIKE 'plugin:%'").all());
   db.close();
   assert.doesNotMatch(kept, /37\.3|121\.8/);
+});
+
+test('Home Assistant: a space the keyboard slipped into the address is ignored; a changed letter in the token is named', async () => {
+  // As typed on a phone: a space in the middle of the address, the token with a line break.
+  const saved = await mom.api.putPluginSettings('homeAssistant', { url: 'http://ha.test:8 123 ', token: `${ha.token}\n` });
+  assert.equal(saved.values.url, 'http://ha.test:8123');
+  // A keyboard that turned an i into İ: said plainly, with where it is.
+  const broken = `${ha.token.slice(0, 5)}İ${ha.token.slice(6)}`;
+  await assert.rejects(
+    () => mom.api.putPluginSettings('homeAssistant', { url: 'http://ha.test:8123', token: broken }),
+    (e) => e.status === 400 && /character a token can’t have: “İ” \(character 6\)/.test(e.message),
+  );
+});
+
+test('an address without http:// or https:// gets https://; stray characters go', () => {
+  assert.equal(tidy({ url: true }, 'abc.ui.nabu.casa'), 'https://abc.ui.nabu.casa');
+  assert.equal(tidy({ url: true }, ' https://abc.ui.na bu.casa '), 'https://abc.ui.nabu.casa');
+  assert.equal(tidy({ secret: true }, 'abc​def \n'), 'abcdef');
 });

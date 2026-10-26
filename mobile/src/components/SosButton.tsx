@@ -29,7 +29,8 @@ export function SosButton({ style }: { style?: StyleProp<ViewStyle> }) {
       if (!finished) return;
       held.current = true;
       fill.setValue(0);
-      router.push({ pathname: '/sos', params: { countdown: '1' } });
+      // When it was asked for: the countdown runs once, for this hold only.
+      router.push({ pathname: '/sos', params: { countdown: String(Date.now()) } });
     });
   };
   const release = () => {

@@ -67,6 +67,21 @@ export function addressFetch(base, fetchImpl = fetch) {
   };
 }
 
+// Spaces, line breaks and invisible characters that keyboards and copying slip
+// into an address or a key: never meant.
+const STRAY = /[\s\u00A0\u200B-\u200D\u2060\uFEFF]/g;
+
+/** A value as typed, tidied: a secret or address loses stray characters; an address gets https:// if it has no scheme. */
+export function tidy(field, v) {
+  if (typeof v !== 'string') return '';
+  if (field.secret) return v.replace(STRAY, '').slice(0, 2000);
+  if (field.url) {
+    const s = v.replace(STRAY, '');
+    return s && !/^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? `https://${s}` : s;
+  }
+  return v.trim().slice(0, 2000);
+}
+
 /** What an admin sees of the settings: secrets only as "set". */
 function shown(plugin, values) {
   const out = {};
@@ -114,8 +129,8 @@ export function mountPlugins(router, { requireFeature, requireAdmin, store, hub,
       for (const f of p.settings) {
         const v = body?.values?.[f.id];
         // A secret left empty keeps the one saved before.
-        if (f.secret && (v === undefined || v === '')) values[f.id] = old[f.id] ?? '';
-        else values[f.id] = typeof v === 'string' ? v.trim().slice(0, 2000) : '';
+        if (f.secret && (v === undefined || tidy(f, v) === '')) values[f.id] = old[f.id] ?? '';
+        else values[f.id] = tidy(f, v);
         if (!f.optional && !values[f.id]) fail(400, 'invalid', `${f.label} is needed`);
       }
       // The plugin checks them (Home Assistant: does that address and token work?).

@@ -1,19 +1,40 @@
-import { useEffect, useReducer } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 import type { CircleClient } from '@homecircle/core';
 import { allClients, getClient, useCircles } from './circle';
 import { useReadVersion } from './unread';
 
 const EVENTS = ['members', 'locations', 'messages', 'places', 'status', 'circle'] as const;
 
+/**
+ * A redraw that waits for a burst to end: a reconnect or a busy circle sends
+ * dozens of events in a row, and each used to redraw the screen (with someone
+ * on a slow network far away, often enough to freeze it). One redraw per
+ * 50 ms at most.
+ */
+function useBatchedBump(): () => void {
+  const [, bump] = useReducer((n: number) => n + 1, 0);
+  const [batch] = useState(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    return () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        bump();
+      }, 50);
+    };
+  });
+  return batch;
+}
+
 /** The active circle. Re-renders when its data changes or you switch circles. */
 export function useCircle(events: readonly string[] = EVENTS): CircleClient {
   useCircles();
   const client = getClient();
-  const [, bump] = useReducer((n: number) => n + 1, 0);
+  const bump = useBatchedBump();
   useEffect(() => {
     const offs = events.map((e) => client.on(e, bump));
     return () => offs.forEach((off) => off());
-  }, [client, events]);
+  }, [client, events, bump]);
   return client;
 }
 
@@ -21,12 +42,12 @@ export function useCircle(events: readonly string[] = EVENTS): CircleClient {
 export function useAllCircles(events: readonly string[] = ['messages', 'members', 'circle', 'locations']): CircleClient[] {
   const { clients } = useCircles();
   useReadVersion();
-  const [, bump] = useReducer((n: number) => n + 1, 0);
+  const bump = useBatchedBump();
   const keys = clients.map((c) => c.accountKey).join('|');
   useEffect(() => {
     const offs = allClients().flatMap((c) => events.map((e) => c.on(e, bump)));
     return () => offs.forEach((off) => off());
-  }, [keys, events]);
+  }, [keys, events, bump]);
   return clients;
 }
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { router, Stack, type Href } from 'expo-router';
 import { useTheme } from '../theme';
 
@@ -9,9 +9,12 @@ export function SettingsPage({ title, children }: { title: string; children: Rea
   return (
     <>
       <Stack.Screen options={{ headerShown: true, title }} />
-      <ScrollView style={{ flex: 1, backgroundColor: t.bg }} contentContainerStyle={{ padding: 20, paddingTop: 4, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
-        {children}
-      </ScrollView>
+      {/* The keyboard pushes the page up, so the field you're typing in stays in sight. */}
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: t.bg }} behavior="padding">
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingTop: 4, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
+          {children}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </>
   );
 }

@@ -9,6 +9,26 @@ export class ApiError extends Error {
   }
 }
 
+// A request that hasn't answered in this long is given up on (a dead mobile
+// connection can otherwise hang for minutes), and the caller can try again.
+const REQUEST_TIMEOUT_MS = 20_000;
+// Files can be big and networks slow: longer.
+const BYTES_TIMEOUT_MS = 120_000;
+
+/** fetch, given up after `ms` (the error says so). */
+async function timed(fetchFn, url, init, ms) {
+  const abort = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = abort ? setTimeout(() => abort.abort(), ms) : null;
+  try {
+    return await fetchFn(url, abort ? { ...init, signal: abort.signal } : init);
+  } catch (e) {
+    if (abort?.signal.aborted) throw new Error(`No answer in ${Math.round(ms / 1000)} s`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export class Api {
   constructor(baseUrl, { token = null, fetchImpl, binaryFetchImpl, WebSocketImpl } = {}) {
     this.baseUrl = baseUrl;
@@ -26,7 +46,7 @@ export class Api {
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     let res;
     try {
-      res = await this.binaryFetch(`${this.baseUrl}/api/v1${path}`, { method, headers, body });
+      res = await timed(this.binaryFetch, `${this.baseUrl}/api/v1${path}`, { method, headers, body }, BYTES_TIMEOUT_MS);
     } catch (e) {
       throw new ApiError(0, 'network', "Can't reach the server. Check the address and your internet connection.", { detail: e.message });
     }
@@ -49,11 +69,7 @@ export class Api {
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     let res;
     try {
-      res = await this.fetch(`${this.baseUrl}/api/v1${path}`, {
-        method,
-        headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
+      res = await timed(this.fetch, `${this.baseUrl}/api/v1${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }, REQUEST_TIMEOUT_MS);
     } catch (e) {
       throw new ApiError(0, 'network', "Can't reach the server. Check the address and your internet connection.", {
         detail: e.message,
@@ -140,15 +156,19 @@ export class Api {
    * The server sends a heartbeat every ~25 s; if nothing arrives for
    * `staleMs` the socket is treated as dead (proxies and tunnels can drop a
    * connection without either side seeing a close) and replaced.
+   * A socket that isn't ready within `openMs` (stuck connecting on a bad
+   * network) is replaced too. Retries back off up to 15 s.
    * Returns { close() }.
    */
-  connect({ onEvent, onStatus = () => {}, staleMs = 70000, checkMs = 10000 }) {
+  connect({ onEvent, onStatus = () => {}, staleMs = 70000, checkMs = 5000, openMs = 15000 }) {
     const wsUrl = `${this.baseUrl.replace(/^http/, 'ws')}/api/v1/ws`;
     let ws = null;
     let closed = false;
     let attempt = 0;
     let timer = null;
     let lastHeard = 0;
+    let ready = false;
+    let openedAt = 0;
 
     const scheduleReconnect = (delay) => {
       clearTimeout(timer);
@@ -170,6 +190,8 @@ export class Api {
       const socket = new this.WebSocket(wsUrl);
       ws = socket;
       lastHeard = Date.now();
+      openedAt = Date.now();
+      ready = false;
       socket.onopen = () => socket.send(JSON.stringify({ type: 'auth', token: this.token }));
       socket.onmessage = (e) => {
         lastHeard = Date.now();
@@ -181,6 +203,7 @@ export class Api {
         }
         if (msg.type === 'ready') {
           attempt = 0;
+          ready = true;
           onStatus('online');
         } else if (msg.type === 'ping') {
           socket.send(JSON.stringify({ type: 'pong' }));
@@ -196,13 +219,15 @@ export class Api {
           return;
         }
         onStatus('offline');
-        scheduleReconnect(Math.min(30000, 1000 * 2 ** attempt++) * (0.75 + Math.random() / 2));
+        scheduleReconnect(Math.min(15000, 1000 * 2 ** attempt++) * (0.75 + Math.random() / 2));
       };
       socket.onerror = () => {};
     };
 
     const watchdog = setInterval(() => {
-      if (closed || !ws || Date.now() - lastHeard < staleMs) return;
+      if (closed || !ws) return;
+      const stuck = !ready && Date.now() - openedAt > openMs;
+      if (!stuck && Date.now() - lastHeard < staleMs) return;
       // Silent connection: replace it now rather than waiting for a close that may never come.
       drop(ws);
       ws = null;

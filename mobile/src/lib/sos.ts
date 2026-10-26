@@ -45,12 +45,32 @@ export const SAFE_KIND_NAME: Record<SafeKind, string> = {
 
 let current: MySos | null | undefined;
 const listeners = new Set<() => void>();
+// SOSes this phone ended (by when they started). An update that was on its way
+// when "I'm safe" was tapped (a slow upload, the safe-place lookup) must never
+// switch the SOS back on.
+const ended = new Set<number>();
 
-async function save(next: MySos | null) {
+/**
+ * `start` creates the SOS; every other save only updates one that's still on,
+ * here and in storage (the background task may run in a JS context of its
+ * own, which doesn't see `ended`).
+ */
+async function save(next: MySos | null, { start = false }: { start?: boolean } = {}) {
+  if (next && !start) {
+    if (ended.has(next.startedAt)) return;
+    const stored = await AsyncStorage.getItem(KEY).catch(() => null);
+    if (!stored || (JSON.parse(stored) as MySos).startedAt !== next.startedAt) return;
+  }
   current = next;
   listeners.forEach((l) => l());
   if (next) await AsyncStorage.setItem(KEY, JSON.stringify(next));
   else await AsyncStorage.removeItem(KEY);
+}
+
+/** The SOS that's on now, if it's still `sos` (not ended meanwhile). */
+async function stillOn(sos: MySos): Promise<MySos | null> {
+  const now = await mySos();
+  return now && now.startedAt === sos.startedAt && !ended.has(sos.startedAt) ? now : null;
 }
 
 /** This phone's SOS, if one is on. */
@@ -88,7 +108,7 @@ export async function startMySos(): Promise<void> {
   const sent = await Promise.allSettled(clients.filter((c) => c.feature('sos')).map(async (c) => (ids[c.circleId!] = await c.startSos())));
   if (!sent.some((r) => r.status === 'fulfilled')) throw (sent[0] as PromiseRejectedResult)?.reason ?? new Error('SOS is turned off in your circles');
   diag('sos:start', { circles: `${Object.keys(ids).length}/${clients.length}` });
-  await save({ startedAt: Date.now(), ids, places: [], reached: [], at: null });
+  await save({ startedAt: Date.now(), ids, places: [], reached: [], at: null }, { start: true });
   await Location.startLocationUpdatesAsync(SOS_TASK, {
     accuracy: Location.Accuracy.High,
     timeInterval: 60_000,
@@ -109,6 +129,7 @@ export async function startMySos(): Promise<void> {
 export async function endMySos(): Promise<void> {
   const sos = await mySos();
   if (!sos) return;
+  ended.add(sos.startedAt);
   const clients = await loadedClients();
   await Promise.allSettled(clients.filter((c) => sos.ids[c.circleId!]).map((c) => c.endSos(sos.ids[c.circleId!])));
   await Location.stopLocationUpdatesAsync(SOS_TASK).catch(() => {});
@@ -131,11 +152,16 @@ export async function onSosFix(loc: Location.LocationObject): Promise<void> {
   if (!sos.placesOk || !sos.at || distanceM(sos.at, here) > 1000) {
     const found = await findSafePlaces(here).catch(() => null);
     if (found) places = found.places;
-    await save({ ...sos, places, placesOk: !!found?.ok, at: here });
+    // Saved on top of what's there now, and only if it's still on.
+    const now = await stillOn(sos);
+    if (!now) return;
+    await save({ ...now, places, placesOk: !!found?.ok, at: here });
   }
   const reachedNow = places.find((p) => !sos.reached.includes(p.id) && distanceM(p, here) <= Math.max(ARRIVED_M, p.radius));
   if (!reachedNow) return;
-  await save({ ...(current ?? sos), reached: [...sos.reached, reachedNow.id] });
+  const now = await stillOn(sos);
+  if (!now || now.reached.includes(reachedNow.id)) return;
+  await save({ ...now, reached: [...now.reached, reachedNow.id] });
   const clients = await loadedClients();
   await Promise.allSettled(clients.filter((c) => sos.ids[c.circleId!]).map((c) => c.sosArrived(sos.ids[c.circleId!], reachedNow.name)));
 }

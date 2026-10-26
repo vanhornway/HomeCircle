@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppState, FlatList, Pressable, Text, View } from 'react-native';
+import { Animated, AppState, FlatList, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { needsAttention, setupChecklist } from '../../lib/health';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,6 +14,7 @@ import { SosButton } from '../../components/SosButton';
 import { PluginTiles } from '../../components/PluginTiles';
 import { RejoinBanner } from '../../components/RejoinBanner';
 import { PersonSheet } from '../../components/PersonSheet';
+import { Drawer, useDrawer } from '../../components/Drawer';
 import { useServerState } from '../../lib/connection';
 import { initials, useCircle } from '../../lib/useCircle';
 import { chirpWithChoice } from '../../lib/chirp';
@@ -22,6 +23,8 @@ import { DEFAULT_SETTINGS, getSettings } from '../../lib/storage';
 import { useTheme } from '../../theme';
 
 const STALE_MS = 2 * 3600_000;
+// The People drawer: just its handle and header when closed.
+const DRAWER_CLOSED = 78;
 
 export default function MapTab() {
   const t = useTheme();
@@ -35,6 +38,9 @@ export default function MapTab() {
   // Clock for "5 min ago" labels and Locate progress.
   const [now, setNow] = useState(() => Date.now());
   useLocateVersion();
+  // People pull up from the bottom; pushed down, the map has the whole screen.
+  const { height: screenH } = useWindowDimensions();
+  const drawer = useDrawer(DRAWER_CLOSED, Math.round(screenH * 0.42));
 
   // Re-check this phone's setup on every open (and when coming back to the app).
   const [setupIssues, setSetupIssues] = useState(0);
@@ -92,7 +98,7 @@ export default function MapTab() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
-      <View style={{ flex: 1.15 }}>
+      <View style={{ flex: 1 }}>
         <FamilyMap
           tileUrl={tiles.tileUrl}
           attribution={tiles.tileAttribution}
@@ -105,8 +111,6 @@ export default function MapTab() {
             setSheet(id);
           }}
         />
-        {/* The button follows the circle on screen; an SOS goes to every circle on this phone that has it on. */}
-        {client.feature('sos') ? <SosButton style={{ position: 'absolute', right: 16, bottom: 34 }} /> : null}
         <SafeAreaView edges={['top']} style={{ position: 'absolute', left: 12, right: 12, top: 0 }} pointerEvents="box-none">
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }} pointerEvents="box-none">
             <View
@@ -124,52 +128,61 @@ export default function MapTab() {
             >
               <CircleSwitcher />
             </View>
+            {setupIssues ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Setup needs attention: ${setupIssues} setting${setupIssues === 1 ? '' : 's'} may stop your location from updating. Tap to fix.`}
+                onPress={() => router.push('/setup-check')}
+                hitSlop={6}
+                style={{ position: 'absolute', left: 0, top: 58, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: t.warnBg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}
+              >
+                <Text style={{ fontSize: 12 }}>⚠️</Text>
+                <Text style={{ color: t.warnText, fontWeight: '700', fontSize: 13 }}>Fix setup{setupIssues > 1 ? ` · ${setupIssues}` : ''}</Text>
+              </Pressable>
+            ) : null}
             {/* The plugins' tiles (weather, air and pollen), if this circle has any: always the top-right corner. */}
             <View style={{ marginTop: 8 }}>
               <PluginTiles client={client} memberId={selected} />
             </View>
           </View>
-          <SosBanner style={{ marginTop: 10 }} />
+          <SosBanner style={{ marginTop: setupIssues ? 36 : 10 }} />
           <ServerBanner style={{ marginTop: 10 }} />
           <RejoinBanner style={{ marginTop: 10 }} />
           <UpdateBanner style={{ marginTop: 10 }} />
-          {setupIssues ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push('/setup-check')}
-              style={{ marginTop: 10, backgroundColor: t.warnBg, borderRadius: 14, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }}
-            >
-              <Text style={{ fontSize: 18 }}>⚠️</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: t.warnText, fontWeight: '700', fontSize: 15 }}>Setup needs attention</Text>
-                <Text style={{ color: t.warnText, fontSize: 13 }}>
-                  {setupIssues} setting{setupIssues === 1 ? '' : 's'} may stop your location from updating. Tap to fix.
-                </Text>
-              </View>
-            </Pressable>
-          ) : null}
         </SafeAreaView>
       </View>
-      <View style={{ flex: 1, backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, marginTop: -18, paddingTop: 16 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 6 }}>
-          <Text style={{ flex: 1, color: t.text, fontSize: 20, fontWeight: '700' }}>People</Text>
-          {client.feature('chirps') ? (
-            <View style={{ marginRight: 8 }}>
-              <IconButton icon="birds" label="Chirp everyone" disabled={members.length < 2} onPress={() => chirpWithChoice(client, null)} />
-            </View>
-          ) : null}
-          {/* Just an icon, to leave room in this row for more. */}
-          {client.feature('locate') ? (
-            <IconButton
-              icon="refresh"
-              primary
-              label={everyoneCooling ? 'Asked everyone for a fresh location' : 'Refresh everyone’s location'}
-              done={everyoneCooling}
-              disabled={everyoneCooling || members.length < 2}
-              onPress={() => refreshEveryone(client)}
-            />
-          ) : null}
-        </View>
+      {/* The button follows the circle on screen, just above the drawer; an SOS goes to every circle on this phone that has it on. */}
+      {client.feature('sos') ? (
+        <Animated.View pointerEvents="box-none" style={{ position: 'absolute', right: 16, bottom: Animated.add(drawer.motion.height, 16) }}>
+          <SosButton />
+        </Animated.View>
+      ) : null}
+      <Drawer
+        drawer={drawer}
+        header={
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 8 }}>
+            <Text style={{ flex: 1, color: t.text, fontSize: 20, fontWeight: '700' }}>
+              People{members.length > 1 ? <Text style={{ color: t.muted, fontWeight: '600' }}> · {members.length}</Text> : null}
+            </Text>
+            {client.feature('chirps') ? (
+              <View style={{ marginRight: 8 }}>
+                <IconButton icon="birds" label="Chirp everyone" disabled={members.length < 2} onPress={() => chirpWithChoice(client, null)} />
+              </View>
+            ) : null}
+            {/* Just an icon, to leave room in this row for more. */}
+            {client.feature('locate') ? (
+              <IconButton
+                icon="refresh"
+                primary
+                label={everyoneCooling ? 'Asked everyone for a fresh location' : 'Refresh everyone’s location'}
+                done={everyoneCooling}
+                disabled={everyoneCooling || members.length < 2}
+                onPress={() => refreshEveryone(client)}
+              />
+            ) : null}
+          </View>
+        }
+      >
         <FlatList
           data={members}
           keyExtractor={(m) => m.id}
@@ -226,7 +239,7 @@ export default function MapTab() {
             );
           }}
         />
-      </View>
+      </Drawer>
       <PersonSheet client={client} memberId={sheet} onClose={() => setSheet(null)} />
     </View>
   );

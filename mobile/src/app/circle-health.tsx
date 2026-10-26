@@ -4,7 +4,16 @@ import { Avatar, Button, Card, P, Screen } from '../components/ui';
 import { errorText } from '../lib/circle';
 import { memberState, statusLine, type MemberState } from '../lib/people';
 import { timeAgo, useCircle } from '../lib/useCircle';
+import { APP_VERSION } from '../lib/updates';
 import { useTheme } from '../theme';
+
+/** Whether version a ("0.15.0") is older than b. */
+const olderThan = (a: string, b: string) => {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) < (pb[i] || 0);
+  return false;
+};
 
 const LABELS: Record<MemberState, string> = {
   live: 'Sharing normally',
@@ -81,6 +90,7 @@ export default function CircleHealth() {
               {loc ? (
                 <View>
                   {row('Last update', timeAgo(loc.ts), now - loc.ts > 2 * 3600_000)}
+                  {row('HomeCircle app', loc.app ?? 'Older than 0.16', !loc.app || olderThan(loc.app, APP_VERSION))}
                   {row('Location permission', loc.perm === 'always' ? 'Always' : loc.perm === 'foreground' ? 'While using' : 'Not reported', loc.perm === 'foreground')}
                   {row('Precise location', loc.precise === false ? 'Off' : loc.precise ? 'On' : 'Not reported', loc.precise === false)}
                   {row('Battery saver', loc.power === 'saver' ? 'On' : loc.power === 'normal' ? 'Off' : 'Not reported', loc.power === 'saver')}

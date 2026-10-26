@@ -11,10 +11,11 @@
 import * as Location from 'expo-location';
 import * as Battery from 'expo-battery';
 import * as BackgroundTask from 'expo-background-task';
-import { approximate, distanceM } from '@homecircle/core';
+import { approximate, distanceM, type CircleClient } from '@homecircle/core';
 import { getSettings, getLastUpload, setLastUpload } from './storage';
 import { checkPlaces, geofenceId, sharingClients } from './places';
 import { diag } from './diagnostics';
+import { APP_VERSION } from './updates';
 import { phoneHealth } from './health';
 import { recordFix, shareMyPlaces } from './visits';
 import { loadedClients } from './circle';
@@ -98,6 +99,7 @@ export async function upload(
         power: health.power,
         perm: health.perm,
         precise: health.precise,
+        app: APP_VERSION,
         ts: loc.timestamp,
       });
     }),
@@ -168,6 +170,32 @@ export async function shareNow(trigger: 'requested' | 'manual' | 'open' = 'manua
   const missing = (await sharingClients()).some((c) => c.account && !c.locations.has(c.account.memberId));
   const fix = await freshFix();
   return fix ? report(fix, trigger, { force: trigger !== 'open' || missing }) : false;
+}
+
+/**
+ * Right after an admin connects Home Assistant: send this phone's position
+ * there now and say what it's called there ("device_tracker.homecircle_umair"),
+ * or why not.
+ */
+export async function sendToHomeAssistantNow(client: CircleClient): Promise<{ entity?: string; why?: string }> {
+  const settings = await getSettings();
+  if (!settings.sendToHomeAssistant) return { why: 'You turned off sending your location to Home Assistant (Settings → Location sharing).' };
+  if (!settings.sharing || settings.pausedCircles.includes(client.circleId!)) return { why: 'Your location sharing is paused for this circle.' };
+  const { status } = await Location.getForegroundPermissionsAsync();
+  if (status !== 'granted') return { why: 'HomeCircle isn’t allowed to use your location.' };
+  const fix = await freshFix();
+  if (!fix) return { why: 'Your phone couldn’t get its location just now.' };
+  const here = { lat: fix.coords.latitude, lng: fix.coords.longitude };
+  const approx = settings.approximateCircles.includes(client.circleId!);
+  const battery = await batteryInfo();
+  const r = await client.api.homeAssistantLocation({
+    ...(approx ? approximate(here) : { ...here, accuracy: fix.coords.accuracy }),
+    speed: approx ? null : fix.coords.speed,
+    battery: battery.battery == null ? null : Math.round(battery.battery * 100),
+    charging: battery.charging,
+    name: client.account?.profile.name ?? 'Someone',
+  });
+  return { entity: r.entity };
 }
 
 export type SharingMode = 'off' | 'no-permission' | 'foreground-only' | 'background';

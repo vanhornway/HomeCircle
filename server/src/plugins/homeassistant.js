@@ -26,7 +26,7 @@ async function check(reach, url, token) {
     base = new URL(url);
     if (!['http:', 'https:'].includes(base.protocol)) throw new Error();
   } catch {
-    fail(400, 'invalid', 'The address should look like http://homeassistant.local:8123');
+    fail(400, 'invalid', `“${String(url).slice(0, 80)}” isn’t a web address. It should look like https://xxxx.ui.nabu.casa or http://homeassistant.local:8123`);
   }
   let res;
   try {
@@ -45,12 +45,24 @@ export const homeAssistant = {
   name: 'Home Assistant',
   hosts: [],
   settings: [
-    { id: 'url', label: 'Home Assistant address', placeholder: 'http://homeassistant.local:8123', help: 'An address this HomeCircle server can reach.' },
+    {
+      id: 'url',
+      label: 'Home Assistant address',
+      url: true,
+      placeholder: 'https://xxxx.ui.nabu.casa',
+      help: 'An address this HomeCircle server can reach: your Nabu Casa address (Settings → Home Assistant Cloud → Remote Control), or http://homeassistant:8123 when HomeCircle runs as the Home Assistant app.',
+    },
     { id: 'token', label: 'Long-lived access token', secret: true, help: 'In Home Assistant: your profile → Security → Long-lived access tokens → Create token.' },
   ],
   // Running as the Home Assistant app (add-on), Home Assistant is right next door.
   suggest: (env) => (env.HOMECIRCLE_ADDON || env.SUPERVISOR_TOKEN ? { url: 'http://homeassistant:8123' } : {}),
   configure: async (values, { reach, old }) => {
+    // A token is letters, digits and - _ . only: anything else came from a
+    // keyboard or a copy, and would only fail later with a confusing error.
+    const bad = [...values.token].findIndex((c) => !/[A-Za-z0-9._-]/.test(c));
+    if (bad >= 0) {
+      fail(400, 'invalid', `The token has a character a token can’t have: “${values.token[bad]}” (character ${bad + 1}). Copy it again from Home Assistant and paste it without editing (a keyboard may have changed a letter).`);
+    }
     const url = await check(reach, values.url, values.token);
     // A different Home Assistant: everyone registers there afresh.
     return { url, token: values.token, devices: url === old.url ? (old.devices ?? {}) : {} };

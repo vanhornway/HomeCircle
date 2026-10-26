@@ -57,7 +57,7 @@ function useCircleLifecycle(circlesKey: string) {
 
     const scheduleRetry = () => {
       if (retryTimer) clearTimeout(retryTimer);
-      const delay = Math.min(120_000, 10_000 * 2 ** attempt++);
+      const delay = Math.min(30_000, 5_000 * 2 ** attempt++);
       setServerState({ retrying: true });
       retryTimer = setTimeout(() => {
         retryTimer = null;
@@ -191,8 +191,12 @@ function useCircleLifecycle(circlesKey: string) {
       }),
       client.on('newMessage', (m) => {
         notifyNewMessages(client, [m]).catch(() => {});
-        // Someone's SOS while the app is open: show it right away.
-        if (client.feature('sos') && m.kind === 'chat' && !m.peer && m.body?.sos?.state === 'start') router.push({ pathname: '/sos', params: { circle: client.circleId!, member: m.from } });
+        // Someone's SOS while the app is open: show it right away (once, and
+        // only a fresh one: an old one arriving late after a reconnect isn't news).
+        if (client.feature('sos') && m.kind === 'chat' && !m.peer && m.body?.sos?.state === 'start' && Date.now() - (m.ts || 0) < 10 * 60_000 && !shownSos.has(m.id)) {
+          shownSos.add(m.id);
+          router.push({ pathname: '/sos', params: { circle: client.circleId!, member: m.from } });
+        }
       }),
       client.on('chirp', () => {
         client
@@ -205,7 +209,8 @@ function useCircleLifecycle(circlesKey: string) {
       client.on('status', (s) => {
         if (client !== getClient()) return;
         if (s === 'online') {
-          if (!getServerState().reachable) setServerState({ reachable: true, error: null, retrying: false });
+          const st = getServerState();
+          if (!st.reachable || st.reconnectingSince != null) setServerState({ reachable: true, error: null, retrying: false, reconnectingSince: null });
         } else if (s === 'offline' && AppState.currentState === 'active') {
           // Drops while reconnecting are expected; the reconnect reports the outcome.
           if (getServerState().reconnectingSince != null) return;
@@ -242,12 +247,26 @@ function useCircleLifecycle(circlesKey: string) {
   }, [circlesKey]);
 }
 
+// Notification taps already acted on, and SOS alerts already shown (this run of the app).
+const handledNotifications = new Set<string>();
+const shownSos = new Set<string>();
+
 /** Tapping a message notification opens that conversation; an update one downloads it. */
 function useOpenChatFromNotification() {
   const nav = useRouter();
   const response = Notifications.useLastNotificationResponse();
   useEffect(() => {
-    const data = response?.notification.request.content.data as { t?: string; circle?: string; peer?: string } | undefined;
+    if (!response) return;
+    // The same tap is reported again after a redraw or relaunch: act on each once.
+    const key = `${response.notification.request.identifier}|${response.notification.date}|${response.actionIdentifier}`;
+    if (handledNotifications.has(key)) return;
+    handledNotifications.add(key);
+    try {
+      Notifications.clearLastNotificationResponse();
+    } catch {
+      // older expo-notifications: the key above is enough
+    }
+    const data = response.notification.request.content.data as { t?: string; circle?: string; peer?: string } | undefined;
     if (data?.t === 'update') {
       downloadUpdate().catch(() => {});
       return;

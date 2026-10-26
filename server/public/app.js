@@ -1741,7 +1741,8 @@ function pluginSetup(id) {
       const save = h('button', { class: 'btn small primary', type: 'button' }, info.ready || id !== 'homeAssistant' ? 'Save' : 'Connect');
       save.onclick = () => {
         save.disabled = true;
-        const values = Object.fromEntries(Object.entries(inputs).map(([k, el]) => [k, el.value]));
+        // Stray spaces and invisible characters out (the server tidies them too).
+        const values = Object.fromEntries(Object.entries(inputs).map(([k, el]) => [k, el.type === 'password' || k === 'url' ? el.value.replace(/[\s ​-‍⁠﻿]/g, '') : el.value.trim()]));
         client.api
           .putPluginSettings(id, values)
           .then(() => {

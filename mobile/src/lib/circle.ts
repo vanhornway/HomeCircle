@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetch as expoFetch } from 'expo/fetch';
 import { ACCOUNT_KEY, CircleClient } from '@homecircle/core';
 import { diag } from './diagnostics';
+import { messageCache } from './messageCache';
 import { secureStorage } from './storage';
 
 const LIST_KEY = 'homecircle.circles';
@@ -27,6 +28,8 @@ function changed() {
 function makeClient(accountKey: string): CircleClient {
   const client = new CircleClient({
     storage: secureStorage,
+    // Opened messages, kept between launches (a cold start opens only what's new).
+    cache: messageCache,
     accountKey,
     // Files for the helper go up and down as raw bytes, which React Native's own fetch can't do.
     binaryFetchImpl: expoFetch,

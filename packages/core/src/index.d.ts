@@ -79,6 +79,8 @@ export interface MemberLocation {
   perm: 'always' | 'foreground' | null;
   /** Precise location allowed, if reported. */
   precise: boolean | null;
+  /** The HomeCircle app version that phone runs (0.16+; null from older apps). */
+  app: string | null;
   ts: number;
   receivedAt: number;
 }
@@ -302,7 +304,8 @@ export const ACCOUNT_KEY: string;
 export type SignOutReason = 'signed_out' | 'left' | 'deleted_circle' | 'removed' | 'circle_deleted' | 'unrecognized';
 
 export class CircleClient {
-  constructor(opts: { storage: Storage; accountKey?: string; fetchImpl?: typeof fetch; binaryFetchImpl?: (url: string, init?: any) => Promise<any>; WebSocketImpl?: any; onError?: (e: Error) => void });
+  /** `cache`: where opened messages are kept between launches (one entry per circle; can be a few MB). */
+  constructor(opts: { storage: Storage; cache?: Storage; accountKey?: string; fetchImpl?: typeof fetch; binaryFetchImpl?: (url: string, init?: any) => Promise<any>; WebSocketImpl?: any; onError?: (e: Error) => void });
   /** Where this circle's account is stored. */
   readonly accountKey: string;
   static serverInfo(serverUrl: string, fetchImpl?: typeof fetch): Promise<ServerInfo>;
@@ -387,6 +390,8 @@ export class CircleClient {
     power?: 'saver' | 'normal';
     perm?: 'always' | 'foreground';
     precise?: boolean;
+    /** This phone's HomeCircle app version (shown in Circle health). */
+    app?: string;
     ts?: number;
   }): Promise<void>;
   /** Remove this device's location from the circle (stop sharing with it). */
