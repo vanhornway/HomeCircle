@@ -2,6 +2,26 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.19.0
+
+- The circle helper keeps recipes, contacts, health notes, documents, trips
+  and a home manual as their own kinds of note. Recipes and how-to steps are
+  kept word for word, not summed up; each kind has its own folder in
+  Download memory, and trips go in its calendar.
+- Reminders follow from what's kept: before a document expires (6 months
+  ahead for a passport, 60 days for anything else), a refill or vaccine date,
+  and upkeep that repeats every few months. Reminders can now repeat every
+  1 to 60 months.
+- Health notes are private to the person who kept them unless they say
+  they're for the circle.
+- The helper never keeps a password, a door, alarm or gate code, a PIN, or a
+  whole card, account, ID, passport or Social Security number: these are taken
+  out on the server before anything is saved or sent to the AI provider, and
+  only the last 4 digits of a number are kept. Phone numbers stay whole.
+- A recipe's ingredients can be added to a shopping list.
+- Needs the HomeCircle app 0.19.0 for editing places and the new note kinds
+  in Memory; older apps keep working.
+
 ## 0.18.0
 
 - Fewer wake-ups for chat: message notifications to the same person are

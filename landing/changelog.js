@@ -1,6 +1,20 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.19.0',
+    date: '2026-10-27',
+    title: 'Edit your places, and a helper that keeps recipes whole',
+    items: [
+      'Edit a place: long-press it in Places, or tap Edit, to change its name, where it is or how big it is.',
+      'Most visited places have real names: the place’s own name where your phone knows one, otherwise where it is from your places, like “1.2 mi north of Home”. Tap one to see it on the map.',
+      'Your helper keeps recipes whole, every ingredient and step, and can put what you need for one on a shopping list.',
+      'It also keeps contacts (the dentist, the plumber, the babysitter), health notes, documents, trips and a home manual, each in its own section of Memory and its own folder when you download it.',
+      'Reminders that follow on their own: before a passport or licence expires, when a refill is due, and upkeep like a filter to change every 3 months.',
+      'Health notes are just for you, unless you say they’re for the circle.',
+      'Your helper never keeps passwords, door or alarm codes, PINs, or whole card, account or ID numbers, only the last 4 digits, and says so when it leaves one out.',
+    ],
+  },
+  {
     version: '0.18.0',
     date: '2026-10-26',
     title: 'Easier on the battery, and your helper’s memory to keep',
