@@ -135,7 +135,14 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
           .bindTooltip(esc(p.name), {permanent:true, direction:'center', className:'pl'}).addTo(placeLayer);
       });
     },
-    focus: function(lat,lng,zoom){ map.flyTo([lat,lng], zoom || Math.max(map.getZoom(), 15), {duration:.6}); },
+    // Asked for right at 'ready' (e.g. editing a place), the page may not have
+    // its size yet: measure again, and jump rather than fly from the world view.
+    focus: function(lat,lng,zoom){
+      map.invalidateSize(false);
+      var z = zoom || Math.max(map.getZoom(), 15);
+      if (map.getZoom() < 5) map.setView([lat,lng], z, {animate:false});
+      else map.flyTo([lat,lng], z, {duration:.6});
+    },
     view: function(lat,lng,zoom){ fitted = true; map.setView([lat,lng], zoom, {animate:false}); },
     refit: function(list){ fitted = list.length > 0; if (list.length) hc.fit(list); },
     retryTiles: function(){ map.invalidateSize(); retryMissing(); },

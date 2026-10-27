@@ -33,9 +33,10 @@ function placeToEdit(circleId: string | undefined, id: string | undefined): { pl
   return { place, copies };
 }
 
-/** A radius in feet: one of the chips when it's close to one, else the custom field. */
+/** A radius in feet: one of the chips when it's close to one, else the custom field.
+ *  Older places can be under today's minimum: those start at the smallest chip. */
 function radiusFields(meters: number) {
-  const ft = Math.round(metersToFeet(meters));
+  const ft = Math.max(MIN_FT, Math.round(metersToFeet(meters)));
   const chip = RADII_FT.find((r) => Math.abs(r - ft) <= 5);
   return chip ? { feet: chip, custom: '' } : { feet: 500, custom: String(ft) };
 }
