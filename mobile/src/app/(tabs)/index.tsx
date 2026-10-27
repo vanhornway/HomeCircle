@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Animated, AppState, FlatList, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, AppState, FlatList, Pressable, Text, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { needsAttention, setupChecklist } from '../../lib/health';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -41,6 +41,15 @@ export default function MapTab() {
   // People pull up from the bottom; pushed down, the map has the whole screen.
   const { height: screenH } = useWindowDimensions();
   const drawer = useDrawer(DRAWER_CLOSED, Math.round(screenH * 0.42));
+
+  // The circle's name and the plugin tile share the top row only when both fit
+  // whole; a long name, or the big tile, puts the tile on its own line below.
+  const [widths, setWidths] = useState({ row: 0, pill: 0, tile: 0 });
+  const measure = (k: 'row' | 'pill' | 'tile') => (e: LayoutChangeEvent) => {
+    const w = Math.round(e.nativeEvent.layout.width);
+    setWidths((cur) => (cur[k] === w ? cur : { ...cur, [k]: w }));
+  };
+  const tileBeside = !widths.tile || widths.pill + 8 + widths.tile <= widths.row;
 
   // Re-check this phone's setup on every open (and when coming back to the app).
   const [setupIssues, setSetupIssues] = useState(0);
@@ -96,6 +105,13 @@ export default function MapTab() {
     if (loc) setFocus((f) => ({ lat: loc.lat, lng: loc.lng, key: (f?.key ?? 0) + 1 }));
   };
 
+  // Below the row, it clears "Fix setup" (which hangs under the circle's name).
+  const pluginTiles = (
+    <View onLayout={measure('tile')} pointerEvents="box-none" style={{ alignSelf: 'flex-end', marginTop: !tileBeside && setupIssues ? 36 : 8 }}>
+      <PluginTiles client={client} memberId={selected} />
+    </View>
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
       <View style={{ flex: 1 }}>
@@ -113,8 +129,9 @@ export default function MapTab() {
           }}
         />
         <SafeAreaView edges={['top']} style={{ position: 'absolute', left: 12, right: 12, top: 0 }} pointerEvents="box-none">
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }} pointerEvents="box-none">
+          <View onLayout={measure('row')} style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }} pointerEvents="box-none">
             <View
+              onLayout={measure('pill')}
               style={{
                 backgroundColor: t.surface,
                 borderRadius: 999,
@@ -141,12 +158,12 @@ export default function MapTab() {
                 <Text style={{ color: t.warnText, fontWeight: '700', fontSize: 13 }}>Fix setup{setupIssues > 1 ? ` · ${setupIssues}` : ''}</Text>
               </Pressable>
             ) : null}
-            {/* The plugins' tiles (weather, air and pollen), if this circle has any: always the top-right corner. */}
-            <View style={{ marginTop: 8 }}>
-              <PluginTiles client={client} memberId={selected} />
-            </View>
+            {/* The plugins' tiles, if this circle has any: top right, beside the circle's name when both fit. */}
+            {tileBeside ? pluginTiles : null}
           </View>
-          <SosBanner style={{ marginTop: setupIssues ? 36 : 10 }} />
+          {/* A long circle name, or the big tile: the tile goes on its own line below, still on the right (and below "Fix setup"). */}
+          {tileBeside ? null : pluginTiles}
+          <SosBanner style={{ marginTop: setupIssues && tileBeside ? 36 : 10 }} />
           <ServerBanner style={{ marginTop: 10 }} />
           <RejoinBanner style={{ marginTop: 10 }} />
           <UpdateBanner style={{ marginTop: 10 }} />
