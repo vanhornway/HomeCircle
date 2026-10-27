@@ -2,6 +2,20 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.18.0
+
+- Fewer wake-ups for chat: message notifications to the same person are
+  combined for 45 seconds and replace each other, and say which circle they're
+  for, so a phone fetches only that circle.
+- Download memory: the circle helper zips everything a person can see of its
+  memory as an Obsidian vault (notes, calendars as .ics, shopping lists,
+  reminders and kept files), encrypts each part and leaves it for their phone.
+  Parts are deleted within the hour and don't count against the circle's
+  storage.
+- Phones on 0.18.0 report how often they update, shown under each name.
+- Needs the HomeCircle app 0.18.0 for the battery settings and Download memory;
+  older apps keep working.
+
 ## 0.17.0
 
 - New plugin, Prayer times (off until an admin turns it on in Features): the

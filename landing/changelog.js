@@ -1,6 +1,20 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.18.0',
+    date: '2026-10-26',
+    title: 'Easier on the battery, and your helper’s memory to keep',
+    items: [
+      'Location settings have Basic and Advanced. Basic is one slider from “Longest battery” to “Most up to date”. Advanced lets you set how often you update while moving and while still. New installs start at a balanced setting; if you’d changed how often you share, that’s where your slider starts.',
+      'Still mode: when you stay put, your phone checks in less often and wakes up again as soon as you move. Your circle can still ask for a fresh location any time.',
+      'Charging: while plugged in, your location updates more often, at no cost to the battery.',
+      'Each person’s card shows how often their phone updates, so you know how fresh their dot is.',
+      'Fewer wake-ups for chat: notifications in a busy chat are combined, and your phone fetches only the circle they’re for.',
+      'Download memory: in Settings → your helper, download everything you can see of its memory as a zip that opens in Obsidian. It has a note for each thing it remembers, calendars as .ics files, shopping lists, reminders and the files you kept. Other people’s private notes stay theirs.',
+      'Fixed: with a long circle name, the weather, air or prayer tile could slide off the screen. It now moves below the name.',
+    ],
+  },
+  {
     version: '0.17.0',
     date: '2026-10-26',
     title: 'Prayer times',
