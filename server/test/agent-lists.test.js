@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { addItems, createList, doneShopping, emptyLists, findList, listText, parseListCommand, recipeWanted, recordBought, removeItems, shoppingName, viewList } from '../src/agent/lists.js';
-import { addReminder, dueMessage, markDone, nextYear } from '../src/agent/reminders.js';
+import { addMonths, addReminder, canSeeReminder, cleanReminder, dueMessage, markDone, nextYear, reminderLine } from '../src/agent/reminders.js';
 
 test('lists: one per store; items once each; usual items first and suggested', () => {
   const s = emptyLists();
@@ -67,4 +67,21 @@ test('a recipe’s ingredients for a list: which recipe, and each ingredient as 
   assert.equal(recipeWanted(['paneer']), null);
   const shop = ['2 cups basmati rice, washed', 'salt to taste', '3 cloves garlic', '½ tsp turmeric', '1 kg chicken (bone-in)', 'a pinch of saffron', '2-3 green chillies', 'apple', 'an onion', '1 can coconut milk', '6 cloves'];
   assert.deepEqual(shop.map(shoppingName), ['basmati rice', 'salt', 'garlic', 'turmeric', 'chicken', 'saffron', 'green chillies', 'apple', 'onion', 'coconut milk', '6 cloves']);
+});
+
+test('reminders every few months move on that many months; private ones are only for their person', () => {
+  assert.equal(addMonths('2027-01-31', 1), '2027-02-28');
+  assert.equal(addMonths('2031-03-01', -6), '2030-09-01');
+  const list = [];
+  const r = addReminder(list, { title: 'HVAC filter', due: '2027-02-03', repeat: 'months', months: 3 }, 'mom', 0);
+  assert.equal(reminderLine(r), '• HVAC filter: Feb 3, 2027 (every 3 months)');
+  markDone(r, 'dad', 1);
+  assert.deepEqual([r.due, r.done], ['2027-05-03', false]);
+  // Every 12 months is every year; nonsense counts don't repeat.
+  assert.equal(cleanReminder({ title: 'X', due: '2027-01-01', repeat: 'months', months: 12 }).repeat, 'yearly');
+  assert.equal(cleanReminder({ title: 'X', due: '2027-01-01', repeat: 'months', months: 0 }).repeat, 'none');
+  const refill = addReminder(list, { title: 'Refill inhaler', due: '2026-11-20', repeat: 'none', only: 'dad' }, 'dad', 0);
+  assert.deepEqual([canSeeReminder(refill, 'dad'), canSeeReminder(refill, 'mom'), canSeeReminder(r, 'mom')], [true, false, true]);
+  // An edit keeps who it's for.
+  assert.equal(cleanReminder({ ...refill, title: 'Refill the inhaler' }).only, 'dad');
 });

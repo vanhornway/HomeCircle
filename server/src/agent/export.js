@@ -6,6 +6,7 @@
 // page linking it all. Zipped in parts small enough for the server's file
 // limit (most memories fit in one).
 import { strToU8, zipSync } from 'fflate';
+import { repeatText } from './reminders.js';
 
 const FOLDERS = {
   person: 'People',
@@ -15,6 +16,11 @@ const FOLDERS = {
   decision: 'Decisions',
   fact: 'Facts',
   recipe: 'Recipes',
+  contact: 'Contacts',
+  health: 'Health',
+  document: 'Documents',
+  trip: 'Trips',
+  howto: 'Home manual',
   source: 'Calendars',
 };
 // Room left in each part for zip headers.
@@ -32,15 +38,45 @@ const isoDay = (ms) => (Number.isFinite(ms) ? new Date(ms).toISOString().slice(0
 // Obsidian tags can't have spaces.
 const tag = (t) => String(t).trim().replace(/\s+/g, '-');
 
+// Properties per kind of note: [data key, property name].
+const PROPERTIES = {
+  recipe: [['serves'], ['time']],
+  contact: [['role'], ['phone'], ['email'], ['address'], ['hours'], ['website']],
+  health: [['kind'], ['dose'], ['schedule'], ['refillBy', 'refill-by']],
+  document: [['kind'], ['owner'], ['expires'], ['number_last4', 'number-last4'], ['where']],
+  howto: [['every']],
+  person: [['role'], ['sizes'], ['gifts'], ['favourites']],
+};
+
+/**
+ * A note's dates for a calendar: a calendar's own events; a trip's days and
+ * each leg that has a date; when a document expires; when a refill is due.
+ */
+export function noteEvents(n) {
+  if (Array.isArray(n.data?.events)) return n.data.events;
+  const out = [];
+  if (n.type === 'trip' && n.start) {
+    out.push({ uid: `${n.id}-trip`, summary: n.title, start: n.start, end: n.end || n.start, allDay: true });
+    (n.data?.legs ?? []).forEach((l, i) => {
+      const m = String(l.at || '').match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}))?/);
+      if (!m) return;
+      const what = [l.kind === 'other' ? null : l.kind, l.from && l.to ? `${l.from} to ${l.to}` : l.from || l.to].filter(Boolean).join(' ');
+      out.push({ uid: `${n.id}-leg${i}`, summary: `${what || n.title}${l.confirmation ? ` (${l.confirmation})` : ''}`, start: m[1], end: m[1], time: m[2] ?? null, allDay: !m[2] });
+    });
+  }
+  if (n.type === 'document' && n.data?.expires) out.push({ uid: `${n.id}-expires`, summary: `${n.title} expires`, start: n.data.expires, end: n.data.expires, allDay: true });
+  if (n.type === 'health' && n.data?.refillBy) out.push({ uid: `${n.id}-refill`, summary: `${n.title}: refill by`, start: n.data.refillBy, end: n.data.refillBy, allDay: true });
+  return out;
+}
+
 /** One note as Markdown with front matter. */
 function noteMarkdown(n, { files, calendarPath }) {
   const front = [
     ['type', n.type],
     ['scope', n.scope === 'circle' ? 'circle' : 'private'],
     ['start', n.start],
-    // A recipe's serving size and time, as Obsidian properties.
-    ['serves', n.type === 'recipe' ? n.data?.serves : null],
-    ['time', n.type === 'recipe' ? n.data?.time : null],
+    // What its kind keeps (a recipe's serving size, a contact's phone…), as Obsidian properties.
+    ...(PROPERTIES[n.type] ?? []).map(([k, name]) => [name ?? k, n.data?.[k] ?? null]),
     ['end', n.end && n.end !== n.start ? n.end : null],
     // As links, so Obsidian's graph and backlinks connect each note to its people.
     ['people', n.people?.length ? n.people.map((p) => `[[${p}]]`) : null],
@@ -56,7 +92,12 @@ function noteMarkdown(n, { files, calendarPath }) {
   // A recipe whose text has no ingredients list still gets one from its data.
   const ingredients = n.type === 'recipe' && !/^(?:#{1,4}\s*)?ingredients\b/im.test(n.body || '') ? n.data?.ingredients : null;
   if (Array.isArray(ingredients) && ingredients.length) lines.push('', '## Ingredients', '', ...ingredients.map((i) => `- ${i}`));
-  const events = n.data?.events;
+  const legs = n.type === 'trip' ? n.data?.legs : null;
+  if (Array.isArray(legs) && legs.length) {
+    lines.push('', '## Legs', '');
+    for (const l of legs) lines.push(`- ${[l.kind, l.from && l.to ? `${l.from} → ${l.to}` : l.from || l.to, l.at && `leaves ${l.at}`, l.arrives && `arrives ${l.arrives}`, l.confirmation && `confirmation ${l.confirmation}`].filter(Boolean).join(', ')}`);
+  }
+  const events = noteEvents(n);
   if (Array.isArray(events) && events.length) {
     lines.push('', '## Dates', '');
     for (const e of events) lines.push(`- ${e.start}${e.end && e.end !== e.start ? ` to ${e.end}` : ''}${e.time ? ` ${e.time}` : ''}: ${e.summary}${e.off ? ' (off)' : ''}`);
@@ -76,7 +117,7 @@ const nextDay = (d) => new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISO
 export function calendarIcs(n, now) {
   const stamp = new Date(now).toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
   const out = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//HomeCircle//Memory download//EN', `X-WR-CALNAME:${icsText(n.title)}`];
-  n.data.events.forEach((e, i) => {
+  noteEvents(n).forEach((e, i) => {
     const timed = e.time && e.allDay === false && /^\d{2}:\d{2}/.test(e.time);
     out.push(
       'BEGIN:VEVENT',
@@ -109,7 +150,7 @@ function remindersMarkdown(reminders) {
   const lines = ['---', 'type: "reminders"', '---', '', '# Reminders', ''];
   if (!reminders.length) lines.push('None.');
   const sorted = [...reminders].sort((a, b) => Number(a.done) - Number(b.done) || a.due.localeCompare(b.due));
-  for (const r of sorted) lines.push(`- [${r.done ? 'x' : ' '}] ${r.title}: due ${r.due}${r.repeat === 'yearly' ? ', every year' : ''}${r.note ? `. ${r.note}` : ''}`);
+  for (const r of sorted) lines.push(`- [${r.done ? 'x' : ' '}] ${r.title}: due ${r.due}${repeatText(r) ? `, ${repeatText(r)}` : ''}${r.note ? `. ${r.note}` : ''}`);
   return `${lines.join('\n')}\n`;
 }
 
@@ -143,7 +184,7 @@ export function exportVault({ notes, lists = [], reminders = [], files = [], mis
     const folder = FOLDERS[n.type] ?? 'Notes';
     const path = place(folder, n.title, '.md');
     let calendarPath = null;
-    if (Array.isArray(n.data?.events) && n.data.events.length) {
+    if (noteEvents(n).length) {
       calendarPath = place(folder, n.title, '.ics');
       text[calendarPath] = calendarIcs(n, now);
     }

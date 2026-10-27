@@ -67,6 +67,31 @@ async function fakeLlm(cfg, { system, messages, schema }) {
   if (schema?.properties?.intent) {
     // Only the new message decides what it is; the conversation before it is context.
     const said = text.match(/now says: (.*)$/s)?.[1] ?? text;
+    const keep = (...notes) => json({ intent: 'remember', people: [], days: null, from: null, to: null, keywords: [], remember: notes, list: null, listAction: null, items: [], reminder: null });
+    const recall = (keywords) => json({ intent: 'recall', people: [], days: null, from: null, to: null, keywords, remember: [], list: null, listAction: null, items: [], reminder: null });
+    if (/^Our dentist is Dr\. Lee/.test(said)) {
+      return keep(typed('contact', 'Dr. Lee', 'Our dentist, [[Dr. Lee]].', { service: 'dentist', phone: '415-555-0100', hours: '9–5 weekdays' }));
+    }
+    if (/dentist’s number\?/.test(said)) return recall(['dentist', 'phone']);
+    if (/takes amoxicillin/.test(said)) {
+      const who = said.match(/^(Person [A-Z]+) takes/)[1];
+      return keep(typed('health', 'Amoxicillin', `[[${who}]] takes amoxicillin 250 mg twice a day.`, { kind: 'medicine', dose: '250 mg', schedule: 'twice a day', refillBy: '2026-11-20' }, [who]));
+    }
+    if (/passport expires/.test(said)) {
+      // The number was taken out before it got here: only its last 4 digits came.
+      const who = said.match(/^(Person [A-Z]+)’s passport/)[1];
+      return keep(typed('document', `${who}’s passport`, `${who}’s passport, ${said.match(/number (ending \d{4})/)[1]}, in the safe.`, { kind: 'passport', owner: who, expires: '2031-03-01', last4: said.match(/ending (\d{4})/)[1], where: 'the safe' }, [who]));
+    }
+    if (/fly to Lahore/.test(said)) {
+      const [, a, b] = said.match(/^(Person [A-Z]+) and (Person [A-Z]+) fly/);
+      const legs = [{ kind: 'flight', from: 'SFO', to: 'LHE', at: '2026-11-26 21:30', arrives: '2026-11-28 06:10', confirmation: 'ABC123' }];
+      return keep({ ...typed('trip', 'Lahore trip', said, { legs }, [a, b]), start: '2026-11-26', end: '2026-12-06' });
+    }
+    if (/when does .* land\?/.test(said)) return recall(['lahore', 'flight']);
+    if (/HVAC filter every 3 months/.test(said)) return keep(typed('howto', 'HVAC filter', said, { every: '3 months' }));
+    if (/kettle every 6 weeks/.test(said)) return keep(typed('howto', 'Descale the kettle', said, { every: '6 weeks' }));
+    if (/alarm code/.test(said)) return keep(typed('fact', 'Alarm', said, null));
+    if (/is our dog/.test(said)) return keep({ ...typed('person', 'Biscuit', 'Our dog.', { favourites: 'squeaky toys' }), role: 'pet' });
     if (/are our kids/.test(said)) {
       // New names can't be swapped yet (nobody's told the agent about them).
       const [a, b] = said.match(/(.+) are our kids/)[1].split(' and ');
@@ -130,6 +155,13 @@ async function fakeLlm(cfg, { system, messages, schema }) {
   if (schema?.properties?.notes) {
     return json({ notes: [{ type: 'event', title: 'Dentist', body: `Dentist for ${text.match(/Person [A-Z]/g)?.[1] ?? 'someone'} at 3:30.`, people: [], start: '2026-11-14', end: null, role: null }] });
   }
+  // Asked for a number or a landing time: exactly as the note's details have it.
+  const asked = text.match(/^Question from [^:]+: (.*)$/m)?.[1] ?? '';
+  if (/give it exactly/.test(system) && /number\?/.test(asked)) {
+    const [, who, phone] = text.match(/^- contact: ([^:]+):[^\n]*\n {2}\([^)]*phone ([^;)]+)/m);
+    return { text: `${who}: ${phone}`, json: null, usd: 0.002, refused: false };
+  }
+  if (/give it exactly/.test(system) && /land\?/.test(asked)) return { text: `Lands ${text.match(/arrives ([^,;)\n]+)/)[1]}.`, json: null, usd: 0.002, refused: false };
   // Asked for a recipe: the whole of it, as the note has it.
   const recipe = /give all of it/.test(system) && text.match(/^- recipe: [^:]+: ([\s\S]*?)(?=\n- (?:person|place|schedule|event|decision|fact|recipe|source): |\n\n)/m)?.[1];
   if (recipe) return { text: recipe, json: null, usd: 0.002, refused: false };
@@ -147,6 +179,20 @@ function recipeBody(said) {
   const list = steps.split(/\s*\d+\.\s+|,\s*(?:then\s+)?/).filter(Boolean);
   return `## Ingredients\n${ing.split(/,\s*/).map((i) => `- ${i}`).join('\n')}\n## Steps\n${list.map((x, i) => `${i + 1}. ${x.replace(/\.$/, '')}.`).join('\n')}`;
 }
+/** A note of one of the other kinds, as the AI gives it: every detail there, "" when not said. */
+const DETAILS = ['service', 'phone', 'email', 'address', 'hours', 'website', 'kind', 'dose', 'schedule', 'refillBy', 'owner', 'expires', 'last4', 'where', 'every', 'sizes', 'gifts', 'favourites'];
+const typed = (type, title, body, details, people = []) => ({
+  type,
+  title,
+  body,
+  people,
+  tags: [type],
+  start: null,
+  end: null,
+  role: null,
+  recipe: null,
+  details: details && { ...Object.fromEntries(DETAILS.map((k) => [k, ''])), legs: [], ...details },
+});
 const recipeNote = (title, body, { people = [], serves = null, time = null } = {}) => ({
   type: 'recipe',
   title,
@@ -635,6 +681,84 @@ test('reminders: set in chat, sent to admins and whoever set it in the morning, 
   assert.equal(mom.conversation(mom.agent.id).filter((m) => m.body?.reminder).length, 1);
 });
 
+test('contacts, health, documents, trips and the home manual: details kept, reminders set, secrets never kept', async () => {
+  const last = (c, re) => until(c, (x) => (re.test(lastFromAgent(x)?.body.text ?? '') ? lastFromAgent(x) : null));
+  const note = async (c, title) => (await c.agentRpc('list')).find((n) => n.title === title);
+
+  // A contact: asked for, the number itself; the name stays a stand-in for the AI.
+  await mom.askAgent('Our dentist is Dr. Lee, phone 415-555-0100, open 9–5 weekdays');
+  await last(mom, /^📌 Remembered: Dr\. Lee$/);
+  assert.deepEqual((await note(mom, 'Dr. Lee')).data, { role: 'dentist', phone: '415-555-0100', hours: '9–5 weekdays' });
+  await dad.askAgent('what’s the dentist’s number?');
+  await last(dad, /^Dr\. Lee: 415-555-0100$/);
+  assert.ok(!sentToAi.at(-1).includes('Dr. Lee'));
+
+  // Health: private unless said otherwise; a refill date sets up a reminder only for them.
+  await dad.askAgent('Kid takes amoxicillin 250 mg twice a day, refill by Nov 20');
+  const health = await last(dad, /^📌 Remembered: Amoxicillin/);
+  assert.equal(health.body.text, '📌 Remembered: Amoxicillin\n🔒 Health notes are just for you. Say “share it with the circle” to keep one for everyone.\n⏰ I’ll remind you about Refill Amoxicillin on Nov 20, 2026.');
+  const amox = await note(dad, 'Amoxicillin');
+  assert.equal(amox.scope, dad.account.memberId);
+  assert.deepEqual(amox.data, { kind: 'medicine', dose: '250 mg', schedule: 'twice a day', refillBy: '2026-11-20' });
+  assert.equal(await note(mom, 'Amoxicillin'), undefined);
+  assert.ok((await dad.agentRpc('reminders')).some((r) => r.title === 'Refill Amoxicillin'));
+  assert.ok(!(await mom.agentRpc('reminders')).some((r) => r.title === 'Refill Amoxicillin'));
+  await app.agentHost.refresh();
+  await until(dad, (c) => [...c.conversation(c.agent.id)].find((m) => /^⏰ Refill Amoxicillin is due in 17 days/.test(m.body?.text ?? '')));
+  await settle(300);
+  await mom.fetchMessages();
+  assert.ok(!mom.conversation(mom.agent.id).some((m) => /Amoxicillin/.test(m.body?.text ?? '')));
+
+  // A document: the passport number never reaches the AI or memory, only its last 4; renewal 6 months ahead.
+  await mom.askAgent('Mom’s passport expires 2031-03-01, number X12345678, it’s in the safe');
+  const doc = await last(mom, /^📌 Remembered: Mom’s passport/);
+  assert.equal(
+    doc.body.text,
+    '📌 Remembered: Mom’s passport\n⏰ I’ll remind every admin about Renew Mom’s passport on Sep 1, 2030.\n🔒 I left out a password, code or full number: what I read goes to the AI provider, so I never keep those, only the last 4 digits of a number.',
+  );
+  assert.ok(!sentToAi.some((x) => x.includes('X12345678')));
+  const passport = await note(mom, 'Mom’s passport');
+  assert.deepEqual(passport.data, { kind: 'passport', owner: 'Mom', expires: '2031-03-01', number_last4: '5678', where: 'the safe' });
+  assert.ok(!JSON.stringify(passport).includes('1234567'));
+
+  // A trip: its legs answer "when does she land", and its days count as busy for free time.
+  await mom.askAgent('Kid and Nani fly to Lahore Nov 26 to Dec 6: PK786 SFO to LHE departs 2026-11-26 21:30, arrives 2026-11-28 06:10, confirmation ABC123');
+  await last(mom, /^📌 Remembered: Lahore trip$/);
+  const trip = await note(mom, 'Lahore trip');
+  assert.deepEqual([trip.start, trip.end, trip.people], ['2026-11-26', '2026-12-06', ['Kid', 'Nani']]);
+  assert.deepEqual(trip.data.legs, [{ kind: 'flight', from: 'SFO', to: 'LHE', at: '2026-11-26 21:30', arrives: '2026-11-28 06:10', confirmation: 'ABC123' }]);
+  await dad.askAgent('when does Nani land?');
+  await last(dad, /^Lands 2026-11-28 06:10\.$/);
+  await dad.askAgent('When are the kids free next? I want to plan a 5 day vacation');
+  // Nov 25–29 was free before the trip.
+  await last(dad, /^Free 5 days in a row for Kid and Sam: Dec 19–Jan 3; /);
+
+  // The home manual: kept word for word; upkeep every few months repeats, every few weeks can't.
+  await mom.askAgent('Change the HVAC filter every 3 months: it takes a 16x25x1 MERV 11, the furnace is a Carrier 58STA090');
+  const hvac = await last(mom, /^📌 Remembered: HVAC filter/);
+  assert.equal(hvac.body.text, '📌 Remembered: HVAC filter\n⏰ I’ll remind every admin about HVAC filter on Feb 3, 2027, then every 3 months.');
+  assert.equal((await note(mom, 'HVAC filter')).body, 'Change the HVAC filter every 3 months: it takes a 16x25x1 MERV 11, the furnace is a Carrier 58STA090');
+  const filter = (await mom.agentRpc('reminders')).find((r) => r.title === 'HVAC filter');
+  assert.deepEqual([filter.repeat, filter.months], ['months', 3]);
+  await mom.doneAgentReminder(filter.id, { peer: mom.agent.id });
+  await until(mom, (c) => [...c.conversation(c.agent.id)].find((m) => /HVAC filter is done\. Next one: May 3, 2027/.test(m.body?.text ?? '')));
+  await mom.askAgent('Descale the kettle every 6 weeks');
+  await last(mom, /^📌 Remembered: Descale the kettle\nReminders repeat by months or years, so I can’t remind you every 6 weeks\.$/);
+
+  // A pet is a person note, with what it likes.
+  await mom.askAgent('Biscuit is our dog, he loves squeaky toys');
+  await last(mom, /^📌 Remembered: Biscuit$/);
+  assert.deepEqual((await note(mom, 'Biscuit')).data, { role: 'pet', favourites: 'squeaky toys' });
+
+  // Secrets: a code in chat never reaches the AI; one sent from the app isn't kept either.
+  await mom.askAgent('The alarm code is 4821');
+  await last(mom, /^📌 Remembered: Alarm\n🔒 I left out a password, code or full number/);
+  assert.ok(!sentToAi.some((x) => x.includes('4821')));
+  assert.equal((await note(mom, 'Alarm')).body, 'The alarm code is [not kept]');
+  const wifi = await mom.agentRpc('add', { note: { type: 'howto', title: 'Wifi', body: 'Network HomeNet, password: hunter2. Router RT-AX88U, card 4111 1111 1111 1111.' } });
+  assert.equal(wifi.body, 'Network HomeNet, password: [not kept]. Router RT-AX88U, card ending 1111.');
+});
+
 test('spending: per person for admins, and a hard stop at the budget', async () => {
   const u = await mom.agentRpc('usage');
   assert.ok(u.total > 0 && u.byMember.length >= 2);
@@ -705,12 +829,24 @@ test('Download memory: an Obsidian vault zipped, with calendars, lists, reminder
   assert.match(biryani, /\n## Ingredients\n- 2 cups basmati rice\n[\s\S]*\n## Steps\n1\. Fry the onions\.\n2\. [\s\S]*\n3\. Layer with the rice and cook on low for 30 minutes\.\n$/);
   assert.ok(paths.includes('Recipes/Nihari.md') && paths.includes('Recipes/Chai.md'));
   assert.match(text('Home.md'), /## Recipes\n\n- \[\[Recipes\/Biryani\|Biryani\]\]/);
+  // The other kinds in theirs, with their details as properties, and dates in .ics files.
+  assert.match(text('Contacts/Dr. Lee.md'), /^role: "dentist"\nphone: "415-555-0100"\nhours: "9–5 weekdays"\n/m);
+  assert.match(text('Documents/Mom’s passport.md'), /^expires: "2031-03-01"\nnumber-last4: "5678"\nwhere: "the safe"\n/m);
+  assert.match(text('Documents/Mom’s passport.ics'), /DTSTART;VALUE=DATE:20310301\r\nDTEND;VALUE=DATE:20310302\r\nSUMMARY:Mom’s passport expires/);
+  assert.match(text('Trips/Lahore trip.md'), /## Legs\n\n- flight, SFO → LHE, leaves 2026-11-26 21:30, arrives 2026-11-28 06:10, confirmation ABC123/);
+  assert.match(text('Trips/Lahore trip.ics'), /DTSTART;VALUE=DATE:20261126\r\nDTEND;VALUE=DATE:20261207\r\nSUMMARY:Lahore trip\r\n[\s\S]*DTSTART:20261126T213000\r\nSUMMARY:flight SFO to LHE \(ABC123\)/);
+  assert.match(text('Home manual/HVAC filter.md'), /^every: "3 months"\n/m);
+  assert.match(text('Reminders.md'), /HVAC filter: due 2027-05-03, every 3 months/);
+  // Someone else's health notes and private reminders aren't in it.
+  assert.ok(!paths.some((p) => p.startsWith('Health/')));
+  assert.doesNotMatch(text('Reminders.md'), /Amoxicillin/);
 
   // Dad's download has the circle's notes, not Mom's private ones: the party,
   // and the photo she sent the helper in their own chat.
   const dadsDownload = await download(dad);
   assert.ok(Object.keys(dadsDownload.zip).includes('Lists/Costco.md'));
   assert.ok(!Object.keys(dadsDownload.zip).includes('Facts/Surprise party.md'));
+  assert.match(strFromU8(dadsDownload.zip['Health/Amoxicillin.md']), /^dose: "250 mg"\n[\s\S]*refill-by: "2026-11-20"\n/m);
   assert.ok(!Object.keys(dadsDownload.zip).some((p) => p.startsWith('Files/')));
 
   // Tidy up for the next test: the kept photo goes too.
