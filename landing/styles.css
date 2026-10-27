@@ -247,10 +247,9 @@ main > section, .hero { padding-left: max(16px, calc((100% - 1120px) / 2)); padd
 .tiles article { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 22px; }
 .t-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--brand-soft); color: var(--brand); font-size: 20px; margin-bottom: 14px; }
 .tiles p { color: var(--muted); font-size: 15px; margin: 0; }
-.plugins .more { margin-top: 16px; }
 
 /* coming next */
-.next-strip { border: 1.5px dashed var(--line); border-radius: 22px; padding: 24px 26px; }
+.next-strip { background: var(--brand-soft); border-radius: 22px; padding: 24px 26px; }
 .next-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .next-grid p { color: var(--muted); font-size: 15.5px; margin: 0; }
 
