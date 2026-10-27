@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Keyboard, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as Location from 'expo-location';
-import { randomId } from '@homecircle/core';
+import { randomId, type CircleClient, type Place } from '@homecircle/core';
 import { FamilyMap } from '../map/FamilyMap';
 import { Button, ErrorText } from '../components/ui';
 import { allClients, errorText, getClient } from '../lib/circle';
 import { DEFAULT_SETTINGS, getSettings } from '../lib/storage';
-import { feetToMeters } from '../lib/units';
+import { feetToMeters, metersToFeet } from '../lib/units';
 import { useTheme } from '../theme';
 
 const RADII_FT = [500, 1000, 2000, 5000];
@@ -22,23 +22,48 @@ function formatAddress(a: Location.LocationGeocodedAddress | undefined) {
   return [street || a.name, a.city, a.region].filter(Boolean).join(', ') || null;
 }
 
+/** A place being edited: every copy of it (one per circle it was added to). */
+function placeToEdit(circleId: string | undefined, id: string | undefined): { place: Place; copies: { client: CircleClient; place: Place }[] } | null {
+  const circles = allClients();
+  const place = circles.find((c) => c.circleId === circleId)?.places.get(id ?? '');
+  if (!place) return null;
+  const copies = place.group
+    ? circles.flatMap((client) => [...client.places.values()].filter((p) => p.group === place.group).map((p) => ({ client, place: p })))
+    : [{ client: circles.find((c) => c.circleId === circleId)!, place }];
+  return { place, copies };
+}
+
+/** A radius in feet: one of the chips when it's close to one, else the custom field.
+ *  Older places can be under today's minimum: those start at the smallest chip. */
+function radiusFields(meters: number) {
+  const ft = Math.max(MIN_FT, Math.round(metersToFeet(meters)));
+  const chip = RADII_FT.find((r) => Math.abs(r - ft) <= 5);
+  return chip ? { feet: chip, custom: '' } : { feet: 500, custom: String(ft) };
+}
+
+/** Add a place, or edit one (opened with ?circle=…&id=…, from a long press in Places). */
 export default function AddPlace() {
   const t = useTheme();
+  const params = useLocalSearchParams<{ circle?: string; id?: string }>();
+  const [editing] = useState(() => placeToEdit(params.circle, params.id));
   const circles = allClients();
   const [tiles, setTiles] = useState(DEFAULT_SETTINGS);
-  const [point, setPoint] = useState<{ lat: number; lng: number } | null>(null);
-  const [focus, setFocus] = useState<{ lat: number; lng: number; zoom: number; key: number } | null>(null);
+  const [point, setPoint] = useState<{ lat: number; lng: number } | null>(editing ? { lat: editing.place.lat, lng: editing.place.lng } : null);
+  const [focus, setFocus] = useState<{ lat: number; lng: number; zoom: number; key: number } | null>(
+    editing ? { lat: editing.place.lat, lng: editing.place.lng, zoom: 16, key: 1 } : null,
+  );
   const [query, setQuery] = useState('');
-  const [address, setAddress] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [feet, setFeet] = useState(500);
-  const [customFeet, setCustomFeet] = useState('');
+  const [address, setAddress] = useState<string | null>(editing?.place.address ?? null);
+  const [name, setName] = useState(editing?.place.name ?? '');
+  const [feet, setFeet] = useState(editing ? radiusFields(editing.place.radius).feet : 500);
+  const [customFeet, setCustomFeet] = useState(editing ? radiusFields(editing.place.radius).custom : '');
   const [everywhere, setEverywhere] = useState(true);
   const [busy, setBusy] = useState<'find' | 'save' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getSettings().then(setTiles);
+    if (editing) return;
     // Start on the user's own position if we have it (no new GPS fix needed).
     Location.getLastKnownPositionAsync()
       .then((l) => {
@@ -47,7 +72,7 @@ export default function AddPlace() {
         setFocus({ ...p, zoom: 16, key: Date.now() });
       })
       .catch(() => {});
-  }, []);
+  }, [editing]);
 
   const place = async (p: { lat: number; lng: number }, label?: string | null) => {
     setPoint(p);
@@ -85,13 +110,16 @@ export default function AddPlace() {
     setBusy('save');
     setError(null);
     try {
-      // One place can be shared with every circle: each gets its own encrypted
-      // copy, linked by a group id so the phone watches it once.
-      const targets = everywhere ? circles : [getClient()];
-      const group = randomId(9);
       const radius = Math.round(feetToMeters(radiusFeet));
+      // Editing: every circle's copy of the place changes, keeping its id
+      // (so alerts and "here now" carry on) and its group.
+      // Adding: one place can be shared with every circle; each gets its own
+      // encrypted copy, linked by a group id so the phone watches it once.
+      const group = randomId(9);
       const results = await Promise.allSettled(
-        targets.map((c) => c.savePlace({ name, lat: point.lat, lng: point.lng, radius, address, group })),
+        editing
+          ? editing.copies.map(({ client, place: p }) => client.savePlace({ id: p.id, name, lat: point.lat, lng: point.lng, radius, address, group: p.group ?? null }))
+          : (everywhere ? circles : [getClient()]).map((c) => c.savePlace({ name, lat: point.lat, lng: point.lng, radius, address, group })),
       );
       const failed = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
       if (failed.length === results.length) throw failed[0].reason;
@@ -124,6 +152,7 @@ export default function AddPlace() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
+      {editing ? <Stack.Screen options={{ title: `Edit ${editing.place.name}` }} /> : null}
       <View style={{ height: 260 }}>
         <FamilyMap
           tileUrl={tiles.tileUrl}
@@ -192,7 +221,10 @@ export default function AddPlace() {
           <Text style={{ color: t.muted, fontSize: 13 }}>500 ft or more: phones can’t reliably detect smaller areas, so arrivals would be missed.</Text>
         )}
 
-        {circles.length > 1 ? (
+        {editing && editing.copies.length > 1 ? (
+          <Text style={{ color: t.muted, fontSize: 14 }}>Changes apply in {editing.copies.map((c) => c.client.circle.name).join(', ')}.</Text>
+        ) : null}
+        {!editing && circles.length > 1 ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 4 }}>
             <View style={{ flex: 1 }}>
               <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Add to all my circles</Text>
@@ -204,7 +236,7 @@ export default function AddPlace() {
           </View>
         ) : null}
 
-        <Button title="Save place" variant="primary" loading={busy === 'save'} disabled={!point || !name.trim() || !radiusOk} onPress={save} style={{ marginTop: 6 }} />
+        <Button title={editing ? 'Save changes' : 'Save place'} variant="primary" loading={busy === 'save'} disabled={!point || !name.trim() || !radiusOk} onPress={save} style={{ marginTop: 6 }} />
         <ErrorText>{error}</ErrorText>
         <Text style={{ color: t.muted, fontSize: 13 }}>
           The address is looked up by your phone’s map service. Places are stored end-to-end encrypted, so your HomeCircle server never learns where they are.

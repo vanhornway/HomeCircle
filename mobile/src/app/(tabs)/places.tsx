@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Alert, Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import type { CircleClient, Member, Place } from '@homecircle/core';
 import { Avatar, Button, Card, Checkbox, H1, Icon, P, Screen, SectionTitle } from '../../components/ui';
@@ -61,6 +61,9 @@ export default function Places() {
       ],
     );
 
+  // Name, spot and radius, for every circle that has the place.
+  const edit = (s: Shared) => router.push({ pathname: '/add-place', params: { circle: s.copies[0].client.circleId!, id: s.copies[0].place.id } });
+
   return (
     <Screen>
       <H1 style={{ marginTop: 4 }}>Places</H1>
@@ -78,7 +81,13 @@ export default function Places() {
           const details = [`${formatFeet(s.place.radius)} radius`];
           if (multi) details.push(s.copies.map((c) => c.client.circle.name).join(', '));
           return (
-            <Card key={s.key} style={{ gap: 6 }}>
+            <Pressable
+              key={s.key}
+              onLongPress={() => edit(s)}
+              accessibilityHint="Long-press to change its name, spot or radius"
+              style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+            >
+            <Card style={{ gap: 6 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: t.brandSoft, alignItems: 'center', justifyContent: 'center' }}>
                   <Icon name="place" color={t.brand} size={26} />
@@ -92,7 +101,10 @@ export default function Places() {
                   ) : null}
                   <Text style={{ color: t.muted, fontSize: 14 }}>{details.join(' · ')}</Text>
                 </View>
-                <Button small variant="danger" title="Delete" accessibilityLabel={`Delete ${s.place.name}`} onPress={() => remove(s)} />
+                <View style={{ gap: 6 }}>
+                  <Button small title="Edit" accessibilityLabel={`Edit ${s.place.name}`} onPress={() => edit(s)} />
+                  <Button small variant="danger" title="Delete" accessibilityLabel={`Delete ${s.place.name}`} onPress={() => remove(s)} />
+                </View>
               </View>
               {here.length ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 60 }}>
@@ -103,6 +115,7 @@ export default function Places() {
                 </View>
               ) : null}
             </Card>
+            </Pressable>
           );
         })}
         {!places.length ? <P muted>No places yet. Try Home, School or Work.</P> : null}

@@ -8,12 +8,24 @@ import { AlertRuleSheet } from './AlertRuleSheet';
 import { errorText } from '../lib/circle';
 import { chirpWithChoice } from '../lib/chirp';
 import { KIND_EMOJI } from '../lib/visits';
+import { spotName, type Anchor } from '../lib/visitsCore';
 import { canLocate, locatePerson, locateState, openDirections, statusLine, useLocateVersion } from '../lib/people';
 import { timeAgo } from '../lib/useCircle';
 import { useTheme } from '../theme';
 
 /** Everything you can do about one person, in a bottom sheet. */
-export function PersonSheet({ client, memberId, onClose }: { client: CircleClient; memberId: string | null; onClose: () => void }) {
+export function PersonSheet({
+  client,
+  memberId,
+  onClose,
+  onShowSpot,
+}: {
+  client: CircleClient;
+  memberId: string | null;
+  onClose: () => void;
+  /** A most visited place tapped: show it on the map. */
+  onShowSpot?: (p: { lat: number; lng: number }) => void;
+}) {
   const t = useTheme();
   useLocateVersion();
   const [alerting, setAlerting] = useState(false);
@@ -126,20 +138,31 @@ export function PersonSheet({ client, memberId, onClose }: { client: CircleClien
                 {!m.isMe && client.feature('frequentPlaces') && client.frequent.get(m.id)?.places.length ? (
                   <View style={{ gap: 8 }}>
                     <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700' }}>MOST VISITED · LAST 30 DAYS</Text>
-                    {client.frequent
-                      .get(m.id)!
-                      .places.slice(0, 5)
-                      .map((p) => (
-                        <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    {(() => {
+                      const spots = client.frequent.get(m.id)!.places;
+                      // A spot their phone couldn't name: the circle place it's in, or where it is from one.
+                      const anchors: Anchor[] = [
+                        ...[...client.places.values()].map((p) => ({ name: p.name, lat: p.lat, lng: p.lng, radius: p.radius })),
+                        ...spots.filter((p) => p.name && p.name !== 'Place').map((p) => ({ name: p.name, lat: p.lat, lng: p.lng })),
+                      ];
+                      return spots.slice(0, 5).map((p) => (
+                        <Pressable
+                          key={p.id}
+                          accessibilityRole="button"
+                          accessibilityHint="Shows it on the map"
+                          onPress={() => onShowSpot?.(p)}
+                          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, opacity: pressed ? 0.6 : 1, minHeight: 32 })}
+                        >
                           <Text style={{ fontSize: 18 }}>{KIND_EMOJI[p.kind]}</Text>
                           <Text style={{ flex: 1, color: t.text, fontSize: 15 }} numberOfLines={1}>
-                            {p.name}
+                            {spotName(p, anchors)}
                           </Text>
                           <Text style={{ color: t.muted, fontSize: 13 }}>
                             {p.hours < 1 ? `${Math.round(p.hours * 60)} min` : `${Math.round(p.hours)} h`} · {p.visits} {p.visits === 1 ? 'visit' : 'visits'}
                           </Text>
-                        </View>
-                      ))}
+                        </Pressable>
+                      ));
+                    })()}
                   </View>
                 ) : null}
               </SafeAreaView>

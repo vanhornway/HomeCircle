@@ -4,7 +4,7 @@ import { useFocusEffect } from 'expo-router';
 import type { CircleClient } from '@homecircle/core';
 import { Button, Card, SectionTitle } from './ui';
 import { updateSettings, type Settings } from '../lib/storage';
-import { clearVisits, editPlace, kindName, KIND_EMOJI, myPlaces, shareMyPlaces, type MyPlace } from '../lib/visits';
+import { circlePlaces, clearVisits, editPlace, kindName, KIND_EMOJI, myPlaces, shareMyPlaces, type MyPlace } from '../lib/visits';
 import { useTheme } from '../theme';
 
 /** Your most visited places: share them or not, rename or hide each one. */
@@ -15,10 +15,10 @@ export function FrequentSettings({ clients, settings, onChange }: { clients: Cir
   const [name, setName] = useState('');
 
   const load = useCallback(() => {
-    myPlaces()
+    myPlaces({ places: circlePlaces(clients) })
       .then(setPlaces)
       .catch(() => setPlaces([]));
-  }, []);
+  }, [clients]);
   useFocusEffect(load);
 
   // Any change goes out to your circles right away (not in 6 hours).

@@ -263,7 +263,15 @@ export default function MapTab() {
           }}
         />
       </Drawer>
-      <PersonSheet client={client} memberId={sheet} onClose={() => setSheet(null)} />
+      <PersonSheet
+        client={client}
+        memberId={sheet}
+        onClose={() => setSheet(null)}
+        onShowSpot={(p) => {
+          setSheet(null);
+          setFocus((f) => ({ lat: p.lat, lng: p.lng, key: (f?.key ?? 0) + 1 }));
+        }}
+      />
     </View>
   );
 }
