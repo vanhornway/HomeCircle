@@ -564,7 +564,8 @@ export class Store {
     return this.q('SELECT id FROM files WHERE expires_at IS NOT NULL AND expires_at < ?').all(now).map((r) => r.id);
   }
   circleFileBytes(circleId) {
-    return this.q('SELECT COALESCE(SUM(size), 0) AS b FROM files WHERE circle_id = ?').get(circleId).b;
+    // The helper's own uploads (memory downloads, gone within the hour) don't count.
+    return this.q("SELECT COALESCE(SUM(size), 0) AS b FROM files WHERE circle_id = ? AND uploader_id NOT IN (SELECT id FROM members WHERE kind = 'agent')").get(circleId).b;
   }
   /** Files a member sent that nobody has kept or deleted yet. */
   unkeptFilesBy(memberId) {

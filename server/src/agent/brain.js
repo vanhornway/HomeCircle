@@ -13,6 +13,12 @@ import { isPdf, pdfText } from './pdf.js';
 import { readFile } from './read-file.js';
 import { addItems, createList, doneShopping, emptyLists, findList, listText, parseListCommand, recordBought, removeItems, splitItems, viewList } from './lists.js';
 import { addReminder, cleanReminder, dueMessage, fmtDue, markDone, reminderLine } from './reminders.js';
+import { exportVault, zipVault } from './export.js';
+
+// A memory download goes up in parts under the server's 15 MB file limit, and
+// is deleted an hour later (the phone fetches it straight away).
+const EXPORT_PART_BYTES = 14 * 1024 * 1024;
+const EXPORT_KEEP_MS = 60 * 60_000;
 
 const DAY = 86400_000;
 const iso = (d) => d.toISOString().slice(0, 10);
@@ -1232,6 +1238,47 @@ export class Brain {
     await this.reply(back, `📎 Kept “${ask.file.name}”. It’s in Memory with the notes.`);
   }
 
+  /**
+   * "Download memory": what this person can see, as an Obsidian vault zipped
+   * in parts, each encrypted and put on the server for them to fetch. Answers
+   * [{ id, key, name, size }] per part, and what couldn't be included.
+   */
+  async _exportZip(by) {
+    const notes = this.memory.list({ by });
+    const files = [];
+    const missing = [];
+    const seen = new Set();
+    for (const f of notes.map((n) => n.data?.file).filter(Boolean)) {
+      if (seen.has(f.id)) continue;
+      seen.add(f.id);
+      try {
+        const bytes = await this.agent.readFile(f);
+        if (bytes.length > EXPORT_PART_BYTES - 1024) missing.push(f.name);
+        else files.push({ id: f.id, name: f.name, bytes });
+      } catch {
+        missing.push(f.name);
+      }
+    }
+    const state = this._lists();
+    const now = this.now().getTime();
+    const vault = exportVault({
+      notes,
+      lists: state.lists.map((l) => viewList(state, l)),
+      reminders: this._reminders(),
+      files,
+      missing,
+      who: this._nameOf(by),
+      helper: this.name,
+      now,
+    });
+    const { parts } = zipVault(vault, { partBytes: EXPORT_PART_BYTES, name: `${this.name} memory ${new Date(now).toISOString().slice(0, 10)}` });
+    const out = [];
+    for (const p of parts) out.push({ ...(await this.agent.sendFile(p.bytes)), name: p.name, size: p.bytes.length });
+    // Fetched straight away by the phone; gone from the server within the hour.
+    setTimeout(() => out.forEach((p) => this.agent.deleteFile(p.id).catch(() => {})), EXPORT_KEEP_MS).unref?.();
+    return { parts: out, notes: notes.length, files: files.length, missing };
+  }
+
   /** Delete a kept file from the server (from Memory), and from every note it's attached to. */
   async _deleteKeptFile(noteId, by) {
     const n = this.memory.get(noteId, { by });
@@ -1398,6 +1445,8 @@ export class Brain {
       case 'export':
         // Everything this person can see, as linked Markdown files ({ path: text }).
         return this._rpcReply(msg, true, exportMarkdown(this.memory.list({ by })));
+      case 'exportZip':
+        return this._rpcReply(msg, true, await this._exportZip(by));
       default:
         throw new BrainError('Unknown request');
     }

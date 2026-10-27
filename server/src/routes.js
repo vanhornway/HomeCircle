@@ -780,17 +780,24 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     '/files',
     ({ me, body }) => {
       if (!files || !agentHost || !agentOf(me.circleId)) fail(404, 'no_agent', 'This circle has no agent to send files to');
-      requireFeature(me, 'uploads', 'Sending files to the helper');
       if (!Buffer.isBuffer(body) || body.length < 40) fail(400, 'invalid', 'Send the encrypted file as the request body');
-      if (store.unkeptFilesBy(me.id) >= 20) fail(429, 'rate_limited', 'You have 20 files waiting for an answer. Save or discard some first.', { retryAfter: 3600 });
-      if ((store.circleBytes.get(me.circleId) || 0) + store.circleFileBytes(me.circleId) + body.length > config.maxCircleBytes) {
-        fail(507, 'circle_full', 'This circle’s storage is full. Delete files you no longer need in Memory.');
+      if (me.kind === 'agent') {
+        // The helper's own uploads are memory downloads for a member: they
+        // don't count against the circle's storage, and it deletes them
+        // within the hour (the 7-day sweep catches any it misses).
+        if (store.unkeptFilesBy(me.id) >= 60) fail(429, 'rate_limited', 'Too many downloads waiting. Try again in an hour.', { retryAfter: 3600 });
+      } else {
+        requireFeature(me, 'uploads', 'Sending files to the helper');
+        if (store.unkeptFilesBy(me.id) >= 20) fail(429, 'rate_limited', 'You have 20 files waiting for an answer. Save or discard some first.', { retryAfter: 3600 });
+        if ((store.circleBytes.get(me.circleId) || 0) + store.circleFileBytes(me.circleId) + body.length > config.maxCircleBytes) {
+          fail(507, 'circle_full', 'This circle’s storage is full. Delete files you no longer need in Memory.');
+        }
       }
       const id = randomBytes(18).toString('base64url');
       files.save({ id, circleId: me.circleId, uploaderId: me.id, bytes: body, now: Date.now() });
       return { id };
     },
-    { raw: MAX_FILE_BYTES },
+    { raw: MAX_FILE_BYTES, agent: true },
   );
 
   // Anyone in the circle can fetch the ciphertext (only those given the key can read it).
