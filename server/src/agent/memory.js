@@ -10,7 +10,9 @@ import { DatabaseSync } from 'node:sqlite';
 import nacl from 'tweetnacl';
 import { randomBytes } from 'node:crypto';
 
-export const NOTE_TYPES = ['person', 'place', 'schedule', 'event', 'decision', 'fact', 'source'];
+export const NOTE_TYPES = ['person', 'place', 'schedule', 'event', 'decision', 'fact', 'recipe', 'contact', 'health', 'document', 'trip', 'howto', 'source'];
+// Kinds of note that are over once their dates have passed.
+export const DATED_TYPES = ['event', 'schedule', 'trip'];
 const DAY = 86400_000;
 
 const enc = new TextEncoder();
@@ -32,11 +34,127 @@ export function cleanTags(tags) {
   return [...new Set(out)].slice(0, 12);
 }
 
+/** The lines under a recipe's "## Ingredients" (or "Ingredients:"), without their bullets or sub-headings like "For the rice:". */
+export function recipeIngredients(body) {
+  const m = String(body || '').match(/^(?:#{1,4}\s*)?ingredients\b[^\n]*\n([\s\S]*?)(?=^#{1,2}\s|^(?:#{1,4}\s*)?(?:steps|method|directions|instructions)\b|$(?![\s\S]))/im);
+  if (!m) return [];
+  return m[1]
+    .split('\n')
+    .filter((l) => !/^\s*#/.test(l))
+    .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').replace(/^\[[ x]\]\s*/i, '').trim())
+    .filter((l) => l && !/:$/.test(l.replace(/\*+/g, '')))
+    .slice(0, 100);
+}
+
+/**
+ * A recipe's data: { serves, time, ingredients }. The ingredients follow the
+ * body's Ingredients list when it has one, so an edit there keeps them in step.
+ */
+function recipeData(data, body) {
+  const d = data && typeof data === 'object' ? data : {};
+  const fromBody = recipeIngredients(body);
+  const given = Array.isArray(d.ingredients) ? d.ingredients.map((i) => String(i).trim()).filter(Boolean).slice(0, 100) : [];
+  const text = (v) => (v == null || v === '' ? null : String(v).slice(0, 60));
+  return { ...d, serves: text(d.serves), time: text(d.time), ingredients: fromBody.length ? fromBody : given };
+}
+
+// What each kind of note keeps in its data, besides anything else already there.
+const TYPE_FIELDS = {
+  contact: ['role', 'phone', 'email', 'address', 'hours', 'website'],
+  health: ['kind', 'dose', 'schedule', 'refillBy'],
+  document: ['kind', 'owner', 'expires', 'number_last4', 'where'],
+  howto: ['every'],
+  person: ['sizes', 'gifts', 'favourites'],
+};
+const DATE_FIELDS = new Set(['refillBy', 'expires']);
+export const LEG_KINDS = ['flight', 'train', 'hotel', 'car', 'other'];
+
+/** A trip's legs as given → [{ kind, from, to, at, arrives, confirmation }]. */
+function cleanLegs(legs) {
+  if (!Array.isArray(legs)) return [];
+  const text = (v) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  return legs
+    .filter((l) => l && typeof l === 'object')
+    .map((l) => ({ kind: LEG_KINDS.includes(l.kind) ? l.kind : 'other', from: text(l.from), to: text(l.to), at: text(l.at), arrives: text(l.arrives), confirmation: text(l.confirmation) }))
+    .filter((l) => l.from || l.to || l.at)
+    .slice(0, 30);
+}
+
+/** A typed note's data: its own fields trimmed (blank ones dropped, dates checked), the rest kept. */
+function typeData(type, data) {
+  const d = data && typeof data === 'object' ? { ...data } : {};
+  for (const k of TYPE_FIELDS[type] ?? []) {
+    const v = d[k] == null ? '' : String(d[k]).replace(/\s+/g, ' ').trim().slice(0, 300);
+    if (k === 'number_last4') d[k] = v.replace(/\D/g, '').slice(-4) || null;
+    else d[k] = DATE_FIELDS.has(k) ? day(v) : v || null;
+    if (d[k] == null) delete d[k];
+  }
+  if (type === 'trip') d.legs = cleanLegs(d.legs);
+  return Object.keys(d).length ? d : null;
+}
+
+// --- secrets ---------------------------------------------------------------
+// The helper never keeps a password, a code, or a whole card, account, ID or
+// passport number: only the last 4 digits. Enforced here, whatever the AI or
+// the app sends.
+
+const keepLast4 = (digits) => `ending ${digits.slice(-4)}`;
+const luhn = (digits) => {
+  let sum = 0;
+  for (let i = 0; i < digits.length; i++) {
+    let n = Number(digits[digits.length - 1 - i]);
+    if (i % 2) n = n * 2 > 9 ? n * 2 - 9 : n * 2;
+    sum += n;
+  }
+  return sum % 10 === 0;
+};
+const CODE_WORDS =
+  '(?:wi-?fi\\s+)?(?:passwords?|passcodes?|pass\\s+codes?|passphrases?|pins?(?:\\s+(?:numbers?|codes?))?|(?:alarm|door|gate|garage(?:\\s+door)?|lock|key|keypad|security|access|entry|safe|lockbox|unlock)\\s+codes?|cvv|cvc|codes?)';
+// "the door code is 4821", "password: hunter2", "alarm code 4821" (a bare value needs a digit). Not zip codes and the like.
+const CODE_RE = new RegExp(`(?<!\\b(?:zip|post|postal|area|country|dress|promo|discount|source|bar|qr|dial(?:ling)?)\\s)\\b(${CODE_WORDS})(\\s*(?:is|was|=|:)\\s*|\\s+(?=\\S*\\d))([^\\s,;]+)`, 'gi');
+const PHONE_BEFORE = /(?:phone|tel|telephone|call|cell|mobile|text|fax|whatsapp)\b[^\n\d]{0,12}$/i;
+
+/** Text with secrets taken out: { text, found } (found is true when anything was). */
+export function scrubSecrets(text, { numbers = true } = {}) {
+  let found = false;
+  const hit = (out) => {
+    found = true;
+    return out;
+  };
+  let t = String(text ?? '').replace(CODE_RE, (m, word, sep, value) => {
+    // "code is 4821." keeps its full stop.
+    const end = value.match(/[.!?)]+$/)?.[0] ?? '';
+    return value.slice(0, value.length - end.length) === '[not' ? m : hit(`${word}${sep}[not kept]${end}`);
+  });
+  if (numbers) {
+    t = t
+      // Social Security numbers.
+      .replace(/\b\d{3}-\d{2}-\d{4}\b/g, (m) => hit(keepLast4(m.replace(/\D/g, ''))))
+      // Card numbers, with or without spaces or dashes.
+      .replace(/\b\d(?:[ -]?\d){12,18}\b/g, (m) => (luhn(m.replace(/\D/g, '')) ? hit(keepLast4(m.replace(/\D/g, ''))) : m))
+      // Account, ID and passport numbers: 9 or more digits in a row, unless it's a phone number.
+      .replace(/(\+?)\b\d{9,}\b/g, (m, plus, at, all) => (plus || PHONE_BEFORE.test(all.slice(Math.max(0, at - 24), at)) ? m : hit(keepLast4(m))))
+      // Letters then digits, like a passport or licence number (X12345678).
+      .replace(/\b[A-Z]{1,2}\d{6,9}\b/g, (m) => hit(keepLast4(m.replace(/\D/g, ''))));
+  }
+  return { text: t, found };
+}
+
+/** Every string in a note's data scrubbed (phone numbers kept; files and calendar dates as they are). */
+function scrubData(v, key = '') {
+  if (typeof v === 'string') return scrubSecrets(v, { numbers: !/^(?:phone|fax|email|website|url|at)$/.test(key) }).text;
+  if (Array.isArray(v)) return v.map((x) => scrubData(x, key));
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, k === 'file' || k === 'events' ? x : scrubData(x, k)]));
+  return v;
+}
+
 /** A note as given, cleaned up: { type, title, body, people, tags, start, end, data, source }. */
 export function cleanNote(n) {
   const type = NOTE_TYPES.includes(n?.type) ? n.type : 'fact';
-  const title = String(n?.title || '').trim().slice(0, 120);
-  const body = String(n?.body || '').slice(0, 20_000);
+  // Calendars keep their dates and ids as they are; everything else loses any secrets.
+  const scrub = (t) => (type === 'source' ? t : scrubSecrets(t).text);
+  const title = scrub(String(n?.title || '').trim()).slice(0, 120);
+  const body = scrub(String(n?.body || '')).slice(0, 20_000);
   if (!title && !body) throw new Error('A note needs a title or some text');
   const start = day(n?.start);
   const end = day(n?.end) ?? start;
@@ -51,7 +169,7 @@ export function cleanNote(n) {
     start,
     end: start && end && end < start ? start : end,
     // Anything structured (a calendar's events, a source's URL): kept as is.
-    data: n?.data && typeof n.data === 'object' ? n.data : null,
+    data: type === 'source' ? (n?.data && typeof n.data === 'object' ? n.data : null) : scrubData(type === 'recipe' ? recipeData(n?.data, body) : typeData(type, n?.data)),
     source: n?.source ? String(n.source).slice(0, 200) : null,
   };
 }
@@ -132,7 +250,7 @@ export class Memory {
   _index(note) {
     this._unindex(note.id);
     this.notes.set(note.id, note);
-    const archived = note.end && note.end < new Date(Date.now() - DAY).toISOString().slice(0, 10) && ['event', 'schedule'].includes(note.type) ? 1 : 0;
+    const archived = note.end && note.end < new Date(Date.now() - DAY).toISOString().slice(0, 10) && DATED_TYPES.includes(note.type) ? 1 : 0;
     this.q.insN.run(note.id, note.scope, note.type, note.title.toLowerCase(), note.start, note.end, archived, note.updatedAt);
     const tags = note.tags ?? [];
     this.q.insT.run(note.id, note.title, note.body, note.people.join(' '), tags.join(' '));
@@ -278,7 +396,7 @@ export class Memory {
   list({ by, type = null, archived = true } = {}) {
     return [...this.notes.values()]
       .filter((n) => this._canSee(n, by) && (!type || n.type === type))
-      .filter((n) => archived || !(n.end && n.end < new Date(Date.now() - DAY).toISOString().slice(0, 10) && ['event', 'schedule'].includes(n.type)))
+      .filter((n) => archived || !(n.end && n.end < new Date(Date.now() - DAY).toISOString().slice(0, 10) && DATED_TYPES.includes(n.type)))
       .sort((a, b) => b.updatedAt - a.updatedAt);
   }
 

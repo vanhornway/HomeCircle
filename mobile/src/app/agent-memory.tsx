@@ -19,7 +19,7 @@ type Note = {
   tags?: string[];
   start: string | null;
   end: string | null;
-  data: { role?: string; kind?: string; count?: number; for?: string[]; fetchedAt?: number; format?: string; file?: KeptFile } | null;
+  data: { role?: string; kind?: string; count?: number; for?: string[]; fetchedAt?: number; format?: string; file?: KeptFile; serves?: string | null; time?: string | null; ingredients?: string[]; phone?: string; email?: string; hours?: string; dose?: string; schedule?: string; refillBy?: string; owner?: string; expires?: string; number_last4?: string; where?: string; every?: string; legs?: { kind: string; from: string; to: string; at: string; arrives?: string; confirmation: string }[] } | null;
   updatedAt: number;
 };
 // A file kept with its notes: encrypted on the server, opened with its key.
@@ -35,9 +35,36 @@ const TYPES: { id: string | null; label: string; icon: string }[] = [
   { id: 'schedule', label: 'Schedules', icon: '🗓️' },
   { id: 'decision', label: 'Decisions', icon: '✅' },
   { id: 'fact', label: 'Facts', icon: '💡' },
+  { id: 'recipe', label: 'Recipes', icon: '🍲' },
+  { id: 'contact', label: 'Contacts', icon: '📇' },
+  { id: 'health', label: 'Health', icon: '🩺' },
+  { id: 'document', label: 'Documents', icon: '🪪' },
+  { id: 'trip', label: 'Trips', icon: '✈️' },
+  { id: 'howto', label: 'Home manual', icon: '🛠️' },
   { id: 'source', label: 'Calendars & files', icon: '🔗' },
 ];
 const icon = (type: string) => TYPES.find((x) => x.id === type)?.icon ?? '💡';
+// The line under a typed note's title: "Serves 4 · 45 min · 9 ingredients", "Dentist · 555-0100", "Expires Mar 1, 2031 · ending 4821"…
+const detailLine = (n: Note): string | null => {
+  const d = n.data ?? {};
+  const line = (parts: (string | null | undefined | false)[]) => parts.filter(Boolean).join(' · ') || null;
+  switch (n.type) {
+    case 'recipe':
+      return line([d.serves ? `Serves ${String(d.serves).replace(/^serves\s+/i, '')}` : null, d.time, `${d.ingredients?.length ?? 0} ingredients`]);
+    case 'contact':
+      return line([d.role, d.phone, d.email, d.hours]);
+    case 'health':
+      return line([d.kind, d.dose, d.schedule, d.refillBy && `refill by ${day(d.refillBy)}`]);
+    case 'document':
+      return line([d.kind, d.expires && `expires ${day(d.expires)}`, d.number_last4 && `ending ${d.number_last4}`, d.where]);
+    case 'trip':
+      return line((d.legs ?? []).slice(0, 2).map((l) => [l.from && l.to ? `${l.from} → ${l.to}` : l.from || l.to, l.at].filter(Boolean).join(' ')));
+    case 'howto':
+      return d.every ? `Every ${d.every.replace(/^every\s+/i, '')}` : null;
+    default:
+      return null;
+  }
+};
 const day = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 const when = (n: Note) => (n.start ? (n.end && n.end !== n.start ? `${day(n.start)} – ${day(n.end)}` : day(n.start)) : null);
 
@@ -168,7 +195,7 @@ export default function AgentMemory() {
                 <Text style={{ color: t.muted, fontSize: 14 }} numberOfLines={2}>
                   {n.type === 'source'
                     ? `${n.data?.format === 'pdf' ? `PDF · ${n.data?.count ?? 0} dates` : `${n.data?.count ?? 0} events`} · checked every 6 hours`
-                    : n.body.replace(/\[\[([^\]]+)\]\]/g, '$1')}
+                    : (detailLine(n) ?? n.body.replace(/\[\[([^\]]+)\]\]/g, '$1'))}
                 </Text>
               </View>
             </Pressable>

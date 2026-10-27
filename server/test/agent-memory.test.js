@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { Memory, linksIn } from '../src/agent/memory.js';
+import { Memory, cleanNote, linksIn, recipeIngredients, scrubSecrets } from '../src/agent/memory.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'homecircle-memory-'));
 const file = join(dir, 'memory.db');
@@ -92,6 +92,70 @@ test('past events are archived: out of everyday answers, there when asked', () =
   mem.add({ type: 'event', title: 'Spring trip to Yosemite', body: 'Camping in Yosemite.', start: '2025-04-10', end: '2025-04-13' }, { by: MOM });
   assert.equal(mem.lookup({ text: 'yosemite', by: MOM }).length, 0);
   assert.equal(mem.lookup({ text: 'yosemite', by: MOM, archived: true }).length, 1);
+});
+
+test('a recipe is kept whole; its ingredients follow its Ingredients list, edits too', () => {
+  const body = '[[Nani]]’s recipe.\n\n## Ingredients\n\n**For the rice:**\n- 2 cups basmati rice\n- 1 tsp salt\n\n### For the chicken\n* 1 kg chicken\n- 1 cup yogurt\n\n## Steps\n\n1. Soak the rice for 30 minutes.\n2. Marinate the chicken.\n3. Layer and cook on low (dum) for 30 minutes.\n\nServe with raita.';
+  const n = mem.add({ type: 'recipe', title: 'Biryani', body, people: ['Nani'], data: { serves: 6, time: '1 hour', ingredients: ['rice'] } }, { by: MOM });
+  assert.equal(n.body, body);
+  assert.deepEqual(n.data, { serves: '6', time: '1 hour', ingredients: ['2 cups basmati rice', '1 tsp salt', '1 kg chicken', '1 cup yogurt'] });
+  // Found by its dish and by whose it is.
+  assert.equal(mem.lookup({ text: 'biryani', by: DAD })[0].id, n.id);
+  assert.ok(mem.lookup({ people: ['Nani'], by: DAD }).some((x) => x.id === n.id));
+  // Edited in Memory: the ingredients change with the list.
+  const edited = mem.update(n.id, { body: body.replace('- 1 tsp salt\n', '- 1 tsp salt\n- 4 green cardamom\n') }, { by: DAD });
+  assert.deepEqual(edited.data.ingredients, ['2 cups basmati rice', '1 tsp salt', '4 green cardamom', '1 kg chicken', '1 cup yogurt']);
+  // Written as plain text ("Ingredients:" and "Method:"), or with no list in the text at all.
+  assert.deepEqual(recipeIngredients('Ingredients:\n- milk\n- tea\nMethod:\n1. Boil.'), ['milk', 'tea']);
+  assert.deepEqual(cleanNote({ type: 'recipe', title: 'Chai', body: 'Boil it all.', data: { ingredients: ['milk', ' ', 'tea'] } }).data, { serves: null, time: null, ingredients: ['milk', 'tea'] });
+  // Other notes keep their data as is.
+  assert.deepEqual(cleanNote({ type: 'fact', title: 'X', data: { role: 'kid' } }).data, { role: 'kid' });
+});
+
+test('secrets: passwords and codes go, numbers keep their last 4 digits; phone numbers, dates and model numbers stay', () => {
+  const cases = {
+    'The wifi password is hunter2.': 'The wifi password is [not kept].',
+    'Alarm code 4821, gate code: 9911': 'Alarm code [not kept], gate code: [not kept]',
+    'PIN = 0042': 'PIN = [not kept]',
+    'Visa 4111 1111 1111 1111 exp 09/29': 'Visa ending 1111 exp 09/29',
+    'SSN 123-45-6789': 'SSN ending 6789',
+    'Passport X12345678 expires 2031-05-01': 'Passport ending 5678 expires 2031-05-01',
+    'Account 123456789012': 'Account ending 9012',
+    // Not secrets.
+    'Our zip code is 94110': 'Our zip code is 94110',
+    'Dentist phone 4155550100, or call +14155550100': 'Dentist phone 4155550100, or call +14155550100',
+    'Coach Dana 555-0100': 'Coach Dana 555-0100',
+    'Flight BA287 at 2026-12-20 14:05, confirmation ABC123': 'Flight BA287 at 2026-12-20 14:05, confirmation ABC123',
+    'Fridge RF28R7351SR takes a 16x25x1 filter': 'Fridge RF28R7351SR takes a 16x25x1 filter',
+    'The code changed last week; pin it up': 'The code changed last week; pin it up',
+  };
+  for (const [given, kept] of Object.entries(cases)) assert.equal(scrubSecrets(given).text, kept, given);
+  assert.equal(scrubSecrets('Alarm code 4821').found, true);
+  assert.equal(scrubSecrets('Coach Dana 555-0100').found, false);
+  // Enforced on every note, whatever sent it: text and data, but a contact's phone stays whole.
+  const n = mem.add({ type: 'contact', title: 'Front door', body: 'Door code: 1234. Locksmith account 987654321.', data: { role: 'locksmith', phone: '4155550100', email: '' } }, { by: MOM });
+  assert.equal(n.body, 'Door code: [not kept]. Locksmith account ending 4321.');
+  assert.deepEqual(n.data, { role: 'locksmith', phone: '4155550100' });
+  assert.ok(!readFileSync(file).toString('latin1').includes('987654321'));
+  // A document keeps only the last 4 digits of its number.
+  assert.deepEqual(cleanNote({ type: 'document', title: 'Passport', data: { kind: 'passport', expires: '2031-05-01', number_last4: 'X12345678', where: '' } }).data, { kind: 'passport', expires: '2031-05-01', number_last4: '5678' });
+  // Calendars keep their ids and dates as they are.
+  assert.equal(cleanNote({ type: 'source', title: 'School', data: { events: [{ uid: '123456789012' }] } }).data.events[0].uid, '123456789012');
+});
+
+test('typed notes: dates checked, trip legs cleaned; a trip is over after its last day', () => {
+  assert.deepEqual(cleanNote({ type: 'health', title: 'Inhaler', data: { kind: 'medicine', dose: ' 2 puffs ', refillBy: 'soon' } }).data, { kind: 'medicine', dose: '2 puffs' });
+  assert.deepEqual(
+    cleanNote({ type: 'trip', title: 'Tahoe', data: { legs: [{ kind: 'flight', from: 'SFO', to: 'RNO', at: '2026-12-20 09:00', confirmation: 'X1' }, { kind: 'boat' }, { kind: 'boat', from: 'Pier 39' }] } }).data.legs,
+    [
+      { kind: 'flight', from: 'SFO', to: 'RNO', at: '2026-12-20 09:00', arrives: '', confirmation: 'X1' },
+      { kind: 'other', from: 'Pier 39', to: '', at: '', arrives: '', confirmation: '' },
+    ],
+  );
+  assert.deepEqual(cleanNote({ type: 'person', title: 'Biscuit', data: { role: 'pet', favourites: 'squeaky toys', sizes: '' } }).data, { role: 'pet', favourites: 'squeaky toys' });
+  mem.add({ type: 'trip', title: 'Old trip to Vegas', body: 'Vegas.', start: '2025-03-01', end: '2025-03-04' }, { by: MOM });
+  assert.equal(mem.lookup({ text: 'vegas', by: MOM }).length, 0);
+  assert.equal(mem.lookup({ text: 'vegas', by: MOM, archived: true }).length, 1);
 });
 
 test('spending is counted per person per month', () => {

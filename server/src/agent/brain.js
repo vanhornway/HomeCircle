@@ -6,13 +6,13 @@
 // them: everyone in the group for a group question, only you for a direct one.
 import { complete as llmComplete, cleanProviderConfig, LlmError, PROVIDERS } from './llm.js';
 import { nameSwapper } from './names.js';
-import { cleanTags } from './memory.js';
+import { cleanTags, LEG_KINDS, recipeIngredients, scrubSecrets } from './memory.js';
 import { createHash, randomBytes } from 'node:crypto';
 import { calendarUrl, fetchPublic, parseIcs, freeStretches, isDayOff } from './calendar.js';
 import { isPdf, pdfText } from './pdf.js';
 import { readFile } from './read-file.js';
-import { addItems, createList, doneShopping, emptyLists, findList, listText, parseListCommand, recordBought, removeItems, splitItems, viewList } from './lists.js';
-import { addReminder, cleanReminder, dueMessage, fmtDue, markDone, reminderLine } from './reminders.js';
+import { addItems, createList, doneShopping, emptyLists, findList, itemKey, listText, parseListCommand, recipeWanted, recordBought, removeItems, shoppingName, splitItems, viewList } from './lists.js';
+import { addMonths, addReminder, canSeeReminder, cleanReminder, dueMessage, fmtDue, markDone, reminderLine, repeatText } from './reminders.js';
 import { exportVault, zipVault } from './export.js';
 
 // A memory download goes up in parts under the server's 15 MB file limit, and
@@ -40,24 +40,66 @@ const names = (list) => (list.length < 2 ? list.join('') : `${list.slice(0, -1).
 // rejects type lists like ['string', 'null'] next to an enum, so anything
 // that may be null is written as anyOf [that type, null].
 const orNull = (schema) => ({ anyOf: [schema, { type: 'null' }] });
+// The text details a note may have (TYPES_RULE says which kind uses which).
+const DETAIL_TEXT = ['service', 'phone', 'email', 'address', 'hours', 'website', 'kind', 'dose', 'schedule', 'refillBy', 'owner', 'expires', 'last4', 'where', 'every', 'sizes', 'gifts', 'favourites'];
+// A trip's flight, train, hotel or car.
+const LEG_ITEM = {
+  type: 'object',
+  properties: { kind: { type: 'string', enum: LEG_KINDS }, from: { type: 'string' }, to: { type: 'string' }, at: { type: 'string' }, arrives: { type: 'string' }, confirmation: { type: 'string' } },
+  required: ['kind', 'from', 'to', 'at', 'arrives', 'confirmation'],
+  additionalProperties: false,
+};
 const NOTE_ITEM = {
   type: 'object',
   properties: {
-    type: { type: 'string', enum: ['person', 'place', 'schedule', 'event', 'decision', 'fact'] },
+    type: { type: 'string', enum: ['person', 'place', 'schedule', 'event', 'decision', 'fact', 'recipe', 'contact', 'health', 'document', 'trip', 'howto'] },
     title: { type: 'string' },
     body: { type: 'string' },
     people: { type: 'array', items: { type: 'string' } },
     tags: { type: 'array', items: { type: 'string' } },
     start: orNull({ type: 'string' }),
     end: orNull({ type: 'string' }),
-    role: orNull({ type: 'string', enum: ['kid', 'adult'] }),
+    role: orNull({ type: 'string', enum: ['kid', 'adult', 'pet'] }),
+    // A recipe's serving size, time and ingredients (null for any other note).
+    recipe: orNull({
+      type: 'object',
+      properties: { serves: orNull({ type: 'string' }), time: orNull({ type: 'string' }), ingredients: { type: 'array', items: { type: 'string' } } },
+      required: ['serves', 'time', 'ingredients'],
+      additionalProperties: false,
+    }),
+    // The details a contact, health note, document, trip, how-to or person keeps
+    // ("" for anything not said; null for other notes). One object, so the
+    // schema stays small.
+    details: orNull({
+      type: 'object',
+      properties: {
+        ...Object.fromEntries(DETAIL_TEXT.map((k) => [k, { type: 'string' }])),
+        legs: { type: 'array', items: LEG_ITEM },
+      },
+      required: [...DETAIL_TEXT, 'legs'],
+      additionalProperties: false,
+    }),
   },
-  required: ['type', 'title', 'body', 'people', 'tags', 'start', 'end', 'role'],
+  required: ['type', 'title', 'body', 'people', 'tags', 'start', 'end', 'role', 'recipe', 'details'],
   additionalProperties: false,
 };
 // How the AI is asked to tag a note, wherever notes are made.
 const TAGS_RULE =
   'tags: 3 to 8 short lowercase words or two-word phrases to find the note by later: its topic (school, health, travel, money, sports…), other words people might search with (dentist → doctor, teeth, appointment), and the kind of thing (birthday, deadline, recipe). People and places go in people and [[links]], not tags.';
+// How the AI is asked to keep a recipe, wherever notes are made: whole, never summed up.
+const RECIPE_RULE =
+  'A recipe (how to cook or bake something) is one note of type "recipe", kept whole and never summed up: title the dish ("Biryani"); body the recipe word for word as given, in Markdown: a line saying whose it is if said ("[[Person A]]’s recipe."), then "## Ingredients" with every ingredient as a "- " line with its amount, then "## Steps" with every step numbered "1.", "2.", then any tips or notes as given. people: whose recipe it is. recipe: serves and time as written (null when not said) and ingredients, one per entry with amounts, as in the body. For any other note recipe is null.';
+// The kinds of note past the everyday ones, and what each keeps in details.
+const TYPES_RULE = [
+  'Other kinds of note, each with its details (details null for any other note; inside it "" for anything not said, legs [] when not a trip):',
+  '- contact: someone outside the family the family uses (a doctor, dentist, plumber, babysitter, coach, the school office), titled with their name ("Dr. Lee", "Lincoln Elementary office"); details.service what they’re for ("dentist"), and phone, email, address, hours and website exactly as written; people: the family members who use them. The family’s own people are always person notes, never contacts.',
+  '- health: a medicine and its dose, an allergy, a condition, a vaccine, a blood type, an insurance plan’s name; details.kind (medicine, allergy, condition, vaccine, blood type or insurance), dose and schedule exactly as written, refillBy (YYYY-MM-DD) when a refill or the next dose or vaccine is due; people: whose it is.',
+  '- document: a passport, licence, registration, warranty, membership or policy; details.kind (passport, licence…), owner (whose), expires (YYYY-MM-DD), last4 (only the last 4 digits of its number), where it’s kept.',
+  '- trip: a trip, with start and end (YYYY-MM-DD) and people: who is going; body the itinerary word for word; details.legs, one per flight, train, hotel or car: kind, from, to, at (when it leaves or checks in, "YYYY-MM-DD HH:MM" in local time there), arrives (when it gets in or checks out, the same way) and confirmation, exactly as written.',
+  '- howto: household instructions and specs (resetting the router, filter sizes, appliance models, trash days), body every step, size and model number word for word, like a recipe; details.every for upkeep that repeats ("3 months", "1 year").',
+  '- a person note may have details.sizes, gifts (gift ideas) and favourites, as written; role "pet" for a pet.',
+  'Never keep a password, an alarm, door or gate code, a PIN, a whole card, account, ID or passport number, or a Social Security number: at most the last 4 digits and an expiry date.',
+].join('\n');
 export const UNDERSTAND = {
   type: 'object',
   properties: {
@@ -233,7 +275,7 @@ export class Brain {
     const people = new Set(Object.values(this.people()));
     const places = new Set();
     for (const n of this.memory.list({ by })) {
-      if (n.type === 'person') people.add(n.title);
+      if (n.type === 'person' || n.type === 'contact') people.add(n.title);
       if (n.type === 'place') places.add(n.title);
       for (const p of n.people) people.add(p);
     }
@@ -393,33 +435,86 @@ export class Brain {
     return msg.body.thread === 'dm' && !/share (it )?with (the )?(circle|family|everyone)/i.test(msg.body.ask || '') ? msg.from : 'circle';
   }
 
-  _save(items, { scope, by }) {
+  /** Save notes as the AI gave them. Health notes are private unless `share` (they said it's for the circle). */
+  _save(items, { scope, by, share = false }) {
     return items.map((n) =>
-      this.memory.add({ ...n, data: n.role ? { role: n.role } : null, start: /^\d{4}-\d{2}-\d{2}$/.test(n.start ?? '') ? n.start : null, end: /^\d{4}-\d{2}-\d{2}$/.test(n.end ?? '') ? n.end : null }, { scope, by, now: this.now().getTime() }),
+      this.memory.add(
+        { ...n, data: noteData(n), start: /^\d{4}-\d{2}-\d{2}$/.test(n.start ?? '') ? n.start : null, end: /^\d{4}-\d{2}-\d{2}$/.test(n.end ?? '') ? n.end : null },
+        { scope: n.type === 'health' && !share ? by : scope, by, now: this.now().getTime() },
+      ),
     );
+  }
+
+  /**
+   * "📌 Remembered: …", and what saving led to: reminders it set up (a
+   * document expiring, a refill, upkeep that repeats), health notes kept
+   * private, and why a secret wasn't kept.
+   */
+  _keptText(saved, by, { verb = 'Remembered', scope = 'circle', secret = false } = {}) {
+    const lines = [`📌 ${verb}: ${saved.map((n) => n.title).join('; ')}`];
+    if (scope === 'circle' && saved.some((n) => n.type === 'health' && n.scope === by)) lines.push('🔒 Health notes are just for you. Say “share it with the circle” to keep one for everyone.');
+    if (this.agent.feature('reminders')) {
+      const list = this._reminders();
+      let added = 0;
+      for (const n of saved) {
+        const r = this._reminderFor(n);
+        if (r?.gap) lines.push(r.gap);
+        if (!r?.due || list.some((x) => !x.done && x.title === r.title && x.due === r.due)) continue;
+        const rem = addReminder(list, r, by, this.now().getTime());
+        added++;
+        lines.push(`⏰ I’ll remind ${rem.only ? 'you' : 'every admin'} about ${rem.title} on ${fmtDue(rem.due)}${repeatText(rem) ? `, then ${repeatText(rem)}` : ''}.`);
+      }
+      if (added) this._saveReminders(list);
+    }
+    if (secret) lines.push('🔒 I left out a password, code or full number: what I read goes to the AI provider, so I never keep those, only the last 4 digits of a number.');
+    return lines.join('\n');
+  }
+
+  /** The reminder a note calls for: { title, due, repeat, months, note, only }, { gap } when it can't be set, or null. */
+  _reminderFor(n) {
+    const d = n.data ?? {};
+    const today = this.today();
+    const only = n.scope === 'circle' ? undefined : n.scope;
+    if (n.type === 'document' && d.expires && d.expires >= today) {
+      // Passports need longer: many countries want six months left to travel.
+      const due = /passport/i.test(`${d.kind ?? ''} ${n.title}`) ? addMonths(d.expires, -6) : iso(new Date(Date.parse(`${d.expires}T00:00:00Z`) - 60 * DAY));
+      return { title: `Renew ${n.title}`, due: due < today ? today : due, repeat: 'none', note: `It expires ${fmtDue(d.expires)}.`, only };
+    }
+    if (n.type === 'health' && d.refillBy && d.refillBy >= today) return { title: /vaccin/i.test(d.kind ?? '') ? `${n.title} due` : `Refill ${n.title}`, due: d.refillBy, repeat: 'none', note: d.dose ? `Dose: ${d.dose}.` : '', only };
+    if (n.type === 'howto' && d.every) {
+      const months = everyMonths(d.every);
+      if (!months) return { gap: `Reminders repeat by months or years, so I can’t remind you every ${String(d.every).replace(/^every\s+/i, '')}.` };
+      return { title: n.title, due: addMonths(today, months), repeat: 'months', months, note: '', only };
+    }
+    return null;
   }
 
   async _remember(msg) {
     const r = msg.body.remember;
     const scope = this._scopeFor(msg, r.scope);
     const at = new Date(Number(r.at) || this.now().getTime());
+    // Passwords, codes and whole numbers never leave for the AI.
+    const clean = scrubSecrets(r.text);
+    const opts = { scope, by: msg.from, share: r.scope === 'circle' };
     let saved;
+    let secret = clean.found;
     if (this._provider() && !this._outOfBudget()) {
       const s = this._swapper(msg.from);
       const res = await this._ai(msg.from, {
         system: this._readerPrompt(),
-        messages: [{ role: 'user', content: s.mask(`Keep this message from ${r.by || 'someone'} (sent ${iso(at)}) as notes:\n\n${r.text}`) }],
+        messages: [{ role: 'user', content: s.mask(`Keep this message from ${r.by || 'someone'} (sent ${iso(at)}) as notes:\n\n${clean.text}`) }],
         schema: NOTES_ONLY,
         maxTokens: 2000,
       });
       const notes = (res.json?.notes ?? []).map((n) => unmaskNote(n, s));
-      saved = this._save(notes.length ? notes : [rawNote(r.text, r.by)], { scope, by: msg.from });
+      secret ||= notes.some(hasSecret);
+      saved = this._save(notes.length ? notes : [rawNote(clean.text, r.by)], opts);
     } else {
       // No AI (not set up, or out of budget): keep it as written; it's still found by its words.
-      saved = this._save([rawNote(r.text, r.by)], { scope, by: msg.from });
+      saved = this._save([rawNote(clean.text, r.by)], opts);
     }
     this.memory.setSetting(`last:${msg.from}`, saved.map((n) => n.id));
-    await this.reply(msg, `📌 Remembered: ${saved.map((n) => n.title).join('; ')}`, { undo: saved.map((n) => n.id) });
+    await this.reply(msg, this._keptText(saved, msg.from, { scope, secret }), { undo: saved.map((n) => n.id) });
   }
 
   async _undo(msg, ids) {
@@ -464,9 +559,11 @@ export class Brain {
 
     const s = this._swapper(msg.from);
     const asker = this._nameOf(msg.from);
+    // Passwords, codes and whole numbers never leave for the AI.
+    const clean = scrubSecrets(text);
     const u = await this._ai(msg.from, {
       system: this._readerPrompt(),
-      messages: [{ role: 'user', content: s.mask(`${this._chatText(chat)}${asker} now says: ${text}`) }],
+      messages: [{ role: 'user', content: s.mask(`${this._chatText(chat)}${asker} now says: ${clean.text}`) }],
       schema: UNDERSTAND,
       maxTokens: 2000,
     });
@@ -475,7 +572,9 @@ export class Brain {
     // "This is my kid’s school calendar": about what they just sent, still waiting for Save.
     if (plan.intent === 'about_file' && this._waitingFor(msg.from)) return this._aboutLast(msg, wanted, text);
     const remember = (plan.remember ?? []).map((n) => unmaskNote(n, s));
-    const saved = remember.length ? this._save(remember, { scope: this._scopeFor(msg), by: msg.from }) : [];
+    const scope = this._scopeFor(msg);
+    const saved = remember.length ? this._save(remember, { scope, by: msg.from, share: SHARE_RE.test(text) }) : [];
+    const kept = saved.length ? this._keptText(saved, msg.from, { scope, secret: clean.found || remember.some(hasSecret) }) : '';
     if (saved.length) this.memory.setSetting(`last:${msg.from}`, saved.map((n) => n.id));
     // "Can you tidy up your memory?", "re-tag everything": the same as dream.
     if (plan.intent === 'tidy') return this._dream(msg);
@@ -483,13 +582,11 @@ export class Brain {
       return this._listCommand(msg, { action: plan.listAction ?? 'show', list: s.unmask(plan.list), items: (plan.items ?? []).map((i) => s.unmask(i)) });
     }
     if (plan.intent === 'reminder' && plan.reminder && this.agent.feature('reminders')) return this._addReminderFromChat(msg, { ...plan.reminder, title: s.unmask(plan.reminder.title) });
-    if (plan.intent === 'remember' && saved.length) {
-      return this.reply(msg, `📌 Remembered: ${saved.map((n) => n.title).join('; ')}`, { undo: saved.map((n) => n.id) });
-    }
+    if (plan.intent === 'remember' && saved.length) return this.reply(msg, kept, { undo: saved.map((n) => n.id) });
 
     const who = this._resolvePeople(wanted, msg.from);
     const notes = this.memory.lookup({
-      text: `${text} ${(plan.keywords ?? []).map((k) => s.unmask(k)).join(' ')}`,
+      text: `${clean.text} ${(plan.keywords ?? []).map((k) => s.unmask(k)).join(' ')}`,
       people: who.map((p) => p.name),
       from: plan.from,
       to: plan.to,
@@ -500,11 +597,12 @@ export class Brain {
 
     const answer = await this._ai(msg.from, {
       system: this._answerPrompt(),
-      messages: [{ role: 'user', content: s.mask(this._context(notes, worked, asker, text, { chat, found: this._lastFound(msg.from) })) }],
-      maxTokens: 1500,
+      messages: [{ role: 'user', content: s.mask(this._context(notes, worked, asker, clean.text, { chat, found: this._lastFound(msg.from) })) }],
+      // Room for a whole recipe when one may be the answer.
+      maxTokens: notes.slice(0, MAX_NOTES_IN_PROMPT).some((n) => WHOLE_TYPES.includes(n.type)) ? 4000 : 1500,
     });
     let out = s.unmask(answer.text).trim() || 'I don’t know yet.';
-    if (saved.length) out += `\n\n📌 Remembered: ${saved.map((n) => n.title).join('; ')}`;
+    if (saved.length) out += `\n\n${kept}`;
     await this.reply(msg, out, saved.length ? { undo: saved.map((n) => n.id) } : {});
   }
 
@@ -514,12 +612,14 @@ export class Brain {
       `You read messages a family sends their helper, ${this.name}, and say what each one needs. Today is ${iso(d)} (${d.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' })}).`,
       'People and places appear as stand-ins (Person A, Place 1): copy them exactly as written.',
       'Our conversation so far may come first: use it to understand the new message (what “it”, “that” or “this” is, a follow-up question, a correction), but read only the new message for what to do.',
-      'intent: "free_time" when they ask when people are free or available (days = how many days in a row, null if not said); "recall" for a question to answer from what was kept before; "remember" when they tell you something to keep (a fact, a decision, a date, a schedule, who someone is); "tidy" when they ask you to dream, or to tidy, sort, organize, clean up or re-tag what you remember; "list" for a shopping list (what’s on it, add to it, take off it); "reminder" when they ask to be reminded of something far ahead (a registration, renewal, payment, appointment); "about_file" when they say whose or what the file, photo, PDF or calendar they just sent is (“this is my kid’s school calendar”, “it’s for Person B”), and then remember is empty; "other" for anything else.',
-      'list: the store or list name ("Costco", "desi store"), else null. listAction: show, add or remove, else null. items: the things to add or remove, one per entry.',
+      'intent: "free_time" when they ask when people are free or available (days = how many days in a row, null if not said); "recall" for a question to answer from what was kept before (like asking for a recipe); "remember" when they tell you something to keep (a fact, a decision, a date, a schedule, who someone is, a recipe); "tidy" when they ask you to dream, or to tidy, sort, organize, clean up or re-tag what you remember; "list" for a shopping list (what’s on it, add to it, take off it); "reminder" when they ask to be reminded of something far ahead (a registration, renewal, payment, appointment); "about_file" when they say whose or what the file, photo, PDF or calendar they just sent is (“this is my kid’s school calendar”, “it’s for Person B”), and then remember is empty; "other" for anything else.',
+      'list: the store or list name ("Costco", "desi store"), else null. listAction: show, add or remove, else null. items: the things to add or remove, one per entry. To add a recipe’s ingredients (“add what I need for the biryani to Costco”), items is one entry: "ingredients for" and the recipe as they named it ("ingredients for Person A’s biryani").',
       'reminder: for a reminder, its title (short, like "Car registration"), due (YYYY-MM-DD, the next time it falls) and repeat ("yearly" if it comes every year, like a registration or renewal, else "none"); else null.',
       'people: who the message is about, as written ("Person B"), or a group word as written ("kids", "everyone", "kid" for one child not named).',
       'from/to: a date range the question is about, YYYY-MM-DD, or null. keywords: a few words to search notes with.',
-      'remember: notes to keep, only for things stated as facts or decisions (never for questions). One note per thing; title short; body one or two sentences that link people and places as [[Person A]] or [[Place 1]]. For "Person B and Person C are our kids", one person note each with role "kid". Dates as YYYY-MM-DD.',
+      'remember: notes to keep, only for things stated as facts or decisions (never for questions). One note per thing; title short; body one or two sentences (a recipe: all of it, as below) that link people and places as [[Person A]] or [[Place 1]]. For "Person B and Person C are our kids", one person note each with role "kid". Dates as YYYY-MM-DD.',
+      RECIPE_RULE,
+      TYPES_RULE,
       TAGS_RULE,
     ].join('\n');
   }
@@ -529,6 +629,8 @@ export class Brain {
       `You are ${this.name}, a helper for one family. Answer briefly (a few sentences), in the language the question is asked in, using only the notes, results and conversation given.`,
       'Our conversation so far is there so you can follow on from it: answer the new message, not the earlier ones.',
       'If they don’t answer the question, say so plainly and say what to add (for example, which calendar to share). Never invent dates or facts.',
+      'Asked for a recipe, give all of it from its note, not a summary: every ingredient and every step as written, keeping its lists. The same for how-to steps.',
+      'Asked for a number, an address, a time or a date (a phone number, when a flight lands), give it exactly as the notes have it.',
       'People and places are stand-ins (Person A, Place 1): use them exactly as written. Write dates like "Nov 25–29".',
     ].join('\n');
   }
@@ -546,8 +648,10 @@ export class Brain {
     lines.push('Notes:');
     for (const n of notes.slice(0, MAX_NOTES_IN_PROMPT)) {
       const when = n.start ? ` (${n.start === n.end || !n.end ? fmtDay(n.start) : `${fmtDay(n.start)}–${fmtDay(n.end)}`})` : '';
-      const role = n.data?.role ? ` [${n.data.role}]` : '';
-      lines.push(`- ${n.type}: ${n.title}${role}${when}: ${(n.body || '').slice(0, 600)}`);
+      const role = n.type === 'person' && n.data?.role ? ` [${n.data.role}]` : '';
+      // A recipe goes in whole, so it can be given back whole.
+      const details = detailsText(n);
+      lines.push(`- ${n.type}: ${n.title}${role}${when}: ${(n.body || '').slice(0, WHOLE_TYPES.includes(n.type) ? 8000 : 600)}${details ? `\n  (${details})` : ''}`);
     }
     if (notes.length === 0) lines.push('- (none found)');
     if (worked) lines.push('', 'Worked out from calendars:', worked);
@@ -571,7 +675,8 @@ export class Brain {
   _freeTime(who, days, by) {
     if (!who.length) return 'Nobody to check: say who (for example “the kids”), and tell me who the kids are.';
     const sources = this.memory.list({ by, type: 'source' });
-    const events = this.memory.list({ by, type: 'event' });
+    // Trips count as booked days too.
+    const events = [...this.memory.list({ by, type: 'event' }), ...this.memory.list({ by, type: 'trip' })];
     const missing = [];
     const people = who.map(({ name }) => {
       const key = name.toLowerCase();
@@ -747,7 +852,7 @@ export class Brain {
       const text = batch
         .map((n, i) => {
           const when = n.start ? ` | ${n.start}${n.end && n.end !== n.start ? `..${n.end}` : ''}` : '';
-          const role = n.data?.role ? ` | ${n.data.role}` : '';
+          const role = n.type === 'person' && n.data?.role ? ` | ${n.data.role}` : '';
           return `[n${i + 1}] ${n.type} | ${n.title}${when}${role} | people: ${n.people.join(', ') || '-'} | tags: ${(n.tags ?? []).join(', ') || '-'}\n${n.body.slice(0, 1500)}`;
         })
         .join('\n\n');
@@ -771,13 +876,15 @@ export class Brain {
         if (!old || dropped.has(fix.ref) || touched.has(old.id)) continue;
         const next = unmaskNote(fix, s);
         const patch = {};
-        if (NOTE_TYPES_DREAM.includes(next.type) && next.type !== old.type) patch.type = next.type;
+        // A recipe stays whole: the dream sees only the start of a long note.
+        const recipe = WHOLE_TYPES.includes(old.type);
+        if (!recipe && NOTE_TYPES_DREAM.includes(next.type) && next.type !== old.type) patch.type = next.type;
         if (next.title?.trim() && next.title.trim() !== old.title) patch.title = next.title.trim();
-        if (next.body?.trim() && next.body.trim() !== old.body) patch.body = next.body.trim();
+        if (!recipe && next.body?.trim() && next.body.trim() !== old.body) patch.body = next.body.trim();
         const people = [...new Set((next.people ?? []).map((p) => p.trim()).filter(Boolean))];
         if (people.join('|') !== old.people.join('|')) patch.people = people;
         for (const k of ['start', 'end']) if (/^\d{4}-\d{2}-\d{2}$/.test(next[k] ?? '') && next[k] !== old[k]) patch[k] = next[k];
-        if ((next.type ?? old.type) === 'person' && ['kid', 'adult'].includes(next.role) && next.role !== old.data?.role) patch.data = { ...(old.data ?? {}), role: next.role };
+        if ((next.type ?? old.type) === 'person' && ['kid', 'adult', 'pet'].includes(next.role) && next.role !== old.data?.role) patch.data = { ...(old.data ?? {}), role: next.role };
         const tags = cleanTags(next.tags);
         const retagged = tags.length > 0 && tags.join('|') !== (old.tags ?? []).join('|');
         if (!Object.keys(patch).length && !retagged) continue;
@@ -812,10 +919,10 @@ export class Brain {
       'Each note is "[ref] type | title | dates | role | people", then its text. People and places appear as stand-ins (Person A, Place 1): copy them exactly as written.',
       'The point is that every note can be found again later: right kind, clear title, good tags, links to the people and places in it.',
       'notes: return only the notes you change, each in full (ref, type, title, body, people, tags, start, end, role). A note with no tags or poor tags always needs changing. Fix:',
-      '- type: person (someone), place (a location: a home, school, shop, restaurant, address), event (happens on a date), schedule (repeats, like practice every Tuesday, or a school year), decision (something the family decided), fact (anything else).',
+      '- type: person (someone), place (a location: a home, school, shop, restaurant, address), event (happens on a date), schedule (repeats, like practice every Tuesday, or a school year), decision (something the family decided), recipe (how to cook or bake something), contact (someone outside the family they use: a doctor, plumber, coach), health (medicines, allergies, vaccines), document (a passport, licence, warranty, policy), trip (a trip and its travel), howto (household instructions and specs), fact (anything else).',
       '- title: short and clear; a person or place note is titled with its name.',
-      '- body: one to three sentences, keeping every fact; link people and places it mentions as [[Person A]] or [[Place 1]]. Never invent anything or drop a fact.',
-      '- people: who the note is about. start/end: YYYY-MM-DD when it has a date (end for a range), else null. role: kid or adult for a person note when the notes say so, else null.',
+      '- body: one to three sentences, keeping every fact; link people and places it mentions as [[Person A]] or [[Place 1]]. Never invent anything or drop a fact. A recipe, howto or trip note’s body stays as it is.',
+      '- people: who the note is about. start/end: YYYY-MM-DD when it has a date (end for a range), else null. role: kid, adult or pet for a person note when the notes say so, else null. recipe and details: null.',
       `- ${TAGS_RULE}`,
       'merges: notes that say the same thing: keep the best (give its tidied version in notes, with anything the others add) and drop the rest. Only true duplicates.',
       'create: a person or place note for someone or somewhere several notes mention that has no note of its own. Never for anyone or anywhere that already has one.',
@@ -923,9 +1030,9 @@ export class Brain {
       return this._askAboutFile(back, found.file, [], msg.from);
     }
     if (found.file && !found.calendar) {
-      const saved = this._save(found.notes, { scope: found.scope, by: msg.from });
+      const saved = this._save(found.notes, { scope: found.scope, by: msg.from, share: found.share });
       this.memory.setSetting(`last:${msg.from}`, saved.map((n) => n.id));
-      await this.reply(back, `📌 Saved: ${saved.map((n) => n.title).join('; ')}`, { undo: saved.map((n) => n.id) });
+      await this.reply(back, this._keptText(saved, msg.from, { verb: 'Saved', scope: found.scope, secret: found.secret }), { undo: saved.map((n) => n.id) });
       return this._askAboutFile(back, found.file, saved.map((n) => n.id), msg.from);
     }
     if (found.replaces) {
@@ -1009,10 +1116,30 @@ export class Brain {
     this.memory.setSetting('shopping', state);
   }
 
+  /** The recipe note best matching "Nani's biryani" that this person can see, or null. */
+  _recipe(dish, by) {
+    return this.memory.lookup({ text: dish, by, archived: true, limit: 40 }).find((n) => n.type === 'recipe') ?? null;
+  }
+
   /** "what's on the Costco list", "add milk to Costco", "remove eggs from Costco", "shopping lists". */
-  async _listCommand(msg, { action, list: name, items }) {
+  async _listCommand(msg, { action, list: name, items, recipe: wanted = null }) {
     const state = this._lists();
     const now = this.now().getTime();
+    // "Add the ingredients for Nani's biryani to Costco": the items come from the recipe note.
+    const dish = action === 'add' ? wanted ?? recipeWanted(items) : null;
+    let recipe = null;
+    if (dish) {
+      recipe = this._recipe(dish, msg.from);
+      if (!recipe) return this.reply(msg, `I don’t have a recipe for ${dish}. Tell me the recipe (or send a photo of it) and I’ll keep it.`);
+      const seen = new Set();
+      items = (recipe.data?.ingredients ?? []).map(shoppingName).filter((i) => {
+        const k = itemKey(i);
+        if (!k || k === 'water' || seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      if (!items.length) return this.reply(msg, `${recipe.title} has no ingredients list. Open it in Memory to add one under “## Ingredients”.`);
+    }
     if (action === 'lists') {
       if (!state.lists.length) return this.reply(msg, '🛒 No shopping lists yet. Say “/' + this.name + ' add milk to the Costco list” or open Shopping lists in the app.');
       return this.reply(msg, `🛒 Shopping lists:\n${state.lists.map((l) => `• ${l.name}: ${l.items.filter((i) => !i.ticked).length} to get`).join('\n')}`);
@@ -1025,7 +1152,8 @@ export class Brain {
     if (action === 'add' && items.length) {
       const added = addItems(state, list, items, msg.from, now);
       this._saveLists(state);
-      return this.reply(msg, added.length ? `🛒 Added to ${list.name}: ${added.map((i) => i.name).join(', ')}.` : `🛒 Already on ${list.name}.`);
+      const from = recipe ? ` for ${recipe.title}` : '';
+      return this.reply(msg, added.length ? `🛒 Added to ${list.name}${from}: ${added.map((i) => i.name).join(', ')}.` : `🛒 Already on ${list.name}${from}.`);
     }
     if (action === 'remove' && items.length) {
       const gone = removeItems(list, items);
@@ -1046,7 +1174,7 @@ export class Brain {
   }
 
   async _listReminders(msg) {
-    const list = this._reminders().filter((r) => !r.done);
+    const list = this._reminders().filter((r) => !r.done && canSeeReminder(r, msg.from));
     if (!list.length) return this.reply(msg, `⏰ No reminders yet. Say “/${this.name} remind us about car registration on Nov 30 every year”, or add one in the app.`);
     return this.reply(msg, `⏰ Reminders:\n${list.sort((a, b) => a.due.localeCompare(b.due)).map(reminderLine).join('\n')}`);
   }
@@ -1082,7 +1210,8 @@ export class Brain {
     for (const r of list) {
       const text = dueMessage(r, today);
       if (!text) continue;
-      const to = new Set([...admins, r.createdBy].filter((id) => this.agent.people().some((p) => p.id === id)));
+      // A private one (a refill) only to its person.
+      const to = new Set((r.only ? [r.only] : [...admins, r.createdBy]).filter((id) => this.agent.people().some((p) => p.id === id)));
       for (const id of to) await this.agent.send(id, { text, thread: 'dm', reminder: { id: r.id } }).catch(() => {});
     }
     this._saveReminders(list);
@@ -1090,7 +1219,7 @@ export class Brain {
 
   async _reminderDone(msg, { id }) {
     const list = this._reminders();
-    const r = list.find((x) => x.id === id);
+    const r = list.find((x) => x.id === id && canSeeReminder(x, msg.from));
     if (!r) return this.reply(msg, 'That reminder is gone.');
     if (r.done) return this.reply(msg, `${r.title} was already marked done.`);
     markDone(r, msg.from, this.now().getTime());
@@ -1120,10 +1249,13 @@ export class Brain {
       throw new BrainError(e instanceof BrainError ? e.message : /couldn’t|can’t|too big|isn’t/.test(e.message) ? e.message : 'I couldn’t open that file. Try sending it again.');
     }
     const s = this._swapper(msg.from);
-    const intro = `${this._chatText(chat)}${this._nameOf(msg.from)} now sent ${read.kind === 'image' ? 'a photo' : read.kind === 'pdf' ? 'a scanned PDF' : read.what} named “${file.name}”.${msg.body.ask ? ` They said: ${msg.body.ask}` : ''}`;
+    // Passwords, codes and whole numbers in the text never leave for the AI (a photo goes as it is).
+    const ask = scrubSecrets(msg.body.ask || '');
+    const readText = read.kind === 'text' ? scrubSecrets(read.text) : { text: '', found: false };
+    const intro = `${this._chatText(chat)}${this._nameOf(msg.from)} now sent ${read.kind === 'image' ? 'a photo' : read.kind === 'pdf' ? 'a scanned PDF' : read.what} named “${file.name}”.${ask.text ? ` They said: ${ask.text}` : ''}`;
     const content =
       read.kind === 'text'
-        ? s.mask(`${intro}\n\n${read.text}`)
+        ? s.mask(`${intro}\n\n${readText.text}`)
         : [
             { type: 'text', text: s.mask(intro) },
             read.kind === 'image' ? { type: 'image', mime: read.mime, data: read.data } : { type: 'pdf', data: read.data },
@@ -1172,6 +1304,8 @@ export class Brain {
       thread: msg.body.thread,
       replyTo: msg.body.replyTo ?? null,
       scope: this._scopeFor(msg),
+      share: SHARE_RE.test(msg.body.ask || ''),
+      secret: ask.found || readText.found || (out.notes ?? []).some(hasSecret),
       by: msg.from,
       forWho: String(msg.body.ask || '').match(/\bfor\s+([^.?!]+)/i)?.[1]?.trim() || null,
     });
@@ -1182,6 +1316,7 @@ export class Brain {
           `📄 ${title}${summary ? `: ${summary}` : ''}`,
           'I’d keep:',
           ...notes.slice(0, 15).map((n) => {
+            if (n.type === 'recipe') return `• ${n.title}: ${recipeSize(n)}`;
             const body = n.body.replace(/\[\[([^\]]+)\]\]/g, '$1').slice(0, 160);
             const when = n.start ? ` (${fmtRange({ start: n.start, end: n.end || n.start })})` : '';
             // "Coach Dana: 555-0100" rather than "Coach Dana: Coach Dana: 555-0100".
@@ -1203,7 +1338,9 @@ export class Brain {
       'title: what the file is, short ("Lincoln Elementary 2026–27 calendar", "Soccer team contacts"). summary: one or two sentences on what it says.',
       'If it is a shop’s receipt: receipt with the store’s name ("Costco") and every item bought, in plain words a family would put on a shopping list ("milk", "paper towels", not codes or prices); then events and notes are empty. Otherwise receipt null.',
       'If it is a calendar or schedule with many dates (a school calendar, a season schedule): calendar true, and events with summary, start and end (YYYY-MM-DD, end null for one day) and off: true for days without school or activity. school: true for a school calendar.',
-      'Otherwise notes: one note per thing worth remembering (a date, a deadline, contact details, a decision, a list, a recipe), each with type, a short title, a body of one to three sentences linking people and places as [[Person A]], people, start/end when dated, and role null. Skip what isn’t worth keeping.',
+      'Otherwise notes: one note per thing worth remembering (a date, a deadline, contact details, a decision, a list, a recipe), each with type, a short title, a body of one to three sentences linking people and places as [[Person A]] (a recipe: all of it, as below), people, start/end when dated, and role null. Skip what isn’t worth keeping.',
+      RECIPE_RULE,
+      TYPES_RULE,
       TAGS_RULE,
     ].join('\n');
   }
@@ -1264,7 +1401,7 @@ export class Brain {
     const vault = exportVault({
       notes,
       lists: state.lists.map((l) => viewList(state, l)),
-      reminders: this._reminders(),
+      reminders: this._reminders().filter((r) => canSeeReminder(r, by)),
       files,
       missing,
       who: this._nameOf(by),
@@ -1426,18 +1563,18 @@ export class Brain {
       case 'reminderRemove': {
         if (!this.agent.feature('reminders')) throw new BrainError('Reminders are turned off in this circle');
         const list = this._reminders();
-        const r = op === 'reminders' || op === 'reminderAdd' ? null : (list.find((x) => x.id === args.id) ?? null);
+        const r = op === 'reminders' || op === 'reminderAdd' ? null : (list.find((x) => x.id === args.id && canSeeReminder(x, by)) ?? null);
         if (op !== 'reminders' && op !== 'reminderAdd' && !r) throw new BrainError('That reminder is gone');
-        if (op === 'reminderAdd') addReminder(list, args, by, now);
+        if (op === 'reminderAdd') addReminder(list, { ...args, only: null }, by, now);
         if (op === 'reminderUpdate') {
-          const next = cleanReminder({ ...r, ...pick(args, ['title', 'due', 'repeat', 'note']) });
+          const next = cleanReminder({ ...r, ...pick(args, ['title', 'due', 'repeat', 'months', 'note']) });
           if (next.due !== r.due) Object.assign(r, { sent: [], lastNag: null, done: false });
           Object.assign(r, next);
         }
         if (op === 'reminderDone') markDone(r, by, now);
         if (op === 'reminderRemove') list.splice(list.indexOf(r), 1);
         if (op !== 'reminders') this._saveReminders(list);
-        return this._rpcReply(msg, true, list.map((x) => ({ ...x, createdByName: this._nameOf(x.createdBy) })).sort((a, b) => Number(a.done) - Number(b.done) || a.due.localeCompare(b.due)));
+        return this._rpcReply(msg, true, list.filter((x) => canSeeReminder(x, by)).map((x) => ({ ...x, createdByName: this._nameOf(x.createdBy) })).sort((a, b) => Number(a.done) - Number(b.done) || a.due.localeCompare(b.due)));
       }
       case 'deleteFile':
         await this._deleteKeptFile(String(args.id), by);
@@ -1457,13 +1594,13 @@ export class BrainError extends Error {}
 
 /** What someone's message to the helper says, for the conversation log. */
 function said(b) {
-  if (b.upload) return `[sent a file: “${String(b.upload.name || 'file').slice(0, 120)}”]${b.ask ? ` ${b.ask}` : ''}`;
-  if (typeof b.ask === 'string') return b.ask;
+  if (b.upload) return `[sent a file: “${String(b.upload.name || 'file').slice(0, 120)}”]${b.ask ? ` ${scrubSecrets(b.ask).text}` : ''}`;
+  if (typeof b.ask === 'string') return scrubSecrets(b.ask).text;
   if (b.saveFound) return b.saveFound.ok ? '[tapped Save]' : '[tapped Discard]';
   if (b.fileChoice) return b.fileChoice.keep ? '[tapped Keep the file]' : '[tapped Delete the file]';
   if (b.reminderDone) return '[tapped Done on a reminder]';
   if (b.undo) return '[tapped Undo]';
-  if (b.remember) return `[asked you to remember a message] ${String(b.remember.text ?? '').slice(0, 500)}`;
+  if (b.remember) return `[asked you to remember a message] ${scrubSecrets(String(b.remember.text ?? '').slice(0, 500)).text}`;
   return null;
 }
 
@@ -1473,10 +1610,71 @@ function pick(o, keys) {
 
 function rawNote(text, by) {
   const t = String(text || '').trim();
-  return { type: 'fact', title: t.split('\n')[0].slice(0, 60), body: by ? `${t}\n\n(from ${by})` : t, people: [], tags: [], start: null, end: null, role: null };
+  // Ingredients and steps: a recipe, kept as written.
+  const recipe = /\bingredients\b/i.test(t) && /\b(?:steps|method|directions|instructions)\b/i.test(t);
+  return { type: recipe ? 'recipe' : 'fact', title: t.split('\n')[0].slice(0, 60), body: by ? `${t}\n\n(from ${by})` : t, people: [], tags: [], start: null, end: null, role: null, recipe: null };
 }
 
-const NOTE_TYPES_DREAM = ['person', 'place', 'schedule', 'event', 'decision', 'fact'];
+// Kinds of note kept word for word: given back whole, never rewritten by a dream.
+const WHOLE_TYPES = ['recipe', 'howto', 'trip'];
+// "Share it with the circle", "this is for the family": a health note for everyone.
+const SHARE_RE = /\b(?:share|for|with)\s+(?:it\s+|this\s+)?(?:with\s+)?(?:the\s+|all\s+of\s+)?(?:circle|family|everyone|everybody|us\s+all)\b/i;
+
+/** A note's data from what the AI gave: a recipe's, a person's role, the details its kind keeps. */
+function noteData(n) {
+  if (n.type === 'recipe') return { serves: n.recipe?.serves ?? null, time: n.recipe?.time ?? null, ingredients: n.recipe?.ingredients ?? [] };
+  const d = n.details ?? {};
+  const pickNonEmpty = (keys) => Object.fromEntries(keys.map(([to, from]) => [to, d[from ?? to]]).filter(([, v]) => v != null && v !== ''));
+  const out = {
+    contact: () => pickNonEmpty([['role', 'service'], ['phone'], ['email'], ['address'], ['hours'], ['website']]),
+    health: () => pickNonEmpty([['kind'], ['dose'], ['schedule'], ['refillBy']]),
+    document: () => pickNonEmpty([['kind'], ['owner'], ['expires'], ['number_last4', 'last4'], ['where']]),
+    trip: () => ({ legs: d.legs ?? [] }),
+    howto: () => pickNonEmpty([['every']]),
+    person: () => ({ ...(n.role ? { role: n.role } : {}), ...pickNonEmpty([['sizes'], ['gifts'], ['favourites']]) }),
+  }[n.type]?.() ?? (n.role ? { role: n.role } : {});
+  return Object.keys(out).length ? out : null;
+}
+
+/** A note as the AI gave it holds a password, a code or a whole number (it won't be kept). */
+function hasSecret(n) {
+  return scrubSecrets(`${n.title ?? ''}\n${n.body ?? ''}`).found || Object.entries(n.details ?? {}).some(([k, v]) => typeof v === 'string' && scrubSecrets(v, { numbers: !['phone', 'email', 'website', 'at'].includes(k) }).found);
+}
+
+/** "3 months" → 3, "yearly" → 12, "every 2 years" → 24; weeks or days → null. */
+export function everyMonths(every) {
+  const t = String(every || '').toLowerCase();
+  if (/\b(?:weeks?|weekly|days?|daily|fortnight)/.test(t)) return null;
+  const n = Number(t.match(/\d+/)?.[0] ?? (/\b(?:a|one|every)\b/.test(t) ? 1 : NaN)) || 1;
+  if (/\b(?:years?|yearly|annual(?:ly)?)\b/.test(t)) return n * 12 <= 60 ? n * 12 : null;
+  if (/\bquarter(?:ly|s)?\b/.test(t)) return 3 * n;
+  if (/\b(?:months?|monthly)\b/.test(t)) return n <= 60 ? n : null;
+  return null;
+}
+
+/** What a typed note keeps besides its text, for the AI to answer from: "phone 555-0100; hours 9–5". */
+function detailsText(n) {
+  const d = n.data ?? {};
+  if (n.type === 'trip') {
+    // "flight SFO to LHE, leaves 2026-11-26 21:30, arrives 2026-11-28 06:10, confirmation ABC123"
+    return (d.legs ?? []).map((l) => [[l.kind, l.from && l.to ? `${l.from} to ${l.to}` : l.from || l.to].filter(Boolean).join(' '), l.at && `leaves ${l.at}`, l.arrives && `arrives ${l.arrives}`, l.confirmation && `confirmation ${l.confirmation}`].filter(Boolean).join(', ')).join('; ');
+  }
+  const keys = { contact: ['role', 'phone', 'email', 'address', 'hours', 'website'], health: ['kind', 'dose', 'schedule', 'refillBy'], document: ['kind', 'owner', 'expires', 'number_last4', 'where'], howto: ['every'], person: ['sizes', 'gifts', 'favourites'] }[n.type] ?? [];
+  const label = { refillBy: 'refill by', number_last4: 'number ending', where: 'kept' };
+  return keys.filter((k) => d[k]).map((k) => `${label[k] ?? k} ${d[k]}`).join('; ');
+}
+
+/** "recipe, serves 4, 45 min: 12 ingredients and 8 steps" (from a note as the AI gave it, or as kept). */
+function recipeSize(n) {
+  const d = n.recipe ?? n.data ?? {};
+  const body = n.body || '';
+  const ingredients = d.ingredients?.length || recipeIngredients(body).length;
+  const steps = (body.split(/^(?:#{1,4}\s*)?(?:steps|method|directions|instructions)\b/im)[1] ?? '').match(/^\s*\d+[.)]\s/gm)?.length ?? 0;
+  const about = [d.serves && `serves ${String(d.serves).replace(/^serves\s+/i, '')}`, d.time].filter(Boolean).join(', ');
+  return `recipe${about ? `, ${about}` : ''}: ${ingredients} ingredient${ingredients === 1 ? '' : 's'}${steps ? ` and ${steps} step${steps === 1 ? '' : 's'}` : ''}`;
+}
+
+const NOTE_TYPES_DREAM = ['person', 'place', 'schedule', 'event', 'decision', 'fact', 'recipe', 'contact', 'health', 'document', 'trip', 'howto'];
 
 /** Notes in groups that fit one AI call; sorted by title, so duplicates land together. */
 function dreamBatches(notes) {
@@ -1498,7 +1696,10 @@ function dreamBatches(notes) {
 }
 
 function unmaskNote(n, s) {
-  return { ...n, title: s.unmask(n.title), body: s.unmask(n.body), people: (n.people ?? []).map((p) => s.unmask(p)), tags: (n.tags ?? []).map((t) => s.unmask(t)) };
+  const recipe = n.recipe && { ...n.recipe, ingredients: (n.recipe.ingredients ?? []).map((i) => s.unmask(String(i))) };
+  // Every detail too: an owner, a contact's address, a leg's from and to.
+  const real = (v) => (typeof v === 'string' ? s.unmask(v) : Array.isArray(v) ? v.map(real) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, real(x)])) : v);
+  return { ...n, title: s.unmask(n.title), body: s.unmask(n.body), people: (n.people ?? []).map((p) => s.unmask(p)), tags: (n.tags ?? []).map((t) => s.unmask(t)), recipe, details: real(n.details) };
 }
 
 /** Notes as Markdown files, one per note, for downloading before the agent is removed. */

@@ -8,7 +8,7 @@ import { daysUntil, parseDueDate, prettyDate } from '../lib/dueDate';
 import { useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
 
-type Reminder = { id: string; title: string; due: string; repeat: 'none' | 'yearly'; note: string; createdBy: string; createdByName: string; done: boolean };
+type Reminder = { id: string; title: string; due: string; repeat: 'none' | 'yearly' | 'months'; months?: number; note: string; createdBy: string; createdByName: string; done: boolean };
 
 const whenText = (r: Reminder) => {
   if (r.done) return 'Done';
@@ -79,7 +79,7 @@ export default function Reminders() {
                 <View style={{ flex: 1, gap: 2 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>{r.title}</Text>
-                    {r.repeat === 'yearly' ? <Tag label="every year" /> : null}
+                    {r.repeat !== 'none' ? <Tag label={repeatLabel(r)} /> : null}
                   </View>
                   <Text style={{ color: late ? t.danger : t.brand, fontSize: 14 }}>
                     {whenText(r)} · {prettyDate(r.due)}
@@ -100,6 +100,8 @@ export default function Reminders() {
   );
 }
 
+const repeatLabel = (r: Reminder) => (r.repeat === 'yearly' ? 'every year' : r.months === 1 ? 'every month' : `every ${r.months} months`);
+
 function ReminderSheet({ reminder, onClose, run }: { reminder: Reminder | null; onClose: () => void; run: (op: string, args?: Record<string, unknown>) => Promise<boolean> }) {
   const t = useTheme();
   const [title, setTitle] = useState(reminder?.title ?? '');
@@ -111,7 +113,8 @@ function ReminderSheet({ reminder, onClose, run }: { reminder: Reminder | null; 
   const save = async () => {
     if (!due) return;
     setBusy(true);
-    const fields = { title: title.trim(), due, repeat: yearly ? 'yearly' : 'none', note: note.trim() };
+    // One that repeats every few months (set up by the helper) keeps doing so unless switched to yearly.
+    const fields = { title: title.trim(), due, repeat: yearly ? 'yearly' : reminder?.repeat === 'months' ? 'months' : 'none', note: note.trim() };
     const ok = await run(reminder ? 'reminderUpdate' : 'reminderAdd', reminder ? { id: reminder.id, ...fields } : fields);
     setBusy(false);
     if (ok) onClose();
@@ -142,6 +145,7 @@ function ReminderSheet({ reminder, onClose, run }: { reminder: Reminder | null; 
               <Text style={{ flex: 1, color: t.text, fontSize: 16 }}>Every year</Text>
               <Switch accessibilityLabel="Every year" value={yearly} onValueChange={setYearly} trackColor={{ true: t.brand }} />
             </View>
+            {reminder?.repeat === 'months' && !yearly ? <Text style={{ color: t.muted, fontSize: 14 }}>Repeats {repeatLabel(reminder)}.</Text> : null}
             <TextInput value={note} onChangeText={setNote} placeholder="A note, like where to renew (optional)" placeholderTextColor={t.muted} multiline style={[input, { minHeight: 80, textAlignVertical: 'top' }]} />
             <Button variant="primary" title="Save" loading={busy} disabled={!title.trim() || !due} onPress={save} />
             {reminder ? <Button variant="danger" title="Delete" onPress={remove} /> : null}
