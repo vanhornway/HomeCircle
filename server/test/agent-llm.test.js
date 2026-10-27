@@ -79,6 +79,22 @@ test('Anthropic: a refusal is reported, not shown as an answer; a bad key says s
   );
 });
 
+test('Anthropic: a schema it won’t compile is asked again as plain JSON, not shown as an error', async () => {
+  const grammar = { status: 400, body: { type: 'error', error: { type: 'invalid_request_error', message: 'The compiled grammar is too large, which would cause performance issues. Simplify your tool schemas or reduce the number of strict tools.' } } };
+  reply = (req) => (req.body.output_config?.format ? grammar : anthropicReply('```json\n{"intent":"recall"}\n```'));
+  const cfg = cleanProviderConfig({ provider: 'anthropic', model: 'claude-haiku-5-5', apiKey: 'sk-test' });
+  const schema = { type: 'object', properties: { intent: { type: 'string' } }, required: ['intent'], additionalProperties: false };
+  const before = seen.length;
+  const r = await complete(cfg, { system: 'You help a family.', messages: [{ role: 'user', content: 'What recipes do you have?' }], schema }, { anthropicBaseUrl: base });
+  assert.deepEqual(r.json, { intent: 'recall' });
+  assert.equal(seen.length - before, 2);
+  assert.deepEqual(seen.at(-1).body.output_config, { effort: 'low' });
+  assert.match(seen.at(-1).body.system, /^You help a family\.\n\nAnswer with only a JSON object matching this schema:\n\{"type":"object"/);
+  // Any other bad request is still the provider's own sentence.
+  reply = () => ({ status: 400, body: { type: 'error', error: { type: 'invalid_request_error', message: 'max_tokens: too large' } } });
+  await assert.rejects(() => complete(cfg, { system: 's', messages: [{ role: 'user', content: 'x' }], schema }, { anthropicBaseUrl: base }), /max_tokens: too large/);
+});
+
 test('OpenAI-style providers: chat completions, JSON mode, cost from usage', async () => {
   reply = () => ({ status: 200, body: { choices: [{ message: { content: '```json\n{"intent":"recall"}\n```' } }], usage: { prompt_tokens: 2000, completion_tokens: 100 } } });
   const cfg = cleanProviderConfig({ provider: 'other', model: 'family-model', apiKey: 'k1', baseUrl: `${base}/v1`, inUsd: 1, outUsd: 2 });

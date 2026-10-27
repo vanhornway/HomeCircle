@@ -16,13 +16,11 @@ export function SosButton({ style }: { style?: StyleProp<ViewStyle> }) {
   const t = useTheme();
   const sos = useMySos();
   const [fill] = useState(() => new Animated.Value(0));
-  const [hint, setHint] = useState(false);
   const run = useRef<Animated.CompositeAnimation | null>(null);
   const held = useRef(false);
 
   const press = () => {
     if (sos) return router.navigate('/sos');
-    setHint(false);
     held.current = false;
     run.current = Animated.timing(fill, { toValue: 1, duration: HOLD_MS, easing: Easing.linear, useNativeDriver: false });
     run.current.start(({ finished }) => {
@@ -36,16 +34,11 @@ export function SosButton({ style }: { style?: StyleProp<ViewStyle> }) {
   const release = () => {
     if (sos) return;
     run.current?.stop();
-    // Let go early: say how it works.
-    if (!held.current) setHint(true);
     Animated.timing(fill, { toValue: 0, duration: 150, useNativeDriver: false }).start();
   };
 
   return (
     <View style={[{ alignItems: 'flex-end', gap: 6 }, style]} pointerEvents="box-none">
-      {hint ? (
-        <Text style={{ backgroundColor: t.surface, color: t.text, fontSize: 13, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, overflow: 'hidden' }}>Hold for 2 seconds to send an SOS</Text>
-      ) : null}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={sos ? 'SOS is on. Open it' : 'SOS. Hold for 2 seconds'}

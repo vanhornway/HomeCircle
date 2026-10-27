@@ -34,6 +34,25 @@ test('the schemas the agent sends follow the structured-output rules', () => {
   assert.deepEqual(problems(UPLOAD), []);
 });
 
+/** How big a schema is for the provider to compile: its properties, and its unions (each anyOf). */
+function size(s) {
+  const add = (a, b) => ({ props: a.props + b.props, unions: a.unions + b.unions });
+  if (s.anyOf) return s.anyOf.reduce((n, x) => add(n, size(x)), { props: 0, unions: 1 });
+  let out = { props: Object.keys(s.properties ?? {}).length, unions: 0 };
+  for (const p of Object.values(s.properties ?? {})) out = add(out, size(p));
+  if (s.items) out = add(out, size(s.items));
+  return out;
+}
+
+test('the schemas stay small enough to compile: 0.19.0’s note format was rejected as “too large”', () => {
+  // 0.19.0 sent 52 properties and 13 unions to understand a message, and every question failed.
+  for (const [name, s] of Object.entries({ UNDERSTAND, NOTES_ONLY, DREAM, UPLOAD })) {
+    const { props, unions } = size(s);
+    assert.ok(props <= 45, `${name} has ${props} properties`);
+    assert.ok(unions <= 10, `${name} has ${unions} unions`);
+  }
+});
+
 test('the check catches what the API rejected: an enum next to a type list', () => {
   const bad = { type: 'object', properties: { role: { type: ['string', 'null'], enum: ['kid', 'adult', null] } }, required: ['role'], additionalProperties: false };
   assert.ok(problems(bad).some((p) => p.startsWith('$.role: type must be one name')));

@@ -179,8 +179,8 @@ function recipeBody(said) {
   const list = steps.split(/\s*\d+\.\s+|,\s*(?:then\s+)?/).filter(Boolean);
   return `## Ingredients\n${ing.split(/,\s*/).map((i) => `- ${i}`).join('\n')}\n## Steps\n${list.map((x, i) => `${i + 1}. ${x.replace(/\.$/, '')}.`).join('\n')}`;
 }
-/** A note of one of the other kinds, as the AI gives it: every detail there, "" when not said. */
-const DETAILS = ['service', 'phone', 'email', 'address', 'hours', 'website', 'kind', 'dose', 'schedule', 'refillBy', 'owner', 'expires', 'last4', 'where', 'every', 'sizes', 'gifts', 'favourites'];
+/** A note of one of the other kinds, as the AI gives it: details as { key, value } pairs for what was said, legs beside them. */
+const pairs = (o) => Object.entries(o ?? {}).filter(([k, v]) => k !== 'legs' && v).map(([key, value]) => ({ key, value: String(value) }));
 const typed = (type, title, body, details, people = []) => ({
   type,
   title,
@@ -190,8 +190,8 @@ const typed = (type, title, body, details, people = []) => ({
   start: null,
   end: null,
   role: null,
-  recipe: null,
-  details: details && { ...Object.fromEntries(DETAILS.map((k) => [k, ''])), legs: [], ...details },
+  details: pairs(details),
+  legs: details?.legs ?? [],
 });
 const recipeNote = (title, body, { people = [], serves = null, time = null } = {}) => ({
   type: 'recipe',
@@ -202,7 +202,8 @@ const recipeNote = (title, body, { people = [], serves = null, time = null } = {
   start: null,
   end: null,
   role: null,
-  recipe: { serves, time, ingredients: [...body.matchAll(/^- (.+)$/gm)].map((m) => m[1]) },
+  details: pairs({ serves, time }),
+  legs: [],
 });
 
 class MemoryStorage {

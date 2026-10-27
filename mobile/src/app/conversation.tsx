@@ -527,7 +527,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
                 placeholder={withAgent ? `Ask ${title} anything` : asking && agent ? `Ask ${agent.name}…` : peer ? `Message ${title}` : 'Message your circle'}
                 placeholderTextColor={t.muted}
                 multiline
-                maxLength={4000}
+                maxLength={20000}
                 style={{ flex: 1, minHeight: 48, maxHeight: 130, backgroundColor: t.bg, borderRadius: 24, paddingHorizontal: 16, paddingTop: 13, paddingBottom: 13, fontSize: 17, color: t.text }}
               />
               <Pressable

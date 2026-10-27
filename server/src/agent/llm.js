@@ -86,7 +86,7 @@ const toOpenAi = (content) => {
 };
 
 async function completeAnthropic(cfg, { system, messages, schema, maxTokens }, baseURL) {
-  const client = new Anthropic({ apiKey: cfg.apiKey, ...(baseURL ? { baseURL } : {}), maxRetries: 2, timeout: 120_000 });
+  const client = new Anthropic({ apiKey: cfg.apiKey, ...(baseURL ? { baseURL } : {}), maxRetries: 2, timeout: 300_000 });
   const params = {
     model: cfg.model,
     max_tokens: maxTokens,
@@ -95,11 +95,18 @@ async function completeAnthropic(cfg, { system, messages, schema, maxTokens }, b
     // Short family questions: low effort answers well and costs least.
     output_config: { effort: 'low', ...(schema ? { format: { type: 'json_schema', schema } } : {}) },
   };
+  const send = (p) => (FALLBACK_MODELS.has(cfg.model) ? client.beta.messages.create({ ...p, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }) : client.messages.create(p));
   let res;
   try {
-    res = FALLBACK_MODELS.has(cfg.model)
-      ? await client.beta.messages.create({ ...params, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' })
-      : await client.messages.create(params);
+    try {
+      res = await send(params);
+    } catch (e) {
+      // A schema the provider won't compile (too large, or a feature it doesn't
+      // take): ask once more for plain JSON with the shape in the prompt, as for
+      // other providers, rather than fail every question.
+      if (!schema || !(e instanceof Anthropic.BadRequestError) || !/grammar|schema/i.test(e.error?.error?.message ?? e.message)) throw e;
+      res = await send({ ...params, system: `${system}\n\nAnswer with only a JSON object matching this schema:\n${JSON.stringify(schema)}`, output_config: { effort: 'low' } });
+    }
   } catch (e) {
     if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) throw new LlmError('The AI provider didn’t accept the API key', { status: e.status, auth: true });
     if (e instanceof Anthropic.RateLimitError) throw new LlmError('The AI provider is busy (rate limited). Try again in a minute.', { status: 429 });

@@ -40,13 +40,22 @@ const names = (list) => (list.length < 2 ? list.join('') : `${list.slice(0, -1).
 // rejects type lists like ['string', 'null'] next to an enum, so anything
 // that may be null is written as anyOf [that type, null].
 const orNull = (schema) => ({ anyOf: [schema, { type: 'null' }] });
-// The text details a note may have (TYPES_RULE says which kind uses which).
+// The details a note may have (TYPES_RULE says which kind uses which), as
+// { key, value } pairs: one small item schema rather than an object with a
+// field for each, which made the provider's compiled grammar too large.
 const DETAIL_TEXT = ['service', 'phone', 'email', 'address', 'hours', 'website', 'kind', 'dose', 'schedule', 'refillBy', 'owner', 'expires', 'last4', 'where', 'every', 'sizes', 'gifts', 'favourites'];
 // A trip's flight, train, hotel or car.
 const LEG_ITEM = {
   type: 'object',
   properties: { kind: { type: 'string', enum: LEG_KINDS }, from: { type: 'string' }, to: { type: 'string' }, at: { type: 'string' }, arrives: { type: 'string' }, confirmation: { type: 'string' } },
   required: ['kind', 'from', 'to', 'at', 'arrives', 'confirmation'],
+  additionalProperties: false,
+};
+const DETAIL_KEYS = ['serves', 'time', ...DETAIL_TEXT];
+const DETAIL_ITEM = {
+  type: 'object',
+  properties: { key: { type: 'string', enum: DETAIL_KEYS }, value: { type: 'string' } },
+  required: ['key', 'value'],
   additionalProperties: false,
 };
 const NOTE_ITEM = {
@@ -60,27 +69,12 @@ const NOTE_ITEM = {
     start: orNull({ type: 'string' }),
     end: orNull({ type: 'string' }),
     role: orNull({ type: 'string', enum: ['kid', 'adult', 'pet'] }),
-    // A recipe's serving size, time and ingredients (null for any other note).
-    recipe: orNull({
-      type: 'object',
-      properties: { serves: orNull({ type: 'string' }), time: orNull({ type: 'string' }), ingredients: { type: 'array', items: { type: 'string' } } },
-      required: ['serves', 'time', 'ingredients'],
-      additionalProperties: false,
-    }),
-    // The details a contact, health note, document, trip, how-to or person keeps
-    // ("" for anything not said; null for other notes). One object, so the
-    // schema stays small.
-    details: orNull({
-      type: 'object',
-      properties: {
-        ...Object.fromEntries(DETAIL_TEXT.map((k) => [k, { type: 'string' }])),
-        legs: { type: 'array', items: LEG_ITEM },
-      },
-      required: [...DETAIL_TEXT, 'legs'],
-      additionalProperties: false,
-    }),
+    // Only what was said: a recipe's serves and time, a contact's phone…
+    details: { type: 'array', items: DETAIL_ITEM },
+    // A trip's flights, trains, hotels and cars ([] for any other note).
+    legs: { type: 'array', items: LEG_ITEM },
   },
-  required: ['type', 'title', 'body', 'people', 'tags', 'start', 'end', 'role', 'recipe', 'details'],
+  required: ['type', 'title', 'body', 'people', 'tags', 'start', 'end', 'role', 'details', 'legs'],
   additionalProperties: false,
 };
 // How the AI is asked to tag a note, wherever notes are made.
@@ -88,14 +82,14 @@ const TAGS_RULE =
   'tags: 3 to 8 short lowercase words or two-word phrases to find the note by later: its topic (school, health, travel, money, sports…), other words people might search with (dentist → doctor, teeth, appointment), and the kind of thing (birthday, deadline, recipe). People and places go in people and [[links]], not tags.';
 // How the AI is asked to keep a recipe, wherever notes are made: whole, never summed up.
 const RECIPE_RULE =
-  'A recipe (how to cook or bake something) is one note of type "recipe", kept whole and never summed up: title the dish ("Biryani"); body the recipe word for word as given, in Markdown: a line saying whose it is if said ("[[Person A]]’s recipe."), then "## Ingredients" with every ingredient as a "- " line with its amount, then "## Steps" with every step numbered "1.", "2.", then any tips or notes as given. people: whose recipe it is. recipe: serves and time as written (null when not said) and ingredients, one per entry with amounts, as in the body. For any other note recipe is null.';
+  'A recipe (how to cook or bake something) is one note of type "recipe", kept whole and never summed up: title the dish ("Biryani"); body the recipe word for word as given, in Markdown: a line saying whose it is if said ("[[Person A]]’s recipe."), then "## Ingredients" with every ingredient as a "- " line with its amount, then "## Steps" with every step numbered "1.", "2.", then any tips or notes as given. people: whose recipe it is. details: serves and time as written, when said.';
 // The kinds of note past the everyday ones, and what each keeps in details.
 const TYPES_RULE = [
-  'Other kinds of note, each with its details (details null for any other note; inside it "" for anything not said, legs [] when not a trip):',
+  'Other kinds of note, each with its details as { key, value } pairs, only for what was said (details [] for any other note; legs [] unless it is a trip):',
   '- contact: someone outside the family the family uses (a doctor, dentist, plumber, babysitter, coach, the school office), titled with their name ("Dr. Lee", "Lincoln Elementary office"); details.service what they’re for ("dentist"), and phone, email, address, hours and website exactly as written; people: the family members who use them. The family’s own people are always person notes, never contacts.',
   '- health: a medicine and its dose, an allergy, a condition, a vaccine, a blood type, an insurance plan’s name; details.kind (medicine, allergy, condition, vaccine, blood type or insurance), dose and schedule exactly as written, refillBy (YYYY-MM-DD) when a refill or the next dose or vaccine is due; people: whose it is.',
   '- document: a passport, licence, registration, warranty, membership or policy; details.kind (passport, licence…), owner (whose), expires (YYYY-MM-DD), last4 (only the last 4 digits of its number), where it’s kept.',
-  '- trip: a trip, with start and end (YYYY-MM-DD) and people: who is going; body the itinerary word for word; details.legs, one per flight, train, hotel or car: kind, from, to, at (when it leaves or checks in, "YYYY-MM-DD HH:MM" in local time there), arrives (when it gets in or checks out, the same way) and confirmation, exactly as written.',
+  '- trip: a trip, with start and end (YYYY-MM-DD) and people: who is going; body the itinerary word for word; legs, one per flight, train, hotel or car: kind, from, to, at (when it leaves or checks in, "YYYY-MM-DD HH:MM" in local time there), arrives (when it gets in or checks out, the same way) and confirmation, exactly as written.',
   '- howto: household instructions and specs (resetting the router, filter sizes, appliance models, trash days), body every step, size and model number word for word, like a recipe; details.every for upkeep that repeats ("3 months", "1 year").',
   '- a person note may have details.sizes, gifts (gift ideas) and favourites, as written; role "pet" for a pet.',
   'Never keep a password, an alarm, door or gate code, a PIN, a whole card, account, ID or passport number, or a Social Security number: at most the last 4 digits and an expiry date.',
@@ -287,11 +281,15 @@ export class Brain {
   /** Answer where the message came from: everyone in the group, or only the sender. */
   async reply(msg, text, extra = {}) {
     this._log(msg, null, text);
-    const body = { text, ...extra };
-    if (msg.body.thread === 'group') {
-      for (const p of this.agent.people()) await this.agent.send(p.id, { ...body, thread: 'group', replyTo: msg.body.replyTo ?? null }).catch((e) => this.log('agent: send failed', e.message));
-    } else {
-      await this.agent.send(msg.from, { ...body, thread: 'dm' });
+    // A long answer (a whole recipe) in parts that each fit a message; buttons go on the last.
+    const parts = replyParts(String(text ?? ''));
+    for (const [i, part] of parts.entries()) {
+      const body = { text: part, ...(i === parts.length - 1 ? extra : {}) };
+      if (msg.body.thread === 'group') {
+        for (const p of this.agent.people()) await this.agent.send(p.id, { ...body, thread: 'group', replyTo: msg.body.replyTo ?? null }).catch((e) => this.log('agent: send failed', e.message));
+      } else {
+        await this.agent.send(msg.from, { ...body, thread: 'dm' });
+      }
     }
   }
 
@@ -504,7 +502,8 @@ export class Brain {
         system: this._readerPrompt(),
         messages: [{ role: 'user', content: s.mask(`Keep this message from ${r.by || 'someone'} (sent ${iso(at)}) as notes:\n\n${clean.text}`) }],
         schema: NOTES_ONLY,
-        maxTokens: 2000,
+        // A long recipe is kept word for word.
+        maxTokens: 8000,
       });
       const notes = (res.json?.notes ?? []).map((n) => unmaskNote(n, s));
       secret ||= notes.some(hasSecret);
@@ -565,7 +564,7 @@ export class Brain {
       system: this._readerPrompt(),
       messages: [{ role: 'user', content: s.mask(`${this._chatText(chat)}${asker} now says: ${clean.text}`) }],
       schema: UNDERSTAND,
-      maxTokens: 2000,
+      maxTokens: 8000,
     });
     const plan = u.json ?? { intent: 'other', people: [], days: null, from: null, to: null, keywords: [], remember: [] };
     const wanted = (plan.people ?? []).map((p) => s.unmask(p));
@@ -599,7 +598,7 @@ export class Brain {
       system: this._answerPrompt(),
       messages: [{ role: 'user', content: s.mask(this._context(notes, worked, asker, clean.text, { chat, found: this._lastFound(msg.from) })) }],
       // Room for a whole recipe when one may be the answer.
-      maxTokens: notes.slice(0, MAX_NOTES_IN_PROMPT).some((n) => WHOLE_TYPES.includes(n.type)) ? 4000 : 1500,
+      maxTokens: notes.slice(0, MAX_NOTES_IN_PROMPT).some((n) => WHOLE_TYPES.includes(n.type)) ? 8000 : 1500,
     });
     let out = s.unmask(answer.text).trim() || 'I don’t know yet.';
     if (saved.length) out += `\n\n${kept}`;
@@ -1638,6 +1637,7 @@ function noteData(n) {
 
 /** A note as the AI gave it holds a password, a code or a whole number (it won't be kept). */
 function hasSecret(n) {
+  n = fromAi(n);
   return scrubSecrets(`${n.title ?? ''}\n${n.body ?? ''}`).found || Object.entries(n.details ?? {}).some(([k, v]) => typeof v === 'string' && scrubSecrets(v, { numbers: !['phone', 'email', 'website', 'at'].includes(k) }).found);
 }
 
@@ -1695,7 +1695,43 @@ function dreamBatches(notes) {
   return out;
 }
 
+/**
+ * A note as the AI gives it (details as { key, value } pairs, legs beside
+ * them) in the shape the rest of the helper keeps: recipe { serves, time,
+ * ingredients } (the ingredients come from the body) and details { …, legs }.
+ */
+function fromAi(n) {
+  if (!Array.isArray(n?.details) && !Array.isArray(n?.legs)) return n;
+  const pairs = Array.isArray(n.details) ? n.details : [];
+  const d = Object.fromEntries(pairs.filter((p) => p && DETAIL_KEYS.includes(p.key) && p.value).map((p) => [p.key, String(p.value)]));
+  const { serves = null, time = null, ...rest } = d;
+  const legs = Array.isArray(n.legs) ? n.legs : [];
+  const { legs: _, ...note } = n;
+  return { ...note, recipe: n.type === 'recipe' ? { serves, time, ingredients: [] } : null, details: Object.keys(rest).length || legs.length ? { ...rest, legs } : null };
+}
+
+// Bytes of text per reply message (a message holds about 48 KB; room for the rest).
+const REPLY_PART = 24_000;
+
+/** Text in parts of at most REPLY_PART bytes, split between paragraphs, else lines, else anywhere. */
+export function replyParts(text) {
+  const parts = [];
+  let rest = text;
+  while (Buffer.byteLength(rest) > REPLY_PART) {
+    let end = rest.length;
+    while (Buffer.byteLength(rest.slice(0, end)) > REPLY_PART) end = Math.floor(end * 0.9);
+    const para = rest.lastIndexOf('\n\n', end);
+    const line = rest.lastIndexOf('\n', end);
+    const at = para > end / 2 ? para : line > end / 2 ? line : end;
+    parts.push(rest.slice(0, at).trimEnd());
+    rest = rest.slice(at).replace(/^\n+/, '');
+  }
+  parts.push(rest);
+  return parts;
+}
+
 function unmaskNote(n, s) {
+  n = fromAi(n);
   const recipe = n.recipe && { ...n.recipe, ingredients: (n.recipe.ingredients ?? []).map((i) => s.unmask(String(i))) };
   // Every detail too: an owner, a contact's address, a leg's from and to.
   const real = (v) => (typeof v === 'string' ? s.unmask(v) : Array.isArray(v) ? v.map(real) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, real(x)])) : v);

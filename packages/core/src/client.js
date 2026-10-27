@@ -1400,7 +1400,7 @@ export class CircleClient {
     const m = this.messages.find((x) => x.id === messageId);
     const text = m && typeof m.body?.text === 'string' ? m.body.text : '';
     if (!text) throw new Error('Only messages with text can be remembered');
-    const remember = { text: text.slice(0, 4000), by: this.members.get(m.from)?.name || 'Someone', at: m.ts, scope: m.peer ? 'private' : 'circle' };
+    const remember = { text: text.slice(0, 20000), by: this.members.get(m.from)?.name || 'Someone', at: m.ts, scope: m.peer ? 'private' : 'circle' };
     await this._post('chat', { remember, thread: m.peer ? 'dm' : 'group', agentCopy: true, ...this._agentContext() }, { to: agent.id, silent: true });
   }
 

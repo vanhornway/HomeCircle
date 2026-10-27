@@ -844,7 +844,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
 
   r.add('POST', '/messages', ({ me, body }) => {
     const id = vId(body.id, 'id');
-    const env = vEnvelope({ epoch: body.epoch, nonce: body.nonce, ct: body.ct }, 'message', 16 * 1024);
+    const env = vEnvelope({ epoch: body.epoch, nonce: body.nonce, ct: body.ct }, 'message', 64 * 1024);
     currentEpoch(me.circleId, env.epoch);
     // A direct message goes to one other member of the same circle.
     let to = null;

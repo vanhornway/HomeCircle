@@ -185,3 +185,18 @@ test('lookups are fast', () => {
   const ms = (performance.now() - t0) / 50;
   assert.ok(ms < 50, `${ms.toFixed(1)} ms per lookup`);
 });
+
+test('a long answer (a whole recipe) goes in parts that each fit a message, split between paragraphs', async () => {
+  const { replyParts } = await import('../src/agent/brain.js');
+  assert.deepEqual(replyParts('Short answer.'), ['Short answer.']);
+  const step = (i) => `${i}. ${'Stir the pot slowly and keep the heat low. '.repeat(8)}`;
+  const recipe = `## Ingredients\n${'- 1 cup something\n'.repeat(200)}\n## Steps\n${Array.from({ length: 300 }, (_, i) => step(i + 1)).join('\n\n')}`;
+  const parts = replyParts(recipe);
+  assert.ok(parts.length > 1, `${parts.length} parts`);
+  for (const p of parts) assert.ok(Buffer.byteLength(p) <= 24_000);
+  // Nothing lost, and each part after the first starts at a step.
+  assert.equal(parts.join('\n\n').replace(/\s+/g, ' '), recipe.replace(/\s+/g, ' '));
+  for (const p of parts.slice(1)) assert.match(p, /^\d+\. /);
+  // Urdu takes more bytes per character: still within a message.
+  for (const p of replyParts('نہاری '.repeat(8000))) assert.ok(Buffer.byteLength(p) <= 24_000);
+});
