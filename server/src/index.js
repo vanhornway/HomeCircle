@@ -131,6 +131,7 @@ export function createApp(config) {
     return new Promise((resolve) => {
       clearInterval(pruneTimer);
       hub.close();
+      push.close();
       server.close(() => {
         store.close();
         resolve();

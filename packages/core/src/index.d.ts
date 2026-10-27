@@ -81,6 +81,8 @@ export interface MemberLocation {
   precise: boolean | null;
   /** The HomeCircle app version that phone runs (0.16+; null from older apps). */
   app: string | null;
+  /** How often that phone updates now (minutes), its slider stop, and whether charging or its battery budget changes it (0.18+). */
+  cadence: { stop: number | 'custom'; moving: number; still: number; charging: boolean; limited: boolean } | null;
   ts: number;
   receivedAt: number;
 }
@@ -326,6 +328,9 @@ export type PluginSettings = {
   suggested: Record<string, string>;
 };
 
+/** Which circle a chat push is about: a short hash of the receiving member's id (only that phone can match it). */
+export function pushHint(memberId: string): string;
+
 export const ACCOUNT_KEY: string;
 
 /** Why a device's keys were deleted, as passed with the 'signedOut' event. */
@@ -420,6 +425,8 @@ export class CircleClient {
     precise?: boolean;
     /** This phone's HomeCircle app version (shown in Circle health). */
     app?: string;
+    /** How often this phone updates now, in minutes (shown under its name). */
+    cadence?: { stop: number | 'custom'; moving: number; still: number; charging: boolean; limited: boolean };
     ts?: number;
   }): Promise<void>;
   /** Remove this device's location from the circle (stop sharing with it). */

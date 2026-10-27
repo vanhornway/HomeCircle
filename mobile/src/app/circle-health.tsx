@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Text, View } from 'react-native';
 import { Avatar, Button, Card, P, Screen } from '../components/ui';
 import { errorText } from '../lib/circle';
-import { memberState, statusLine, type MemberState } from '../lib/people';
+import { cadenceLine, memberState, statusLine, type MemberState } from '../lib/people';
 import { timeAgo, useCircle } from '../lib/useCircle';
 import { APP_VERSION } from '../lib/updates';
 import { useTheme } from '../theme';
@@ -91,6 +91,7 @@ export default function CircleHealth() {
                 <View>
                   {row('Last update', timeAgo(loc.ts), now - loc.ts > 2 * 3600_000)}
                   {row('HomeCircle app', loc.app ?? 'Older than 0.16', !loc.app || olderThan(loc.app, APP_VERSION))}
+                  {row('Updates', cadenceLine(loc) ?? 'Not reported')}
                   {row('Location permission', loc.perm === 'always' ? 'Always' : loc.perm === 'foreground' ? 'While using' : 'Not reported', loc.perm === 'foreground')}
                   {row('Precise location', loc.precise === false ? 'Off' : loc.precise ? 'On' : 'Not reported', loc.precise === false)}
                   {row('Battery saver', loc.power === 'saver' ? 'On' : loc.power === 'normal' ? 'Off' : 'Not reported', loc.power === 'saver')}

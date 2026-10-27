@@ -62,6 +62,9 @@ export async function sharingClients(): Promise<CircleClient[]> {
  * A geofence id: "g:<group>" for a place added to several circles (watched
  * once), or "<circleId>:<placeId>" for a place in one circle.
  */
+/** The geofence around a phone in still mode (lib/location.ts): leaving it means moving again. */
+export const HERE_PREFIX = 'here:';
+
 export function geofenceId(circleId: string, place: { id: string; group: string | null }) {
   return place.group ? `g:${place.group}` : `${circleId}:${place.id}`;
 }
@@ -87,6 +90,8 @@ let queue: Promise<unknown> = Promise.resolve();
  * Checks run one at a time so the same crossing is never posted twice.
  */
 export function checkPlaces(fix: Fix | null, hint?: { regionId: string; action: 'arrived' | 'left' }): Promise<PlaceCheck> {
+  // "here:" is the circle around a still phone (still mode), not a place.
+  if (hint?.regionId.startsWith(HERE_PREFIX)) hint = undefined;
   const run = queue.then(() => checkNow(fix, hint));
   queue = run.catch(() => {});
   return run;
