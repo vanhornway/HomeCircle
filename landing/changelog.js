@@ -1,6 +1,16 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.19.1',
+    date: '2026-10-27',
+    title: 'Your helper is back, and keeps long recipes',
+    items: [
+      'Fixed: after updating to 0.19.0, your helper answered every question with an error. It works again.',
+      'Long recipes: paste one of up to 20,000 characters into a chat with your helper and it keeps all of it. A long answer comes back in parts.',
+      'The SOS button no longer shows “Hold for 2 seconds” after a short tap. Holding it still sends an SOS.',
+    ],
+  },
+  {
     version: '0.19.0',
     date: '2026-10-27',
     title: 'Edit your places, and a helper that keeps recipes whole',

@@ -2,6 +2,17 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.19.1
+
+- Fixed: in 0.19.0 the circle helper answered every question with "The
+  compiled grammar is too large". The format it asks Anthropic for is
+  smaller again (a note's details are key and value pairs), and if a provider
+  ever rejects the format, the helper asks once more for plain JSON instead
+  of failing.
+- Long recipes: the helper may write up to 8,000 tokens when it keeps or
+  gives a recipe, a chat message may be up to 64 KB, and a long answer comes
+  in parts.
+
 ## 0.19.0
 
 - The circle helper keeps recipes, contacts, health notes, documents, trips
