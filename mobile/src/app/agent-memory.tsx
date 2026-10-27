@@ -19,7 +19,7 @@ type Note = {
   tags?: string[];
   start: string | null;
   end: string | null;
-  data: { role?: string; kind?: string; count?: number; for?: string[]; fetchedAt?: number; format?: string; file?: KeptFile } | null;
+  data: { role?: string; kind?: string; count?: number; for?: string[]; fetchedAt?: number; format?: string; file?: KeptFile; serves?: string | null; time?: string | null; ingredients?: string[] } | null;
   updatedAt: number;
 };
 // A file kept with its notes: encrypted on the server, opened with its key.
@@ -35,9 +35,13 @@ const TYPES: { id: string | null; label: string; icon: string }[] = [
   { id: 'schedule', label: 'Schedules', icon: '🗓️' },
   { id: 'decision', label: 'Decisions', icon: '✅' },
   { id: 'fact', label: 'Facts', icon: '💡' },
+  { id: 'recipe', label: 'Recipes', icon: '🍲' },
   { id: 'source', label: 'Calendars & files', icon: '🔗' },
 ];
 const icon = (type: string) => TYPES.find((x) => x.id === type)?.icon ?? '💡';
+// "Serves 4 · 45 min · 9 ingredients" under a recipe's title.
+const recipeLine = (n: Note) =>
+  [n.data?.serves ? `Serves ${String(n.data.serves).replace(/^serves\s+/i, '')}` : null, n.data?.time, `${n.data?.ingredients?.length ?? 0} ingredients`].filter(Boolean).join(' · ');
 const day = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 const when = (n: Note) => (n.start ? (n.end && n.end !== n.start ? `${day(n.start)} – ${day(n.end)}` : day(n.start)) : null);
 
@@ -168,7 +172,9 @@ export default function AgentMemory() {
                 <Text style={{ color: t.muted, fontSize: 14 }} numberOfLines={2}>
                   {n.type === 'source'
                     ? `${n.data?.format === 'pdf' ? `PDF · ${n.data?.count ?? 0} dates` : `${n.data?.count ?? 0} events`} · checked every 6 hours`
-                    : n.body.replace(/\[\[([^\]]+)\]\]/g, '$1')}
+                    : n.type === 'recipe'
+                      ? recipeLine(n)
+                      : n.body.replace(/\[\[([^\]]+)\]\]/g, '$1')}
                 </Text>
               </View>
             </Pressable>

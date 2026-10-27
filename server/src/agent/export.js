@@ -14,6 +14,7 @@ const FOLDERS = {
   event: 'Events',
   decision: 'Decisions',
   fact: 'Facts',
+  recipe: 'Recipes',
   source: 'Calendars',
 };
 // Room left in each part for zip headers.
@@ -37,6 +38,9 @@ function noteMarkdown(n, { files, calendarPath }) {
     ['type', n.type],
     ['scope', n.scope === 'circle' ? 'circle' : 'private'],
     ['start', n.start],
+    // A recipe's serving size and time, as Obsidian properties.
+    ['serves', n.type === 'recipe' ? n.data?.serves : null],
+    ['time', n.type === 'recipe' ? n.data?.time : null],
     ['end', n.end && n.end !== n.start ? n.end : null],
     // As links, so Obsidian's graph and backlinks connect each note to its people.
     ['people', n.people?.length ? n.people.map((p) => `[[${p}]]`) : null],
@@ -49,6 +53,9 @@ function noteMarkdown(n, { files, calendarPath }) {
     ['homecircle-id', n.id],
   ].filter(([, v]) => v != null && v !== '');
   const lines = ['---', ...front.map(([k, v]) => `${k}: ${yaml(v)}`), '---', '', `# ${n.title}`, '', n.body || ''];
+  // A recipe whose text has no ingredients list still gets one from its data.
+  const ingredients = n.type === 'recipe' && !/^(?:#{1,4}\s*)?ingredients\b/im.test(n.body || '') ? n.data?.ingredients : null;
+  if (Array.isArray(ingredients) && ingredients.length) lines.push('', '## Ingredients', '', ...ingredients.map((i) => `- ${i}`));
   const events = n.data?.events;
   if (Array.isArray(events) && events.length) {
     lines.push('', '## Dates', '');

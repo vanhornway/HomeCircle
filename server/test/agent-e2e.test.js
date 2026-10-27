@@ -35,6 +35,17 @@ async function fakeLlm(cfg, { system, messages, schema }) {
       return json({ title: 'Swim meets', summary: 'The season’s meets.', calendar: true, school: false, events, notes: [] });
     }
     if (/\[image\]/.test(text) && /blank/.test(sent)) return json({ title: 'A blank page', summary: 'Nothing on it.', calendar: false, school: false, events: [], notes: [] });
+    if (/\[image\]/.test(text) && /recipe/.test(sent)) {
+      return json({
+        title: 'Nihari recipe card',
+        summary: 'A handwritten nihari recipe.',
+        receipt: null,
+        calendar: false,
+        school: false,
+        events: [],
+        notes: [recipeNote('Nihari', NIHARI, { serves: '4', time: '6 hours' })],
+      });
+    }
     if (/\[image\]/.test(text) && /receipt/.test(sent)) {
       return json({ title: 'Costco receipt', summary: 'A Costco trip.', receipt: { store: 'Costco', items: ['Milk', 'Paper towels', 'Eggs'] }, calendar: false, school: false, events: [], notes: [] });
     }
@@ -77,6 +88,15 @@ async function fakeLlm(cfg, { system, messages, schema }) {
     if (/remind/.test(said)) {
       return json({ intent: 'reminder', people: [], days: null, from: null, to: null, keywords: [], remember: [], list: null, listAction: null, items: [], reminder: { title: 'Car registration', due: '2026-11-30', repeat: 'yearly' } });
     }
+    if (/recipe: Ingredients/.test(said)) {
+      // A recipe told in chat: kept whole, with whose it is.
+      const body = said.replace(/^.*?recipe: /, '');
+      return json({ intent: 'remember', people: ['Nani'], days: null, from: null, to: null, keywords: [], remember: [recipeNote('Biryani', recipeBody(body), { people: ['Nani'], serves: '6', time: '1 hour' })], list: null, listAction: null, items: [], reminder: null });
+    }
+    if (/biryani recipe\?/.test(said)) return json({ intent: 'recall', people: ['Nani'], days: null, from: null, to: null, keywords: ['biryani', 'recipe'], remember: [], list: null, listAction: null, items: [], reminder: null });
+    if (/nihari ingredients/.test(said)) {
+      return json({ intent: 'list', people: [], days: null, from: null, to: null, keywords: [], remember: [], list: 'desi store', listAction: 'add', items: ['ingredients for nihari'], reminder: null });
+    }
     if (/need .* from the desi/.test(said)) {
       return json({ intent: 'list', people: [], days: null, from: null, to: null, keywords: [], remember: [], list: 'desi store', listAction: 'add', items: ['paneer', 'chai'], reminder: null });
     }
@@ -102,9 +122,17 @@ async function fakeLlm(cfg, { system, messages, schema }) {
     const events = [...text.matchAll(/^(\d{4}-\d{2}-\d{2})(?:\.\.(\d{4}-\d{2}-\d{2}))? (.+)$/gm)].map(([, start, end, summary]) => ({ summary, start, end: end ?? null, off: /no practice|break/i.test(summary) }));
     return json({ title: text.match(/^(.+Club.*)$/m)?.[1] ?? 'Calendar', school: false, events });
   }
+  if (schema?.properties?.notes && /chai: Ingredients/.test(text)) {
+    // A long-pressed recipe: whose it is stays a stand-in.
+    const who = text.match(/(Person [A-Z])’s chai/)[1];
+    return json({ notes: [recipeNote('Chai', `[[${who}]]’s recipe.\n${recipeBody(text.replace(/^[\s\S]*?chai: /, ''))}`, { people: [who], serves: '2' })] });
+  }
   if (schema?.properties?.notes) {
     return json({ notes: [{ type: 'event', title: 'Dentist', body: `Dentist for ${text.match(/Person [A-Z]/g)?.[1] ?? 'someone'} at 3:30.`, people: [], start: '2026-11-14', end: null, role: null }] });
   }
+  // Asked for a recipe: the whole of it, as the note has it.
+  const recipe = /give all of it/.test(system) && text.match(/^- recipe: [^:]+: ([\s\S]*?)(?=\n- (?:person|place|schedule|event|decision|fact|recipe|source): |\n\n)/m)?.[1];
+  if (recipe) return { text: recipe, json: null, usd: 0.002, refused: false };
   // Answers: repeat what was worked out, or the first note.
   const worked = text.match(/Worked out from calendars:\n([^\n]+)/)?.[1];
   const note = text.match(/^- [a-z]+: ([^\n]+)/m)?.[1];
@@ -112,6 +140,24 @@ async function fakeLlm(cfg, { system, messages, schema }) {
   return { text: worked ?? unsaved ?? note ?? 'I don’t know.', json: null, usd: 0.002, refused: false };
 }
 const json = (o) => ({ text: JSON.stringify(o), json: o, usd: 0.001, refused: false });
+const NIHARI = '## Ingredients\n- 1 kg beef shank\n- 2 tbsp nihari masala\n- 1 cup ghee\n- 2 onions, sliced\n- 1/2 cup atta\n## Steps\n1. Brown the onions in the ghee.\n2. Add the beef and masala, cover with water and cook on low for 6 hours.\n3. Thicken with the atta.';
+/** "Ingredients: a, b. Steps: 1. x. 2. y." → the Markdown a recipe note keeps. */
+function recipeBody(said) {
+  const [, ing, steps] = said.match(/Ingredients[:\s-]+(.*?)\.\s*(?:Steps|Method):\s*(.*)$/s);
+  const list = steps.split(/\s*\d+\.\s+|,\s*(?:then\s+)?/).filter(Boolean);
+  return `## Ingredients\n${ing.split(/,\s*/).map((i) => `- ${i}`).join('\n')}\n## Steps\n${list.map((x, i) => `${i + 1}. ${x.replace(/\.$/, '')}.`).join('\n')}`;
+}
+const recipeNote = (title, body, { people = [], serves = null, time = null } = {}) => ({
+  type: 'recipe',
+  title,
+  body,
+  people,
+  tags: ['recipe', 'dinner'],
+  start: null,
+  end: null,
+  role: null,
+  recipe: { serves, time, ingredients: [...body.matchAll(/^- (.+)$/gm)].map((m) => m[1]) },
+});
 
 class MemoryStorage {
   constructor() {
@@ -506,6 +552,71 @@ test('shopping lists: in chat and from the app; a receipt counts as bought and p
   await until(mom, (c) => (lastFromAgent(c)?.body.text === '🛒 Costco:\n• Eggs\n• batteries' ? 1 : null));
 });
 
+test('recipes: kept whole from chat, a long-pressed message and a photo; asked for whole; their ingredients go on a list', async () => {
+  const peer = mom.agent.id;
+  const since = Math.max(0, ...mom.conversation(peer).map((m) => m.seq));
+  const fromAgentDm = (c, re) => [...c.conversation(c.agent.id)].reverse().find((m) => m.seq > since && m.from === c.agent.id && re.test(m.body?.text ?? ''));
+  const recipes = async (c) => Object.fromEntries((await c.agentRpc('list', { type: 'recipe' })).map((n) => [n.title, n]));
+
+  // Told in chat: every ingredient and step, and whose it is.
+  await mom.askAgent('Nani’s biryani recipe: Ingredients: 2 cups basmati rice, 1 kg chicken, 1 cup yogurt, 2 onions. Steps: 1. Fry the onions. 2. Marinate the chicken in the yogurt. 3. Layer with the rice and cook on low for 30 minutes.');
+  await until(mom, (c) => (lastFromAgent(c)?.body.text === '📌 Remembered: Biryani' ? 1 : null));
+  let r = await recipes(mom);
+  assert.equal(r.Biryani.type, 'recipe');
+  assert.deepEqual(r.Biryani.people, ['Nani']);
+  assert.equal(
+    r.Biryani.body,
+    '## Ingredients\n- 2 cups basmati rice\n- 1 kg chicken\n- 1 cup yogurt\n- 2 onions\n## Steps\n1. Fry the onions.\n2. Marinate the chicken in the yogurt.\n3. Layer with the rice and cook on low for 30 minutes.',
+  );
+  assert.deepEqual(r.Biryani.data, { serves: '6', time: '1 hour', ingredients: ['2 cups basmati rice', '1 kg chicken', '1 cup yogurt', '2 onions'] });
+
+  // A long-pressed message: kept whole too, and the name still never reaches the AI.
+  await dad.sendChat('Mom’s chai: Ingredients - 2 cups water, 1 cup milk, 2 tsp tea leaves, 3 cardamom pods. Method: boil the water with the cardamom, add the tea, then the milk, simmer for 2 minutes.');
+  await mom.fetchMessages();
+  const m = mom.messages.find((x) => x.body?.text?.startsWith('Mom’s chai'));
+  await mom.rememberWithAgent(m.id);
+  await until(mom, (c) => (lastFromAgent(c)?.body.text === '📌 Remembered: Chai' ? 1 : null));
+  assert.ok(!sentToAi.at(-1).includes('Mom’s chai'));
+  r = await recipes(mom);
+  assert.deepEqual(r.Chai.people, ['Mom']);
+  assert.match(r.Chai.body, /^\[\[Mom\]\]’s recipe\.\n## Ingredients\n- 2 cups water\n- 1 cup milk\n- 2 tsp tea leaves\n- 3 cardamom pods\n## Steps\n1\. boil the water with the cardamom\.\n2\. add the tea\.\n3\. the milk\.\n4\. simmer for 2 minutes\.$/);
+  assert.equal(r.Chai.data.ingredients.length, 4);
+
+  // A photo of a recipe card: shown for a check as a recipe, saved whole.
+  await mom.sendFileToAgent(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 4, 4, 4, 4]), { name: 'nihari-recipe.jpg', mime: 'image/jpeg' }, { peer });
+  const found = await until(mom, (c) => fromAgentDm(c, /I’d keep/));
+  assert.equal(found.body.text, '📄 Nihari recipe card: A handwritten nihari recipe.\nI’d keep:\n• Nihari: recipe, serves 4, 6 hours: 5 ingredients and 3 steps\nDoes this look right? Save it (you can fix anything later in Memory) or Discard.');
+  await mom.saveAgentFound(found.body.save.id, true, { peer });
+  await until(mom, (c) => fromAgentDm(c, /^📌 Saved: Nihari$/));
+  const ask = await until(mom, (c) => fromAgentDm(c, /^Delete “nihari-recipe\.jpg”/));
+  await mom.answerAgentFile(ask.body.fileChoice.id, false, { peer });
+  await until(mom, (c) => fromAgentDm(c, /Deleted “nihari-recipe\.jpg”/));
+  r = await recipes(mom);
+  assert.equal(r.Nihari.body, NIHARI);
+  assert.equal(r.Nihari.source, 'file: nihari-recipe.jpg');
+  assert.deepEqual(r.Nihari.data.ingredients, ['1 kg beef shank', '2 tbsp nihari masala', '1 cup ghee', '2 onions, sliced', '1/2 cup atta']);
+
+  // Asked for, it comes back whole, not summed up.
+  await mom.askAgent('what’s Nani’s biryani recipe?');
+  const answer = await until(mom, (c) => (lastFromAgent(c)?.body.text.includes('## Steps') ? lastFromAgent(c) : null));
+  assert.equal(answer.body.text, r.Biryani.body);
+  assert.ok(!sentToAi.at(-1).includes('Nani'));
+
+  // Its ingredients onto a list: plain words need no AI; amounts and how they're cut stay in the recipe.
+  const calls = sentToAi.length;
+  await dad.askAgent('add the ingredients for Nani’s biryani to the Costco list');
+  await until(dad, (c) => (lastFromAgent(c)?.body.text === '🛒 Added to Costco for Biryani: basmati rice, chicken, yogurt, onions.' ? 1 : null));
+  assert.equal(sentToAi.length, calls);
+  await dad.askAgent('add the ingredients for lasagna to the Costco list');
+  await until(dad, (c) => (lastFromAgent(c)?.body.text.startsWith('I don’t have a recipe for lasagna.') ? 1 : null));
+  // Other wording goes through the AI; a private recipe (Mom sent it in her own chat) is only for her.
+  await mom.askAgent('buy the nihari ingredients at the desi store', { peer });
+  await until(mom, (c) => fromAgentDm(c, /^🛒 Added to desi store for Nihari: beef shank, nihari masala, ghee, onions, atta\.$/));
+  const lists = await mom.agentRpc('lists');
+  assert.deepEqual(lists.find((l) => l.name === 'Costco').items.map((i) => i.name), ['Eggs', 'batteries', 'basmati rice', 'chicken', 'yogurt', 'onions']);
+  assert.equal((await recipes(dad)).Nihari, undefined);
+});
+
 test('reminders: set in chat, sent to admins and whoever set it in the morning, Done moves a yearly one on', async () => {
   await dad.askAgent('remind us to renew the car registration on Nov 30 every year');
   await until(dad, (c) => (/I’ll remind every admin about Car registration/.test(lastFromAgent(c)?.body.text) ? 1 : null));
@@ -588,6 +699,12 @@ test('Download memory: an Obsidian vault zipped, with calendars, lists, reminder
   assert.deepEqual(zip['Files/team-sheet.jpg'], photo);
   assert.ok(paths.some((p) => p.startsWith('Facts/') && text(p).includes('![[Files/team-sheet.jpg]]')));
   assert.match(text('Home.md'), /- \[\[Facts\/Surprise party\|Surprise party\]\]/);
+  // Recipes in their own folder, whole, with whose they are.
+  const biryani = text('Recipes/Biryani.md');
+  assert.match(biryani, /^---\ntype: "recipe"\nscope: "circle"\nserves: "6"\ntime: "1 hour"\npeople: \["\[\[Nani\]\]"\]\n/);
+  assert.match(biryani, /\n## Ingredients\n- 2 cups basmati rice\n[\s\S]*\n## Steps\n1\. Fry the onions\.\n2\. [\s\S]*\n3\. Layer with the rice and cook on low for 30 minutes\.\n$/);
+  assert.ok(paths.includes('Recipes/Nihari.md') && paths.includes('Recipes/Chai.md'));
+  assert.match(text('Home.md'), /## Recipes\n\n- \[\[Recipes\/Biryani\|Biryani\]\]/);
 
   // Dad's download has the circle's notes, not Mom's private ones: the party,
   // and the photo she sent the helper in their own chat.

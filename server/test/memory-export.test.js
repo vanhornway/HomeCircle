@@ -57,3 +57,21 @@ test('parts: notes in the first, files filling it and the next; one too big for 
   assert.equal(Object.keys(one).filter((p) => p.startsWith('Files/')).length + Object.keys(two).length, 2);
   for (const p of parts) assert.ok(p.bytes.length <= 10_000);
 });
+
+test('recipes go under Recipes, whole, with how many it serves and how long it takes', () => {
+  const body = '[[Nani]]’s recipe.\n## Ingredients\n- 2 cups basmati rice\n## Steps\n1. Soak the rice.\n2. Cook it.';
+  const { text } = exportVault({
+    notes: [
+      note({ id: 'r1', type: 'recipe', title: 'Biryani', body, people: ['Nani'], data: { serves: '6', time: '1 hour', ingredients: ['2 cups basmati rice'] } }),
+      // Written without an Ingredients list: it gets one from what was kept.
+      note({ id: 'r2', type: 'recipe', title: 'Chai', body: 'Boil everything for 2 minutes.', data: { serves: null, time: null, ingredients: ['milk', 'tea'] } }),
+    ],
+    who: 'Maya',
+    helper: 'Chirya',
+    now: 0,
+  });
+  assert.equal(text['Recipes/Biryani.md'], `---\ntype: "recipe"\nscope: "circle"\nserves: "6"\ntime: "1 hour"\npeople: ["[[Nani]]"]\ncreated: "1970-01-01"\nupdated: "1970-01-01"\nhomecircle-id: "r1"\n---\n\n# Biryani\n\n${body}\n`);
+  assert.match(text['Recipes/Chai.md'], /\nBoil everything for 2 minutes\.\n\n## Ingredients\n\n- milk\n- tea\n$/);
+  assert.doesNotMatch(text['Recipes/Chai.md'], /serves:/);
+  assert.match(text['Home.md'], /## Recipes\n\n- \[\[Recipes\/Biryani\|Biryani\]\]\n- \[\[Recipes\/Chai\|Chai\]\]/);
+});

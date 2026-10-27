@@ -123,6 +123,8 @@ export function listText(state, list) {
 export function parseListCommand(text) {
   const t = String(text || '').trim().replace(/[?.!]+$/, '');
   let m = t.match(/^(?:please\s+)?(?:add|put)\s+(.+?)\s+(?:to|on|onto)\s+(?:the |my |our )?(.+?)(?:\s+(?:shopping\s+)?list)?$/i);
+  // "add the ingredients for mac and cheese to Costco": one recipe, not items to split.
+  if (m && recipeWanted([m[1]])) return { action: 'add', list: m[2], items: [], recipe: recipeWanted([m[1]]) };
   if (m) return { action: 'add', list: m[2], items: splitItems(m[1]) };
   m = t.match(/^(?:please\s+)?(?:remove|delete|take)\s+(.+?)\s+(?:off|from)\s+(?:the |my |our )?(.+?)(?:\s+(?:shopping\s+)?list)?$/i);
   if (m) return { action: 'remove', list: m[2], items: splitItems(m[1]) };
@@ -140,3 +142,28 @@ export const splitItems = (s) =>
     .map((x) => x.trim())
     .filter(Boolean)
     .slice(0, 50);
+
+/** ["the ingredients for Nani's biryani"], ["biryani ingredients"] → "Nani's biryani"; anything else → null. */
+export function recipeWanted(items) {
+  if (!Array.isArray(items) || items.length !== 1) return null;
+  const t = String(items[0]).trim();
+  const m =
+    t.match(/^(?:all\s+)?(?:of\s+)?(?:the\s+|what\s+)?ingredients\s+(?:for|of|in|from)\s+(?:the\s+|my\s+|our\s+)?(.+?)(?:\s+recipe)?$/i) ??
+    t.match(/^(?:all\s+)?(?:the\s+|my\s+|our\s+)?(.+?)(?:\s+recipe)?(?:'s|’s)?\s+ingredients$/i);
+  return m ? m[1].trim() || null : null;
+}
+
+const UNITS =
+  'cups?|c|tablespoons?|tbsps?|tbs|tsps?|teaspoons?|grams?|g|kgs?|kilos?|kilograms?|mls?|millilit(?:er|re)s?|l|lit(?:er|re)s?|lbs?|pounds?|oz|ounces?|pinch(?:es)?|handfuls?|cloves?|cans?|tins?|packets?|packs?|bunch(?:es)?|sprigs?|sticks?|slices?|pieces?|pcs|inch(?:es)?|cm|dash(?:es)?|drops?|jars?|bottles?|heads?|stalks?|knobs?';
+const AMOUNT = new RegExp(`^(?:(?:about|approx\\.?|around)\\s+)?(?:[\\d½¼¾⅓⅔⅛.,/\\s-]+|(?:a few|an?|one|two|three|four|five|six|some)\\b)\\s*(?:(?:${UNITS})\\.?\\b\\s*)?(?:of\\s+)?`, 'i');
+
+/** "2 cups basmati rice, washed" → "basmati rice"; "salt to taste" → "salt". For a shopping list. */
+export function shoppingName(ingredient) {
+  let s = String(ingredient || '')
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  s = s.replace(/,.*$/, '').replace(/\b(?:to taste|as needed|for garnish|optional)\b.*$/i, '');
+  const bare = s.replace(AMOUNT, '').trim();
+  return cleanName(bare || s);
+}

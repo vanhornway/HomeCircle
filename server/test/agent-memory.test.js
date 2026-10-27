@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { Memory, linksIn } from '../src/agent/memory.js';
+import { Memory, cleanNote, linksIn, recipeIngredients } from '../src/agent/memory.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'homecircle-memory-'));
 const file = join(dir, 'memory.db');
@@ -92,6 +92,24 @@ test('past events are archived: out of everyday answers, there when asked', () =
   mem.add({ type: 'event', title: 'Spring trip to Yosemite', body: 'Camping in Yosemite.', start: '2025-04-10', end: '2025-04-13' }, { by: MOM });
   assert.equal(mem.lookup({ text: 'yosemite', by: MOM }).length, 0);
   assert.equal(mem.lookup({ text: 'yosemite', by: MOM, archived: true }).length, 1);
+});
+
+test('a recipe is kept whole; its ingredients follow its Ingredients list, edits too', () => {
+  const body = '[[Nani]]’s recipe.\n\n## Ingredients\n\n**For the rice:**\n- 2 cups basmati rice\n- 1 tsp salt\n\n### For the chicken\n* 1 kg chicken\n- 1 cup yogurt\n\n## Steps\n\n1. Soak the rice for 30 minutes.\n2. Marinate the chicken.\n3. Layer and cook on low (dum) for 30 minutes.\n\nServe with raita.';
+  const n = mem.add({ type: 'recipe', title: 'Biryani', body, people: ['Nani'], data: { serves: 6, time: '1 hour', ingredients: ['rice'] } }, { by: MOM });
+  assert.equal(n.body, body);
+  assert.deepEqual(n.data, { serves: '6', time: '1 hour', ingredients: ['2 cups basmati rice', '1 tsp salt', '1 kg chicken', '1 cup yogurt'] });
+  // Found by its dish and by whose it is.
+  assert.equal(mem.lookup({ text: 'biryani', by: DAD })[0].id, n.id);
+  assert.ok(mem.lookup({ people: ['Nani'], by: DAD }).some((x) => x.id === n.id));
+  // Edited in Memory: the ingredients change with the list.
+  const edited = mem.update(n.id, { body: body.replace('- 1 tsp salt\n', '- 1 tsp salt\n- 4 green cardamom\n') }, { by: DAD });
+  assert.deepEqual(edited.data.ingredients, ['2 cups basmati rice', '1 tsp salt', '4 green cardamom', '1 kg chicken', '1 cup yogurt']);
+  // Written as plain text ("Ingredients:" and "Method:"), or with no list in the text at all.
+  assert.deepEqual(recipeIngredients('Ingredients:\n- milk\n- tea\nMethod:\n1. Boil.'), ['milk', 'tea']);
+  assert.deepEqual(cleanNote({ type: 'recipe', title: 'Chai', body: 'Boil it all.', data: { ingredients: ['milk', ' ', 'tea'] } }).data, { serves: null, time: null, ingredients: ['milk', 'tea'] });
+  // Other notes keep their data as is.
+  assert.deepEqual(cleanNote({ type: 'fact', title: 'X', data: { role: 'kid' } }).data, { role: 'kid' });
 });
 
 test('spending is counted per person per month', () => {

@@ -10,7 +10,7 @@ import { DatabaseSync } from 'node:sqlite';
 import nacl from 'tweetnacl';
 import { randomBytes } from 'node:crypto';
 
-export const NOTE_TYPES = ['person', 'place', 'schedule', 'event', 'decision', 'fact', 'source'];
+export const NOTE_TYPES = ['person', 'place', 'schedule', 'event', 'decision', 'fact', 'recipe', 'source'];
 const DAY = 86400_000;
 
 const enc = new TextEncoder();
@@ -32,6 +32,30 @@ export function cleanTags(tags) {
   return [...new Set(out)].slice(0, 12);
 }
 
+/** The lines under a recipe's "## Ingredients" (or "Ingredients:"), without their bullets or sub-headings like "For the rice:". */
+export function recipeIngredients(body) {
+  const m = String(body || '').match(/^(?:#{1,4}\s*)?ingredients\b[^\n]*\n([\s\S]*?)(?=^#{1,2}\s|^(?:#{1,4}\s*)?(?:steps|method|directions|instructions)\b|$(?![\s\S]))/im);
+  if (!m) return [];
+  return m[1]
+    .split('\n')
+    .filter((l) => !/^\s*#/.test(l))
+    .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').replace(/^\[[ x]\]\s*/i, '').trim())
+    .filter((l) => l && !/:$/.test(l.replace(/\*+/g, '')))
+    .slice(0, 100);
+}
+
+/**
+ * A recipe's data: { serves, time, ingredients }. The ingredients follow the
+ * body's Ingredients list when it has one, so an edit there keeps them in step.
+ */
+function recipeData(data, body) {
+  const d = data && typeof data === 'object' ? data : {};
+  const fromBody = recipeIngredients(body);
+  const given = Array.isArray(d.ingredients) ? d.ingredients.map((i) => String(i).trim()).filter(Boolean).slice(0, 100) : [];
+  const text = (v) => (v == null || v === '' ? null : String(v).slice(0, 60));
+  return { ...d, serves: text(d.serves), time: text(d.time), ingredients: fromBody.length ? fromBody : given };
+}
+
 /** A note as given, cleaned up: { type, title, body, people, tags, start, end, data, source }. */
 export function cleanNote(n) {
   const type = NOTE_TYPES.includes(n?.type) ? n.type : 'fact';
@@ -51,7 +75,7 @@ export function cleanNote(n) {
     start,
     end: start && end && end < start ? start : end,
     // Anything structured (a calendar's events, a source's URL): kept as is.
-    data: n?.data && typeof n.data === 'object' ? n.data : null,
+    data: type === 'recipe' ? recipeData(n?.data, body) : n?.data && typeof n.data === 'object' ? n.data : null,
     source: n?.source ? String(n.source).slice(0, 200) : null,
   };
 }

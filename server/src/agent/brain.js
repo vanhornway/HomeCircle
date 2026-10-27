@@ -6,12 +6,12 @@
 // them: everyone in the group for a group question, only you for a direct one.
 import { complete as llmComplete, cleanProviderConfig, LlmError, PROVIDERS } from './llm.js';
 import { nameSwapper } from './names.js';
-import { cleanTags } from './memory.js';
+import { cleanTags, recipeIngredients } from './memory.js';
 import { createHash, randomBytes } from 'node:crypto';
 import { calendarUrl, fetchPublic, parseIcs, freeStretches, isDayOff } from './calendar.js';
 import { isPdf, pdfText } from './pdf.js';
 import { readFile } from './read-file.js';
-import { addItems, createList, doneShopping, emptyLists, findList, listText, parseListCommand, recordBought, removeItems, splitItems, viewList } from './lists.js';
+import { addItems, createList, doneShopping, emptyLists, findList, itemKey, listText, parseListCommand, recipeWanted, recordBought, removeItems, shoppingName, splitItems, viewList } from './lists.js';
 import { addReminder, cleanReminder, dueMessage, fmtDue, markDone, reminderLine } from './reminders.js';
 import { exportVault, zipVault } from './export.js';
 
@@ -43,7 +43,7 @@ const orNull = (schema) => ({ anyOf: [schema, { type: 'null' }] });
 const NOTE_ITEM = {
   type: 'object',
   properties: {
-    type: { type: 'string', enum: ['person', 'place', 'schedule', 'event', 'decision', 'fact'] },
+    type: { type: 'string', enum: ['person', 'place', 'schedule', 'event', 'decision', 'fact', 'recipe'] },
     title: { type: 'string' },
     body: { type: 'string' },
     people: { type: 'array', items: { type: 'string' } },
@@ -51,13 +51,23 @@ const NOTE_ITEM = {
     start: orNull({ type: 'string' }),
     end: orNull({ type: 'string' }),
     role: orNull({ type: 'string', enum: ['kid', 'adult'] }),
+    // A recipe's serving size, time and ingredients (null for any other note).
+    recipe: orNull({
+      type: 'object',
+      properties: { serves: orNull({ type: 'string' }), time: orNull({ type: 'string' }), ingredients: { type: 'array', items: { type: 'string' } } },
+      required: ['serves', 'time', 'ingredients'],
+      additionalProperties: false,
+    }),
   },
-  required: ['type', 'title', 'body', 'people', 'tags', 'start', 'end', 'role'],
+  required: ['type', 'title', 'body', 'people', 'tags', 'start', 'end', 'role', 'recipe'],
   additionalProperties: false,
 };
 // How the AI is asked to tag a note, wherever notes are made.
 const TAGS_RULE =
   'tags: 3 to 8 short lowercase words or two-word phrases to find the note by later: its topic (school, health, travel, money, sports…), other words people might search with (dentist → doctor, teeth, appointment), and the kind of thing (birthday, deadline, recipe). People and places go in people and [[links]], not tags.';
+// How the AI is asked to keep a recipe, wherever notes are made: whole, never summed up.
+const RECIPE_RULE =
+  'A recipe (how to cook or bake something) is one note of type "recipe", kept whole and never summed up: title the dish ("Biryani"); body the recipe word for word as given, in Markdown: a line saying whose it is if said ("[[Person A]]’s recipe."), then "## Ingredients" with every ingredient as a "- " line with its amount, then "## Steps" with every step numbered "1.", "2.", then any tips or notes as given. people: whose recipe it is. recipe: serves and time as written (null when not said) and ingredients, one per entry with amounts, as in the body. For any other note recipe is null.';
 export const UNDERSTAND = {
   type: 'object',
   properties: {
@@ -394,9 +404,10 @@ export class Brain {
   }
 
   _save(items, { scope, by }) {
-    return items.map((n) =>
-      this.memory.add({ ...n, data: n.role ? { role: n.role } : null, start: /^\d{4}-\d{2}-\d{2}$/.test(n.start ?? '') ? n.start : null, end: /^\d{4}-\d{2}-\d{2}$/.test(n.end ?? '') ? n.end : null }, { scope, by, now: this.now().getTime() }),
-    );
+    return items.map((n) => {
+      const data = n.type === 'recipe' ? { serves: n.recipe?.serves ?? null, time: n.recipe?.time ?? null, ingredients: n.recipe?.ingredients ?? [] } : n.role ? { role: n.role } : null;
+      return this.memory.add({ ...n, data, start: /^\d{4}-\d{2}-\d{2}$/.test(n.start ?? '') ? n.start : null, end: /^\d{4}-\d{2}-\d{2}$/.test(n.end ?? '') ? n.end : null }, { scope, by, now: this.now().getTime() });
+    });
   }
 
   async _remember(msg) {
@@ -501,7 +512,8 @@ export class Brain {
     const answer = await this._ai(msg.from, {
       system: this._answerPrompt(),
       messages: [{ role: 'user', content: s.mask(this._context(notes, worked, asker, text, { chat, found: this._lastFound(msg.from) })) }],
-      maxTokens: 1500,
+      // Room for a whole recipe when one may be the answer.
+      maxTokens: notes.slice(0, MAX_NOTES_IN_PROMPT).some((n) => n.type === 'recipe') ? 4000 : 1500,
     });
     let out = s.unmask(answer.text).trim() || 'I don’t know yet.';
     if (saved.length) out += `\n\n📌 Remembered: ${saved.map((n) => n.title).join('; ')}`;
@@ -514,12 +526,13 @@ export class Brain {
       `You read messages a family sends their helper, ${this.name}, and say what each one needs. Today is ${iso(d)} (${d.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' })}).`,
       'People and places appear as stand-ins (Person A, Place 1): copy them exactly as written.',
       'Our conversation so far may come first: use it to understand the new message (what “it”, “that” or “this” is, a follow-up question, a correction), but read only the new message for what to do.',
-      'intent: "free_time" when they ask when people are free or available (days = how many days in a row, null if not said); "recall" for a question to answer from what was kept before; "remember" when they tell you something to keep (a fact, a decision, a date, a schedule, who someone is); "tidy" when they ask you to dream, or to tidy, sort, organize, clean up or re-tag what you remember; "list" for a shopping list (what’s on it, add to it, take off it); "reminder" when they ask to be reminded of something far ahead (a registration, renewal, payment, appointment); "about_file" when they say whose or what the file, photo, PDF or calendar they just sent is (“this is my kid’s school calendar”, “it’s for Person B”), and then remember is empty; "other" for anything else.',
-      'list: the store or list name ("Costco", "desi store"), else null. listAction: show, add or remove, else null. items: the things to add or remove, one per entry.',
+      'intent: "free_time" when they ask when people are free or available (days = how many days in a row, null if not said); "recall" for a question to answer from what was kept before (like asking for a recipe); "remember" when they tell you something to keep (a fact, a decision, a date, a schedule, who someone is, a recipe); "tidy" when they ask you to dream, or to tidy, sort, organize, clean up or re-tag what you remember; "list" for a shopping list (what’s on it, add to it, take off it); "reminder" when they ask to be reminded of something far ahead (a registration, renewal, payment, appointment); "about_file" when they say whose or what the file, photo, PDF or calendar they just sent is (“this is my kid’s school calendar”, “it’s for Person B”), and then remember is empty; "other" for anything else.',
+      'list: the store or list name ("Costco", "desi store"), else null. listAction: show, add or remove, else null. items: the things to add or remove, one per entry. To add a recipe’s ingredients (“add what I need for the biryani to Costco”), items is one entry: "ingredients for" and the recipe as they named it ("ingredients for Person A’s biryani").',
       'reminder: for a reminder, its title (short, like "Car registration"), due (YYYY-MM-DD, the next time it falls) and repeat ("yearly" if it comes every year, like a registration or renewal, else "none"); else null.',
       'people: who the message is about, as written ("Person B"), or a group word as written ("kids", "everyone", "kid" for one child not named).',
       'from/to: a date range the question is about, YYYY-MM-DD, or null. keywords: a few words to search notes with.',
-      'remember: notes to keep, only for things stated as facts or decisions (never for questions). One note per thing; title short; body one or two sentences that link people and places as [[Person A]] or [[Place 1]]. For "Person B and Person C are our kids", one person note each with role "kid". Dates as YYYY-MM-DD.',
+      'remember: notes to keep, only for things stated as facts or decisions (never for questions). One note per thing; title short; body one or two sentences (a recipe: all of it, as below) that link people and places as [[Person A]] or [[Place 1]]. For "Person B and Person C are our kids", one person note each with role "kid". Dates as YYYY-MM-DD.',
+      RECIPE_RULE,
       TAGS_RULE,
     ].join('\n');
   }
@@ -529,6 +542,7 @@ export class Brain {
       `You are ${this.name}, a helper for one family. Answer briefly (a few sentences), in the language the question is asked in, using only the notes, results and conversation given.`,
       'Our conversation so far is there so you can follow on from it: answer the new message, not the earlier ones.',
       'If they don’t answer the question, say so plainly and say what to add (for example, which calendar to share). Never invent dates or facts.',
+      'Asked for a recipe, give all of it from its note, not a summary: every ingredient and every step as written, keeping its lists.',
       'People and places are stand-ins (Person A, Place 1): use them exactly as written. Write dates like "Nov 25–29".',
     ].join('\n');
   }
@@ -547,7 +561,8 @@ export class Brain {
     for (const n of notes.slice(0, MAX_NOTES_IN_PROMPT)) {
       const when = n.start ? ` (${n.start === n.end || !n.end ? fmtDay(n.start) : `${fmtDay(n.start)}–${fmtDay(n.end)}`})` : '';
       const role = n.data?.role ? ` [${n.data.role}]` : '';
-      lines.push(`- ${n.type}: ${n.title}${role}${when}: ${(n.body || '').slice(0, 600)}`);
+      // A recipe goes in whole, so it can be given back whole.
+      lines.push(`- ${n.type}: ${n.title}${role}${when}: ${(n.body || '').slice(0, n.type === 'recipe' ? 8000 : 600)}`);
     }
     if (notes.length === 0) lines.push('- (none found)');
     if (worked) lines.push('', 'Worked out from calendars:', worked);
@@ -771,9 +786,11 @@ export class Brain {
         if (!old || dropped.has(fix.ref) || touched.has(old.id)) continue;
         const next = unmaskNote(fix, s);
         const patch = {};
-        if (NOTE_TYPES_DREAM.includes(next.type) && next.type !== old.type) patch.type = next.type;
+        // A recipe stays whole: the dream sees only the start of a long note.
+        const recipe = old.type === 'recipe';
+        if (!recipe && NOTE_TYPES_DREAM.includes(next.type) && next.type !== old.type) patch.type = next.type;
         if (next.title?.trim() && next.title.trim() !== old.title) patch.title = next.title.trim();
-        if (next.body?.trim() && next.body.trim() !== old.body) patch.body = next.body.trim();
+        if (!recipe && next.body?.trim() && next.body.trim() !== old.body) patch.body = next.body.trim();
         const people = [...new Set((next.people ?? []).map((p) => p.trim()).filter(Boolean))];
         if (people.join('|') !== old.people.join('|')) patch.people = people;
         for (const k of ['start', 'end']) if (/^\d{4}-\d{2}-\d{2}$/.test(next[k] ?? '') && next[k] !== old[k]) patch[k] = next[k];
@@ -812,10 +829,10 @@ export class Brain {
       'Each note is "[ref] type | title | dates | role | people", then its text. People and places appear as stand-ins (Person A, Place 1): copy them exactly as written.',
       'The point is that every note can be found again later: right kind, clear title, good tags, links to the people and places in it.',
       'notes: return only the notes you change, each in full (ref, type, title, body, people, tags, start, end, role). A note with no tags or poor tags always needs changing. Fix:',
-      '- type: person (someone), place (a location: a home, school, shop, restaurant, address), event (happens on a date), schedule (repeats, like practice every Tuesday, or a school year), decision (something the family decided), fact (anything else).',
+      '- type: person (someone), place (a location: a home, school, shop, restaurant, address), event (happens on a date), schedule (repeats, like practice every Tuesday, or a school year), decision (something the family decided), recipe (how to cook or bake something), fact (anything else).',
       '- title: short and clear; a person or place note is titled with its name.',
-      '- body: one to three sentences, keeping every fact; link people and places it mentions as [[Person A]] or [[Place 1]]. Never invent anything or drop a fact.',
-      '- people: who the note is about. start/end: YYYY-MM-DD when it has a date (end for a range), else null. role: kid or adult for a person note when the notes say so, else null.',
+      '- body: one to three sentences, keeping every fact; link people and places it mentions as [[Person A]] or [[Place 1]]. Never invent anything or drop a fact. A recipe note’s body stays as it is.',
+      '- people: who the note is about. start/end: YYYY-MM-DD when it has a date (end for a range), else null. role: kid or adult for a person note when the notes say so, else null. recipe: null.',
       `- ${TAGS_RULE}`,
       'merges: notes that say the same thing: keep the best (give its tidied version in notes, with anything the others add) and drop the rest. Only true duplicates.',
       'create: a person or place note for someone or somewhere several notes mention that has no note of its own. Never for anyone or anywhere that already has one.',
@@ -1009,10 +1026,30 @@ export class Brain {
     this.memory.setSetting('shopping', state);
   }
 
+  /** The recipe note best matching "Nani's biryani" that this person can see, or null. */
+  _recipe(dish, by) {
+    return this.memory.lookup({ text: dish, by, archived: true, limit: 40 }).find((n) => n.type === 'recipe') ?? null;
+  }
+
   /** "what's on the Costco list", "add milk to Costco", "remove eggs from Costco", "shopping lists". */
-  async _listCommand(msg, { action, list: name, items }) {
+  async _listCommand(msg, { action, list: name, items, recipe: wanted = null }) {
     const state = this._lists();
     const now = this.now().getTime();
+    // "Add the ingredients for Nani's biryani to Costco": the items come from the recipe note.
+    const dish = action === 'add' ? wanted ?? recipeWanted(items) : null;
+    let recipe = null;
+    if (dish) {
+      recipe = this._recipe(dish, msg.from);
+      if (!recipe) return this.reply(msg, `I don’t have a recipe for ${dish}. Tell me the recipe (or send a photo of it) and I’ll keep it.`);
+      const seen = new Set();
+      items = (recipe.data?.ingredients ?? []).map(shoppingName).filter((i) => {
+        const k = itemKey(i);
+        if (!k || k === 'water' || seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      if (!items.length) return this.reply(msg, `${recipe.title} has no ingredients list. Open it in Memory to add one under “## Ingredients”.`);
+    }
     if (action === 'lists') {
       if (!state.lists.length) return this.reply(msg, '🛒 No shopping lists yet. Say “/' + this.name + ' add milk to the Costco list” or open Shopping lists in the app.');
       return this.reply(msg, `🛒 Shopping lists:\n${state.lists.map((l) => `• ${l.name}: ${l.items.filter((i) => !i.ticked).length} to get`).join('\n')}`);
@@ -1025,7 +1062,8 @@ export class Brain {
     if (action === 'add' && items.length) {
       const added = addItems(state, list, items, msg.from, now);
       this._saveLists(state);
-      return this.reply(msg, added.length ? `🛒 Added to ${list.name}: ${added.map((i) => i.name).join(', ')}.` : `🛒 Already on ${list.name}.`);
+      const from = recipe ? ` for ${recipe.title}` : '';
+      return this.reply(msg, added.length ? `🛒 Added to ${list.name}${from}: ${added.map((i) => i.name).join(', ')}.` : `🛒 Already on ${list.name}${from}.`);
     }
     if (action === 'remove' && items.length) {
       const gone = removeItems(list, items);
@@ -1182,6 +1220,7 @@ export class Brain {
           `📄 ${title}${summary ? `: ${summary}` : ''}`,
           'I’d keep:',
           ...notes.slice(0, 15).map((n) => {
+            if (n.type === 'recipe') return `• ${n.title}: ${recipeSize(n)}`;
             const body = n.body.replace(/\[\[([^\]]+)\]\]/g, '$1').slice(0, 160);
             const when = n.start ? ` (${fmtRange({ start: n.start, end: n.end || n.start })})` : '';
             // "Coach Dana: 555-0100" rather than "Coach Dana: Coach Dana: 555-0100".
@@ -1203,7 +1242,8 @@ export class Brain {
       'title: what the file is, short ("Lincoln Elementary 2026–27 calendar", "Soccer team contacts"). summary: one or two sentences on what it says.',
       'If it is a shop’s receipt: receipt with the store’s name ("Costco") and every item bought, in plain words a family would put on a shopping list ("milk", "paper towels", not codes or prices); then events and notes are empty. Otherwise receipt null.',
       'If it is a calendar or schedule with many dates (a school calendar, a season schedule): calendar true, and events with summary, start and end (YYYY-MM-DD, end null for one day) and off: true for days without school or activity. school: true for a school calendar.',
-      'Otherwise notes: one note per thing worth remembering (a date, a deadline, contact details, a decision, a list, a recipe), each with type, a short title, a body of one to three sentences linking people and places as [[Person A]], people, start/end when dated, and role null. Skip what isn’t worth keeping.',
+      'Otherwise notes: one note per thing worth remembering (a date, a deadline, contact details, a decision, a list, a recipe), each with type, a short title, a body of one to three sentences linking people and places as [[Person A]] (a recipe: all of it, as below), people, start/end when dated, and role null. Skip what isn’t worth keeping.',
+      RECIPE_RULE,
       TAGS_RULE,
     ].join('\n');
   }
@@ -1473,10 +1513,22 @@ function pick(o, keys) {
 
 function rawNote(text, by) {
   const t = String(text || '').trim();
-  return { type: 'fact', title: t.split('\n')[0].slice(0, 60), body: by ? `${t}\n\n(from ${by})` : t, people: [], tags: [], start: null, end: null, role: null };
+  // Ingredients and steps: a recipe, kept as written.
+  const recipe = /\bingredients\b/i.test(t) && /\b(?:steps|method|directions|instructions)\b/i.test(t);
+  return { type: recipe ? 'recipe' : 'fact', title: t.split('\n')[0].slice(0, 60), body: by ? `${t}\n\n(from ${by})` : t, people: [], tags: [], start: null, end: null, role: null, recipe: null };
 }
 
-const NOTE_TYPES_DREAM = ['person', 'place', 'schedule', 'event', 'decision', 'fact'];
+/** "recipe, serves 4, 45 min: 12 ingredients and 8 steps" (from a note as the AI gave it, or as kept). */
+function recipeSize(n) {
+  const d = n.recipe ?? n.data ?? {};
+  const body = n.body || '';
+  const ingredients = d.ingredients?.length || recipeIngredients(body).length;
+  const steps = (body.split(/^(?:#{1,4}\s*)?(?:steps|method|directions|instructions)\b/im)[1] ?? '').match(/^\s*\d+[.)]\s/gm)?.length ?? 0;
+  const about = [d.serves && `serves ${String(d.serves).replace(/^serves\s+/i, '')}`, d.time].filter(Boolean).join(', ');
+  return `recipe${about ? `, ${about}` : ''}: ${ingredients} ingredient${ingredients === 1 ? '' : 's'}${steps ? ` and ${steps} step${steps === 1 ? '' : 's'}` : ''}`;
+}
+
+const NOTE_TYPES_DREAM = ['person', 'place', 'schedule', 'event', 'decision', 'fact', 'recipe'];
 
 /** Notes in groups that fit one AI call; sorted by title, so duplicates land together. */
 function dreamBatches(notes) {
@@ -1498,7 +1550,8 @@ function dreamBatches(notes) {
 }
 
 function unmaskNote(n, s) {
-  return { ...n, title: s.unmask(n.title), body: s.unmask(n.body), people: (n.people ?? []).map((p) => s.unmask(p)), tags: (n.tags ?? []).map((t) => s.unmask(t)) };
+  const recipe = n.recipe && { ...n.recipe, ingredients: (n.recipe.ingredients ?? []).map((i) => s.unmask(String(i))) };
+  return { ...n, title: s.unmask(n.title), body: s.unmask(n.body), people: (n.people ?? []).map((p) => s.unmask(p)), tags: (n.tags ?? []).map((t) => s.unmask(t)), recipe };
 }
 
 /** Notes as Markdown files, one per note, for downloading before the agent is removed. */

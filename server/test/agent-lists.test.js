@@ -1,7 +1,7 @@
 // Shopping lists and reminders, as the helper keeps them.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addItems, createList, doneShopping, emptyLists, findList, listText, parseListCommand, recordBought, removeItems, viewList } from '../src/agent/lists.js';
+import { addItems, createList, doneShopping, emptyLists, findList, listText, parseListCommand, recipeWanted, recordBought, removeItems, shoppingName, viewList } from '../src/agent/lists.js';
 import { addReminder, dueMessage, markDone, nextYear } from '../src/agent/reminders.js';
 
 test('lists: one per store; items once each; usual items first and suggested', () => {
@@ -56,4 +56,15 @@ test('reminders: 30, 7, 1 days before, on the day, then every 3 days; yearly one
   markDone(late, 'mom', 2);
   assert.equal(late.done, true);
   assert.equal(nextYear('2028-02-29'), '2029-02-28');
+});
+
+test('a recipe’s ingredients for a list: which recipe, and each ingredient as you’d shop for it', () => {
+  assert.deepEqual(parseListCommand('add the ingredients for mac and cheese to the Costco list'), { action: 'add', list: 'Costco', items: [], recipe: 'mac and cheese' });
+  assert.deepEqual(parseListCommand('add milk and eggs to costco'), { action: 'add', list: 'costco', items: ['milk', 'eggs'] });
+  assert.equal(recipeWanted(['ingredients for Nani’s biryani']), 'Nani’s biryani');
+  assert.equal(recipeWanted(['the biryani recipe ingredients']), 'biryani');
+  assert.equal(recipeWanted(['paneer', 'chai']), null);
+  assert.equal(recipeWanted(['paneer']), null);
+  const shop = ['2 cups basmati rice, washed', 'salt to taste', '3 cloves garlic', '½ tsp turmeric', '1 kg chicken (bone-in)', 'a pinch of saffron', '2-3 green chillies', 'apple', 'an onion', '1 can coconut milk', '6 cloves'];
+  assert.deepEqual(shop.map(shoppingName), ['basmati rice', 'salt', 'garlic', 'turmeric', 'chicken', 'saffron', 'green chillies', 'apple', 'onion', 'coconut milk', '6 cloves']);
 });
