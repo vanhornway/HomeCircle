@@ -13,8 +13,14 @@ const TOP = 8;
 
 export type Stay = { lat: number; lng: number; start: number; end: number };
 type Current = { lat: number; lng: number; start: number; last: number; n: number };
-/** What you (or the phone's map lookup) called a place, matched by distance. */
-export type Label = { lat: number; lng: number; name?: string; kind?: FrequentKind; hidden?: boolean; auto?: { name: string; kind: FrequentKind } };
+/**
+ * What you (or the phone's map lookup) called a place, matched by distance.
+ * `triedAt`: when a lookup last found nothing useful, so it's tried again later
+ * rather than every time (or never).
+ */
+export type Label = { lat: number; lng: number; name?: string; kind?: FrequentKind; hidden?: boolean; auto?: { name: string; kind: FrequentKind }; triedAt?: number };
+/** A named spot to describe others by: the circle's places (with their radius) or your own named ones. */
+export type Anchor = { name: string; lat: number; lng: number; radius?: number };
 export type VisitData = { stays: Stay[]; current: Current | null; labels: Label[] };
 export type Cluster = { lat: number; lng: number; ms: number; visits: number; nightMs: number; weekdayMs: number; lastAt: number };
 export type MyPlace = FrequentPlace & { hidden: boolean; named: boolean };
@@ -124,38 +130,104 @@ export const KIND_NAMES: Record<FrequentKind, string> = {
   other: 'Place',
 };
 
-/** A name and kind from a map lookup result (Android's geocoder). */
-export function classify(a: { name?: string | null; street?: string | null; district?: string | null; city?: string | null }): { name: string; kind: FrequentKind } {
+/** A name and kind from a map lookup result (Android's geocoder); no name when it gave nothing to go on. */
+export function classify(a: {
+  name?: string | null;
+  street?: string | null;
+  district?: string | null;
+  subregion?: string | null;
+  city?: string | null;
+}): { name: string | null; kind: FrequentKind } {
   // `name` is often a business ("Costco Wholesale"); sometimes just a house number or the street.
   const poi = a.name && !/^\d+[a-z]?$/i.test(a.name.trim()) && a.name !== a.street ? a.name.trim() : null;
   const text = [poi, a.street, a.district].filter(Boolean).join(' ');
   const kind = KEYWORDS.find(([, re]) => re.test(text))?.[0] ?? 'other';
-  const name = poi || (a.street ? `Near ${a.street}` : a.city || 'Place');
-  return { name: name.slice(0, 40), kind };
+  const area = a.district || a.city || a.subregion;
+  const name = poi || (a.street ? `Near ${a.street}` : area ? `Near ${area}` : null);
+  return { name: name ? name.slice(0, 40) : null, kind };
 }
 
-/** Name the top places: your names first, then Home/Work/School by time pattern, then the map lookup. */
-export function nameClusters(clusters: Cluster[], labels: Label[]): MyPlace[] {
+/** What a place's name says it is ("Home", "Maple Grove Elementary" → school), or null. */
+export function kindFromName(name: string): FrequentKind | null {
+  if (/\bhome\b/i.test(name)) return 'home';
+  if (/\b(work|office)\b/i.test(name)) return 'work';
+  return KEYWORDS.find(([, re]) => re.test(name))?.[0] ?? null;
+}
+
+/** The circle place a spot is in (its radius, plus GPS slack), nearest first. */
+export function placeAt(p: { lat: number; lng: number }, anchors: Anchor[]): Anchor | null {
+  return (
+    anchors
+      .filter((a) => a.radius != null && distM(a, p) <= a.radius + 50)
+      .sort((a, b) => distM(a, p) - distM(b, p))[0] ?? null
+  );
+}
+
+const COMPASS = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'];
+function compass(from: { lat: number; lng: number }, to: { lat: number; lng: number }) {
+  const y = Math.sin(((to.lng - from.lng) * Math.PI) / 180) * Math.cos((to.lat * Math.PI) / 180);
+  const x =
+    Math.cos((from.lat * Math.PI) / 180) * Math.sin((to.lat * Math.PI) / 180) -
+    Math.sin((from.lat * Math.PI) / 180) * Math.cos((to.lat * Math.PI) / 180) * Math.cos(((to.lng - from.lng) * Math.PI) / 180);
+  const deg = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+  return COMPASS[Math.round(deg / 45) % 8];
+}
+
+/**
+ * A spot with no name of its own, described by the nearest named one within
+ * 25 miles: "By Home", "1.2 mi northwest of Home". Null when nothing's near.
+ */
+export function describeNear(p: { lat: number; lng: number }, anchors: Anchor[]): string | null {
+  const near = anchors.filter((a) => a.name).sort((a, b) => distM(a, p) - distM(b, p))[0];
+  if (!near) return null;
+  const miles = distM(near, p) / 1609.344;
+  if (miles > 25) return null;
+  if (miles < 0.15) return `By ${near.name}`;
+  return `${miles < 10 ? miles.toFixed(1) : Math.round(miles)} mi ${compass(near, p)} of ${near.name}`;
+}
+
+/** A most visited place's name to show: its own, else the circle place it's in, else where it is. */
+export function spotName(p: { name: string; lat: number; lng: number }, anchors: Anchor[]): string {
+  if (p.name && p.name !== KIND_NAMES.other) return p.name;
+  return placeAt(p, anchors)?.name ?? describeNear(p, anchors) ?? 'Unnamed place';
+}
+
+/**
+ * Name the top places: your names first, then the circle place it's in, then
+ * Home/Work/School by time pattern, then the map lookup, and last where it is
+ * from the nearest named spot ("1.2 mi north of Home").
+ */
+export function nameClusters(clusters: Cluster[], labels: Label[], places: Anchor[] = []): MyPlace[] {
   // Home: where most nights are spent. Work or School: weekday working hours.
   const home = [...clusters].sort((a, b) => b.nightMs - a.nightMs)[0];
   const isHome = (c: Cluster) => c === home && c.nightMs >= 10 * 3600_000;
   const workday = clusters.filter((c) => !isHome(c)).sort((a, b) => b.weekdayMs - a.weekdayMs)[0];
   const isWork = (c: Cluster) => c === workday && c.weekdayMs >= 8 * 3600_000;
-  return clusters.map((c) => {
+  const named = clusters.map((c) => {
     const label = labelFor(labels, c);
-    const auto = label?.auto;
+    const auto = label?.auto?.name && label.auto.name !== KIND_NAMES.other ? label.auto : undefined;
     let kind: FrequentKind = label?.kind ?? auto?.kind ?? 'other';
-    let name = label?.name ?? auto?.name ?? 'Place';
+    let name = label?.name ?? auto?.name ?? '';
     if (!label?.name && !label?.kind) {
+      const saved = placeAt(c, places);
       if (isHome(c)) {
         kind = 'home';
-        name = 'Home';
+        name = saved?.name ?? 'Home';
       } else if (isWork(c)) {
-        kind = auto?.kind === 'school' ? 'school' : 'work';
-        // A real business or school name beats a bare "Work".
-        name = auto && auto.kind !== 'other' && !auto.name.startsWith('Near ') ? auto.name : KIND_NAMES[kind];
+        kind = auto?.kind === 'school' || (saved && kindFromName(saved.name) === 'school') ? 'school' : 'work';
+        // A real place, business or school name beats a bare "Work".
+        name = saved?.name ?? (auto && auto.kind !== 'other' && !auto.name.startsWith('Near ') ? auto.name : KIND_NAMES[kind]);
+      } else if (saved) {
+        name = saved.name;
+        kind = kindFromName(saved.name) ?? kind;
       }
     }
+    return { c, label, kind, name };
+  });
+  // Still nameless: described from the circle's places and the ones named above.
+  const anchors: Anchor[] = [...places, ...named.filter((x) => x.name).map((x) => ({ name: x.name, lat: x.c.lat, lng: x.c.lng }))];
+  return named.map(({ c, label, kind, name: given }) => {
+    const name = given || describeNear(c, anchors) || 'Unnamed place';
     return {
       id: `${c.lat.toFixed(4)},${c.lng.toFixed(4)}`,
       name,

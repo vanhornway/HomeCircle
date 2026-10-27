@@ -11,7 +11,7 @@ import nacl from 'tweetnacl';
 import { fromB64, toB64, utf8Decode, utf8Encode, type CircleClient, type FrequentKind } from '@homecircle/core';
 import { diag } from './diagnostics';
 import { getSettings } from './storage';
-import { addFix, classify, emptyData, KIND_NAMES, labelFor, nameClusters, topClusters, type Label, type MyPlace, type VisitData } from './visitsCore';
+import { addFix, classify, emptyData, KIND_NAMES, labelFor, nameClusters, topClusters, type Anchor, type Label, type MyPlace, type VisitData } from './visitsCore';
 
 export type { MyPlace } from './visitsCore';
 
@@ -76,46 +76,61 @@ export function recordFix(lat: number, lng: number, accuracy: number | null, ts 
   return update((d) => addFix(d, lat, lng, accuracy, ts));
 }
 
-/** Best guess at a place's name and kind from the phone's map lookup (Google's geocoder on Android). */
+// A lookup that found nothing useful (offline, or a spot with no street or
+// business) is tried again a day later, not remembered as nameless.
+const RETRY_LOOKUP_MS = 24 * 3600_000;
+
+/** Best guess at a place's name and kind from the phone's map lookup (Google's geocoder on Android); null if it gave nothing. */
 async function lookUp(lat: number, lng: number): Promise<{ name: string; kind: FrequentKind } | null> {
   try {
     const [a] = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
-    return a ? classify(a) : null;
+    const found = a ? classify(a) : null;
+    return found?.name ? { name: found.name, kind: found.kind } : null;
   } catch {
     return null;
   }
 }
 
+/** The circle places on this phone, to name and describe most visited places by. */
+export function circlePlaces(clients: CircleClient[]): Anchor[] {
+  return clients.flatMap((c) => [...c.places.values()].map((p) => ({ name: p.name, lat: p.lat, lng: p.lng, radius: p.radius })));
+}
+
 /**
  * Your most visited places over the last 30 days, best first, named. Looks up
- * names it doesn't have yet and remembers them.
+ * names it doesn't have yet and remembers them. `places`: the circle's places,
+ * which name a most visited place inside one ("Maple Grove Elementary").
  */
-export async function myPlaces({ lookUpNames = true } = {}): Promise<MyPlace[]> {
+export async function myPlaces({ lookUpNames = true, places = [] as Anchor[] } = {}): Promise<MyPlace[]> {
   const d = await read();
-  const clusters = topClusters(d, Date.now());
+  const now = Date.now();
+  const clusters = topClusters(d, now);
   const found: Label[] = [];
   if (lookUpNames) {
     for (const c of clusters) {
-      if (labelFor(d.labels, c)?.auto) continue;
+      const label = labelFor(d.labels, c);
+      // Already named by a lookup (an old empty "Place" doesn't count), or tried lately.
+      if (label?.auto?.name && label.auto.name !== KIND_NAMES.other) continue;
+      if (label?.triedAt && now - label.triedAt < RETRY_LOOKUP_MS) continue;
       const auto = await lookUp(c.lat, c.lng);
-      if (auto) found.push({ lat: c.lat, lng: c.lng, auto });
+      found.push(auto ? { lat: c.lat, lng: c.lng, auto } : { lat: c.lat, lng: c.lng, triedAt: now });
     }
   }
-  if (found.length) {
-    await update((x) => {
-      for (const f of found) {
-        const existing = labelFor(x.labels, f);
-        if (existing) existing.auto = f.auto;
-        else x.labels.push(f);
-      }
-    });
+  const remember = (labels: Label[]) => {
     for (const f of found) {
-      const existing = labelFor(d.labels, f);
-      if (existing) existing.auto = f.auto;
-      else d.labels.push(f);
+      const existing = labelFor(labels, f);
+      if (existing) {
+        if (f.auto) existing.auto = f.auto;
+        else if (existing.auto?.name === KIND_NAMES.other) delete existing.auto;
+        existing.triedAt = f.auto ? undefined : f.triedAt;
+      } else labels.push(f);
     }
+  };
+  if (found.length) {
+    await update((x) => remember(x.labels));
+    remember(d.labels);
   }
-  return nameClusters(clusters, d.labels);
+  return nameClusters(clusters, d.labels, places);
 }
 
 /** Rename a place (or go back to the guess with null), or hide/show it. */
@@ -158,7 +173,7 @@ export async function shareMyPlaces(clients: CircleClient[], { force = false } =
   const last = Number((await AsyncStorage.getItem(SHARED_KEY)) || 0);
   if (!force && Date.now() - last < SHARE_EVERY_MS) return;
   const settings = await getSettings();
-  const visible = (await myPlaces()).filter((p) => !p.hidden);
+  const visible = (await myPlaces({ places: circlePlaces(clients) })).filter((p) => !p.hidden);
   const shareTo = (c: CircleClient) =>
     settings.shareFrequent && settings.sharing && !settings.pausedCircles.includes(c.circleId!) && !settings.approximateCircles.includes(c.circleId!);
   const results = await Promise.allSettled(
