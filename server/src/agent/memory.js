@@ -113,6 +113,10 @@ const CODE_WORDS =
 // "the door code is 4821", "password: hunter2", "alarm code 4821" (a bare value needs a digit). Not zip codes and the like.
 const CODE_RE = new RegExp(`(?<!\\b(?:zip|post|postal|area|country|dress|promo|discount|source|bar|qr|dial(?:ling)?)\\s)\\b(${CODE_WORDS})(\\s*(?:is|was|=|:)\\s*|\\s+(?=\\S*\\d))([^\\s,;]+)`, 'gi');
 const PHONE_BEFORE = /(?:phone|tel|telephone|call|cell|mobile|text|fax|whatsapp)\b[^\n\d]{0,12}$/i;
+// Words that say a long number is an account or an ID, not a phone number.
+const ID_BEFORE = /(?:account|acct|a\/c|routing|iban|id|passport|licen[cs]e|dl|policy|member(?:ship)?|card|ssn|social security|tax|ein|itin|customer|patient|mrn|insurance|reference|ref)\b[^\n\d]{0,12}$/i;
+// "the code is in the drawer", "the password is on the fridge": not a secret, just words.
+const NOT_A_VALUE = /^(?:in|on|at|under|inside|behind|by|with|written|taped|stuck|the|a|an|my|your|our|his|her|their|same|simple|easy|not|still|new|old|changed|below|above|here|there|it|this|that|from|for|to|of|and|or|now|always|never|saved|stored|kept|somewhere|blank|empty)$/i;
 
 /** Text with secrets taken out: { text, found } (found is true when anything was). */
 export function scrubSecrets(text, { numbers = true } = {}) {
@@ -124,16 +128,26 @@ export function scrubSecrets(text, { numbers = true } = {}) {
   let t = String(text ?? '').replace(CODE_RE, (m, word, sep, value) => {
     // "code is 4821." keeps its full stop.
     const end = value.match(/[.!?)]+$/)?.[0] ?? '';
-    return value.slice(0, value.length - end.length) === '[not' ? m : hit(`${word}${sep}[not kept]${end}`);
+    const v = value.slice(0, value.length - end.length);
+    if (v === '[not' || NOT_A_VALUE.test(v)) return m;
+    // A plain "pin" or "code" is a secret only when what follows looks like one ("PIN 0042"), not "hold the reset pin 10 seconds".
+    if (/^(?:pins?|codes?)$/i.test(word) && !/^\d{3,8}#?$/.test(v)) return m;
+    return hit(`${word}${sep}[not kept]${end}`);
   });
   if (numbers) {
     t = t
       // Social Security numbers.
       .replace(/\b\d{3}-\d{2}-\d{4}\b/g, (m) => hit(keepLast4(m.replace(/\D/g, ''))))
       // Card numbers, with or without spaces or dashes.
-      .replace(/\b\d(?:[ -]?\d){12,18}\b/g, (m) => (luhn(m.replace(/\D/g, '')) ? hit(keepLast4(m.replace(/\D/g, ''))) : m))
-      // Account, ID and passport numbers: 9 or more digits in a row, unless it's a phone number.
-      .replace(/(\+?)\b\d{9,}\b/g, (m, plus, at, all) => (plus || PHONE_BEFORE.test(all.slice(Math.max(0, at - 24), at)) ? m : hit(keepLast4(m))))
+      .replace(/\b\d(?:[ -]?\d){12,18}\b/g, (m, at, all) => (luhn(m.replace(/\D/g, '')) && !PHONE_BEFORE.test(all.slice(Math.max(0, at - 24), at)) ? hit(keepLast4(m.replace(/\D/g, ''))) : m))
+      // Account, ID and passport numbers: 9 or more digits in a row. One that says it's an
+      // account or ID always goes; otherwise phone numbers stay (said to be one, starting with +,
+      // or 10 to 13 digits: "Dr. Lee 4085551234", "Nani 923001234567").
+      .replace(/(\+?)\b\d{9,}\b/g, (m, plus, at, all) => {
+        const before = all.slice(Math.max(0, at - 24), at);
+        if (ID_BEFORE.test(before)) return hit(keepLast4(m));
+        return plus || PHONE_BEFORE.test(before) || (m.length >= 10 && m.length <= 13) ? m : hit(keepLast4(m));
+      })
       // Letters then digits, like a passport or licence number (X12345678).
       .replace(/\b[A-Z]{1,2}\d{6,9}\b/g, (m) => hit(keepLast4(m.replace(/\D/g, ''))));
   }

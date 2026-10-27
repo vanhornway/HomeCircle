@@ -128,6 +128,17 @@ test('secrets: passwords and codes go, numbers keep their last 4 digits; phone n
     'Flight BA287 at 2026-12-20 14:05, confirmation ABC123': 'Flight BA287 at 2026-12-20 14:05, confirmation ABC123',
     'Fridge RF28R7351SR takes a 16x25x1 filter': 'Fridge RF28R7351SR takes a 16x25x1 filter',
     'The code changed last week; pin it up': 'The code changed last week; pin it up',
+    // Phone numbers without dashes, and codes or pins that are only words.
+    'Dentist: Dr. Lee 4085551234': 'Dentist: Dr. Lee 4085551234',
+    'Nani 923001234567': 'Nani 923001234567',
+    'The door code is in the drawer': 'The door code is in the drawer',
+    'The password is on the fridge': 'The password is on the fridge',
+    'Hold the reset pin 10 seconds': 'Hold the reset pin 10 seconds',
+    'Bobby pins 2 packs': 'Bobby pins 2 packs',
+    // Still secrets.
+    'Member ID 4085551234': 'Member ID ending 1234',
+    'SSN 123456789': 'SSN ending 6789',
+    'Unlock code 4821#': 'Unlock code [not kept]',
   };
   for (const [given, kept] of Object.entries(cases)) assert.equal(scrubSecrets(given).text, kept, given);
   assert.equal(scrubSecrets('Alarm code 4821').found, true);
