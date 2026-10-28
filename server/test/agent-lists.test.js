@@ -1,7 +1,7 @@
 // Shopping lists and reminders, as the helper keeps them.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addItems, createList, doneShopping, emptyLists, findList, listText, parseListCommand, recipeWanted, recordBought, removeItems, shoppingName, viewList } from '../src/agent/lists.js';
+import { MAX_USUAL, addItems, createList, doneShopping, emptyLists, findList, itemKey, listText, parseListCommand, recipeWanted, recordBought, removeItems, shoppingName, viewList } from '../src/agent/lists.js';
 import { addMonths, addReminder, canSeeReminder, cleanReminder, dueMessage, markDone, nextYear, reminderLine } from '../src/agent/reminders.js';
 
 test('lists: one per store; items once each; usual items first and suggested', () => {
@@ -18,6 +18,30 @@ test('lists: one per store; items once each; usual items first and suggested', (
   assert.deepEqual(v.items.map((i) => i.name), ['Milk', 'eggs', 'Bananas', 'paper towels']);
   // Coffee was bought twice and isn't on the list: suggested.
   assert.deepEqual(v.usual, [{ name: 'coffee', count: 2 }]);
+});
+
+test('lists: everything from a receipt is offered back, up to 300; a new receipt adds what is new', () => {
+  const s = emptyLists();
+  const costco = createList(s, 'Costco', 'mom', 1);
+  recordBought(s, costco, Array.from({ length: 120 }, (_, i) => `item ${i + 1}`), 10);
+  // One receipt: every item is offered, not just what's bought twice.
+  assert.equal(viewList(s, costco).usual.length, 120);
+  // A newer receipt with some of the same and some new: the new ones join, the repeats move up.
+  recordBought(s, costco, ['item 5', 'item 7', 'rotisserie chicken', 'olive oil'], 20);
+  const v = viewList(s, costco);
+  assert.equal(v.usual.length, 122);
+  assert.deepEqual(v.usual.slice(0, 2).map((u) => u.name), ['item 5', 'item 7']);
+  assert.ok(v.usual.some((u) => u.name === 'rotisserie chicken'));
+  // What's on the list isn't offered.
+  addItems(s, costco, ['olive oil'], 'mom', 30);
+  assert.ok(!viewList(s, costco).usual.some((u) => u.name === 'olive oil'));
+  // Up to 300 offered; past 500 known, the least bought and oldest are forgotten.
+  recordBought(s, costco, Array.from({ length: 450 }, (_, i) => `more ${i}`), 40);
+  assert.equal(viewList(s, costco).usual.length, MAX_USUAL);
+  assert.equal(Object.keys(s.bought[costco.id]).length, 500);
+  assert.ok(s.bought[costco.id][itemKey('item 5')], 'bought twice: kept');
+  // In chat, only what's bought again and again.
+  assert.match(listText(s, costco), /Usually also: item 5, item 7$/);
 });
 
 test('lists: tick, then Done shopping clears what was ticked and counts it', () => {

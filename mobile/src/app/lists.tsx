@@ -12,8 +12,12 @@ type List = { id: string; name: string; createdBy: string; items: Item[]; usual:
 /**
  * The circle's shopping lists, kept by its helper: one per store. Anyone adds,
  * ticks and removes; Done shopping clears what was ticked and counts it as
- * bought, so usual items go first and are suggested.
+ * bought, so usual items go first. Everything bought there before (receipts
+ * too) is offered to pick from; typing in the add box narrows it.
  */
+// What's bought before, shown before "Show all".
+const FIRST_USUAL = 24;
+
 export default function ShoppingLists() {
   const t = useTheme();
   const client = useCircle(['circle']);
@@ -26,6 +30,7 @@ export default function ShoppingLists() {
   // Naming a new list (a field under the list chips).
   const [naming, setNaming] = useState(false);
   const [newName, setNewName] = useState('');
+  const [allUsual, setAllUsual] = useState(false);
 
   const run = useCallback(
     (op: string, args: Record<string, unknown> = {}) => {
@@ -54,13 +59,17 @@ export default function ShoppingLists() {
 
   const newList = () => setNaming(true);
 
-  const add = async (names: string) => {
+  // From the box (cleared after), or one picked from what's bought before (the search stays).
+  const add = async (names: string, { fromBox = true } = {}) => {
     if (!list || !names.trim()) return;
     setBusy(true);
     await run('itemAdd', { listId: list.id, names: names.split(',').map((s) => s.trim()).filter(Boolean) });
     setBusy(false);
-    setAdding('');
+    if (fromBox) setAdding('');
   };
+  const search = adding.trim().toLowerCase();
+  const matching = list ? (search ? list.usual.filter((u) => u.name.toLowerCase().includes(search)) : list.usual) : [];
+  const shownUsual = allUsual || search ? matching : matching.slice(0, FIRST_USUAL);
 
   const listMenu = (l: List) =>
     Alert.alert(l.name, undefined, [
@@ -163,7 +172,7 @@ export default function ShoppingLists() {
                     <TextInput
                       value={adding}
                       onChangeText={setAdding}
-                      placeholder={`Add to ${list.name} (milk, eggs…)`}
+                      placeholder={`Add to ${list.name}, or search what you get`}
                       placeholderTextColor={t.muted}
                       returnKeyType="done"
                       onSubmitEditing={() => add(adding)}
@@ -171,22 +180,29 @@ export default function ShoppingLists() {
                     />
                     <Button small variant="primary" title="Add" loading={busy} disabled={!adding.trim()} onPress={() => add(adding)} />
                   </View>
-                  {list.usual.length ? (
+                  {matching.length ? (
                     <View style={{ gap: 6 }}>
-                      <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700' }}>YOU USUALLY GET</Text>
+                      <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700' }}>
+                        YOU USUALLY GET{list.usual.length > FIRST_USUAL ? ` · ${search ? `${matching.length} OF ` : ''}${list.usual.length}` : ''}
+                      </Text>
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                        {list.usual.map((u) => (
+                        {shownUsual.map((u) => (
                           <Pressable
                             key={u.name}
                             accessibilityRole="button"
                             accessibilityLabel={`Add ${u.name}`}
-                            onPress={() => add(u.name)}
+                            onPress={() => add(u.name, { fromBox: false })}
                             style={{ minHeight: 34, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, backgroundColor: t.surface2 }}
                           >
                             <Text style={{ color: t.text }}>+ {u.name}</Text>
                           </Pressable>
                         ))}
                       </View>
+                      {!search && matching.length > FIRST_USUAL ? (
+                        <Pressable accessibilityRole="button" onPress={() => setAllUsual((v) => !v)} style={{ minHeight: 40, justifyContent: 'center' }}>
+                          <Text style={{ color: t.brand, fontWeight: '600' }}>{allUsual ? 'Show fewer' : `Show all ${matching.length}`}</Text>
+                        </Pressable>
+                      ) : null}
                     </View>
                   ) : null}
                 </View>

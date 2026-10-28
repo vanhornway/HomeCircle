@@ -1335,7 +1335,7 @@ export class Brain {
       `You read a file a family sent their helper, ${this.name}: a photo, a scan, a document or a spreadsheet. Today is ${this.today()}.`,
       'Read all of it, including handwriting and text in pictures. People and places in text appear as stand-ins (Person A, Place 1): copy them exactly as written.',
       'title: what the file is, short ("Lincoln Elementary 2026–27 calendar", "Soccer team contacts"). summary: one or two sentences on what it says.',
-      'If it is a shop’s receipt: receipt with the store’s name ("Costco") and every item bought, in plain words a family would put on a shopping list ("milk", "paper towels", not codes or prices); then events and notes are empty. Otherwise receipt null.',
+      'If it is a shop’s receipt, order history or a list of what is bought at a store: receipt with the store’s name ("Costco") and every item on it, however many (all pages), in plain words a family would put on a shopping list ("milk", "paper towels", not codes or prices); then events and notes are empty. Otherwise receipt null.',
       'If it is a calendar or schedule with many dates (a school calendar, a season schedule): calendar true, and events with summary, start and end (YYYY-MM-DD, end null for one day) and off: true for days without school or activity. school: true for a school calendar.',
       'Otherwise notes: one note per thing worth remembering (a date, a deadline, contact details, a decision, a list, a recipe), each with type, a short title, a body of one to three sentences linking people and places as [[Person A]] (a recipe: all of it, as below), people, start/end when dated, and role null. Skip what isn’t worth keeping.',
       RECIPE_RULE,

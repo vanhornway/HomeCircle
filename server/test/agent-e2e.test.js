@@ -592,9 +592,12 @@ test('shopping lists: in chat and from the app; a receipt counts as bought and p
   await mom.answerAgentFile(ask.body.fileChoice.id, false, { peer });
   lists = await mom.agentRpc('itemAdd', { listId: costco.id, names: ['batteries', 'Eggs'] });
   const view = lists.find((l) => l.id === costco.id);
-  // Eggs were bought twice (Done shopping and the receipt): first. Paper towels, once: not suggested yet.
+  // Eggs were bought twice (Done shopping and the receipt): first. Everything else from the receipt is offered back.
   assert.deepEqual(view.items.map((i) => i.name), ['Eggs', 'batteries']);
-  assert.deepEqual(view.usual, []);
+  assert.deepEqual(view.usual, [
+    { name: 'Milk', count: 1 },
+    { name: 'Paper towels', count: 1 },
+  ]);
   await mom.askAgent("what's on the Costco list?");
   await until(mom, (c) => (lastFromAgent(c)?.body.text === '🛒 Costco:\n• Eggs\n• batteries' ? 1 : null));
 });

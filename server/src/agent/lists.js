@@ -1,12 +1,17 @@
 // Shopping lists, kept by the circle's helper (in its encrypted memory).
 // One list per store (Costco, the desi store…); anyone in the circle adds,
 // ticks and removes items. "Done shopping" clears what was ticked and counts
-// it as bought; receipts count too. What's bought most often is "usual":
-// it goes to the top of the list and is suggested when it isn't on it.
+// it as bought; receipts count too. Everything ever bought at a store is
+// offered back to pick from, most often bought first, and what's bought
+// most goes to the top of the list.
 import { randomBytes } from 'node:crypto';
 
 const MAX_LISTS = 30;
 const MAX_ITEMS = 200;
+// Items offered back per store, and items remembered per store (the least
+// bought, longest ago, are forgotten past that).
+export const MAX_USUAL = 300;
+const MAX_KNOWN = 500;
 const id = () => randomBytes(6).toString('base64url');
 
 /** "Eggs ", "egg", "EGGS" → "egg"; "berries" → "berry". For matching only. */
@@ -78,6 +83,11 @@ export function recordBought(state, list, names, now) {
     e.count += 1;
     e.last = now;
   }
+  const keys = Object.keys(h);
+  if (keys.length > MAX_KNOWN) {
+    keys.sort((a, b) => h[a].count - h[b].count || h[a].last - h[b].last);
+    for (const k of keys.slice(0, keys.length - MAX_KNOWN)) delete h[k];
+  }
 }
 
 /** Done shopping: ticked items leave the list and count as bought. Returns how many. */
@@ -90,14 +100,18 @@ export function doneShopping(state, list, now) {
 
 const usualCount = (state, list, name) => state.bought[list.id]?.[itemKey(name)]?.count ?? 0;
 
-/** A list to show: unticked first, the usual ones at the top, and usual items that aren't on it. */
-export function viewList(state, list, { suggest = 8 } = {}) {
+/**
+ * A list to show: unticked first, the usual ones at the top, and what's been
+ * bought there before that isn't on it (most often first; `minCount` 2 for
+ * only what's bought again and again).
+ */
+export function viewList(state, list, { suggest = MAX_USUAL, minCount = 1 } = {}) {
   const items = [...list.items]
     .map((i) => ({ ...i, usual: usualCount(state, list, i.name) }))
     .sort((a, b) => Number(a.ticked) - Number(b.ticked) || b.usual - a.usual || a.at - b.at);
   const on = new Set(list.items.map((i) => itemKey(i.name)));
   const usual = Object.entries(state.bought[list.id] ?? {})
-    .filter(([k, e]) => !on.has(k) && e.count >= 2)
+    .filter(([k, e]) => !on.has(k) && e.count >= minCount)
     .sort((a, b) => b[1].count - a[1].count || b[1].last - a[1].last)
     .slice(0, suggest)
     .map(([, e]) => ({ name: e.name, count: e.count }));
@@ -106,7 +120,7 @@ export function viewList(state, list, { suggest = 8 } = {}) {
 
 /** For chat: "Costco: milk, eggs (2 ticked)". */
 export function listText(state, list) {
-  const v = viewList(state, list, { suggest: 5 });
+  const v = viewList(state, list, { suggest: 5, minCount: 2 });
   const open = v.items.filter((i) => !i.ticked);
   const lines = [`🛒 ${v.name}${open.length ? ':' : ' is empty.'}`, ...open.map((i) => `• ${i.name}`)];
   const ticked = v.items.length - open.length;
