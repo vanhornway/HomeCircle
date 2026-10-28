@@ -173,3 +173,18 @@ test('bad replies and odd values are refused or cleaned', async () => {
   assert.deepEqual(CALLBACK_REPLIES, ['now', '5min', 'morning', 'evening']);
   assert.deepEqual(errors, []);
 });
+
+test('a background task (no member list loaded) still knows which requests to remind about', async () => {
+  const req = await ammi.askCallback({ tz: 'Asia/Karachi', remind: 15 });
+  const bg = new CircleClient({ storage: hamza.storage, onError: (e) => errors.push(e) });
+  await bg.load();
+  await bg.fetchMessages();
+  assert.equal(bg.members.size, 0);
+  const s = bg.callbacksAwaitingMe().find((x) => x.id === req);
+  assert.deepEqual([s.id, s.name, s.remind], [req, 'Ammi', 15]);
+  await umair.fetchMessages();
+  await umair.replyCallback(req, 'now');
+  await bg.fetchMessages();
+  assert.equal(bg.callbacksAwaitingMe().some((x) => x.id === req), false);
+  assert.deepEqual(errors, []);
+});

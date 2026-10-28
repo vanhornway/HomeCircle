@@ -1510,7 +1510,14 @@ export class CircleClient {
 
   _callbackRequest(id) {
     const m = this.messages.find((x) => x.id === id && x.kind === 'chat' && !x.peer && x.body?.callback?.state === 'ask');
-    return m && this.members.get(m.from) ? m : null;
+    return m && this._callbackName(m.from) ? m : null;
+  }
+
+  /** A member's name, or null if they left. Background tasks have only the pinned names. */
+  _callbackName(id) {
+    const m = this.members.get(id);
+    if (m) return m.removed ? null : m.name;
+    return this.account?.known[id]?.name ?? null;
   }
 
   /**
@@ -1527,14 +1534,15 @@ export class CircleClient {
     for (const m of this.messages) {
       const r = m.kind === 'chat' && !m.peer && m.seq > req.seq ? m.body?.callback : null;
       if (!r || r.state !== 'reply' || r.of !== requestId || !CALLBACK_REPLIES.includes(r.reply)) continue;
-      if (m.from === req.from || !this.members.get(m.from)) continue;
-      replies.set(m.from, { memberId: m.from, name: this.members.get(m.from).name, reply: r.reply, ts: m.ts, seq: m.seq });
-      if (r.reply === 'now' && !takenBy) takenBy = { memberId: m.from, name: this.members.get(m.from).name, ts: m.ts };
+      const name = m.from === req.from ? null : this._callbackName(m.from);
+      if (!name) continue;
+      replies.set(m.from, { memberId: m.from, name, reply: r.reply, ts: m.ts, seq: m.seq });
+      if (r.reply === 'now' && !takenBy) takenBy = { memberId: m.from, name, ts: m.ts };
     }
     return {
       id: req.id,
       from: req.from,
-      name: this.members.get(req.from).name,
+      name: this._callbackName(req.from),
       ts: req.ts,
       seq: req.seq,
       for: asked,

@@ -12,6 +12,7 @@ import { allClients } from './circle';
 import { conversationKey } from './unread';
 import { previewText } from './polls';
 import { alertSos, ensureSosChannels, stopAlarm } from './sosAlarm';
+import { ensureCallbackChannel, notifyCallback, syncCallbackReminders } from './callbacks';
 
 const LAST_NOTIFIED_KEY = 'homecircle.lastNotifiedSeq';
 export const MESSAGES_CHANNEL = 'messages';
@@ -37,6 +38,7 @@ export async function ensureNotificationChannels() {
   });
   await ensureChirpChannels();
   await ensureSosChannels();
+  await ensureCallbackChannel();
 }
 
 // Message sequence numbers are per server, so each circle keeps its own mark.
@@ -91,6 +93,7 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
   if (last == null) {
     // First time for this circle on this phone: the existing history isn't news.
     await markSeen(client, maxSeq);
+    await syncCallbackReminders(client).catch(() => {});
     return;
   }
   const id = client.circleId!;
@@ -107,11 +110,20 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
   const ruleHit = (m: Message) =>
     m.kind === 'event' &&
     rules.some((r) => r.memberId === m.from && r.placeId === m.body?.placeId && (r.on === 'both' || r.on === m.body?.action));
+  // A call-back request: its own notification, and only for whoever it asks.
+  const callbackAsk = (m: Message) => m.kind === 'chat' && !m.peer && m.body?.callback?.state === 'ask';
+  for (const m of messages) {
+    if (!callbackAsk(m) || m.seq <= last || m.from === me) continue;
+    const s = client.callbackState(m.id);
+    if (s?.open && client.callbackAsks(s) && conversationKey(id, null) !== reading) await notifyCallback(client, s, showPreviews).catch(() => {});
+  }
+  await syncCallbackReminders(client, showPreviews).catch(() => {});
   const fresh = messages.filter(
     (m) =>
       m.seq > last &&
       m.from !== me &&
       sosOf(m) !== 'start' &&
+      !callbackAsk(m) &&
       (m.kind === 'chat' || ruleHit(m) || (m.kind === 'event' && showPlaceAlerts && notifyAllPlaceAlerts)) &&
       conversationKey(id, m.peer) !== reading,
   );

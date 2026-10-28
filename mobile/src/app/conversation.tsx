@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, AppState, FlatList, Keyboard, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { EMOJI_GROUPS, QUICK_REACTIONS, isEmojiOnly, type CircleClient, type Message } from '@homecircle/core';
+import { CALLBACK_REPLIES, EMOJI_GROUPS, QUICK_REACTIONS, isEmojiOnly, type CallbackReply, type CircleClient, type Message } from '@homecircle/core';
 import { Avatar, Button, Icon, IconButton } from '../components/ui';
 import { canLocate, isAsking, locatePerson, locateState, openDirections, useLocateVersion } from '../lib/people';
 import { shareNow } from '../lib/location';
 import { ServerBanner } from '../components/ServerBanner';
 import { PollCard } from '../components/PollCard';
+import { CallbackCard } from '../components/CallbackCard';
+import { REPLY_LABELS, syncCallbackReminders, timeIn } from '../lib/callbacks';
 import { CreatePoll } from '../components/CreatePoll';
 import { LinkedText } from '../components/LinkedText';
 import { pickDocument, pickPhoto } from '../lib/upload';
@@ -153,6 +155,14 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     }
   };
 
+  const replyCallback = (requestId: string, reply: CallbackReply) => {
+    setReactingTo(null);
+    client
+      .replyCallback(requestId, reply)
+      .then(() => syncCallbackReminders(client))
+      .catch((e) => setError(errorText(e)));
+  };
+
   const react = (messageId: string, emoji: string) => {
     setReactingTo(null);
     client.react(messageId, emoji).catch((e) => setError(errorText(e)));
@@ -229,6 +239,9 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     }
     // Poll results and spins read as a line across the chat, like alerts.
     if (m.body?.pollResult || m.body?.pollSpin) return <Text style={[pill, { color: t.text }]}>{m.body.text}</Text>;
+    // Call-back requests from the Elderly Companion app, and the replies (a line each).
+    if (!peer && m.body?.callback?.state === 'ask') return <CallbackCard client={client} m={m} onReply={() => setReactingTo(m)} />;
+    if (!peer && m.body?.callback?.state === 'reply') return <Text style={pill}>{String(m.body.text ?? '').replace(/^📞\s*/, '')}</Text>;
     const mine = m.from === me;
     if (m.body?.poll) {
       return (
@@ -589,9 +602,48 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
         <Pressable onPress={() => setReactingTo(null)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
           {reactingTo ? (
             <View style={{ backgroundColor: t.surface, borderRadius: 20, padding: 16, alignItems: 'center', gap: 12, maxWidth: 380 }}>
-              <Text style={{ color: t.muted, fontSize: 15 }} numberOfLines={2}>
-                React to “{reactingTo.body?.text}”
-              </Text>
+              {(() => {
+                const s = reactingTo.body?.callback?.state === 'ask' ? client.callbackState(reactingTo.id) : null;
+                if (!s) {
+                  return (
+                    <Text style={{ color: t.muted, fontSize: 15 }} numberOfLines={2}>
+                      React to “{reactingTo.body?.text}”
+                    </Text>
+                  );
+                }
+                const canReply = client.callbackAsks(s);
+                return (
+                  <View style={{ alignSelf: 'stretch', gap: 10 }}>
+                    <Text style={{ color: t.muted, fontSize: 15, textAlign: 'center' }}>{canReply ? `Reply to “${s.name} wants a call back”` : `${s.name} asked for a call back`}</Text>
+                    {canReply
+                      ? CALLBACK_REPLIES.map((r) => (
+                          <Pressable
+                            key={r}
+                            accessibilityRole="button"
+                            onPress={() => replyCallback(s.id, r)}
+                            style={({ pressed }) => ({
+                              minHeight: 52,
+                              borderRadius: 14,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              paddingHorizontal: 12,
+                              backgroundColor: r === 'now' ? t.brand : t.surface2,
+                              opacity: pressed ? 0.8 : 1,
+                            })}
+                          >
+                            <Text style={{ color: r === 'now' ? t.brandInk : t.text, fontSize: 17, fontWeight: r === 'now' ? '700' : '600' }}>{REPLY_LABELS[r]}</Text>
+                          </Pressable>
+                        ))
+                      : null}
+                    {canReply ? (
+                      <Text style={{ color: t.muted, fontSize: 13, lineHeight: 18, textAlign: 'center' }}>
+                        {s.name} hears your reply in Urdu. Morning and evening mean their time ({timeIn(s.tz)} now).
+                      </Text>
+                    ) : null}
+                    <View style={{ height: 1, backgroundColor: t.line, marginVertical: 4 }} />
+                  </View>
+                );
+              })()}
               {reactingTo.from === me && !reactingTo.peer ? <ReadBy receipts={client.receiptsFor(reactingTo)} showRead={readReceipts} /> : null}
               <View style={{ flexDirection: 'row', gap: 6 }}>
                 {QUICK_REACTIONS.map((e) => {
