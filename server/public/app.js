@@ -2,7 +2,7 @@
 // server only ever hands us ciphertext.
 import * as L from '/vendor/leaflet/leaflet-src.esm.js';
 import qrcode from '/vendor/qrcode.mjs';
-import { ACCOUNT_KEY, CircleClient, EMOJI_GROUPS, FEATURES, FEATURE_GROUPS, QUICK_REACTIONS, isEmojiOnly } from '/core/index.js';
+import { ACCOUNT_KEY, CALLBACK_REPLIES, CALLBACK_REPLY_TEXT, CircleClient, EMOJI_GROUPS, FEATURES, FEATURE_GROUPS, QUICK_REACTIONS, isEmojiOnly } from '/core/index.js';
 
 const root = document.getElementById('root');
 const SERVER = location.origin;
@@ -770,6 +770,10 @@ async function startApp() {
         setTab('people');
       } else if (ui.tab === 'people') renderPanel();
     }
+    if (m.kind === 'chat' && !m.peer && m.body?.callback?.state === 'ask') {
+      const s = client.callbackState(m.id);
+      if (s && client.callbackAsks(s)) toast(`📞 ${s.name} wants a call back`);
+    }
     if (m.kind === 'event' && !showPlaceAlerts()) return;
     const elsewhere = (m.peer ?? null) !== ui.peer;
     if (ui.tab !== 'chat' || elsewhere) {
@@ -1192,6 +1196,10 @@ function chatView() {
     } else if (m.kind === 'chat' && (m.body?.pollResult || m.body?.pollSpin)) {
       // Poll results and spins read as a line across the chat, like alerts.
       log.append(h('div', { class: 'event-line strong' }, m.body.text));
+    } else if (m.kind === 'chat' && !m.peer && m.body?.callback?.state === 'ask' && client.callbackState(m.id)) {
+      log.append(callbackCard(m));
+    } else if (m.kind === 'chat' && !m.peer && m.body?.callback?.state === 'reply') {
+      log.append(h('div', { class: 'event-line' }, String(m.body.text ?? '').replace(/^📞\s*/, '')));
     } else if (m.kind === 'chat' && m.body?.poll) {
       log.append(h('div', { class: `poll-row${m.from === me ? ' mine' : ''}` }, pollCard(m.id), h('div', { class: 'bubble-time' }, clock(m.ts))));
     } else if (m.kind === 'chat') {
@@ -1439,6 +1447,55 @@ function agentQuestion(text, name) {
   // "/Chirya when…", and commands written "/Chirya/dream".
   for (const tag of [`/${name.toLowerCase()} `, `/${name.toLowerCase()}/`, '/agent ', '/agent/']) if (lower.startsWith(tag)) return t.slice(tag.length).trim() || null;
   return null;
+}
+
+// --- call-back requests ----------------------------------------------------
+
+/** "9:40 pm" in someone's time zone (this computer's if unknown). */
+function timeIn(tz, ts = Date.now()) {
+  try {
+    return new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', ...(tz ? { timeZone: tz } : {}) });
+  } catch {
+    return clock(ts);
+  }
+}
+
+const REPLY_SHORT = { now: 'calling now', '5min': 'in 5 minutes', morning: 'in the morning', evening: 'in the evening' };
+
+/** A call-back request from the Elderly Companion app, with reply buttons for whoever it asks. */
+function callbackCard(m) {
+  const s = client.callbackState(m.id);
+  const me = client.account.memberId;
+  const mine = m.from === me;
+  const who = (id, name) => (id === me ? 'You' : name);
+  const asked = s.for ? `Asked ${s.for.map((id) => (id === me ? 'you' : client.members.get(id)?.name || 'someone')).join(', ')}` : 'Asked everyone';
+  const title = mine ? 'You asked for a call back' : s.takenBy ? `${who(s.takenBy.memberId, s.takenBy.name)} ${s.takenBy.memberId === me ? 'are' : 'is'} calling ${s.name} now` : `${s.name} wants a call back`;
+  const replies = s.replies.filter((r) => r.memberId !== s.takenBy?.memberId).map((r) => `${who(r.memberId, r.name)}: ${REPLY_SHORT[r.reply]}`);
+  const canReply = s.open && client.callbackAsks(s);
+  const fail = (ex) => toast(errorText(ex));
+  return h(
+    'div',
+    { class: `poll-row${mine ? ' mine' : ''}` },
+    h(
+      'div',
+      { class: `poll callback${s.open ? ' open' : ''}` },
+      h('div', { class: 'poll-head' }, `📞 Call back · ${s.name}`),
+      h('div', { class: 'poll-q' }, title),
+      h('div', { class: 'callback-detail' }, `${asked} · ${mine ? 'your' : `${s.name}’s`} time ${timeIn(s.tz, s.ts)} · ${s.awake ? 'awake' : 'in sleep hours'}`),
+      replies.length ? h('div', { class: 'callback-detail' }, replies.join(' · ')) : null,
+      canReply
+        ? h(
+            'div',
+            { class: 'callback-replies' },
+            ...CALLBACK_REPLIES.map((r) =>
+              h('button', { class: `btn small${r === 'now' ? ' primary' : ''}`, type: 'button', onclick: () => client.replyCallback(s.id, r).catch(fail) }, CALLBACK_REPLY_TEXT[r]),
+            ),
+          )
+        : null,
+      canReply ? h('div', { class: 'callback-detail' }, `${s.name} hears your reply in Urdu. Morning and evening mean their time (${timeIn(s.tz)} now).`) : null,
+    ),
+    h('div', { class: 'bubble-time' }, s.takenBy ? `${clock(s.ts)} · ${who(s.takenBy.memberId, s.takenBy.name)} took it` : `${clock(s.ts)}${s.remind ? ` · reminding every ${s.remind} min` : ''}`),
+  );
 }
 
 // --- polls ---------------------------------------------------------------
