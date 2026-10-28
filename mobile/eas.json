@@ -13,6 +13,12 @@
     },
     "production": {
       "autoIncrement": true
+    },
+    "companion": {
+      "extends": "preview",
+      "env": {
+        "APP_VARIANT": "companion"
+      }
     }
   },
   "submit": {
