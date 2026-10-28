@@ -20,6 +20,18 @@ class HcAttentionModule : Module() {
 
   private var player: MediaPlayer? = null
   private var alarm: MediaPlayer? = null
+  private var speech: MediaPlayer? = null
+
+  private fun stopSpeech() {
+    speech?.let {
+      try {
+        it.stop()
+      } catch (_: Exception) {
+      }
+      it.release()
+    }
+    speech = null
+  }
 
   override fun definition() = ModuleDefinition {
     Name("HcAttention")
@@ -98,6 +110,39 @@ class HcAttentionModule : Module() {
         it.release()
       }
       alarm = null
+    }
+
+    // Play bundled clips (res/raw names, e.g. "ur_cb_now_m") one after the
+    // other, on the media stream: the Elderly Companion app's spoken Urdu,
+    // which a silent ringer doesn't mute. A new sequence replaces one playing.
+    // False if none of the clips exist.
+    Function("playSequence") { names: List<String> ->
+      val ids = names.map { context.resources.getIdentifier(it, "raw", context.packageName) }.filter { it != 0 }
+      stopSpeech()
+      if (ids.isEmpty()) return@Function false
+      val attrs = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_MEDIA)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+        .build()
+      fun playFrom(i: Int) {
+        if (i >= ids.size) return
+        val p = MediaPlayer.create(context, ids[i], attrs, 0) ?: return playFrom(i + 1)
+        speech = p
+        p.setOnCompletionListener {
+          it.release()
+          if (speech === it) {
+            speech = null
+            playFrom(i + 1)
+          }
+        }
+        p.start()
+      }
+      playFrom(0)
+      true
+    }
+
+    Function("stopSequence") {
+      stopSpeech()
     }
 
     // Play a bundled sound (e.g. "chirp_robin") once, for previews.

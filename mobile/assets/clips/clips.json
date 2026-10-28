@@ -1,0 +1,31 @@
+{
+  "about": "Every Urdu clip the Elderly Companion app plays. A line about a person plays their name clip first (recorded by an admin), then the phrase. 'variants' m/f: one recording each for a man and a woman (the person the line is about). 'reviewed': kept by the owner in the Urdu review (27 Oct 2026); the others need that review. Files: ur_<id>[_m|_f].wav in this folder; scripts/clips.mjs makes placeholders and checks real recordings.",
+  "clips": [
+    { "id": "cb_sent_one", "when": "After Call me on one person's tile", "en": "[Name] has been told", "ur": "[نام] کو بتا دیا گیا ہے", "variants": [], "reviewed": false, "tone": "callback" },
+    { "id": "cb_sent_all", "when": "After Ring everyone", "en": "Everyone has been told", "ur": "سب کو بتا دیا گیا ہے", "variants": [], "reviewed": false, "tone": "callback" },
+    { "id": "cb_now", "when": "Reply: calling now", "en": "[Name] is calling you now", "ur": { "m": "[نام] ابھی فون کر رہے ہیں", "f": "[نام] ابھی فون کر رہی ہیں" }, "variants": ["m", "f"], "reviewed": false, "tone": "callback" },
+    { "id": "cb_5min", "when": "Reply: in 5 minutes", "en": "[Name] will call in 5 minutes", "ur": { "m": "[نام] پانچ منٹ میں فون کریں گے", "f": "[نام] پانچ منٹ میں فون کریں گی" }, "variants": ["m", "f"], "reviewed": false, "tone": "callback" },
+    { "id": "cb_morning", "when": "Reply: in the morning", "en": "[Name] will call in the morning", "ur": { "m": "[نام] صبح فون کریں گے", "f": "[نام] صبح فون کریں گی" }, "variants": ["m", "f"], "reviewed": false, "tone": "callback" },
+    { "id": "cb_evening", "when": "Reply: in the evening", "en": "[Name] will call in the evening", "ur": { "m": "[نام] شام کو فون کریں گے", "f": "[نام] شام کو فون کریں گی" }, "variants": ["m", "f"], "reviewed": false, "tone": "callback" },
+    { "id": "cb_asleep", "when": "Tapping an asleep tile; after asking, for each asleep person", "en": "[Name] is asleep", "ur": { "m": "[نام] سو رہے ہیں", "f": "[نام] سو رہی ہیں" }, "variants": ["m", "f"], "reviewed": true, "tone": "callback" },
+    { "id": "cb_night", "when": "Asked when it's night for everyone asked", "en": "It's night there, they may call in the morning", "ur": "ان کے ہاں رات ہے، شاید صبح فون کریں", "variants": [], "reviewed": true, "tone": "callback" },
+    { "id": "cb_waiting", "when": "Tapping again while nobody has replied", "en": "Nobody has replied yet", "ur": "ابھی کسی نے جواب نہیں دیا", "variants": [], "reviewed": false, "tone": "callback" },
+    { "id": "btn_callme", "when": "Tapping Call me", "en": "Call me", "ur": "مجھے فون کریں", "variants": [], "reviewed": true, "tone": "callback" },
+    { "id": "btn_play", "when": "Tapping Play a game", "en": "Play a game", "ur": "کھیل کھیلیں", "variants": [], "reviewed": false, "tone": "game" },
+    { "id": "game_invite", "when": "A grandchild starts a game with her", "en": "[Name] wants to play", "ur": { "m": "[نام] کھیلنا چاہتے ہیں", "f": "[نام] کھیلنا چاہتی ہیں" }, "variants": ["m", "f"], "reviewed": false, "tone": "game" },
+    { "id": "game_pick", "when": "Pick a game opens", "en": "Which game shall we play?", "ur": "کون سا کھیل کھیلیں؟", "variants": [], "reviewed": false, "tone": "game" },
+    { "id": "game_yourturn", "when": "Her turn", "en": "Your turn", "ur": "آپ کی باری", "variants": [], "reviewed": false, "tone": "game" },
+    { "id": "game_theirturn", "when": "Their turn", "en": "Their turn", "ur": "ان کی باری", "variants": [], "reviewed": false, "tone": "game" },
+    { "id": "game_sent", "when": "After Send move", "en": "Move sent", "ur": "چال بھیج دی", "variants": [], "reviewed": false, "tone": "game" },
+    { "id": "game_youwon", "when": "She won (her own he/she)", "en": "You won", "ur": { "f": "آپ جیت گئیں", "m": "آپ جیت گئے" }, "variants": ["m", "f"], "reviewed": false, "tone": "game" },
+    { "id": "game_theywon", "when": "They won", "en": "[Name] won", "ur": { "m": "[نام] جیت گئے", "f": "[نام] جیت گئیں" }, "variants": ["m", "f"], "reviewed": false, "tone": "game" },
+    { "id": "game_draw", "when": "A draw", "en": "It's a draw", "ur": "مقابلہ برابر رہا", "variants": [], "reviewed": false, "tone": "game" },
+    { "id": "sos_start", "when": "While holding SOS", "en": "Telling your family. Let go if you pressed this by mistake.", "ur": "گھر والوں کو خبر دی جا رہی ہے۔ غلطی سے دب گیا ہو تو رکیں دبائیں۔", "variants": [], "reviewed": true, "tone": "sos" },
+    { "id": "sos_sent", "when": "SOS sent", "en": "Your family has been told", "ur": "گھر والوں کو بتا دیا گیا ہے", "variants": [], "reviewed": false, "tone": "sos" },
+    { "id": "sos_seen", "when": "Someone opened her SOS", "en": "[Name] has seen it", "ur": "[نام] نے دیکھ لیا", "variants": [], "reviewed": true, "tone": "sos" },
+    { "id": "sos_safe", "when": "The I'm safe now button", "en": "I'm safe now", "ur": "اب میں ٹھیک ہوں", "variants": [], "reviewed": true, "tone": "sos" },
+    { "id": "checkin_ask", "when": "A check-in request reaches her", "en": "[Name] is asking if you're OK", "ur": { "m": "[نام] پوچھ رہے ہیں کہ آپ ٹھیک ہیں۔", "f": "[نام] پوچھ رہی ہیں کہ آپ ٹھیک ہیں۔" }, "variants": ["m", "f"], "reviewed": true, "tone": "callback" },
+    { "id": "checkin_ok", "when": "Her one-tap answer", "en": "Yes, I'm OK", "ur": "جی، میں ٹھیک ہوں", "variants": [], "reviewed": true, "tone": "callback" },
+    { "id": "join_done", "when": "Joined a circle (her own he/she)", "en": "You have joined", "ur": { "f": "آپ شامل ہو گئی ہیں", "m": "آپ شامل ہو گئے ہیں" }, "variants": ["m", "f"], "reviewed": false, "tone": "callback" }
+  ]
+}

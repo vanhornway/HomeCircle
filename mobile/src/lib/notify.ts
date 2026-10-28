@@ -13,6 +13,8 @@ import { conversationKey } from './unread';
 import { previewText } from './polls';
 import { alertSos, ensureSosChannels, stopAlarm } from './sosAlarm';
 import { ensureCallbackChannel, notifyCallback, syncCallbackReminders } from './callbacks';
+import { IS_COMPANION } from './variant';
+import { companionAlerts } from '../companion/alerts';
 
 const LAST_NOTIFIED_KEY = 'homecircle.lastNotifiedSeq';
 export const MESSAGES_CHANNEL = 'messages';
@@ -97,6 +99,13 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
     return;
   }
   const id = client.circleId!;
+  // The Elderly Companion app never shows message text: it plays the replies
+  // to her call-back requests in Urdu, and rings for an SOS.
+  if (IS_COMPANION) {
+    await companionAlerts(client, messages, last);
+    await markSeen(client, maxSeq);
+    return;
+  }
   // An SOS rings even if you're reading that chat; "safe now" stops it.
   const sosOf = (m: Message) => (client.feature('sos') && m.seq > last && m.from !== me && m.kind === 'chat' && !m.peer ? m.body?.sos?.state : null);
   for (const m of messages) {

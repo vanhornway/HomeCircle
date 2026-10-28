@@ -7,7 +7,7 @@ import { useSyncExternalStore } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
-import { distanceM } from '@homecircle/core';
+import { distanceM, type CircleClient } from '@homecircle/core';
 import { loadedClients } from './circle';
 import { diag } from './diagnostics';
 import { freshFix, upload } from './location';
@@ -98,14 +98,17 @@ export function useMySos(): MySos | null | undefined {
   );
 }
 
-/** Send the SOS to every circle on this phone and start sharing every minute. */
-export async function startMySos(): Promise<void> {
+/**
+ * Send the SOS to every circle on this phone (or those `only` picks: the
+ * Elderly Companion app sends to care circles only) and start sharing every minute.
+ */
+export async function startMySos(only: (c: CircleClient) => boolean = () => true): Promise<void> {
   // Already on: nothing to start (and its ids must not be replaced).
   if (await mySos()) return;
   const clients = await loadedClients();
   const ids: Record<string, string> = {};
   // Only circles that have SOS on.
-  const sent = await Promise.allSettled(clients.filter((c) => c.feature('sos')).map(async (c) => (ids[c.circleId!] = await c.startSos())));
+  const sent = await Promise.allSettled(clients.filter((c) => c.feature('sos') && only(c)).map(async (c) => (ids[c.circleId!] = await c.startSos())));
   if (!sent.some((r) => r.status === 'fulfilled')) throw (sent[0] as PromiseRejectedResult)?.reason ?? new Error('SOS is turned off in your circles');
   diag('sos:start', { circles: `${Object.keys(ids).length}/${clients.length}` });
   await save({ startedAt: Date.now(), ids, places: [], reached: [], at: null }, { start: true });

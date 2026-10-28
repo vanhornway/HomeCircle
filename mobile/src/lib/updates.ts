@@ -9,6 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { MESSAGES_CHANNEL, ensureNotificationChannels } from './notify';
+import { IS_COMPANION } from './variant';
 
 const LATEST_URL = 'https://api.github.com/repos/vanhornway/HomeCircle/releases/latest';
 export const APK_URL = 'https://github.com/vanhornway/HomeCircle/releases/latest/download/HomeCircle.apk';
@@ -77,6 +78,8 @@ export async function checkForUpdate({ force = false } = {}): Promise<string | n
 
 /** Check, and if there's a new version found in the background, say so once. */
 export async function checkForUpdateInBackground() {
+  // The Elderly Companion app is updated by the family, never by her.
+  if (IS_COMPANION) return;
   const version = await checkForUpdate();
   if (!version || state.notified === version) return;
   await save({ notified: version });

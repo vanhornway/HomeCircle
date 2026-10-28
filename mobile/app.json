@@ -109,7 +109,8 @@
           "cameraPermission": "HomeCircle uses the camera to scan invite QR codes and, when you choose, to take a photo for your circle’s helper.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": false

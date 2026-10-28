@@ -8,6 +8,8 @@ type Native = {
   preview(name: string): boolean;
   playAlarm(name: string, times: number): boolean;
   stopAlarm(): void;
+  playSequence(names: string[]): boolean;
+  stopSequence(): void;
   buildNumber(): string;
 };
 
@@ -67,5 +69,26 @@ export function buildNumber(): string | null {
     return native?.buildNumber() ?? null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Play bundled clips one after the other on the media stream (the Elderly
+ * Companion app's spoken Urdu). False if none could play.
+ */
+export function playSequence(names: string[]): boolean {
+  try {
+    return native?.playSequence(names) ?? false;
+  } catch {
+    return false;
+  }
+}
+
+/** Stop clips started with playSequence. */
+export function stopSequence() {
+  try {
+    native?.stopSequence();
+  } catch {
+    // nothing playing
   }
 }

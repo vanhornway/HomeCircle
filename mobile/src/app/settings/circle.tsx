@@ -87,6 +87,12 @@ export default function CircleSettings() {
         ) : null}
       </SettingsGroup>
 
+      {client.isAdmin ? (
+        <SettingsGroup title="Elderly Companion" footer="A very simple app for an elderly family member: big tiles, call-back requests and SOS. Location sharing works underneath.">
+          <SettingsRow icon="👵" title="Give someone the Elderly Companion app" detail="Make an invite with her name; scan it on her phone" href="/companion-invite" />
+        </SettingsGroup>
+      ) : null}
+
       {client.isAdmin && client.feature('circleHealth') ? (
         <SettingsGroup>
           <SettingsRow icon="📋" title="Circle health" detail="How each member’s phone is set up; nudge them to fix problems" href="/circle-health" />
