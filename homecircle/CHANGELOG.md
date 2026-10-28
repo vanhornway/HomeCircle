@@ -2,6 +2,15 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.19.2
+
+- Shopping lists: everything bought at a store (from receipts, order
+  histories and Done shopping) is offered back to pick from, most often bought
+  first, up to 300 per store (500 remembered). Before, an item had to be
+  bought twice and only 8 were offered. Each new receipt adds what's new.
+- The helper reads an order history or a list of what's bought at a store
+  like a receipt, every page of it.
+
 ## 0.19.1
 
 - Fixed: in 0.19.0 the circle helper answered every question with "The

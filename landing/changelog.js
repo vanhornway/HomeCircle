@@ -1,6 +1,16 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.19.2',
+    date: '2026-10-27',
+    title: 'Everything you buy, ready to pick',
+    items: [
+      'Shopping lists offer everything you’ve bought at that store, from your receipts and order histories, most often bought first: up to 300 items per store. Before, you only saw 8, and only things bought twice.',
+      'Each new receipt adds what’s new to the list you pick from.',
+      'Type in the add box to search what you usually get. Tap Show all to see everything.',
+    ],
+  },
+  {
     version: '0.19.1',
     date: '2026-10-27',
     title: 'Your helper is back, and keeps long recipes',
