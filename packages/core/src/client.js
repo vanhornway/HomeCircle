@@ -42,6 +42,15 @@ const randomColor = () => MEMBER_COLORS[Math.floor(Math.random() * MEMBER_COLORS
  */
 export const CHIRP_SOUNDS = ['robin', 'wren', 'finch', 'chickadee', 'cardinal', 'bluebird', 'canary', 'sparrow', 'lark', 'dove'];
 const MAX_FREQUENT = 8;
+/** Answers to a call-back request, and how each reads in the chat. Only 'now' closes a request. */
+export const CALLBACK_REPLIES = ['now', '5min', 'morning', 'evening'];
+export const CALLBACK_REPLY_TEXT = {
+  now: 'I’m calling you now',
+  '5min': 'I’ll call you back in 5 minutes',
+  morning: 'I’ll call you in the morning',
+  evening: 'I’ll call you in the evening',
+};
+const MAX_MEMBERS_ASKED = 50;
 
 const AGENT_NAME = /^[\p{L}\p{N}][\p{L}\p{N} _-]{0,23}$/u;
 /** An agent's name: what people call it (/Name), so letters, digits, space, _ and - only. */
@@ -498,12 +507,26 @@ export class CircleClient {
     const api = this._makeApi(serverUrl);
     const res = await api.joinPreview({ inviteId, inviteAuth });
     const payload = unwrapInvite(wrapKey, res.wrapped);
-    return { serverUrl, inviteId, inviteAuth, payload, circleId: payload.circle, circleName: payload.circleName, invitedBy: payload.invitedByName };
+    return {
+      serverUrl,
+      inviteId,
+      inviteAuth,
+      payload,
+      circleId: payload.circle,
+      circleName: payload.circleName,
+      invitedBy: payload.invitedByName,
+      companion: cleanCompanionInvite(payload.companion),
+    };
   }
 
-  async joinWithInvite(link, { name }) {
+  /**
+   * Join with an invite link. An Elderly Companion invite carries the name
+   * the family gave her, so `name` can be left out.
+   */
+  async joinWithInvite(link, { name } = {}) {
     const preview = await this.previewInvite(link);
     const { serverUrl, inviteId, inviteAuth, payload } = preview;
+    name = cleanName(name) || preview.companion?.name || '';
     const identity = generateIdentity();
     const memberId = randomId();
     this.account = {
@@ -1454,6 +1477,101 @@ export class CircleClient {
       .sort((a, b) => b.since - a.since);
   }
 
+  // --- call-back requests ------------------------------------------------
+  // From the Elderly Companion app: "call me back", to everyone in the circle
+  // or to one person (`for`). A group chat message with `body.callback`
+  // (older apps show its text); replies point at it with `of`. Only "I'm
+  // calling you now" closes it. No server changes: it's all sealed messages.
+
+  /**
+   * Ask for a call back: everyone (`to` null) or one member. `tz` is the
+   * asker's time zone, `awake` whether it's outside their sleep hours, and
+   * `remind` the minutes between reminders on the family's phones (0: none).
+   * Returns the request's id.
+   */
+  async askCallback({ to = null, tz = null, awake = true, remind = 0 } = {}) {
+    if (to && !this.members.get(to)) throw new Error('No such member in this circle');
+    const id = randomId(12);
+    const name = this.myName;
+    const who = to ? ` from ${this.members.get(to).name}` : '';
+    const callback = { state: 'ask', for: to ? [to] : null, tz: cleanTimeZone(tz), awake: awake !== false, remind: cleanRemind(remind) };
+    await this._post('chat', { text: `📞 ${name} would like a call back${who}. Update HomeCircle to reply.`, callback }, { id });
+    return id;
+  }
+
+  /** Answer a call-back request: 'now' (which closes it), '5min', 'morning' or 'evening'. */
+  replyCallback(requestId, reply) {
+    if (!CALLBACK_REPLIES.includes(reply)) return Promise.reject(new Error('Not a call-back reply'));
+    const req = this._callbackRequest(requestId);
+    if (!req) return Promise.reject(new Error('No such call-back request'));
+    const name = this.myName;
+    return this._post('chat', { text: `📞 ${name}: ${CALLBACK_REPLY_TEXT[reply]}`, callback: { state: 'reply', of: requestId, reply } });
+  }
+
+  _callbackRequest(id) {
+    const m = this.messages.find((x) => x.id === id && x.kind === 'chat' && !x.peer && x.body?.callback?.state === 'ask');
+    return m && this.members.get(m.from) ? m : null;
+  }
+
+  /**
+   * Where a request stands: who asked, who was asked, each person's latest
+   * reply, and who took it (the first "now"; the request is then closed).
+   */
+  callbackState(requestId) {
+    const req = this._callbackRequest(requestId);
+    if (!req) return null;
+    const c = req.body.callback;
+    const asked = Array.isArray(c.for) ? c.for.filter((id) => typeof id === 'string').slice(0, MAX_MEMBERS_ASKED) : null;
+    const replies = new Map(); // memberId -> latest reply
+    let takenBy = null;
+    for (const m of this.messages) {
+      const r = m.kind === 'chat' && !m.peer && m.seq > req.seq ? m.body?.callback : null;
+      if (!r || r.state !== 'reply' || r.of !== requestId || !CALLBACK_REPLIES.includes(r.reply)) continue;
+      if (m.from === req.from || !this.members.get(m.from)) continue;
+      replies.set(m.from, { memberId: m.from, name: this.members.get(m.from).name, reply: r.reply, ts: m.ts, seq: m.seq });
+      if (r.reply === 'now' && !takenBy) takenBy = { memberId: m.from, name: this.members.get(m.from).name, ts: m.ts };
+    }
+    return {
+      id: req.id,
+      from: req.from,
+      name: this.members.get(req.from).name,
+      ts: req.ts,
+      seq: req.seq,
+      for: asked,
+      tz: cleanTimeZone(c.tz),
+      awake: c.awake !== false,
+      remind: cleanRemind(c.remind),
+      replies: [...replies.values()].sort((a, b) => a.seq - b.seq),
+      takenBy,
+      open: !takenBy,
+    };
+  }
+
+  /** Whether a request asks this member (everyone, or them by name). */
+  callbackAsks(state, memberId = this.account?.memberId) {
+    return !!state && state.from !== memberId && (!state.for || state.for.includes(memberId));
+  }
+
+  /** Open requests in this circle, newest first (optionally only those from one member). */
+  openCallbacks({ from = null } = {}) {
+    const out = [];
+    for (const m of this.messages) {
+      if (m.kind !== 'chat' || m.peer || m.body?.callback?.state !== 'ask' || (from && m.from !== from)) continue;
+      const s = this.callbackState(m.id);
+      if (s?.open) out.push(s);
+    }
+    return out.sort((a, b) => b.seq - a.seq);
+  }
+
+  /**
+   * Open requests this phone should keep reminding about: they ask this
+   * member, have reminders on, and this member hasn't replied yet.
+   */
+  callbacksAwaitingMe() {
+    const me = this.account?.memberId;
+    return this.openCallbacks().filter((s) => s.remind > 0 && this.callbackAsks(s, me) && !s.replies.some((r) => r.memberId === me));
+  }
+
   /** Direct-message partners, most recent conversation first. */
   directPeers() {
     const last = new Map();
@@ -1655,7 +1773,12 @@ export class CircleClient {
 
   // --- membership --------------------------------------------------------
 
-  async createInvite({ hours = 48 } = {}) {
+  /**
+   * Invite someone. `companion` makes it an Elderly Companion invite: her
+   * name and which page this circle is on her phone ('care' or 'grandkids')
+   * travel sealed inside it, so nobody types on her phone.
+   */
+  async createInvite({ hours = 48, companion = null } = {}) {
     const secret = newInviteSecret();
     const { inviteAuth, wrapKey } = deriveInvite(secret);
     const id = randomId(9);
@@ -1666,6 +1789,7 @@ export class CircleClient {
       circle: a.circleId,
       circleName: this.circle.name,
       invitedByName: (this.me?.name || this.account?.profile?.name || ''),
+      ...(companion ? { companion: cleanCompanionInvite(companion) } : {}),
     });
     const res = await this.api.createInvite({ id, authHash: inviteAuthHash(inviteAuth), wrapped, epoch: a.epoch, hours });
     return {
@@ -1983,6 +2107,22 @@ function cleanCadence(c) {
   if (moving == null || still == null) return null;
   const stop = Number.isInteger(c.stop) && c.stop >= 1 && c.stop <= 6 ? c.stop : 'custom';
   return { stop, moving, still, charging: c.charging === true, limited: c.limited === true };
+}
+
+/** What an Elderly Companion invite says: { name, page }, or null. */
+function cleanCompanionInvite(c) {
+  if (!c || typeof c !== 'object') return null;
+  return { name: cleanName(c.name), page: c.page === 'grandkids' ? 'grandkids' : 'care' };
+}
+
+/** An IANA time zone name such as "Asia/Karachi", or null. */
+function cleanTimeZone(tz) {
+  return typeof tz === 'string' && /^[A-Za-z][A-Za-z0-9_+\-/]{0,63}$/.test(tz) ? tz : null;
+}
+
+/** Minutes between call-back reminders: 0 (none) up to 4 hours. */
+function cleanRemind(m) {
+  return Number.isInteger(m) && m > 0 ? Math.min(240, m) : 0;
 }
 
 function cleanName(s) {

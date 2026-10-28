@@ -36,6 +36,11 @@ export interface Member {
 
 export type ChirpSound = 'robin' | 'wren' | 'finch' | 'chickadee' | 'cardinal' | 'bluebird' | 'canary' | 'sparrow' | 'lark' | 'dove';
 export const CHIRP_SOUNDS: ChirpSound[];
+/** Answers to a call-back request. Only 'now' closes it. */
+export type CallbackReply = 'now' | '5min' | 'morning' | 'evening';
+export const CALLBACK_REPLIES: CallbackReply[];
+/** How each answer reads in the chat ("I'm calling you now"). */
+export const CALLBACK_REPLY_TEXT: Record<CallbackReply, string>;
 
 /** A chirp waiting for this device. */
 export interface IncomingChirp {
@@ -239,6 +244,36 @@ export interface InvitePreview {
   circleId?: string;
   circleName?: string;
   invitedBy?: string;
+  /** Set for an Elderly Companion invite: her name, and which page this circle is on her phone. */
+  companion?: CompanionInvite | null;
+}
+
+export interface CompanionInvite {
+  name: string;
+  page: 'care' | 'grandkids';
+}
+
+/** Where a call-back request from the Elderly Companion app stands. */
+export interface CallbackState {
+  id: string;
+  /** Who asked. */
+  from: string;
+  name: string;
+  ts: number;
+  seq: number;
+  /** Who was asked; null = everyone in the circle. */
+  for: string[] | null;
+  /** The asker's time zone, e.g. "Asia/Karachi". */
+  tz: string | null;
+  /** Outside the asker's sleep hours when sent. */
+  awake: boolean;
+  /** Minutes between reminders on the family's phones; 0 = none. */
+  remind: number;
+  /** Each person's latest answer, oldest first. */
+  replies: { memberId: string; name: string; reply: CallbackReply; ts: number; seq: number }[];
+  /** The first "I'm calling you now": the request is closed. */
+  takenBy: { memberId: string; name: string; ts: number } | null;
+  open: boolean;
 }
 
 export type ConnectionStatus = 'offline' | 'connecting' | 'online' | 'unauthorized';
@@ -400,7 +435,8 @@ export class CircleClient {
   /** With the server's setup code (any time), or `admin`: a client already on that server that can create circles. */
   createCircle(opts: { serverUrl: string; setupToken?: string; admin?: CircleClient; name: string; circleName: string; features?: Features }): Promise<void>;
   previewInvite(link: string): Promise<InvitePreview>;
-  joinWithInvite(link: string, opts: { name: string }): Promise<void>;
+  /** Join with an invite link; an Elderly Companion invite already carries her name. */
+  joinWithInvite(link: string, opts?: { name?: string }): Promise<void>;
   /** Join once a member approved the request: 'joined'. Otherwise its status. */
   finishRejoin(pending: PendingRejoin): Promise<'joined' | 'pending' | 'denied' | 'expired'>;
   rejoinRequests(): Promise<RejoinRequest[]>;
@@ -489,6 +525,18 @@ export class CircleClient {
   endSos(sosId: string): Promise<void>;
   /** SOSes still on, newest first. */
   activeSos(now?: number): ActiveSos[];
+  /** Ask for a call back: everyone (`to` null) or one member. Returns the request's id. */
+  askCallback(opts?: { to?: string | null; tz?: string | null; awake?: boolean; remind?: number }): Promise<string>;
+  /** Answer a call-back request; 'now' closes it. */
+  replyCallback(requestId: string, reply: CallbackReply): Promise<void>;
+  /** Where a request stands, or null if it isn't one (or its sender left). */
+  callbackState(requestId: string): CallbackState | null;
+  /** Whether a request asks this member (default: you). */
+  callbackAsks(state: CallbackState | null, memberId?: string): boolean;
+  /** Open requests in this circle, newest first. */
+  openCallbacks(opts?: { from?: string | null }): CallbackState[];
+  /** Open requests that ask you, have reminders on, and you haven't answered. */
+  callbacksAwaitingMe(): CallbackState[];
   /** Tell the others you've read a conversation (peer null = the group) up to `seq`. */
   sendReadReceipt(peer: string | null, seq: number): Promise<void>;
   /** For your own message: 'sent', 'delivered' (every recipient's phone has it) or 'read'. */
@@ -524,7 +572,7 @@ export class CircleClient {
   fetchPlaces(): Promise<Map<string, Place>>;
   savePlace(p: { id?: string; name: string; lat: number; lng: number; radius?: number; icon?: string; address?: string | null; group?: string | null }): Promise<string>;
   deletePlace(id: string): Promise<void>;
-  createInvite(opts?: { hours?: number }): Promise<Invite>;
+  createInvite(opts?: { hours?: number; companion?: CompanionInvite | null }): Promise<Invite>;
   setName(name: string): Promise<void>;
   setCircleName(name: string): Promise<void>;
   setChirp(sound: ChirpSound): Promise<void>;
