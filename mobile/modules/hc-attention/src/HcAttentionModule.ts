@@ -4,6 +4,7 @@ import { requireOptionalNativeModule } from 'expo';
 
 type Native = {
   isDoNotDisturbOn(): boolean;
+  hasDndAccess(): boolean;
   blink(times: number, onMs: number, offMs: number): Promise<boolean>;
   preview(name: string): boolean;
   playAlarm(name: string, times: number): boolean;
@@ -90,5 +91,14 @@ export function stopSequence() {
     native?.stopSequence();
   } catch {
     // nothing playing
+  }
+}
+
+/** Whether this app may ring through Do Not Disturb (granted in system settings). */
+export function hasDndAccess(): boolean {
+  try {
+    return native?.hasDndAccess() ?? false;
+  } catch {
+    return false;
   }
 }

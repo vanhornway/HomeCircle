@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Alert, Pressable, Switch, Text, View } from 'react-native';
 import { CHIRP_SOUNDS, type ChirpSound, type CircleClient } from '@homecircle/core';
-import { Card, Checkbox, SectionTitle } from './ui';
+import { Button, Card, Checkbox, SectionTitle } from './ui';
+import * as IntentLauncher from 'expo-intent-launcher';
+import { hasDndAccess } from '../../modules/hc-attention/src/HcAttentionModule';
 import { CHIRP_NAMES, previewChirp, setMyChirp } from '../lib/chirp';
 import { errorText } from '../lib/circle';
 import { updateSettings, type Settings } from '../lib/storage';
@@ -119,7 +121,40 @@ export function ChirpSettings({ clients, settings, onChange }: { clients: Circle
             trackColor={{ true: t.danger }}
           />
         </View>
+        <DndAccess />
       </Card>
     </>
+  );
+}
+
+/**
+ * Let HomeCircle through Do Not Disturb in the phone's settings: then an
+ * SOS notification rings through it itself, not only at alarm volume. An
+ * SOS from an elder on the Elderly Companion screens always tries to get
+ * through.
+ */
+function DndAccess() {
+  const t = useTheme();
+  const [granted, setGranted] = useState(hasDndAccess);
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Do Not Disturb access</Text>
+      <Text style={{ color: t.muted, fontSize: 13 }}>
+        {granted
+          ? 'Allowed: an SOS notification rings even with Do Not Disturb or bedtime on.'
+          : 'An SOS from an elder in your circle rings at alarm volume. Allow access so the SOS notification itself gets through Do Not Disturb, even if alarms are silenced.'}
+      </Text>
+      {granted ? null : (
+        <Button
+          small
+          title="Allow in settings"
+          onPress={() =>
+            IntentLauncher.startActivityAsync('android.settings.NOTIFICATION_POLICY_ACCESS_SETTINGS')
+              .then(() => setGranted(hasDndAccess()))
+              .catch(() => {})
+          }
+        />
+      )}
+    </View>
   );
 }
