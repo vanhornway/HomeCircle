@@ -87,6 +87,9 @@ export interface FamilyName {
 /** Answers to a call-back request. Only 'now' closes it. */
 export type CallbackReply = 'now' | '5min' | 'morning' | 'evening';
 export const CALLBACK_REPLIES: CallbackReply[];
+/** Every answer a request can get: the four replies, and 'asleep', which a phone sends by itself at night or on Do Not Disturb. */
+export type CallbackAnswer = CallbackReply | 'asleep';
+export const CALLBACK_ANSWERS: CallbackAnswer[];
 /** How each answer reads in the chat ("I'm calling you now"). */
 export const CALLBACK_REPLY_TEXT: Record<CallbackReply, string>;
 
@@ -136,6 +139,12 @@ export interface MemberLocation {
   app: string | null;
   /** How often that phone updates now (minutes), its slider stop, and whether charging or its battery budget changes it (0.18+). */
   cadence: { stop: number | 'custom'; moving: number; still: number; charging: boolean; limited: boolean } | null;
+  /** Do Not Disturb (or bedtime) was on when this was sent. */
+  dnd?: boolean;
+  /** Their time zone, e.g. "America/Chicago". */
+  tz?: string | null;
+  /** An elder's phone: when she last used it. */
+  used?: number | null;
   ts: number;
   receivedAt: number;
 }
@@ -320,7 +329,7 @@ export interface CallbackState {
   /** Minutes between reminders on the family's phones; 0 = none. */
   remind: number;
   /** Each person's latest answer, oldest first. */
-  replies: { memberId: string; name: string; reply: CallbackReply; ts: number; seq: number }[];
+  replies: { memberId: string; name: string; reply: CallbackAnswer; ts: number; seq: number }[];
   /** The first "I'm calling you now": the request is closed. */
   takenBy: { memberId: string; name: string; ts: number } | null;
   open: boolean;
@@ -514,6 +523,12 @@ export class CircleClient {
     /** How often this phone updates now, in minutes (shown under its name). */
     cadence?: { stop: number | 'custom'; moving: number; still: number; charging: boolean; limited: boolean };
     ts?: number;
+    /** Do Not Disturb (or bedtime) is on now. */
+    dnd?: boolean;
+    /** This phone's time zone. */
+    tz?: string | null;
+    /** An elder's phone: when she last used it. */
+    used?: number | null;
   }): Promise<void>;
   /** Remove this device's location from the circle (stop sharing with it). */
   clearLocation(): Promise<void>;
@@ -578,7 +593,11 @@ export class CircleClient {
   /** Ask for a call back: everyone (`to` null) or one member. Returns the request's id. */
   askCallback(opts?: { to?: string | null; tz?: string | null; awake?: boolean; remind?: number }): Promise<string>;
   /** Answer a call-back request; 'now' closes it. */
-  replyCallback(requestId: string, reply: CallbackReply): Promise<void>;
+  replyCallback(requestId: string, reply: CallbackAnswer): Promise<void>;
+  /** Whether a member is likely asleep: Do Not Disturb (in the last 12 hours) or night where they are. */
+  availability(memberId: string, now?: number): { asleep: boolean; dnd: boolean; night: boolean; tz: string | null };
+  /** Elders whose phone hasn't been used for longer than their admins set. */
+  inactiveElders(now?: number): { memberId: string; name: string; hours: number; used: number }[];
   /** Where a request stands, or null if it isn't one (or its sender left). */
   callbackState(requestId: string): CallbackState | null;
   /** Whether a request asks this member (default: you). */

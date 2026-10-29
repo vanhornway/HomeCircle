@@ -51,6 +51,8 @@ export const CALLBACK_REPLY_TEXT = {
   evening: 'I’ll call you in the evening',
 };
 const MAX_MEMBERS_ASKED = 50;
+/** Every answer a request can get: the four buttons, and 'asleep', which a phone sends by itself. */
+export const CALLBACK_ANSWERS = [...CALLBACK_REPLIES, 'asleep'];
 
 const AGENT_NAME = /^[\p{L}\p{N}][\p{L}\p{N} _-]{0,23}$/u;
 /** An agent's name: what people call it (/Name), so letters, digits, space, _ and - only. */
@@ -812,6 +814,11 @@ export class CircleClient {
       precise: typeof b.precise === 'boolean' ? b.precise : null,
       app: typeof b.app === 'string' ? b.app.slice(0, 16) : null,
       cadence: cleanCadence(b.cadence),
+      // Do Not Disturb (or bedtime) on when sent, their time zone, and for
+      // an elder's phone when she last used it (0.22+).
+      dnd: b.dnd === true,
+      tz: cleanTimeZone(b.tz),
+      used: num(b.used),
       ts: msg.ts,
       receivedAt: updatedAt,
     };
@@ -831,7 +838,7 @@ export class CircleClient {
   }
 
   /** Upload this device's location, encrypted. */
-  async shareLocation({ lat, lng, accuracy, battery, charging, speed, trigger = 'update', placeId = null, approx = false, power, perm, precise, app, cadence, ts }) {
+  async shareLocation({ lat, lng, accuracy, battery, charging, speed, trigger = 'update', placeId = null, approx = false, power, perm, precise, app, cadence, ts, dnd, tz, used }) {
     const body = { lat, lng, accuracy, battery, charging, speed, trigger, placeId };
     // Which HomeCircle app the phone runs, for Circle health (0.16+).
     if (typeof app === 'string' && app) body.app = app.slice(0, 16);
@@ -842,6 +849,11 @@ export class CircleClient {
     if (power) body.power = power;
     if (perm) body.perm = perm;
     if (typeof precise === 'boolean') body.precise = precise;
+    // Asleep or on Do Not Disturb, and the time where they are, for the
+    // Elderly Companion skin (sealed like the rest; 0.22+).
+    if (dnd === true) body.dnd = true;
+    if (cleanTimeZone(tz)) body.tz = tz;
+    if (typeof used === 'number' && Number.isFinite(used)) body.used = used;
     await this._withEpochRetry(() => {
       const env = this._seal('location', body);
       return this.api.putLocation(env);
@@ -1506,13 +1518,48 @@ export class CircleClient {
     return id;
   }
 
-  /** Answer a call-back request: 'now' (which closes it), '5min', 'morning' or 'evening'. */
+  /**
+   * Answer a call-back request: 'now' (which closes it), '5min', 'morning'
+   * or 'evening'; or 'asleep', which a phone sends by itself when a request
+   * reaches it at night or on Do Not Disturb (she's told; it stays open).
+   */
   replyCallback(requestId, reply) {
-    if (!CALLBACK_REPLIES.includes(reply)) return Promise.reject(new Error('Not a call-back reply'));
+    if (!CALLBACK_ANSWERS.includes(reply)) return Promise.reject(new Error('Not a call-back reply'));
     const req = this._callbackRequest(requestId);
     if (!req) return Promise.reject(new Error('No such call-back request'));
     const name = this.myName;
-    return this._post('chat', { text: `📞 ${name}: ${CALLBACK_REPLY_TEXT[reply]}`, callback: { state: 'reply', of: requestId, reply } }, { urgent: true });
+    const text = reply === 'asleep' ? `📞 ${name} is asleep. ${this._callbackName(req.from)} was told.` : `📞 ${name}: ${CALLBACK_REPLY_TEXT[reply]}`;
+    return this._post('chat', { text, callback: { state: 'reply', of: requestId, reply } }, { urgent: true });
+  }
+
+  /**
+   * Whether a member is likely asleep: their phone said Do Not Disturb was
+   * on (within the last 12 hours), or it's night where they are (10 pm to
+   * 7 am in their time zone).
+   */
+  availability(memberId, now = Date.now()) {
+    const loc = this.locations.get(memberId);
+    const tz = loc?.tz ?? null;
+    const hour = localHour(tz, now);
+    const night = hour != null && (hour >= 22 || hour < 7);
+    const dnd = !!loc?.dnd && now - loc.ts < 12 * 3600_000;
+    return { asleep: dnd || night, dnd, night, tz };
+  }
+
+  /**
+   * Elders whose phone hasn't been used for longer than their admins set
+   * (24 hours by default): [{ memberId, name, hours, used }].
+   */
+  inactiveElders(now = Date.now()) {
+    const out = [];
+    for (const [memberId, rec] of this.records.member) {
+      if (rec.skin !== 'elderly' || !this.members.get(memberId) || this.members.get(memberId).removed) continue;
+      const used = this.locations.get(memberId)?.used;
+      if (typeof used !== 'number') continue;
+      const hours = (now - used) / 3600_000;
+      if (hours >= (rec.inactiveHours ?? 24)) out.push({ memberId, name: this.members.get(memberId).name, hours: Math.floor(hours), used });
+    }
+    return out;
   }
 
   _callbackRequest(id) {
@@ -1540,7 +1587,7 @@ export class CircleClient {
     let takenBy = null;
     for (const m of this.messages) {
       const r = m.kind === 'chat' && !m.peer && m.seq > req.seq ? m.body?.callback : null;
-      if (!r || r.state !== 'reply' || r.of !== requestId || !CALLBACK_REPLIES.includes(r.reply)) continue;
+      if (!r || r.state !== 'reply' || r.of !== requestId || !CALLBACK_ANSWERS.includes(r.reply)) continue;
       const name = m.from === req.from ? null : this._callbackName(m.from);
       if (!name) continue;
       replies.set(m.from, { memberId: m.from, name, reply: r.reply, ts: m.ts, seq: m.seq });
@@ -2369,6 +2416,17 @@ function cleanAlias(b) {
   const name = cleanName(b.name);
   if (!name) return null;
   return { caller: b.caller, member: b.member, name, rel: ALIAS_RELS.includes(b.rel) ? b.rel : null };
+}
+
+/** The hour (0–23) in a time zone, or null if it can't be worked out. */
+function localHour(tz, now) {
+  if (!tz) return null;
+  try {
+    const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: 'numeric', hourCycle: 'h23' }).format(new Date(now)));
+    return Number.isInteger(h) ? h % 24 : null;
+  } catch {
+    return null;
+  }
 }
 
 /** An IANA time zone name such as "Asia/Karachi", or null. */

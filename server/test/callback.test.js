@@ -188,3 +188,47 @@ test('a background task (no member list loaded) still knows which requests to re
   assert.equal(bg.callbacksAwaitingMe().some((x) => x.id === req), false);
   assert.deepEqual(errors, []);
 });
+
+test('a phone at night or on Do Not Disturb answers "asleep" by itself; she’s told, and it stays open', async () => {
+  const req = await ammi.askCallback({ tz: 'Asia/Karachi', remind: 10 });
+  await hamza.fetchMessages();
+  await hamza.replyCallback(req, 'asleep');
+  await Promise.all(everyone.map((c) => c.fetchMessages()));
+  const s = ammi.callbackState(req);
+  assert.equal(s.open, true);
+  assert.deepEqual(s.replies.map((r) => [r.name, r.reply]), [['Hamza', 'asleep']]);
+  assert.equal(umair.messages.find((m) => m.body?.callback?.reply === 'asleep').body.text, '📞 Hamza is asleep. Ammi was told.');
+  // Answering, even "asleep", stops Hamza's own reminders; the others' keep going.
+  assert.equal(hamza.callbacksAwaitingMe().some((x) => x.id === req), false);
+  assert.equal(sara.callbacksAwaitingMe().some((x) => x.id === req), true);
+  await umair.replyCallback(req, 'now');
+});
+
+test('presence rides in the sealed location: Do Not Disturb, time zone, and when she last used her phone', async () => {
+  const at = Date.UTC(2026, 9, 28, 20, 0); // 1 am in Lahore, 3 pm in Austin
+  await hamza.shareLocation({ lat: 30.27, lng: -97.74, dnd: true, tz: 'America/Chicago', ts: at });
+  await ammi.shareLocation({ lat: 31.52, lng: 74.35, tz: 'Asia/Karachi', used: at - 30 * 3600_000 });
+  await Promise.all([umair.fetchLocations(), ammi.fetchLocations()]);
+  const h = ammi.locations.get(id(hamza));
+  assert.deepEqual([h.dnd, h.tz], [true, 'America/Chicago']);
+  // Asleep: Do Not Disturb is on (whatever the time is there).
+  const a = ammi.availability(id(hamza), h.ts + 60_000);
+  assert.deepEqual([a.asleep, a.dnd, a.tz], [true, true, 'America/Chicago']);
+  // Night where she is (1 am in Lahore), without Do Not Disturb; afternoon in Austin.
+  assert.equal(umair.availability(id(ammi), at).night, true);
+  assert.equal(umair.availability(id(hamza), at).night, false);
+  // A Do Not Disturb older than 12 hours doesn't count.
+  assert.equal(ammi.availability(id(hamza), h.ts + 13 * 3600_000).dnd, false);
+  const stored = JSON.stringify(app.store.db.prepare('SELECT env FROM locations').all());
+  assert.ok(!stored.includes('Chicago') && !stored.includes('dnd'));
+});
+
+test('an elder whose phone hasn’t been used for longer than her admins set shows as inactive', async () => {
+  await umair.setMemberRecord(id(ammi), { skin: 'elderly', page: 'care', inactiveHours: 24 });
+  const used = umair.locations.get(id(ammi)).used;
+  assert.deepEqual(umair.inactiveElders(used + 23 * 3600_000), []);
+  const [x] = umair.inactiveElders(used + 31 * 3600_000);
+  assert.deepEqual([x.memberId, x.name, x.hours], [id(ammi), 'Ammi', 31]);
+  await umair.setMemberRecord(id(ammi), { inactiveHours: 48 });
+  assert.deepEqual(umair.inactiveElders(used + 31 * 3600_000), []);
+});
