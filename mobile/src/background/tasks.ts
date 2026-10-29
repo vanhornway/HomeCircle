@@ -14,6 +14,8 @@ import { checkForUpdateInBackground } from '../lib/updates';
 import { SOS_TASK, onSosFix } from '../lib/sos';
 import { countFetch, countFixes, countWake, currentNet } from '../lib/energy';
 import { pushHint } from '@homecircle/core';
+import { loadSkin } from '../skins';
+import { flushOutbox as flushHerRequests } from '../companion/outbox';
 
 const log = (...a: unknown[]) => {
   if (__DEV__) console.log('[homecircle:bg]', ...a);
@@ -75,6 +77,8 @@ TaskManager.defineTask(HEARTBEAT_TASK, async () => {
     // A position held back while moving goes now (the drive's end).
     if (loc) await report(loc, 'update', { force: pending });
     else await flushOutbox().catch(() => 0);
+    // Her call-back requests that waited for the internet (Elderly Companion skin).
+    if ((await loadSkin()) === 'elderly') await flushHerRequests().catch(() => 0);
     // Still for 10 minutes: stop asking for location until the phone moves.
     await maybeEnterStillMode().catch(() => false);
     // A newer app? At most every 4 hours; says so once per version.

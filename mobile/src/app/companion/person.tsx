@@ -6,6 +6,7 @@ import Svg, { Path } from 'react-native-svg';
 import { clientForCircle, errorText, useCircles } from '../../lib/circle';
 import { myTimeZone, pageOf } from '../../companion/people';
 import { currentRequest, statusLine } from '../../companion/status';
+import { askOrQueue } from '../../companion/outbox';
 import { say, text } from '../../companion/lines';
 import { C, TILE_COLORS, URDU } from '../../companion/theme';
 
@@ -32,8 +33,7 @@ export default function Person() {
     setBusy(true);
     setError(null);
     try {
-      await client.askCallback({ to: m.id, tz: myTimeZone(), awake: true, remind: pageOf(client) === 'care' ? 10 : 0 });
-      say({ key: 'sent.one', name: m.name });
+      if ((await askOrQueue(client, { to: m.id, tz: myTimeZone(), remind: pageOf(client) === 'care' ? 10 : 0 })) === 'sent') say({ key: 'sent.one', name: m.name });
       router.back();
     } catch (e) {
       setError(errorText(e));

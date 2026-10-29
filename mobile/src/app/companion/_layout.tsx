@@ -7,6 +7,7 @@ import { registerPush } from '../../lib/push';
 import { ensureNotificationChannels, notifyNewMessages } from '../../lib/notify';
 import { shareNow, startBackgroundUpdates } from '../../lib/location';
 import { loadPages } from '../../companion/people';
+import { flushOutbox } from '../../companion/outbox';
 import { C } from '../../companion/theme';
 
 /**
@@ -42,6 +43,8 @@ export default function CompanionLayout() {
       }
       shareNow('open').catch(() => {});
       registerPush().catch(() => {});
+      // Requests that waited for the internet go out now.
+      flushOutbox().catch(() => {});
     };
     startBackgroundUpdates().catch(() => {});
     resume();
@@ -51,6 +54,10 @@ export default function CompanionLayout() {
       }),
       c.on('locationRequest', () => {
         shareNow('requested').catch(() => {});
+      }),
+      // Back online while open: send what waited.
+      c.on('status', (s: string) => {
+        if (s === 'online') flushOutbox().catch(() => {});
       }),
     ]);
     const sub = AppState.addEventListener('change', (state) => {

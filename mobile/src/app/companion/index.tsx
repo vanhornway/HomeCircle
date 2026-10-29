@@ -8,6 +8,7 @@ import { allClients, errorText, useCircles } from '../../lib/circle';
 import { startMySos, useMySos } from '../../lib/sos';
 import { pageOf, myTimeZone, tilePeople } from '../../companion/people';
 import { currentRequest, statusLine, tileReplies } from '../../companion/status';
+import { askOrQueue } from '../../companion/outbox';
 import { hush, say, text } from '../../companion/lines';
 import { C, TILE_COLORS, URDU } from '../../companion/theme';
 
@@ -67,8 +68,7 @@ function CirclePage({ client, index, count, current }: { client: CircleClient; i
     // Already asked: tell her where it stands instead of asking again.
     if (request) return say(statusLine(client, request));
     try {
-      await client.askCallback({ tz: myTimeZone(), awake: true, remind: care ? CARE_REMIND_MIN : 0 });
-      say({ key: 'sent.everyone' });
+      if ((await askOrQueue(client, { tz: myTimeZone(), remind: care ? CARE_REMIND_MIN : 0 })) === 'sent') say({ key: 'sent.everyone' });
     } catch (e) {
       setError(errorText(e));
     }
