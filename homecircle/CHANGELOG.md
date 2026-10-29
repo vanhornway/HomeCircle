@@ -2,6 +2,25 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.20.0
+
+- Call-back requests: an elderly family member on the simple Elderly
+  Companion screens asks the whole circle, or one person, to call her back.
+  The request shows in the group chat; long-press (or tap) it to answer:
+  calling now, in 5 minutes, in the morning or in the evening (her time).
+  She hears the answer in Urdu. Until someone says they're calling now, the
+  people asked get a reminder every 10 minutes from their own phone.
+- Elderly Companion skin: Settings → Circle → Mark someone as an elder makes
+  an invite that switches her phone to big tiles, Ring everyone and SOS
+  (press and hold, to her care circle only), with no way back to the full
+  app from her phone. Her requests wait for the internet if there's none.
+  Her spoken lines are placeholder tones until the Urdu recordings are made.
+- Urgent delivery: call-back requests and replies and SOS skip the
+  45-second push batching and arrive at once. The push looks like any other;
+  the server only learns that a message was marked urgent.
+- Invites ask you to confirm the person is 13 or older.
+- The web app shows call-back requests with reply buttons.
+
 ## 0.19.2
 
 - Shopping lists: everything bought at a store (from receipts, order

@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Doc version** | 1.2 |
+| **Doc version** | 1.3 |
 | **Updated** | 2026-10-28 |
-| **Describes** | HomeCircle 0.19.2 as built, plus the planned Elderly Companion skin, Games plugin, family names, photos and languages (marked *planned*) |
+| **Describes** | HomeCircle 0.20.0 as built, including the Elderly Companion skin, the call-back loop, urgent delivery and the phrase catalog; plus the planned Elderly Companion settings, Games plugin, family names and photos (marked *planned*) |
 | **Source of truth for planned features** | `PRD.md` and the handoff kickoff. Where this doc and the PRD disagree, the PRD wins. |
 
 HomeCircle is a self-hosted, end-to-end encrypted family app: a live family map, Locate, place arrival alerts, family chat, an AI helper and optional plugins. One server hosts many isolated **circles**. Phones encrypt everything before upload; the server stores and relays ciphertext it cannot read.
@@ -26,13 +26,14 @@ These come first. A feature that can't meet them is redesigned, not shipped.
 
 | Feature | Design consequence |
 |---|---|
-| **Call-back urgency (decided: urgent flag)** | Today the server coalesces chat pushes to one per member every 45 s (`push.js`, `ACTIVITY_COALESCE_MS`), and it can't tell a call-back request from a chat message, so a request could arrive up to 45 s late. Decision: messages carry an outer `urgent: true` flag that skips coalescing and is pushed at once, at high priority. It's used only for call-back requests, replies to the elder, "taken" notices and SOS. The push payload stays identical to a normal message push, so Apple, Google and Expo learn nothing new. The server learns that member X sent an urgent message at time T (never what or why); this is added to the threat model in `PROTOCOL.md`. The server rate-limits urgent messages per sender (e.g. 10 a minute), and anything over the limit falls back to normal coalesced delivery, never dropped. |
-| **Call-back reminders** | The server can't read requests, so it can't send reminders. Each family member's phone schedules its own local reminders when a request arrives and cancels them when it sees "taken". This works even if her phone goes offline and adds no server traffic. |
-| **Asleep and DND** | Detected on each family member's phone, which then sends her the sealed "asleep" reply. The server never learns who is asleep. |
-| **Inactivity check-in** | Family phones already see when her phone last uploaded a location (sealed, with a time). They raise the check-in locally; no new server logic. |
-| **Elder config, skins, family names, photos** | Sealed, signed records, verified on the phones against the setter's right to set them (admin, or the person themself). Photos are encrypted files like today's uploads. |
+| **Call-back urgency (built, 0.20.0)** | The server coalesces chat pushes to one per member every 45 s (`push.js`, `ACTIVITY_COALESCE_MS`), and it can't tell a call-back request from a chat message, so a request could arrive up to 45 s late. Decision: messages carry an outer `urgent: true` flag that skips coalescing and is pushed at once, at high priority. It's used only for call-back requests, replies to the elder, "taken" notices and SOS. The push payload stays identical to a normal message push, so Apple, Google and Expo learn nothing new. The server learns that member X sent an urgent message at time T (never what or why); this is added to the threat model in `PROTOCOL.md`. The server rate-limits urgent messages per sender (10 a minute), and anything over the limit falls back to normal coalesced delivery, never dropped. |
+| **Call-back reminders (built, 0.20.0)** | The server can't read requests, so it can't send reminders. Each family member's phone schedules its own local reminders when a request arrives and cancels them when it sees "taken". This works even if her phone goes offline and adds no server traffic. |
+| **Asleep and DND (planned)** | Detected on each family member's phone, which then sends her the sealed "asleep" reply. The server never learns who is asleep. |
+| **Inactivity check-in (planned)** | Family phones already see when her phone last uploaded a location (sealed, with a time). They raise the check-in locally; no new server logic. |
+| **Skins (built, 0.20.0)** | Chosen by an admin; today the skin travels sealed inside the elder's invite, and the phone remembers it. The server never learns who uses which skin. |
+| **Elder config, family names, photos (planned)** | Sealed, signed records, verified on the phones against the setter's right to set them (admin, or the person themself). Photos are encrypted files like today's uploads. |
 | **Games** | Moves sealed with the pair's direct key, signed, rule-checked on both phones; races resolved by the server's existing message order. |
-| **Languages and audio** | The phrase catalog and recordings ship in the app; only keys and names travel, sealed. Nothing language-specific reaches the server. |
+| **Languages and audio (built, 0.20.0; recordings are placeholders)** | The phrase catalog and recordings ship in the app; only keys and names travel, sealed. Nothing language-specific reaches the server. |
 
 ## 1. Repository layout
 
@@ -40,7 +41,7 @@ These come first. A feature that can't meet them is redesigned, not shipped.
 |---|---|
 | `packages/core/` | Shared JavaScript used by the mobile app, the built-in web app, the agent and tests: crypto (`crypto.js`, TweetNaCl), the circle client (`client.js`), the API wrapper (`api.js`), the agent client (`agent.js`), features (`features.js`), places, prayer times, emoji. |
 | `server/` | Node.js 22 server. `src/http.js` and `routes.js` (REST API under `/api/v1`), `hub.js` (WebSocket relay), `db.js` (SQLite via `node:sqlite`), `push.js` (content-free push through Expo), `files.js` (encrypted uploads), `plugins/` (weather, air, prayer, Home Assistant), `agent/` (the AI helper), `public/` (the built-in web app). |
-| `mobile/` | iOS and Android app, Expo / React Native with Expo Router. `src/app/` (screens and tabs), `src/lib/` (location, push, notifications, chirps, SOS, storage), `src/map/`, `modules/hc-attention/` (Android-only native module: Do Not Disturb, flash, alarm sound). |
+| `mobile/` | iOS and Android app, Expo / React Native with Expo Router. `src/app/` (screens and tabs; `src/app/companion/` is the Elderly Companion skin), `src/skins/` (the list of skins), `src/companion/` (her lines, status and offline queue), `src/lib/` (location, push, notifications, call-back reminders, chirps, SOS, storage), `src/map/`, `assets/phrases/` (the phrase catalog and recordings, built by `scripts/phrases.mjs`), `modules/hc-attention/` (Android-only native module: Do Not Disturb, flash, alarm sound, playing phrase recordings in sequence). |
 | `homecircle/` | Home Assistant add-on packaging (`config.yaml`, changelog). |
 | `landing/` | Marketing site and "choose your server" wizard (static). |
 | `deploy/` | Docker Compose, Caddy, installer, cloud-init, hosting guides. |
@@ -61,9 +62,9 @@ flowchart LR
   subgraph Phones["Phones (one HomeCircle app, iOS + Android)"]
     direction TB
     Full["Full skin<br/>map · chat · places · settings"]
-    Elder["Elderly Companion skin<br/>photo tiles · call-back · SOS · games"]:::planned
+    Elder["Elderly Companion skin<br/>photo tiles · call-back · SOS · games"]
     Teen["Teens skin (later)"]:::later
-    Catalog["Phrase catalog + Urdu audio<br/>(on the phone, offline)"]:::planned
+    Catalog["Phrase catalog + Urdu audio<br/>(on the phone, offline)"]
     Core["packages/core<br/>crypto · CircleClient · sealing"]
     Native["Background location · geofences<br/>push · hc-attention (Android)"]
     Full --> Core
@@ -140,7 +141,9 @@ The server is deliberately thin: it authenticates devices, scopes every request 
 Runs next to the server when `AGENT=true`. It joins a circle like a member, through an invite sealed to the agent host, so it holds its own keys but never the circle key. `brain.js` understands requests and runs **Dream** (tidying shared notes); `memory.js` stores notes encrypted on disk (SQLite FTS); `names.js` swaps people and places for stand-ins (Person A, Place 1) before anything reaches the AI provider. Known issue: two names for one person get two stand-ins, so Dream can't merge them (fixes doc, item 1).
 
 ### Mobile app
-Expo Router app with tabs Map, Chats, Places (hidden when location sharing is off) and Settings. Background location runs on a schedule (about every 15 minutes), on big moves and on geofence events; Locate sends a silent push that triggers one fresh fix. Android-only code is guarded by `Platform.OS` and the optional `hc-attention` native module; on iOS those calls do nothing. iOS has not been shipped yet (see the iOS checklist).
+Expo Router app with tabs Map, Chats, Places (hidden when location sharing is off) and Settings.
+
+**Skins.** `src/skins` lists the skins: Full (the tabs) and Elderly Companion (`src/app/companion`: big tiles per circle, Ring everyone, a person's Call me back, SOS by press and hold to care circles only). A skin is a route root and whether it's locked. The phone remembers its skin; a locked skin's phone never reaches the tabs, and new skins (teens, later) add an entry and a route folder without touching the plumbing. An elder's invite carries her name, page (care or grandkids) and skin, sealed; HomeCircle's normal join screen takes it. Her phone never shows message text: replies to her requests play as phrase recordings (`playSequence` in `hc-attention`), and requests made offline wait and go by themselves. Background location runs on a schedule (about every 15 minutes), on big moves and on geofence events; Locate sends a silent push that triggers one fresh fix. Android-only code is guarded by `Platform.OS` and the optional `hc-attention` native module; on iOS those calls do nothing. iOS has not been shipped yet (see the iOS checklist).
 
 ## 4. Data and encryption
 
@@ -151,23 +154,23 @@ Summary of `PROTOCOL.md`:
 - **The server can see:** circles and members, IP addresses, upload timing, ciphertext sizes, push tokens. **It cannot see:** names, locations, messages, places, battery or anything in a body.
 - **Retention:** messages are kept 1 to 365 days per circle (default 90).
 
-**Planned record kinds and events** (exact names decided in Claude Code's plan, then recorded in `PROTOCOL.md` and here):
+**New record kinds and events** (built ones are in `PROTOCOL.md`; planned ones get their exact names when they ship):
 
 | Planned | Purpose | Encrypted with |
 |---|---|---|
-| Skin and Elderly Companion config | Which skin a person's app shows; her tiles, sleep hours, language, Ring everyone switch | Circle key |
-| Call-back request, reply, taken | The call-back loop | Circle key (group chat) |
+| Skin (built: in the elder's invite) and Elderly Companion config (planned: admin record) | Which skin a person's app shows; her tiles, sleep hours, language, Ring everyone switch | Invite wrap key; then circle key |
+| Call-back request, reply, taken (built: `callback` in group chat, see `PROTOCOL.md`) | The call-back loop | Circle key (group chat) |
 | `alias` (family names and other names) | Who calls whom what; several names for one person | Circle key |
 | Photo reference | Profile and admin-added tile photos (the image is an encrypted file) | Circle key |
 | `game.create`, `game.move`, `game.resign`, `game.rematch` | Turn-based games between two people | The pair's direct key |
-| Outer `urgent` flag on `POST /messages` (not sealed: the server must read it) | Skip push coalescing for call-backs and SOS | None: it's routing metadata, like `to` on a DM |
+| Outer `urgent` flag on `POST /messages` (built; not sealed: the server must read it) | Skip push coalescing for call-backs and SOS | None: it's routing metadata, like `to` on a DM |
 
 ## 5. Key flows
 
 ### Today: a chat message
 Phone seals the message → `POST /messages` → server stores ciphertext and assigns a sequence number → WebSocket to open apps, content-free push to the rest → each phone opens and verifies it locally.
 
-### Planned: the call-back loop
+### The call-back loop (0.20.0)
 
 ![Call-back loop](callback-sequence.png)
 
@@ -215,6 +218,7 @@ Planned items move from dashed to solid once they ship.
 
 | Doc version | Date | Changes |
 |---|---|---|
+| 1.3 | 2026-10-28 | HomeCircle 0.20.0: the Elderly Companion skin, skins system, call-back loop, urgent delivery and phrase catalog are built (solid in the diagram). Repository layout, mobile app, principles table and record kinds updated. |
 | 1.2 | 2026-10-28 | Bundle 1.2: PRD added to the handoff. No architecture changes; diagrams unchanged. |
 | 1.1 | 2026-10-28 | Decided the call-back urgency question: an outer `urgent` flag skips push coalescing for call-backs and SOS, rate-limited per sender, with an identical push payload. Updated principles table, planned records, sequence diagram and architecture diagram. |
 | 1.0 | 2026-10-28 | First version: current architecture of HomeCircle 0.19.2, plus planned Elderly Companion skin, skins system, call-back loop, Games plugin, family names and aliases, photos, and phrase catalog. |

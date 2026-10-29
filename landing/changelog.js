@@ -1,6 +1,18 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.20.0',
+    date: '2026-10-28',
+    title: 'Call me back, for grandparents',
+    items: [
+      'An elderly parent taps one big button to ask the family to call her back, or taps one person’s photo to ask just them.',
+      'The request appears in your circle’s group chat. Long-press it to answer: calling now, in 5 minutes, in the morning or in the evening. She hears your answer in Urdu.',
+      'Until someone is calling, the people asked get a reminder every 10 minutes. The first “I’m calling you now” stops them for everyone.',
+      'Settings → Circle → Mark someone as an elder switches her phone to simple screens: big tiles, Ring everyone and SOS, and nothing else to get lost in.',
+      'Call-back requests and SOS now arrive at once instead of up to 45 seconds later.',
+    ],
+  },
+  {
     version: '0.19.2',
     date: '2026-10-27',
     title: 'Everything you buy, ready to pick',

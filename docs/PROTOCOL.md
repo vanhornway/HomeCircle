@@ -17,9 +17,9 @@ so the circles can't read each other even through a shared device account.
 
 | Party | Can see | Cannot see |
 |---|---|---|
-| Your server / hosting provider (Render, Railway, Hetzner, …) | number of circles and members, IP addresses, when each phone uploads, ciphertext sizes, push tokens (and so which members share a phone) | names, locations, messages, places, battery |
+| Your server / hosting provider (Render, Railway, Hetzner, …) | number of circles and members, IP addresses, when each phone uploads, ciphertext sizes, push tokens (and so which members share a phone), and which messages their sender marked `urgent` (call-back requests and replies, SOS) and when | names, locations, messages, places, battery, what an urgent message is or why |
 | Network attacker | nothing beyond TLS metadata | everything else |
-| Apple / Google / Expo push relay | that a push was sent to a device, and its type (`loc_req`, `msg`) | any content |
+| Apple / Google / Expo push relay | that a push was sent to a device, and its type (`loc_req`, `msg`); urgent messages are pushed at once rather than batched, so their timing is less bunched | any content (an urgent push is identical to any other) |
 | Map tile provider (OpenStreetMap by default) | which map area you *view*, and your IP | who you are tracking or why |
 | A removed member | everything up to their removal | anything after the key is rotated |
 
@@ -100,6 +100,15 @@ revoked when the key rotates.
 Join: `POST /join/preview {inviteId, inviteAuth}` → `wrapped`; the joiner
 decrypts it, generates keys, seals a profile, then `POST /join` consumes the
 invite and returns a device token.
+
+**An elder's invite** (Settings → Circle → Mark someone as an elder) adds
+`companion: { name, page, skin }` inside `wrapped`: the name the family gave
+her, whether this circle is her `care` or `grandkids` page, and the skin her
+phone shows (`elderly` today). Her phone joins under that name, so nobody
+types on it, and switches to that skin as it joins. The server sees the same
+`wrapped` box as for any invite. Invites can last up to 168 hours; an elder's
+lasts 7 days, so a helper near her has time to set up her phone. The inviter
+confirms in the app that the person is 13 or older.
 
 ## Removing a member and rotating the key
 
@@ -196,6 +205,28 @@ DM can't be passed off as a group message or redirected to someone else. The
 server stores `to_id` in the clear (it routes the message) and only returns a
 DM to its sender and recipient. Reactions to a DM are DMs too.
 
+**Call-back requests** come from a phone in the Elderly Companion skin.
+A request is a group `chat` message whose sealed body carries
+`callback: { state: "ask", for, tz, awake, remind }`: `for` is `null`
+(everyone in the circle) or one member id, `tz` her time zone, `awake`
+whether it's outside her sleep hours, and `remind` the minutes between
+reminders on the family's phones (`0` for none). Replies are group `chat`
+messages with `callback: { state: "reply", of, reply }`, where `reply` is
+`now`, `5min`, `morning` or `evening` (her time). The first `now` in server
+order takes the request and closes it for everyone; a reply from the asker
+herself, or sent as a direct message, doesn't count. Each family phone
+schedules its own reminders while a request that asks it is open and it
+hasn't replied, so the server never learns about reminders. Both carry a
+readable `text` for older apps.
+
+**Urgent messages.** `POST /messages` takes an outer `urgent: true`
+(routing metadata, like `to`) on call-back requests, replies to them and SOS
+start and safe. Its push goes at once instead of waiting out the server's
+45-second batching of chat pushes, and stands in for any batched one still
+waiting; the push itself is the same as any other. Past 10 urgent messages
+a minute from one sender, the rest are delivered like ordinary messages,
+never refused.
+
 **Retention.** Each circle keeps messages (group and direct) for 1, 7, 30, 90
 or 365 days, chosen by its admins (`PUT /circle/retention`, default 90).
 Nothing is ever kept longer than a year; `MESSAGE_RETENTION_DAYS` can only
@@ -226,7 +257,7 @@ circle that has it. Addresses are looked up with the phone's own geocoder
 | POST | `/circles` | server admin: create another circle |
 | DELETE | `/circle` | owner: delete the circle |
 | PUT | `/circle/retention` | admin: `{ days: 1 \| 7 \| 30 \| 90 \| 365 }` |
-| GET / POST | `/messages` | group messages + your DMs; `to` makes a DM |
+| GET / POST | `/messages` | group messages + your DMs; `to` makes a DM; `urgent: true` skips push batching (10 a minute per sender) |
 | PUT | `/members/me/profile` | re-seal profile |
 | PUT | `/members/me/push` | register push token |
 | DELETE | `/members/:id` | admin, or yourself (leave) |

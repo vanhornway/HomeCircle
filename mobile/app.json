@@ -3,7 +3,7 @@
     "name": "HomeCircle",
     "slug": "homecircle",
     "scheme": "homecircle",
-    "version": "0.19.2",
+    "version": "0.20.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
