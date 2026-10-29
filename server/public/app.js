@@ -1460,7 +1460,7 @@ function timeIn(tz, ts = Date.now()) {
   }
 }
 
-const REPLY_SHORT = { now: 'calling now', '5min': 'in 5 minutes', morning: 'in the morning', evening: 'in the evening' };
+const REPLY_SHORT = { now: 'calling now', '5min': 'in 5 minutes', morning: 'in the morning', evening: 'in the evening', asleep: 'asleep' };
 
 /** A call-back request from the Elderly Companion app, with reply buttons for whoever it asks. */
 function callbackCard(m) {

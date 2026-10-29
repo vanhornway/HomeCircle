@@ -5,6 +5,7 @@ import { Tabs } from 'expo-router/js-tabs';
 import { Redirect, router, useRouter } from 'expo-router';
 import { SKINS, useSkin } from '../../skins';
 import { recordNewElders, syncSkinFromRecords } from '../../skins/sync';
+import { checkInactivity } from '../../lib/inactivity';
 import { CircleClient } from '@homecircle/core';
 import { allClients, clientForCircle, errorText, getClient, useCircles } from '../../lib/circle';
 import { getServerState, isUnreachable, RECONNECT_GRACE_MS, setRetryHandler, setServerState } from '../../lib/connection';
@@ -191,6 +192,11 @@ function useCircleLifecycle(circlesKey: string) {
       client.on('records', () => {
         syncSkinFromRecords(allClients()).catch(() => {});
         recordNewElders(client).catch(() => {});
+        checkInactivity(client).catch(() => {});
+      }),
+      // An elder's phone reported when she last used it: quiet for too long?
+      client.on('locations', () => {
+        checkInactivity(client).catch(() => {});
       }),
       // An elder joined with an elder's invite: an admin's phone saves her settings.
       client.on('messages', () => {

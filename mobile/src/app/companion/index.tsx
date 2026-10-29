@@ -3,13 +3,14 @@ import { Animated, Easing, Image, Pressable, ScrollView, Text, View, useWindowDi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Svg, { Circle, Path } from 'react-native-svg';
-import type { CallbackReply, CircleClient, Member } from '@homecircle/core';
+import type { CallbackAnswer, CircleClient, Member } from '@homecircle/core';
 import { allClients, errorText, useCircles } from '../../lib/circle';
 import { startMySos, useMySos } from '../../lib/sos';
 import { inSleepHours, myTimeZone, pageOf, settingsOf, tileName, tilePeople } from '../../companion/people';
 import { currentRequest, statusLine, tileReplies } from '../../companion/status';
 import { askOrQueue } from '../../companion/outbox';
 import { usePhotoUri } from '../../lib/photos';
+import { markUsed } from '../../companion/used';
 import { hush, say, text } from '../../companion/lines';
 import { C, TILE_COLORS, URDU, isUrdu } from '../../companion/theme';
 
@@ -63,6 +64,7 @@ function CirclePage({ client, index, count, current }: { client: CircleClient; i
   const [error, setError] = useState<string | null>(null);
 
   const ringEveryone = async () => {
+    markUsed();
     setError(null);
     // Already asked: tell her where it stands instead of asking again.
     if (request) return say(statusLine(client, request));
@@ -155,7 +157,8 @@ function StatusBanner({ client, onPress }: { client: CircleClient; onPress: () =
   );
 }
 
-const REPLY_BADGE: Record<CallbackReply, { bg: string; icon: 'phone' | 'clock' }> = {
+const REPLY_BADGE: Record<CallbackAnswer, { bg: string; icon: 'phone' | 'clock' | 'moon' }> = {
+  asleep: { bg: '#2B3A67', icon: 'moon' },
   now: { bg: C.green, icon: 'phone' },
   '5min': { bg: C.amber, icon: 'clock' },
   morning: { bg: C.amber, icon: 'clock' },
@@ -163,14 +166,16 @@ const REPLY_BADGE: Record<CallbackReply, { bg: string; icon: 'phone' | 'clock' }
 };
 
 /** A person: their photo (coming with profile photos), else their name, big. Their answer shows as a badge. */
-function Tile({ client, member, label, color, reply, rows, onPress }: { client: CircleClient; member: Member; label: string; color: string; reply?: CallbackReply; rows: number; onPress: () => void }) {
-  const badge = reply ? REPLY_BADGE[reply] : null;
+function Tile({ client, member, label, color, reply, rows, onPress }: { client: CircleClient; member: Member; label: string; color: string; reply?: CallbackAnswer; rows: number; onPress: () => void }) {
+  // Asleep or on Do Not Disturb (or night where they are): faded, with a moon, still tappable.
+  const asleep = reply === 'asleep' || (!reply && client.availability(member.id).asleep);
+  const badge = reply ? REPLY_BADGE[reply] : asleep ? REPLY_BADGE.asleep : null;
   // Their own photo, else one an admin added, else the name she knows them by.
   const photo = usePhotoUri(client, client.account ? client.tilePhoto(client.account.memberId, member.id) : null);
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={member.name}
+      accessibilityLabel={asleep ? `${member.name}, asleep` : member.name}
       onPress={onPress}
       style={({ pressed }) => ({
         width: '47.5%',
@@ -183,7 +188,7 @@ function Tile({ client, member, label, color, reply, rows, onPress }: { client: 
         justifyContent: 'center',
         padding: photo ? 0 : 8,
         overflow: 'hidden',
-        opacity: pressed ? 0.8 : 1,
+        opacity: pressed ? 0.8 : asleep ? 0.45 : 1,
       })}
     >
       {photo ? (
@@ -199,7 +204,9 @@ function Tile({ client, member, label, color, reply, rows, onPress }: { client: 
       {badge ? (
         <View style={{ position: 'absolute', right: 8, top: 8, width: 46, height: 46, borderRadius: 23, backgroundColor: badge.bg, alignItems: 'center', justifyContent: 'center' }}>
           <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-            {badge.icon === 'phone' ? (
+            {badge.icon === 'moon' ? (
+              <Path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z" stroke={C.white} strokeWidth={2.4} strokeLinejoin="round" />
+            ) : badge.icon === 'phone' ? (
               <Path d="M5 4h3.5l1.5 4-2 1.5a11 11 0 0 0 6.5 6.5l1.5-2 4 1.5V19a1.5 1.5 0 0 1-1.5 1.5A15.5 15.5 0 0 1 3.5 5.5 1.5 1.5 0 0 1 5 4Z" stroke={C.white} strokeWidth={2.2} strokeLinejoin="round" />
             ) : (
               <>
@@ -236,6 +243,7 @@ function SosHold() {
   const [error, setError] = useState<string | null>(null);
 
   const press = () => {
+    markUsed();
     if (sos) return router.push('/companion/sos');
     setError(null);
     done.current = false;

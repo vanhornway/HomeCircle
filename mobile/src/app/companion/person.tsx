@@ -8,6 +8,7 @@ import { inSleepHours, myTimeZone, settingsOf, tileName } from '../../companion/
 import { currentRequest, statusLine } from '../../companion/status';
 import { askOrQueue } from '../../companion/outbox';
 import { usePhotoUri } from '../../lib/photos';
+import { markUsed } from '../../companion/used';
 import { say, text } from '../../companion/lines';
 import { C, TILE_COLORS, URDU, isUrdu } from '../../companion/theme';
 
@@ -25,6 +26,7 @@ export default function Person() {
   const label = tileName(client, m.id);
 
   const callMe = async () => {
+    markUsed();
     if (busy) return;
     const open = currentRequest(client);
     // Already asked (everyone, or this person): tell her where it stands.

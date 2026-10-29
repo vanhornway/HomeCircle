@@ -23,6 +23,9 @@ import { APP_VERSION } from './updates';
 import { phoneHealth } from './health';
 import { recordFix, shareMyPlaces } from './visits';
 import { loadedClients } from './circle';
+import { isDoNotDisturbOn } from '../../modules/hc-attention/src/HcAttentionModule';
+import { loadSkin } from '../skins';
+import { lastUsed } from '../companion/used';
 import { countFixes, countUpload, currentNet, noteCharging, usedTodayMah } from './energy';
 import { SLOW_AFTER_MS, SLOW_STILL_INTERVAL_MS, STOPS, effectiveLocationPolicy, type Policy } from './locationPolicy';
 
@@ -113,6 +116,14 @@ export async function upload(
   // Battery saver, permission level and precise on/off travel with every
   // update, so the circle sees why updates may be slow.
   const health = await phoneHealth();
+  // Asleep or on Do Not Disturb, and the time where this phone is, so an
+  // elder's phone can fade an asleep person's tile; from an elder's own
+  // phone, when she last used it.
+  const presence = {
+    dnd: isDoNotDisturbOn(),
+    tz: timeZone(),
+    used: (await loadSkin()) === 'elderly' ? await lastUsed() : null,
+  };
   const results = await Promise.allSettled(
     targets.map((client) => {
       const approx = approxCircles.has(client.circleId!);
@@ -128,6 +139,7 @@ export async function upload(
         perm: health.perm,
         precise: health.precise,
         app: APP_VERSION,
+        ...presence,
         cadence: {
           stop: policy.stop,
           moving: policy.movingGapMs / 60_000,
@@ -488,4 +500,13 @@ async function syncGeofencesNow() {
     return;
   }
   await Location.startGeofencingAsync(GEOFENCE_TASK, regions);
+}
+
+/** This phone's time zone, e.g. "America/Chicago". */
+function timeZone(): string | null {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  } catch {
+    return null;
+  }
 }

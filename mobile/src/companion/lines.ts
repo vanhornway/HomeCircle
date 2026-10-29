@@ -27,7 +27,7 @@ export function setLanguage(lang: string) {
 }
 
 /** One line: a phrase, the he/she its verbs follow, and what fills its slots. */
-export type Line = { key: string; g?: Gender; name?: string; game?: string };
+export type Line = { key: string; g?: Gender; name?: string; names?: string; game?: string };
 
 function form({ key, g }: Line): Form | null {
   const forms = PHRASES[key]?.[language] as Partial<Record<Gender, Form>> | undefined;

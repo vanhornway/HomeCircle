@@ -1,11 +1,11 @@
 // Where her latest call-back request in a circle stands, for the banner on
 // her page, the badges on the tiles and what she hears.
-import type { CallbackReply, CallbackState, CircleClient } from '@homecircle/core';
+import type { CallbackAnswer, CallbackState, CircleClient } from '@homecircle/core';
 import { genderOf, tileName } from './people';
 import type { Line } from './lines';
 
 /** The phrase each reply plays. */
-export const REPLY_PHRASE: Record<CallbackReply, string> = { now: 'reply.calling_now', '5min': 'reply.five_min', morning: 'reply.morning', evening: 'reply.evening' };
+export const REPLY_PHRASE: Record<CallbackAnswer, string> = { now: 'reply.calling_now', '5min': 'reply.five_min', morning: 'reply.morning', evening: 'reply.evening', asleep: 'asleep.one' };
 
 // After someone says "I'm calling you now", the page shows it this long.
 const TAKEN_SHOWN_MS = 30 * 60_000;
@@ -28,11 +28,11 @@ export function statusLine(client: CircleClient, s: CallbackState): Line {
   return { key: 'sent.everyone' };
 }
 
-export function replyLine(client: CircleClient, memberId: string, name: string, reply: CallbackReply): Line {
+export function replyLine(client: CircleClient, memberId: string, name: string, reply: CallbackAnswer): Line {
   return { key: REPLY_PHRASE[reply], g: genderOf(client, memberId), name: tileName(client, memberId) || name };
 }
 
 /** Each person's answer on her tiles: memberId -> reply. */
-export function tileReplies(s: CallbackState | null): Map<string, CallbackReply> {
+export function tileReplies(s: CallbackState | null): Map<string, CallbackAnswer> {
   return new Map(s ? s.replies.map((r) => [r.memberId, r.reply]) : []);
 }

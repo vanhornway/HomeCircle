@@ -14,6 +14,7 @@ import { previewText } from './polls';
 import { alertSos, ensureSosChannels, stopAlarm } from './sosAlarm';
 import { ensureCallbackChannel, notifyCallback, syncCallbackReminders } from './callbacks';
 import { loadSkin } from '../skins';
+import { isDoNotDisturbOn } from '../../modules/hc-attention/src/HcAttentionModule';
 import { companionAlerts } from '../companion/alerts';
 
 const LAST_NOTIFIED_KEY = 'homecircle.lastNotifiedSeq';
@@ -124,7 +125,11 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
   for (const m of messages) {
     if (!callbackAsk(m) || m.seq <= last || m.from === me) continue;
     const s = client.callbackState(m.id);
-    if (s?.open && client.callbackAsks(s) && conversationKey(id, null) !== reading) await notifyCallback(client, s, showPreviews).catch(() => {});
+    if (!s?.open || !client.callbackAsks(s)) continue;
+    // Night here, or Do Not Disturb on: no sound, and she's told we're asleep (PRD CUJ 6).
+    const asleep = iAmAsleep();
+    if (asleep && !s.replies.some((r) => r.memberId === me)) await client.replyCallback(s.id, 'asleep').catch(() => {});
+    if (conversationKey(id, null) !== reading) await notifyCallback(client, s, showPreviews, { quiet: asleep }).catch(() => {});
   }
   await syncCallbackReminders(client, showPreviews).catch(() => {});
   const fresh = messages.filter(
@@ -155,4 +160,10 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
       trigger: Platform.OS === 'android' ? { channelId: MESSAGES_CHANNEL } : null,
     });
   }
+}
+
+/** Whether this phone's person is likely asleep: Do Not Disturb on, or 10 pm to 7 am here. */
+export function iAmAsleep(now = new Date()): boolean {
+  const h = now.getHours();
+  return isDoNotDisturbOn() || h >= 22 || h < 7;
 }
