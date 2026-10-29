@@ -130,7 +130,7 @@ export class Api {
   chirp = (body) => this.req('POST', '/chirps', body);
   agentHost = () => this.req('GET', '/agent-host');
   agentSetup = (body) => this.req('POST', '/agent-host/setup', body);
-  uploadFile = (bytes) => this.bytes('POST', '/files', bytes);
+  uploadFile = (bytes, { purpose = null } = {}) => this.bytes('POST', `/files${purpose ? `?purpose=${purpose}` : ''}`, bytes);
   downloadFile = (id) => this.bytes('GET', `/files/${encodeURIComponent(id)}`);
   deleteFile = (id) => this.req('DELETE', `/files/${encodeURIComponent(id)}`);
   keepFile = (id) => this.req('POST', `/files/${encodeURIComponent(id)}/keep`);

@@ -34,6 +34,8 @@ export interface Member {
   chirp?: ChirpSound | null;
   /** Their he/she for languages whose verbs need it, from their own profile. */
   g?: Gender | null;
+  /** Their own photo, if they added one (an encrypted file). */
+  photo?: PhotoRef | null;
 }
 
 export type ChirpSound = 'robin' | 'wren' | 'finch' | 'chickadee' | 'cardinal' | 'bluebird' | 'canary' | 'sparrow' | 'lark' | 'dove';
@@ -41,6 +43,13 @@ export const CHIRP_SOUNDS: ChirpSound[];
 /** He or she, for languages whose verbs change with the person (Urdu). */
 export type Gender = 'm' | 'f';
 export const GENDERS: Gender[];
+
+/** An encrypted photo: the file's id on the server and its key (which only sealed records carry). */
+export interface PhotoRef {
+  id: string;
+  key: string;
+  at: number;
+}
 
 /** Admin settings about one member (her skin and Elderly Companion settings, someone's he/she). */
 export interface MemberRecord {
@@ -58,6 +67,8 @@ export interface MemberRecord {
   inactiveHours: number | null;
   lang: string | null;
   g: Gender | null;
+  /** Photos an admin added for her tiles, by member id. */
+  photos: Record<string, PhotoRef> | null;
   /** Who signed it (an admin) and when. */
   by: string;
   ts: number;
@@ -594,6 +605,14 @@ export class CircleClient {
   setFamilyName(callerId: string, memberId: string, opts: { name: string; rel?: FamilyName['rel'] }): Promise<string | null>;
   /** A member's he/she: their own choice, else an admin's, else null. */
   genderOf(memberId: string): Gender | null;
+  /** Set your own photo (JPEG bytes), or remove it (null). */
+  setProfilePhoto(bytes: Uint8Array | null): Promise<void>;
+  /** Admins: set (or remove, null) the photo on an elder's tile for someone. */
+  setTilePhoto(elderId: string, memberId: string, bytes: Uint8Array | null): Promise<void>;
+  /** The photo an elder's tile shows for someone: their own, else an admin's, else null. */
+  tilePhoto(elderId: string, memberId: string): PhotoRef | null;
+  /** A photo's bytes. */
+  photoBytes(ref: PhotoRef): Promise<Uint8Array>;
   /** Your own he/she in your profile (null clears it). */
   setGender(g: Gender | null): Promise<void>;
   /** An elder's phone, once joined: tell the circle, so an admin's phone saves her settings. */
@@ -696,6 +715,7 @@ export type FeatureId =
   | 'directMessages'
   | 'polls'
   | 'readReceipts'
+  | 'photos'
   | 'chirps'
   | 'sos'
   | 'circleHealth'

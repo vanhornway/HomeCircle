@@ -321,6 +321,7 @@ export class CircleClient {
       color: a.profile.color,
       ...(a.profile.chirp ? { chirp: a.profile.chirp } : {}),
       ...(GENDERS.includes(a.profile.g) ? { g: a.profile.g } : {}),
+      ...(cleanPhotoRef(a.profile.photo) ? { photo: a.profile.photo } : {}),
       boxPub: a.identity.boxPub,
       signPub: a.identity.signPub,
     };
@@ -686,6 +687,7 @@ export class CircleClient {
           view.color = MEMBER_COLORS.includes(p.body.color) ? p.body.color : MEMBER_COLORS[0];
           view.chirp = CHIRP_SOUNDS.includes(p.body.chirp) ? p.body.chirp : null;
           view.g = GENDERS.includes(p.body.g) ? p.body.g : null;
+          view.photo = cleanPhotoRef(p.body.photo);
           view.verified = true;
           view.current = m.profile.epoch === st.epoch;
           known[m.id] = { signPub: m.signPub, boxPub: m.boxPub, name: view.name };
@@ -1689,6 +1691,55 @@ export class CircleClient {
     return this.members.get(memberId)?.g || this.memberRecord(memberId)?.g || null;
   }
 
+  // --- photos -------------------------------------------------------------
+  // A photo is a file encrypted on the phone with a key of its own; the
+  // server keeps the ciphertext, and the key travels only inside a sealed
+  // profile (your own photo) or member record (photos an admin adds for an
+  // elder's tiles). A new photo replaces the old one, whose file is deleted.
+
+  async _uploadPhoto(bytes) {
+    if (!(bytes instanceof Uint8Array) || !bytes.length) throw new Error('That photo is empty');
+    if (bytes.length > 2 * 1024 * 1024 - 64) throw new Error('That photo is too big (over 2 MB)');
+    const { key, data } = encryptFile(bytes);
+    const { id } = await this.api.uploadFile(data, { purpose: 'photo' });
+    return { id, key, at: Date.now() };
+  }
+
+  /** Set your own photo (JPEG bytes), or remove it (null). */
+  async setProfilePhoto(bytes) {
+    const old = cleanPhotoRef(this.account.profile.photo);
+    this.account.profile.photo = bytes ? await this._uploadPhoto(bytes) : undefined;
+    await this.api.putProfile(this._seal('profile', this._profileBody()));
+    await this._save();
+    if (old) await this.api.deleteFile(old.id).catch(() => {});
+    await this.refresh();
+  }
+
+  /**
+   * Admins: set the photo on an elder's tile for someone (JPEG bytes), or
+   * remove it (null). Their own photo, if they add one, comes first.
+   */
+  async setTilePhoto(elderId, memberId, bytes) {
+    const photos = { ...(this.memberRecord(elderId)?.photos ?? {}) };
+    const old = photos[memberId];
+    if (bytes) photos[memberId] = await this._uploadPhoto(bytes);
+    else delete photos[memberId];
+    await this.setMemberRecord(elderId, { photos });
+    if (old) await this.api.deleteFile(old.id).catch(() => {});
+  }
+
+  /** The photo an elder's tile shows for someone: their own, else an admin's, else null. */
+  tilePhoto(elderId, memberId) {
+    return this.members.get(memberId)?.photo || this.memberRecord(elderId)?.photos?.[memberId] || null;
+  }
+
+  /** A photo's bytes ({ id, key } from a profile or record). */
+  async photoBytes(ref) {
+    const r = cleanPhotoRef(ref);
+    if (!r) throw new Error('No such photo');
+    return decryptFile(await this.api.downloadFile(r.id), r.key);
+  }
+
   /** Your own he/she ('m', 'f', or null to clear it), in your profile. */
   async setGender(g) {
     this.account.profile.g = GENDERS.includes(g) ? g : undefined;
@@ -2292,7 +2343,24 @@ function cleanMemberRecord(b) {
     inactiveHours: int(b.inactiveHours, 1, 168),
     lang: typeof b.lang === 'string' && /^[a-z]{2,3}$/.test(b.lang) ? b.lang : null,
     g: GENDERS.includes(b.g) ? b.g : null,
+    photos: cleanPhotoMap(b.photos),
   };
+}
+
+/** A photo reference: { id, key, at } of an encrypted file, or null. */
+function cleanPhotoRef(p) {
+  if (!p || typeof p.id !== 'string' || !/^[A-Za-z0-9_-]{16,40}$/.test(p.id) || typeof p.key !== 'string' || !/^[A-Za-z0-9_-]{40,48}$/.test(p.key)) return null;
+  return { id: p.id, key: p.key, at: typeof p.at === 'number' ? p.at : 0 };
+}
+
+function cleanPhotoMap(m) {
+  if (!m || typeof m !== 'object') return null;
+  const out = {};
+  for (const [id, ref] of Object.entries(m).slice(0, MAX_TILES)) {
+    const r = cleanPhotoRef(ref);
+    if (r) out[id] = r;
+  }
+  return out;
 }
 
 /** A family name as sealed: who calls whom what, and how they're related (optional). */

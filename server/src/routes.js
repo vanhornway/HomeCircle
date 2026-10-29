@@ -28,6 +28,9 @@ const MAX_PLACES = 100;
 const MAX_CIRCLES = 100;
 const MAX_OPEN_REJOINS = 3;
 const MAX_RECORDS = 3000;
+// Members' photos (profile photos, photos for an elder's tiles): small, a few each.
+const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
+const MAX_PHOTOS_PER_MEMBER = 40;
 const REJOIN_HOURS = 48;
 // Chirps: three in a row to the same person (or the whole circle), then a
 // break of 30 minutes. A new run starts after 30 minutes without a chirp.
@@ -144,6 +147,8 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       urgent: true,
       // Sealed member and alias records (0.21+).
       records: true,
+      // Members' encrypted photos (0.21+).
+      photos: !!files,
       // The optional AI helper runs here (0.11+).
       agent: !!agentHost,
       // Plugins this server has (0.14+): an app shows only these in Features.
@@ -483,8 +488,9 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
         store.revokeAllInvites(me.circleId, now);
       }
     });
-    // Files were only ever for the agent (and only it had their keys).
-    if (agent) files?.removeCircle(me.circleId);
+    // The agent's files go with it; a member's photos go with them.
+    if (agent) files?.removeAgentFiles(me.circleId);
+    else files?.removePhotosBy(target.id);
     hub.send(target.id, { type: 'removed', memberId: target.id });
     hub.disconnect(target.id);
     hub.broadcast(me.circleId, { type: 'removed', memberId: target.id });
@@ -836,7 +842,22 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   r.add(
     'POST',
     '/files',
-    ({ me, body }) => {
+    ({ me, body, query }) => {
+      // A member's photo (?purpose=photo): encrypted on their phone, the key
+      // only in a sealed profile or record. Kept until replaced or they leave.
+      if (query.get('purpose') === 'photo' && me.kind !== 'agent') {
+        if (!files) fail(404, 'not_found', 'This server doesn’t store files');
+        requireFeature(me, 'photos', 'Photos');
+        if (!Buffer.isBuffer(body) || body.length < 40) fail(400, 'invalid', 'Send the encrypted photo as the request body');
+        if (body.length > MAX_PHOTO_BYTES) fail(413, 'too_big', 'That photo is too big (over 2 MB)');
+        if (store.photoFileIdsBy(me.id).length >= MAX_PHOTOS_PER_MEMBER) fail(429, 'rate_limited', 'You have uploaded a lot of photos. Remove some first.');
+        if ((store.circleBytes.get(me.circleId) || 0) + store.circleFileBytes(me.circleId) + body.length > config.maxCircleBytes) {
+          fail(507, 'circle_full', 'This circle’s storage is full.');
+        }
+        const id = randomBytes(18).toString('base64url');
+        files.save({ id, circleId: me.circleId, uploaderId: me.id, bytes: body, now: Date.now(), purpose: 'photo' });
+        return { id };
+      }
       if (!files || !agentHost || !agentOf(me.circleId)) fail(404, 'no_agent', 'This circle has no agent to send files to');
       if (!Buffer.isBuffer(body) || body.length < 40) fail(400, 'invalid', 'Send the encrypted file as the request body');
       if (me.kind === 'agent') {

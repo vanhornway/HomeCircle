@@ -171,6 +171,8 @@ function migrateToMultiCircle(db) {
   // A circle's agent (0.11): a member that never gets the circle key.
   add('members', 'kind', "TEXT NOT NULL DEFAULT 'person'");
   add('invites', 'kind', "TEXT NOT NULL DEFAULT 'person'");
+  // Member photos (0.21): a file is the helper's ('agent') or a member's photo ('photo').
+  add('files', 'purpose', "TEXT NOT NULL DEFAULT 'agent'");
   // Delivered ticks (0.11): every message up to this seq has reached the member's phone.
   add('members', 'delivered_seq', 'INTEGER NOT NULL DEFAULT 0');
   // Which features a circle has (0.13): circles from before keep everything on.
@@ -579,12 +581,20 @@ export class Store {
   }
 
   // files sent to the agent (the bytes are on disk; see files.js)
-  insertFile({ id, circleId, uploaderId, size, now, expiresAt }) {
-    this.q('INSERT INTO files (id, circle_id, uploader_id, size, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, circleId, uploaderId, size, now, expiresAt);
+  insertFile({ id, circleId, uploaderId, size, now, expiresAt, purpose = 'agent' }) {
+    this.q('INSERT INTO files (id, circle_id, uploader_id, size, created_at, expires_at, purpose) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, circleId, uploaderId, size, now, expiresAt, purpose);
   }
   file(id) {
     const r = this.q('SELECT * FROM files WHERE id = ?').get(id);
-    return r && { id: r.id, circleId: r.circle_id, uploaderId: r.uploader_id, size: r.size, createdAt: r.created_at, expiresAt: r.expires_at };
+    return r && { id: r.id, circleId: r.circle_id, uploaderId: r.uploader_id, size: r.size, createdAt: r.created_at, expiresAt: r.expires_at, purpose: r.purpose };
+  }
+  /** Files for the circle's helper (not members' photos). */
+  agentFileIds(circleId) {
+    return this.q("SELECT id FROM files WHERE circle_id = ? AND purpose = 'agent'").all(circleId).map((r) => r.id);
+  }
+  /** Photos a member uploaded (their own, or for an elder's tiles). */
+  photoFileIdsBy(memberId) {
+    return this.q("SELECT id FROM files WHERE uploader_id = ? AND purpose = 'photo'").all(memberId).map((r) => r.id);
   }
   deleteFileRow(id) {
     this.q('DELETE FROM files WHERE id = ?').run(id);

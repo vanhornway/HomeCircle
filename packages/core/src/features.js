@@ -13,6 +13,7 @@ export const FEATURES = [
   { id: 'groupChat', group: 'Chat', label: 'Group chat', detail: 'The circle’s shared chat.', on: true },
   { id: 'directMessages', group: 'Chat', label: 'Direct messages', detail: 'One-to-one chats inside the circle.', on: true },
   { id: 'polls', group: 'Chat', label: 'Polls', detail: 'Ask the group with options to vote on.', on: false },
+  { id: 'photos', group: 'Chat', label: 'Photos', detail: 'Profile photos, and photos for an elder’s tiles.', on: true },
   { id: 'readReceipts', group: 'Chat', label: 'Read receipts', detail: 'Read ticks (each person can still turn theirs off).', on: true },
   { id: 'chirps', group: 'Alerts', label: 'Chirps', detail: 'A short bird sound or flash on someone’s phone.', on: false },
   { id: 'sos', group: 'Alerts', label: 'SOS', detail: 'Hold to alert everyone, with your location every minute.', on: false },

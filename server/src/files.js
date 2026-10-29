@@ -21,15 +21,24 @@ export function createFiles({ dataDir, store }) {
     store.deleteFileRow(id);
   };
   return {
-    save({ id, circleId, uploaderId, bytes, now }) {
+    /** A member's photo is kept until it's replaced or they leave; anything else goes after 7 days unless kept. */
+    save({ id, circleId, uploaderId, bytes, now, purpose = 'agent' }) {
       writeFileSync(path(id), bytes);
-      store.insertFile({ id, circleId, uploaderId, size: bytes.length, now, expiresAt: now + UNKEPT_DAYS * 86400_000 });
+      store.insertFile({ id, circleId, uploaderId, size: bytes.length, now, purpose, expiresAt: purpose === 'photo' ? null : now + UNKEPT_DAYS * 86400_000 });
     },
     read: (id) => readFileSync(path(id)),
     remove,
-    /** Everything a circle's agent was sent (it was removed, or the circle was). */
+    /** Everything in a circle (it was deleted). */
     removeCircle(circleId) {
       for (const id of store.circleFileIds(circleId)) remove(id);
+    },
+    /** Everything a circle's agent was sent or made (it was removed); members' photos stay. */
+    removeAgentFiles(circleId) {
+      for (const id of store.agentFileIds(circleId)) remove(id);
+    },
+    /** A member's photos (they left). */
+    removePhotosBy(memberId) {
+      for (const id of store.photoFileIdsBy(memberId)) remove(id);
     },
     /** Files past their 7 days that nobody kept. */
     prune(now) {
