@@ -323,3 +323,21 @@ function Flock({ size, color, bg }: { size: number; color: ColorValue; bg?: Colo
     </Svg>
   );
 }
+
+/** The inviter confirms the person is 13 or older: everyone with their own account must be. */
+export function AgeConfirm({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  const t = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: value }}
+      onPress={() => onChange(!value)}
+      style={{ flexDirection: 'row', gap: 12, alignItems: 'center', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: value ? t.brand : t.line, backgroundColor: value ? t.brandSoft : t.surface, marginBottom: 16 }}
+    >
+      <View style={{ width: 26, height: 26, borderRadius: 7, borderWidth: 2, borderColor: value ? t.brand : t.muted, backgroundColor: value ? t.brand : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+        {value ? <Text style={{ color: t.brandInk, fontWeight: '800', fontSize: 15 }}>✓</Text> : null}
+      </View>
+      <Text style={{ flex: 1, color: t.text, fontSize: 15, lineHeight: 21 }}>They’re 13 or older. Younger children play on a parent’s phone.</Text>
+    </Pressable>
+  );
+}

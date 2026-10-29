@@ -1782,9 +1782,10 @@ export class CircleClient {
   // --- membership --------------------------------------------------------
 
   /**
-   * Invite someone. `companion` makes it an Elderly Companion invite: her
-   * name and which page this circle is on her phone ('care' or 'grandkids')
-   * travel sealed inside it, so nobody types on her phone.
+   * Invite someone. `companion` makes it an elder's invite: her name, which
+   * page this circle is on her phone ('care' or 'grandkids') and the skin it
+   * shows travel sealed inside it, so nobody types on her phone and it
+   * switches to her screens as soon as it joins.
    */
   async createInvite({ hours = 48, companion = null } = {}) {
     const secret = newInviteSecret();
@@ -2117,10 +2118,14 @@ function cleanCadence(c) {
   return { stop, moving, still, charging: c.charging === true, limited: c.limited === true };
 }
 
-/** What an Elderly Companion invite says: { name, page }, or null. */
+/**
+ * What an elder's invite says: { name, page, skin }, or null. `skin` names
+ * the screens her phone shows (the apps keep the list; 'elderly' by default).
+ */
 function cleanCompanionInvite(c) {
   if (!c || typeof c !== 'object') return null;
-  return { name: cleanName(c.name), page: c.page === 'grandkids' ? 'grandkids' : 'care' };
+  const skin = typeof c.skin === 'string' && /^[a-z]{2,16}$/.test(c.skin) ? c.skin : 'elderly';
+  return { name: cleanName(c.name), page: c.page === 'grandkids' ? 'grandkids' : 'care', skin };
 }
 
 /** An IANA time zone name such as "Asia/Karachi", or null. */

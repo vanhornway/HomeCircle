@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
 import { AppState } from 'react-native';
 import { Tabs } from 'expo-router/js-tabs';
-import { router, useRouter } from 'expo-router';
+import { Redirect, router, useRouter } from 'expo-router';
+import { SKINS, useSkin } from '../../skins';
 import { CircleClient } from '@homecircle/core';
 import { allClients, clientForCircle, errorText, getClient, useCircles } from '../../lib/circle';
 import { getServerState, isUnreachable, RECONNECT_GRACE_MS, setRetryHandler, setServerState } from '../../lib/connection';
@@ -282,7 +283,14 @@ function useOpenChatFromNotification() {
   }, [response, nav]);
 }
 
+/** The full app's tabs. A phone in a locked skin (Elderly Companion) never gets here. */
 export default function TabsLayout() {
+  const skin = useSkin();
+  if (SKINS[skin].locked) return <Redirect href={SKINS[skin].root} />;
+  return <FullTabs />;
+}
+
+function FullTabs() {
   const t = useTheme();
   // Restart connections when circles are added or removed (not on switching).
   const { clients } = useCircles();

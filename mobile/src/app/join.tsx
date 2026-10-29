@@ -7,6 +7,8 @@ import { Button, ErrorText, Field, H1, LockNote, P, Screen } from '../components
 import { addCircle, allClients, clientForCircle, draftClient, errorText } from '../lib/circle';
 import { enterApp } from '../lib/nav';
 import { updateSettings } from '../lib/storage';
+import { currentSkin, isSkin, setSkin } from '../skins';
+import { setPage } from '../companion/people';
 import { useTheme } from '../theme';
 
 export default function Join() {
@@ -31,6 +33,11 @@ export default function Join() {
       const p = await draftClient().previewInvite(value.trim());
       const existing = clientForCircle(p.circleId);
       if (existing) throw new Error(`You’re already in ${existing.circle.name} on this phone.`);
+      // An elder's invite switches the phone to her screens, with no way back:
+      // only on a phone that's new, or already hers.
+      if (p.companion && p.companion.skin !== 'full' && allClients().length && currentSkin() === 'full') {
+        throw new Error(`This invite is for ${p.companion.name || 'an elder'}’s phone. Scan it there, on a phone that isn’t in a circle yet.`);
+      }
       setLink(value.trim());
       setPreview(p);
       setScanning(false);
@@ -58,6 +65,11 @@ export default function Join() {
       const first = allClients().length === 0;
       const client = draftClient();
       await client.joinWithInvite(link, { name });
+      const elder = preview?.companion;
+      if (elder) {
+        await setPage(client.circleId!, elder.page);
+        if (elder.skin && isSkin(elder.skin)) await setSkin(elder.skin);
+      }
       await addCircle(client);
       if (first) {
         const info = await CircleClient.serverInfo(client.serverUrl!).catch(() => null);
@@ -81,7 +93,13 @@ export default function Join() {
           {preview.invitedBy ? `${preview.invitedBy} invited you` : 'You’ve been invited'} to share locations and chat privately on{' '}
           {preview.serverUrl.replace(/^https?:\/\//, '')}.
         </P>
-        <Field label="Your name" value={name} onChangeText={setName} placeholder="What your family calls you" autoComplete="given-name" autoFocus />
+        {preview.companion ? (
+          <P style={{ marginBottom: 16, fontWeight: '700' }}>
+            Joining as {preview.companion.name}. This phone then shows the simple screens the family chose for her.
+          </P>
+        ) : (
+          <Field label="Your name" value={name} onChangeText={setName} placeholder="What your family calls you" autoComplete="given-name" autoFocus />
+        )}
         <Pressable
           accessibilityRole="checkbox"
           accessibilityState={{ checked: agreed }}
@@ -98,7 +116,7 @@ export default function Join() {
             time. If I pause sharing, they’ll see that I paused.
           </Text>
         </Pressable>
-        <Button title="Join circle" variant="primary" loading={busy} disabled={!name.trim() || !agreed} onPress={join} />
+        <Button title="Join circle" variant="primary" loading={busy} disabled={(!name.trim() && !preview.companion) || !agreed} onPress={join} />
         <ErrorText>{error}</ErrorText>
         <LockNote>Your keys are created on this phone. Only people in this circle can see your location or messages.</LockNote>
       </Screen>

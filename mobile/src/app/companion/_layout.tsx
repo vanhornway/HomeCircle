@@ -65,7 +65,7 @@ export default function CompanionLayout() {
   }, [version]);
 
   useEffect(() => {
-    if (pagesReady && !allClients().length) router.replace('/companion/join');
+    if (pagesReady && !allClients().length) router.replace('/join');
   }, [pagesReady, version]);
 
   if (!fonts || !pagesReady) {

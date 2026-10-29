@@ -3,7 +3,7 @@ import { ActivityIndicator, Share, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import type { Invite } from '@homecircle/core';
 import { QRCode } from '../components/QRCode';
-import { Button, ErrorText, LockNote, P, Screen } from '../components/ui';
+import { AgeConfirm, Button, ErrorText, LockNote, P, Screen } from '../components/ui';
 import { errorText, getClient } from '../lib/circle';
 import { useTheme } from '../theme';
 
@@ -12,6 +12,8 @@ export default function InviteScreen() {
   const [invite, setInvite] = useState<Invite | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // Everyone with their own account is 13 or older: the inviter confirms it first.
+  const [adult, setAdult] = useState(false);
 
   const load = () =>
     getClient()
@@ -25,8 +27,19 @@ export default function InviteScreen() {
     load();
   };
   useEffect(() => {
-    load();
-  }, []);
+    if (adult) load();
+  }, [adult]);
+
+  if (!adult) {
+    return (
+      <Screen>
+        <P muted style={{ marginBottom: 18 }}>
+          Invite someone with their own phone. Younger children don’t get an account: they play games on a parent’s phone.
+        </P>
+        <AgeConfirm value={adult} onChange={setAdult} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen>

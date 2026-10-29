@@ -251,6 +251,8 @@ export interface InvitePreview {
 export interface CompanionInvite {
   name: string;
   page: 'care' | 'grandkids';
+  /** Which skin her phone shows ('elderly' by default). */
+  skin?: string;
 }
 
 /** Where a call-back request from the Elderly Companion app stands. */

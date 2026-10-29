@@ -88,8 +88,8 @@ export default function CircleSettings() {
       </SettingsGroup>
 
       {client.isAdmin ? (
-        <SettingsGroup title="Elderly Companion" footer="A very simple app for an elderly family member: big tiles, call-back requests and SOS. Location sharing works underneath.">
-          <SettingsRow icon="👵" title="Give someone the Elderly Companion app" detail="Make an invite with her name; scan it on her phone" href="/companion-invite" />
+        <SettingsGroup title="Elderly Companion" footer="Choose which skin an elder’s HomeCircle app shows: the full app, or the simple Elderly Companion screens. Their phone switches automatically. Location sharing and everything else keeps working underneath.">
+          <SettingsRow icon="👵" title="Mark someone as an elder" detail="Their name and skin go in the invite; scan it on their phone" href="/companion-invite" />
         </SettingsGroup>
       ) : null}
 

@@ -70,7 +70,7 @@ test('an Elderly Companion invite carries her name and page, so she joins withou
   await hamza.joinWithInvite((await umair.createInvite()).link, { name: 'Hamza' });
   const invite = await umair.createInvite({ hours: 168, companion: { name: 'Ammi', page: 'care' } });
   const preview = await ammi.previewInvite(invite.link);
-  assert.deepEqual(preview.companion, { name: 'Ammi', page: 'care' });
+  assert.deepEqual(preview.companion, { name: 'Ammi', page: 'care', skin: 'elderly' });
   assert.equal(preview.invitedBy, 'Umair');
   await ammi.joinWithInvite(invite.link);
   await Promise.all(everyone.map((c) => c.refresh()));
