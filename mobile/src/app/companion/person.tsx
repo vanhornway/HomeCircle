@@ -3,12 +3,12 @@ import { Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
-import { clientForCircle, errorText, useCircles } from '../../lib/circle';
-import { myTimeZone, pageOf } from '../../companion/people';
+import { allClients, clientForCircle, errorText, useCircles } from '../../lib/circle';
+import { inSleepHours, myTimeZone, settingsOf, tileName } from '../../companion/people';
 import { currentRequest, statusLine } from '../../companion/status';
 import { askOrQueue } from '../../companion/outbox';
 import { say, text } from '../../companion/lines';
-import { C, TILE_COLORS, URDU } from '../../companion/theme';
+import { C, TILE_COLORS, URDU, isUrdu } from '../../companion/theme';
 
 /** One person (design 03): their face, then Call me. Play a game comes with games. */
 export default function Person() {
@@ -20,6 +20,7 @@ export default function Person() {
   const [error, setError] = useState<string | null>(null);
   if (!client || !m) return null;
   const index = client.memberList().filter((x) => !x.isMe).findIndex((x) => x.id === m.id);
+  const label = tileName(client, m.id);
 
   const callMe = async () => {
     if (busy) return;
@@ -33,7 +34,8 @@ export default function Person() {
     setBusy(true);
     setError(null);
     try {
-      if ((await askOrQueue(client, { to: m.id, tz: myTimeZone(), remind: pageOf(client) === 'care' ? 10 : 0 })) === 'sent') say({ key: 'sent.one', name: m.name });
+      const awake = !inSleepHours(allClients());
+      if ((await askOrQueue(client, { to: m.id, tz: myTimeZone(), remind: settingsOf(client).remindEvery, awake })) === 'sent') say({ key: 'sent.one', name: label });
       router.back();
     } catch (e) {
       setError(errorText(e));
@@ -61,8 +63,12 @@ export default function Person() {
           accessibilityLabel={`Photo of ${m.name}`}
           style={{ width: 180, height: 180, borderRadius: 90, borderWidth: 5, borderColor: C.ink, backgroundColor: TILE_COLORS[Math.max(0, index) % TILE_COLORS.length], alignItems: 'center', justifyContent: 'center', padding: 12 }}
         >
-          <Text style={{ color: C.ink, fontSize: 34, fontWeight: '800', textAlign: 'center' }} numberOfLines={2} adjustsFontSizeToFit>
-            {m.name}
+          <Text
+            style={isUrdu(label) ? [URDU, { color: C.ink, fontSize: 34, lineHeight: 68, textAlign: 'center' }] : { color: C.ink, fontSize: 34, fontWeight: '800', textAlign: 'center' }}
+            numberOfLines={2}
+            adjustsFontSizeToFit
+          >
+            {label}
           </Text>
         </View>
         <View style={{ alignSelf: 'stretch', flex: 1, gap: 14 }}>

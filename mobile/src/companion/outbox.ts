@@ -8,8 +8,8 @@ import { loadedClients } from '../lib/circle';
 import { say } from './lines';
 
 const KEY = 'companion.outbox';
-type Pending = { circle: string; to: string | null; tz: string | null; remind: number; at: number };
-type Ask = { to?: string | null; tz: string | null; remind: number };
+type Pending = { circle: string; to: string | null; tz: string | null; remind: number; awake: boolean; at: number };
+type Ask = { to?: string | null; tz: string | null; remind: number; awake: boolean };
 
 async function read(): Promise<Pending[]> {
   try {
@@ -26,12 +26,12 @@ const offline = (e: unknown) => !(e instanceof ApiError);
 /** Ask for a call back now, or keep it for later if the phone is offline. */
 export async function askOrQueue(client: CircleClient, ask: Ask): Promise<'sent' | 'queued'> {
   try {
-    await client.askCallback({ to: ask.to ?? null, tz: ask.tz, awake: true, remind: ask.remind });
+    await client.askCallback({ to: ask.to ?? null, tz: ask.tz, awake: ask.awake, remind: ask.remind });
     return 'sent';
   } catch (e) {
     if (!offline(e)) throw e;
     const list = (await read()).filter((p) => !(p.circle === client.circleId && p.to === (ask.to ?? null)));
-    list.push({ circle: client.circleId!, to: ask.to ?? null, tz: ask.tz, remind: ask.remind, at: Date.now() });
+    list.push({ circle: client.circleId!, to: ask.to ?? null, tz: ask.tz, remind: ask.remind, awake: ask.awake, at: Date.now() });
     await write(list);
     say({ key: 'offline.queued' });
     return 'queued';
@@ -56,7 +56,7 @@ export function flushOutbox(): Promise<number> {
       for (const p of waiting) {
         const client = clients.find((c) => c.circleId === p.circle);
         try {
-          if (client) await client.askCallback({ to: p.to, tz: p.tz, awake: true, remind: p.remind });
+          if (client) await client.askCallback({ to: p.to, tz: p.tz, awake: p.awake !== false, remind: p.remind });
           // Sent, or its circle is gone from this phone: either way it's done.
           await write((await read()).filter((x) => !(x.circle === p.circle && x.to === p.to)));
           if (client) sent++;

@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, View } from 'react-native';
-import { Stack, router } from 'expo-router';
+import { Redirect, Stack, router } from 'expo-router';
+import { SKINS, useSkin } from '../../skins';
+import { syncSkinFromRecords } from '../../skins/sync';
+import { setLanguage } from '../../companion/lines';
 import { useFonts, NotoNastaliqUrdu_600SemiBold } from '@expo-google-fonts/noto-nastaliq-urdu';
 import { allClients, useCircles } from '../../lib/circle';
 import { registerPush } from '../../lib/push';
 import { ensureNotificationChannels, notifyNewMessages } from '../../lib/notify';
 import { shareNow, startBackgroundUpdates } from '../../lib/location';
-import { loadPages } from '../../companion/people';
+import { loadPages, settingsOf } from '../../companion/people';
 import { flushOutbox } from '../../companion/outbox';
 import { C } from '../../companion/theme';
 
@@ -18,6 +21,7 @@ import { C } from '../../companion/theme';
  */
 export default function CompanionLayout() {
   const [fonts] = useFonts({ NotoNastaliqUrdu_600SemiBold });
+  const skin = useSkin();
   const [pagesReady, setPagesReady] = useState(false);
   const { version } = useCircles();
 
@@ -41,6 +45,8 @@ export default function CompanionLayout() {
           // Offline: the page still works from what's on the phone, and it tries again on the next open.
         }
       }
+      syncSkinFromRecords(clients).catch(() => {});
+      if (clients[0]) setLanguage(settingsOf(clients[0]).lang);
       shareNow('open').catch(() => {});
       registerPush().catch(() => {});
       // Requests that waited for the internet go out now.
@@ -54,6 +60,11 @@ export default function CompanionLayout() {
       }),
       c.on('locationRequest', () => {
         shareNow('requested').catch(() => {});
+      }),
+      // An admin changed her settings: her skin may change too.
+      c.on('records', () => {
+        syncSkinFromRecords(clients).catch(() => {});
+        setLanguage(settingsOf(c).lang);
       }),
       // Back online while open: send what waited.
       c.on('status', (s: string) => {
@@ -75,6 +86,8 @@ export default function CompanionLayout() {
     if (pagesReady && !allClients().length) router.replace('/join');
   }, [pagesReady, version]);
 
+  // An admin switched this phone back to the full app.
+  if (!SKINS[skin].locked) return <Redirect href={SKINS[skin].root} />;
   if (!fonts || !pagesReady) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}>

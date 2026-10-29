@@ -20,3 +20,6 @@ export const TILE_COLORS = ['#E9C46A', '#F4A261', '#A8DADC', '#CDB4DB', '#B5D99C
 
 /** Urdu in Nastaliq (bundled, loaded in companion/_layout). Needs generous line height. */
 export const URDU = { fontFamily: 'NotoNastaliqUrdu_600SemiBold', writingDirection: 'rtl', textAlign: 'right' } as const;
+
+/** Whether a name is in Urdu (Arabic script), to set it in Nastaliq. */
+export const isUrdu = (s: string) => /[\u0600-\u06FF]/.test(s);

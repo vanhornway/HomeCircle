@@ -6,21 +6,19 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import type { CallbackReply, CircleClient, Member } from '@homecircle/core';
 import { allClients, errorText, useCircles } from '../../lib/circle';
 import { startMySos, useMySos } from '../../lib/sos';
-import { pageOf, myTimeZone, tilePeople } from '../../companion/people';
+import { inSleepHours, myTimeZone, pageOf, settingsOf, tileName, tilePeople } from '../../companion/people';
 import { currentRequest, statusLine, tileReplies } from '../../companion/status';
 import { askOrQueue } from '../../companion/outbox';
 import { hush, say, text } from '../../companion/lines';
-import { C, TILE_COLORS, URDU } from '../../companion/theme';
+import { C, TILE_COLORS, URDU, isUrdu } from '../../companion/theme';
 
-/** Minutes between reminders on the family's phones: care circles remind, grandkids circles don't. */
-const CARE_REMIND_MIN = 10;
 const SOS_HOLD_MS = 2000;
 
 /** Re-draw when any circle's messages, members or connection change. */
 function useClientsTick(clients: CircleClient[]) {
   const [, setTick] = useState(0);
   useEffect(() => {
-    const offs = clients.flatMap((c) => ['messages', 'members', 'status'].map((e) => c.on(e, () => setTick((n) => n + 1))));
+    const offs = clients.flatMap((c) => ['messages', 'members', 'status', 'records'].map((e) => c.on(e, () => setTick((n) => n + 1))));
     // "Calling now" fades after a while without any new message: check each minute.
     const timer = setInterval(() => setTick((n) => n + 1), 60_000);
     return () => {
@@ -57,7 +55,7 @@ export default function CompanionHome() {
 }
 
 function CirclePage({ client, index, count, current }: { client: CircleClient; index: number; count: number; current: number }) {
-  const care = pageOf(client) === 'care';
+  const { care, ringEveryone: ringOn, remindEvery } = settingsOf(client);
   const request = currentRequest(client);
   const replies = tileReplies(request);
   const people = tilePeople(client);
@@ -68,7 +66,7 @@ function CirclePage({ client, index, count, current }: { client: CircleClient; i
     // Already asked: tell her where it stands instead of asking again.
     if (request) return say(statusLine(client, request));
     try {
-      if ((await askOrQueue(client, { tz: myTimeZone(), remind: care ? CARE_REMIND_MIN : 0 })) === 'sent') say({ key: 'sent.everyone' });
+      if ((await askOrQueue(client, { tz: myTimeZone(), remind: remindEvery, awake: !inSleepHours(allClients()) })) === 'sent') say({ key: 'sent.everyone' });
     } catch (e) {
       setError(errorText(e));
     }
@@ -95,7 +93,7 @@ function CirclePage({ client, index, count, current }: { client: CircleClient; i
         <Dots count={count} current={current} />
       </View>
 
-      {care || request ? (
+      {ringOn || request ? (
         request ? (
           <StatusBanner client={client} onPress={ringEveryone} />
         ) : (
@@ -112,7 +110,7 @@ function CirclePage({ client, index, count, current }: { client: CircleClient; i
 
       <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 14, alignContent: 'stretch' }}>
         {people.slice(0, 6).map((m, i) => (
-          <Tile key={m.id} member={m} color={TILE_COLORS[i % TILE_COLORS.length]} reply={replies.get(m.id)} rows={Math.ceil(Math.min(people.length, 6) / 2)} onPress={() => router.push({ pathname: '/companion/person', params: { circle: client.circleId!, member: m.id } })} />
+          <Tile key={m.id} member={m} label={tileName(client, m.id)} color={TILE_COLORS[i % TILE_COLORS.length]} reply={replies.get(m.id)} rows={Math.ceil(Math.min(people.length, 6) / 2)} onPress={() => router.push({ pathname: '/companion/person', params: { circle: client.circleId!, member: m.id } })} />
         ))}
       </View>
 
@@ -164,7 +162,7 @@ const REPLY_BADGE: Record<CallbackReply, { bg: string; icon: 'phone' | 'clock' }
 };
 
 /** A person: their photo (coming with profile photos), else their name, big. Their answer shows as a badge. */
-function Tile({ member, color, reply, rows, onPress }: { member: Member; color: string; reply?: CallbackReply; rows: number; onPress: () => void }) {
+function Tile({ member, label, color, reply, rows, onPress }: { member: Member; label: string; color: string; reply?: CallbackReply; rows: number; onPress: () => void }) {
   const badge = reply ? REPLY_BADGE[reply] : null;
   return (
     <Pressable
@@ -184,8 +182,12 @@ function Tile({ member, color, reply, rows, onPress }: { member: Member; color: 
         opacity: pressed ? 0.8 : 1,
       })}
     >
-      <Text style={{ color: C.ink, fontSize: 30, fontWeight: '800', textAlign: 'center' }} numberOfLines={2} adjustsFontSizeToFit>
-        {member.name}
+      <Text
+        style={isUrdu(label) ? [URDU, { color: C.ink, fontSize: 32, lineHeight: 64, textAlign: 'center' }] : { color: C.ink, fontSize: 30, fontWeight: '800', textAlign: 'center' }}
+        numberOfLines={2}
+        adjustsFontSizeToFit
+      >
+        {label}
       </Text>
       {badge ? (
         <View style={{ position: 'absolute', right: 8, top: 8, width: 46, height: 46, borderRadius: 23, backgroundColor: badge.bg, alignItems: 'center', justifyContent: 'center' }}>

@@ -7,6 +7,8 @@ import { AndroidImportance, AndroidNotificationVisibility } from 'expo-notificat
 import type { CircleClient, Message } from '@homecircle/core';
 import { alertSos, stopAlarm } from '../lib/sosAlarm';
 import { replyLine } from './status';
+import { inSleepHours } from './people';
+import { allClients } from '../lib/circle';
 import { say, text, type Line } from './lines';
 
 const CHANNEL = 'companion-replies';
@@ -27,6 +29,8 @@ export async function companionAlerts(client: CircleClient, messages: Message[],
   const me = client.account?.memberId;
   if (!me) return;
   let latest: Line | null = null;
+  // Her sleep hours: nothing sounds, except replies to a request she sent during them.
+  const asleep = inSleepHours(allClients().length ? allClients() : [client]);
   for (const m of messages) {
     if (m.seq <= last || m.from === me || m.kind !== 'chat' || m.peer) continue;
     const sos = client.feature('sos') ? m.body?.sos?.state : null;
@@ -36,7 +40,7 @@ export async function companionAlerts(client: CircleClient, messages: Message[],
     if (r?.state !== 'reply') continue;
     const s = client.callbackState(r.of);
     const who = s?.replies.find((x) => x.memberId === m.from);
-    if (s?.from === me && who) latest = replyLine(client, who.memberId, who.name, who.reply);
+    if (s?.from === me && who && (!asleep || !s.awake)) latest = replyLine(client, who.memberId, who.name, who.reply);
   }
   if (!latest) return;
   say(latest);

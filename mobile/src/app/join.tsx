@@ -71,6 +71,8 @@ export default function Join() {
         if (elder.skin && isSkin(elder.skin)) await setSkin(elder.skin);
       }
       await addCircle(client);
+      // Tell the circle, so an admin's phone saves her settings as a record.
+      if (elder) client.announceElder({ page: elder.page, skin: elder.skin }).catch(() => {});
       if (first) {
         const info = await CircleClient.serverInfo(client.serverUrl!).catch(() => null);
         if (info) await updateSettings({ tileUrl: info.tileUrl, tileAttribution: info.tileAttribution });
