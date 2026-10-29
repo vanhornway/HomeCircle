@@ -60,7 +60,7 @@ export async function notifyCallback(client: CircleClient, s: CallbackState, pre
   await ensureCallbackChannel();
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: previews ? `📞 ${s.name} wants a call back` : '📞 A call-back request',
+      title: previews ? `📞 ${client.displayName(s.from)} wants a call back` : '📞 A call-back request',
       body: previews ? `${askedLine(client, s)} · their time ${timeIn(s.tz, s.ts)}. Open the chat to reply.` : 'Open HomeCircle to reply.',
       sound: 'default',
       data: { t: 'chat', circle: client.circleId ?? '', peer: '' },
@@ -91,7 +91,7 @@ export async function syncCallbackReminders(client: CircleClient, previews = tru
     await Notifications.scheduleNotificationAsync({
       identifier,
       content: {
-        title: previews ? `📞 ${s.name} still wants a call back` : '📞 A call-back request is waiting',
+        title: previews ? `📞 ${client.displayName(s.from)} still wants a call back` : '📞 A call-back request is waiting',
         body: `Nobody is calling yet. Reminding every ${s.remind} min until you reply.`,
         sound: 'default',
         data: { t: 'chat', circle, peer: '' },

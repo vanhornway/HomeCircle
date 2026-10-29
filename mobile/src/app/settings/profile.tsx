@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, Text, TextInput, View } from 'react-native';
 import { Avatar, Button } from '../../components/ui';
 import { GroupBody, SettingsGroup, SettingsPage } from '../../components/SettingsKit';
+import { FamilyNameEditor, GenderChips } from '../../components/FamilyNames';
 import { errorText, useCircles } from '../../lib/circle';
 import { useCircle } from '../../lib/useCircle';
 import { useTheme } from '../../theme';
@@ -47,6 +48,24 @@ export default function ProfileSettings() {
           </View>
         </GroupBody>
       </SettingsGroup>
+      <SettingsGroup title="He or she" footer="Only for languages whose words change with the person, like the Urdu an elder hears: “Umair is calling you” is said differently for a man and a woman.">
+        <GroupBody>
+          <GenderChips value={me?.g ?? null} onPick={(g) => client.setGender(g).catch((e) => Alert.alert('Couldn’t save', errorText(e)))} />
+        </GroupBody>
+      </SettingsGroup>
+      {client.memberList().some((m) => !m.isMe) ? (
+        <SettingsGroup title="What do they call you?" footer="What each person calls you: Nani to one grandchild, Dadi to another. They see that name everywhere the app names you to them.">
+          {client
+            .memberList()
+            .filter((m) => !m.isMe)
+            .map((m) => (
+              <GroupBody key={m.id}>
+                <Text style={{ color: t.text, fontSize: 15, fontWeight: '600' }}>{m.name}</Text>
+                <FamilyNameEditor client={client} callerId={m.id} memberId={me!.id} />
+              </GroupBody>
+            ))}
+        </SettingsGroup>
+      ) : null}
       <Text style={{ color: t.muted, fontSize: 13, marginTop: 16, marginHorizontal: 4 }}>Your chirp, the sound others hear when you chirp them, is under Chirps & SOS.</Text>
     </SettingsPage>
   );

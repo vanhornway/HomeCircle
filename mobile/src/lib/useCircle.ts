@@ -3,7 +3,7 @@ import type { CircleClient } from '@homecircle/core';
 import { allClients, getClient, useCircles } from './circle';
 import { useReadVersion } from './unread';
 
-const EVENTS = ['members', 'locations', 'messages', 'places', 'status', 'circle'] as const;
+const EVENTS = ['members', 'locations', 'messages', 'places', 'status', 'circle', 'records'] as const;
 
 /**
  * A redraw that waits for a burst to end: a reconnect or a busy circle sends

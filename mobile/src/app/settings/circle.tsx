@@ -89,7 +89,19 @@ export default function CircleSettings() {
 
       {client.isAdmin ? (
         <SettingsGroup title="Elderly Companion" footer="Choose which skin an elder’s HomeCircle app shows: the full app, or the simple Elderly Companion screens. Their phone switches automatically. Location sharing and everything else keeps working underneath.">
-          <SettingsRow icon="👵" title="Mark someone as an elder" detail="Their name and skin go in the invite; scan it on their phone" href="/companion-invite" />
+          {client
+            .memberList()
+            .filter((m) => client.memberRecord(m.id)?.skin === 'elderly')
+            .map((m) => (
+              <SettingsRow
+                key={m.id}
+                icon="👵"
+                title={m.name}
+                detail={`Skin: Elderly Companion · ${client.memberRecord(m.id)?.page === 'grandkids' ? 'grandkids page' : 'care page'}`}
+                href={{ pathname: '/elder', params: { member: m.id } }}
+              />
+            ))}
+          <SettingsRow icon="➕" title="Mark someone as an elder" detail="Someone already here, or someone new with an invite" href="/mark-elder" />
         </SettingsGroup>
       ) : null}
 

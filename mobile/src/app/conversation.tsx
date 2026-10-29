@@ -57,7 +57,7 @@ function useClientEvents(client: CircleClient) {
         setTick((n) => n + 1);
       }, 50);
     };
-    const offs = ['messages', 'members', 'circle', 'locations', 'status', 'receipts'].map((e) => client.on(e, bump));
+    const offs = ['messages', 'members', 'circle', 'locations', 'status', 'receipts', 'records'].map((e) => client.on(e, bump));
     return () => {
       if (queued) clearTimeout(queued);
       offs.forEach((off) => off());
@@ -188,7 +188,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   const peerLoc = peer ? client.locations.get(peer) : undefined;
   const locState = peer ? locateState(client, peer) : 'idle';
 
-  const title = peer ? other?.name || 'Former member' : client.circle.name;
+  const title = peer ? (other ? client.displayName(other.id) : 'Former member') : client.circle.name;
   const subtitle = peer
     ? `Direct message · ${client.circle.name} · end-to-end encrypted`
     : `Group · ${plural(client.memberList().length, 'member')} · end-to-end encrypted`;
@@ -233,7 +233,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
 
   const render = (m: Message) => {
     const who = client.members.get(m.from);
-    const name = who?.name || 'Former member';
+    const name = who ? client.displayName(who.id) : 'Former member';
     if (m.kind !== 'chat') {
       return <Text style={pill}>{m.kind === 'event' ? eventLabel(m) : '🔒 Sent before you joined'}</Text>;
     }

@@ -9,6 +9,7 @@ import { errorText } from '../lib/circle';
 import { chirpWithChoice } from '../lib/chirp';
 import { KIND_EMOJI } from '../lib/visits';
 import { spotName, type Anchor } from '../lib/visitsCore';
+import { FamilyNameEditor } from './FamilyNames';
 import { canLocate, locatePerson, locateState, openDirections, statusLine, useLocateVersion } from '../lib/people';
 import { timeAgo } from '../lib/useCircle';
 import { useTheme } from '../theme';
@@ -93,7 +94,8 @@ export function PersonSheet({
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   <Avatar name={m.name} color={m.color} size={52} />
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>{m.name}</Text>
+                    <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>{client.displayName(m.id)}</Text>
+                    {client.displayName(m.id) !== m.name ? <Text style={{ color: t.muted, fontSize: 13 }}>{m.name}</Text> : null}
                     <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>{statusLine(client, m)}</Text>
                   </View>
                 </View>
@@ -135,6 +137,12 @@ export function PersonSheet({
                     {client.feature('chirps') && tile('bird', 'Chirp', 'A sound they’ll know is you', go(() => chirpWithChoice(client, m.id)))}
                   </View>
                 )}
+                {!m.isMe ? (
+                  <View style={{ gap: 8 }}>
+                    <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700' }}>WHAT DO YOU CALL {m.name.toUpperCase()}?</Text>
+                    <FamilyNameEditor client={client} callerId={client.account!.memberId} memberId={m.id} />
+                  </View>
+                ) : null}
                 {!m.isMe && client.feature('frequentPlaces') && client.frequent.get(m.id)?.places.length ? (
                   <View style={{ gap: 8 }}>
                     <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700' }}>MOST VISITED · LAST 30 DAYS</Text>

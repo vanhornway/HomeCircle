@@ -19,14 +19,17 @@ export function CallbackCard({ client, m, onReply }: { client: CircleClient; m: 
   const mine = m.from === me;
   const answered = s.replies.find((r) => r.memberId === me);
   const others = s.replies.filter((r) => r.memberId !== s.takenBy?.memberId);
-  const title = mine ? 'You asked for a call back' : s.takenBy ? `${s.takenBy.memberId === me ? 'You are' : `${s.takenBy.name} is`} calling ${s.name} now` : `${s.name} wants a call back`;
-  const detail = `${askedLine(client, s)} · ${mine ? 'your' : `${s.name}’s`} time ${timeIn(s.tz, s.ts)} · ${s.awake ? 'awake' : 'in sleep hours'}`;
+  // Everyone named as this viewer knows them: "Ammi wants a call back".
+  const elder = client.displayName(s.from);
+  const nameOf = (id: string) => (id === me ? 'You' : client.displayName(id));
+  const title = mine ? 'You asked for a call back' : s.takenBy ? `${s.takenBy.memberId === me ? 'You are' : `${nameOf(s.takenBy.memberId)} is`} calling ${elder} now` : `${elder} wants a call back`;
+  const detail = `${askedLine(client, s)} · ${mine ? 'your' : `${elder}’s`} time ${timeIn(s.tz, s.ts)} · ${s.awake ? 'awake' : 'in sleep hours'}`;
   const footer = s.takenBy
-    ? `${clock(s.ts)} · ${s.takenBy.memberId === me ? 'You' : s.takenBy.name} took it${s.remind ? ' · reminders stopped' : ''}`
+    ? `${clock(s.ts)} · ${nameOf(s.takenBy.memberId)} took it${s.remind ? ' · reminders stopped' : ''}`
     : `${clock(s.ts)}${s.remind ? ` · reminding every ${s.remind} min` : ''}`;
   return (
     <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', width: '84%', marginVertical: 4 }}>
-      {!mine ? <Text style={{ color: client.members.get(m.from)?.color || t.muted, fontSize: 13, fontWeight: '700', marginLeft: 4, marginBottom: 2 }}>{s.name}</Text> : null}
+      {!mine ? <Text style={{ color: client.members.get(m.from)?.color || t.muted, fontSize: 13, fontWeight: '700', marginLeft: 4, marginBottom: 2 }}>{elder}</Text> : null}
       <Pressable
         onLongPress={onReply}
         onPress={asksMe ? onReply : undefined}
@@ -43,12 +46,12 @@ export function CallbackCard({ client, m, onReply }: { client: CircleClient; m: 
           <Text style={{ flex: 1, color: t.text, fontSize: 18, fontWeight: '700', lineHeight: 22 }}>{title}</Text>
         </View>
         {s.takenBy && others.length ? (
-          <Text style={{ color: t.muted, fontSize: 14, lineHeight: 19 }}>{others.map((r) => `${r.memberId === me ? 'You' : r.name}: ${REPLY_SHORT[r.reply]}`).join(' · ')}</Text>
+          <Text style={{ color: t.muted, fontSize: 14, lineHeight: 19 }}>{others.map((r) => `${nameOf(r.memberId)}: ${REPLY_SHORT[r.reply]}`).join(' · ')}</Text>
         ) : (
           <Text style={{ color: t.muted, fontSize: 14, lineHeight: 19 }}>{detail}</Text>
         )}
         {s.open && !s.takenBy && s.replies.length ? (
-          <Text style={{ color: t.text, fontSize: 14, lineHeight: 19 }}>{s.replies.map((r) => `${r.memberId === me ? 'You' : r.name}: ${REPLY_SHORT[r.reply]}`).join(' · ')}</Text>
+          <Text style={{ color: t.text, fontSize: 14, lineHeight: 19 }}>{s.replies.map((r) => `${nameOf(r.memberId)}: ${REPLY_SHORT[r.reply]}`).join(' · ')}</Text>
         ) : null}
         {s.open && asksMe ? (
           <Text style={{ alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, overflow: 'hidden', backgroundColor: t.brandSoft, color: t.brand, fontSize: 13, fontWeight: '700' }}>
