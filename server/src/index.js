@@ -140,7 +140,7 @@ export function createApp(config) {
     });
   };
 
-  return { server, store, hub, config, close, agentHost };
+  return { server, store, hub, push, config, close, agentHost };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {

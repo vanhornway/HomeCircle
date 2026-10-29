@@ -57,3 +57,18 @@ test('the hint is per member (so per circle), the same each time, and short', ()
   assert.notEqual(circleHint('a'), circleHint('b'));
   assert.equal(circleHint('a').length, 12);
 });
+
+test('an urgent message wakes the phone at once, even inside the window, with the same push as any other', async () => {
+  got.length = 0;
+  const push = new Push({ push: 'expo', expoPushUrl: url, pushCoalesceMs: 300 }, { clearPushToken() {} }, () => {});
+  const ammi = member('ammi-in-care');
+  await push.activity([ammi]);
+  await push.activity([ammi]); // waits for the end of the window
+  await push.activity([ammi], { urgent: true }); // goes now, and stands in for the waiting one
+  await settle(50);
+  assert.equal(got.length, 2);
+  await settle(400);
+  assert.equal(got.length, 2, 'no trailing wake-up after the urgent one');
+  assert.deepEqual(got[1], got[0], 'an urgent push looks exactly like a normal one');
+  push.close();
+});

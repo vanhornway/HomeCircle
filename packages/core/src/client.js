@@ -1436,7 +1436,7 @@ export class CircleClient {
   async startSos() {
     const id = randomId(12);
     const name = this.myName;
-    await this._post('chat', { text: `🆘 ${name} sent an SOS. Open HomeCircle to see where they are.`, sos: { state: 'start' } }, { id });
+    await this._post('chat', { text: `🆘 ${name} sent an SOS. Open HomeCircle to see where they are.`, sos: { state: 'start' } }, { id, urgent: true });
     return id;
   }
 
@@ -1450,7 +1450,7 @@ export class CircleClient {
   /** End your SOS: "I'm safe". */
   endSos(sosId) {
     const name = this.myName;
-    return this._post('chat', { text: `✅ ${name} is safe now.`, sos: { state: 'safe', of: sosId } });
+    return this._post('chat', { text: `✅ ${name} is safe now.`, sos: { state: 'safe', of: sosId } }, { urgent: true });
   }
 
   /**
@@ -1495,7 +1495,7 @@ export class CircleClient {
     const name = this.myName;
     const who = to ? ` from ${this.members.get(to).name}` : '';
     const callback = { state: 'ask', for: to ? [to] : null, tz: cleanTimeZone(tz), awake: awake !== false, remind: cleanRemind(remind) };
-    await this._post('chat', { text: `📞 ${name} would like a call back${who}. Update HomeCircle to reply.`, callback }, { id });
+    await this._post('chat', { text: `📞 ${name} would like a call back${who}. Update HomeCircle to reply.`, callback }, { id, urgent: true });
     return id;
   }
 
@@ -1505,7 +1505,7 @@ export class CircleClient {
     const req = this._callbackRequest(requestId);
     if (!req) return Promise.reject(new Error('No such call-back request'));
     const name = this.myName;
-    return this._post('chat', { text: `📞 ${name}: ${CALLBACK_REPLY_TEXT[reply]}`, callback: { state: 'reply', of: requestId, reply } });
+    return this._post('chat', { text: `📞 ${name}: ${CALLBACK_REPLY_TEXT[reply]}`, callback: { state: 'reply', of: requestId, reply } }, { urgent: true });
   }
 
   _callbackRequest(id) {
@@ -1672,11 +1672,11 @@ export class CircleClient {
     await this.cache.setItem(this._cacheKey, JSON.stringify({ v: 1, circleId: this.account.circleId, memberId: this.account.memberId, fetchedSeq: this.fetchedSeq, rows: kept }));
   }
 
-  async _post(kind, body, { silent = false, to = null, id = randomId(12) } = {}) {
+  async _post(kind, body, { silent = false, to = null, id = randomId(12), urgent = false } = {}) {
     let env;
     const res = await this._withEpochRetry(() => {
       env = this._seal(kind, body, this.account.epoch, { to, id });
-      return this.api.postMessage(id, env, { silent, to });
+      return this.api.postMessage(id, env, { silent, to, urgent });
     });
     // Our own message's seq says nothing about what others posted before it
     // (the live connection may be down), so it doesn't count as seen; our own

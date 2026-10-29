@@ -114,7 +114,7 @@ export class Api {
   deleteLocation = () => this.req('DELETE', '/locations/me');
   requestLocations = (targets) => this.req('POST', '/locations/request', { targets });
   messages = (after = 0, limit = 200) => this.req('GET', `/messages?after=${after}&limit=${limit}`);
-  postMessage = (id, env, { silent = false, to = null } = {}) => this.req('POST', '/messages', { id, ...env, silent, ...(to ? { to } : {}) });
+  postMessage = (id, env, { silent = false, to = null, urgent = false } = {}) => this.req('POST', '/messages', { id, ...env, silent, ...(to ? { to } : {}), ...(urgent ? { urgent: true } : {}) });
   putRetention = (days) => this.req('PUT', '/circle/retention', { days });
   putFeatures = (features) => this.req('PUT', '/circle/features', { features });
   places = () => this.req('GET', '/places');

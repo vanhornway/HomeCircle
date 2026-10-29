@@ -47,6 +47,9 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   const r = new Router();
   const publicLimiter = new RateLimiter(20, 60_000);
   const requestLimiter = new RateLimiter(1, config.locationRequestCooldown * 1000);
+  // Urgent messages skip push coalescing; past this many a minute from one
+  // sender they're delivered like any other message, never refused.
+  const urgentLimiter = new RateLimiter(config.urgentPerMinute ?? 10, 60_000);
   // A few Locates per person per hour at most, so nobody's battery is drained.
   const hourlyLocateLimiter = new RateLimiter(6, 3600_000);
 
@@ -136,6 +139,8 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       // Chirps and most-visited places (0.9+).
       chirps: true,
       frequentPlaces: true,
+      // Urgent messages skip push coalescing (0.20+).
+      urgent: true,
       // The optional AI helper runs here (0.11+).
       agent: !!agentHost,
       // Plugins this server has (0.14+): an app shows only these in Features.
@@ -875,7 +880,9 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     // Clients mark reactions "silent": stored and relayed live, but no push.
     if (body.silent !== true) {
       const recipients = to ? [to] : store.activeMembers(me.circleId).filter((m) => m.id !== me.id);
-      push.activity(recipients.filter((m) => m.pushToken && !hub.isOnline(m.id)));
+      // `urgent` is outer routing metadata, like `to`: the server learns only that it was set.
+      const urgent = body.urgent === true && urgentLimiter.take(me.id) === 0;
+      push.activity(recipients.filter((m) => m.pushToken && !hub.isOnline(m.id)), { urgent });
     }
     return { seq, createdAt: now };
   }, { agent: true });

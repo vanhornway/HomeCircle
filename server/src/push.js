@@ -29,14 +29,20 @@ export class Push {
   /**
    * A new chat message or place event, coalesced: a member who had one in
    * the last 45 s gets the next one when that time is up (once, however many
-   * arrive meanwhile).
+   * arrive meanwhile). An `urgent` one (a call-back request, a reply to it,
+   * an SOS) goes at once and stands in for any wake-up still waiting; the
+   * push itself is the same as any other.
    */
-  activity(members) {
+  activity(members, { urgent = false } = {}) {
     const now = Date.now();
     const sendNow = [];
     for (const m of members) {
       const r = this.recent.get(m.id);
-      if (!r || now - r.at >= this.coalesceMs) {
+      if (urgent) {
+        if (r?.timer) clearTimeout(r.timer);
+        this.recent.set(m.id, { at: now, timer: null });
+        sendNow.push(m);
+      } else if (!r || now - r.at >= this.coalesceMs) {
         this.recent.set(m.id, { at: now, timer: null });
         sendNow.push(m);
       } else if (!r.timer) {
