@@ -81,7 +81,8 @@ export function myTimeZone(): string | null {
 
 /** The people on her page, in the order an admin chose (anyone not placed comes after). */
 export function tilePeople(client: CircleClient) {
-  const people = client.memberList().filter((m) => !m.isMe);
+  // Someone whose profile this phone can't read yet has no name to show her: left off until it can.
+  const people = client.memberList().filter((m) => !m.isMe && m.verified);
   const order = mine(client)?.tiles ?? [];
   const rank = (id: string) => (order.includes(id) ? order.indexOf(id) : order.length);
   return people.sort((a, b) => rank(a.id) - rank(b.id));
