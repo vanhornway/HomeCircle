@@ -6,7 +6,8 @@ arrival alerts for places, and family chat.
 
 - **One server, many circles.** Run one server for your household, your parents and siblings, or anyone else. Each circle is isolated: people only see the circles they joined.
 - **End-to-end encrypted.** Phones encrypt everything before upload. The server and your hosting provider only see ciphertext.
-- **Call me back, for grandparents.** An Elderly Companion skin turns an elder's phone into big photo tiles: one tap asks the family to call her, and she hears their answer in Urdu.
+- **Call me back, for grandparents.** An Elderly Companion skin turns an elder's phone into big photo tiles: one tap asks the family to call her, and she hears their answer in Urdu. Admins set it all up from their own phone: her tiles, photos, the names she knows you by, her sleep hours.
+- **Photos and family names.** Add your photo, and set what you call each person (Ammi, Nani). Both are encrypted like everything else.
 - **Battery-friendly.** Updates about every 15 minutes (configurable from 5 to 60), on big moves, on place arrivals, or right away when someone taps **Locate**.
 - **Host anywhere.** Render, Railway, Fly.io, DigitalOcean, Hetzner, any VPS, or a Raspberry Pi at home. They all use one Docker image.
 

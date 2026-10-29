@@ -1,6 +1,6 @@
 {
   "name": "homecircle-server",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "private": true,
   "description": "HomeCircle self-hosted server: stores and relays end-to-end encrypted locations and messages for one family",
   "type": "module",

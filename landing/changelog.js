@@ -1,6 +1,18 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.21.0',
+    date: '2026-10-28',
+    title: 'Photos, family names and the elder’s settings',
+    items: [
+      'Add your photo in Settings → You → Profile. It shows wherever the app shows you, and on a grandparent’s big tiles. Encrypted on your phone like everything else.',
+      'Set what you call each person: Ammi, Nani, Dadi. Call-back requests and chats use your name for them.',
+      'Settings → Circle → Elderly Companion: her sleep hours, reminders, Ring everyone, her Urdu name for each of you, and photos for her tiles.',
+      'Mark someone already in your circle as an elder, and switch them back any time.',
+      'Until the Urdu recordings are made, her phone says her messages aloud with its own Urdu voice.',
+    ],
+  },
+  {
     version: '0.20.0',
     date: '2026-10-28',
     title: 'Call me back, for grandparents',

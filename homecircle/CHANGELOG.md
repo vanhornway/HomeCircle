@@ -2,6 +2,25 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.21.0
+
+- Photos: add your own photo in Settings → You → Profile. It shows wherever
+  the app shows you, and on an elder's tiles. Admins can add a photo for
+  someone's tile on her page (your own replaces it). Photos are encrypted on
+  the phone; the server keeps only ciphertext.
+- Elderly Companion settings: Settings → Circle → Elderly Companion → her
+  name: her skin (and back to the full app), care or grandkids page, Ring
+  everyone, Games, sleep hours, reminder interval, check-in time, language and
+  he/she. People on her tiles: their order, her Urdu name for each, photos.
+- Mark someone already in the circle as an elder; they stop being an admin.
+- Family names: what you call each person ("Ammi", "Nani"), set by you, by
+  them, or by an admin. Call-back cards and chats use your name for them.
+- He or she in your profile, for the Urdu an elder hears.
+- Her phone speaks Urdu with the phone's own voice until the recordings are
+  made (needs an Urdu text-to-speech voice), and hides people whose profile
+  it can't read yet.
+- Fixed: removing the circle helper no longer deletes members' photos.
+
 ## 0.20.0
 
 - Call-back requests: an elderly family member on the simple Elderly

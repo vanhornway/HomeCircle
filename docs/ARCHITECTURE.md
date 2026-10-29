@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Doc version** | 1.3 |
+| **Doc version** | 1.4 |
 | **Updated** | 2026-10-28 |
-| **Describes** | HomeCircle 0.20.0 as built, including the Elderly Companion skin, the call-back loop, urgent delivery and the phrase catalog; plus the planned Elderly Companion settings, Games plugin, family names and photos (marked *planned*) |
+| **Describes** | HomeCircle 0.21.0 as built, including the Elderly Companion skin and its settings, the call-back loop, urgent delivery, the phrase catalog, family names and photos; plus the planned Games plugin, asleep detection and inactivity check-ins (marked *planned*) |
 | **Source of truth for planned features** | `PRD.md` and the handoff kickoff. Where this doc and the PRD disagree, the PRD wins. |
 
 HomeCircle is a self-hosted, end-to-end encrypted family app: a live family map, Locate, place arrival alerts, family chat, an AI helper and optional plugins. One server hosts many isolated **circles**. Phones encrypt everything before upload; the server stores and relays ciphertext it cannot read.
@@ -30,8 +30,8 @@ These come first. A feature that can't meet them is redesigned, not shipped.
 | **Call-back reminders (built, 0.20.0)** | The server can't read requests, so it can't send reminders. Each family member's phone schedules its own local reminders when a request arrives and cancels them when it sees "taken". This works even if her phone goes offline and adds no server traffic. |
 | **Asleep and DND (planned)** | Detected on each family member's phone, which then sends her the sealed "asleep" reply. The server never learns who is asleep. |
 | **Inactivity check-in (planned)** | Family phones already see when her phone last uploaded a location (sealed, with a time). They raise the check-in locally; no new server logic. |
-| **Skins (built, 0.20.0)** | Chosen by an admin; today the skin travels sealed inside the elder's invite, and the phone remembers it. The server never learns who uses which skin. |
-| **Elder config, family names, photos (planned)** | Sealed, signed records, verified on the phones against the setter's right to set them (admin, or the person themself). Photos are encrypted files like today's uploads. |
+| **Skins (built, 0.20.0; settings 0.21.0)** | Chosen by an admin: sealed inside the elder's invite, then in the admins' `member` record about her, which the phone follows (most restricted across its circles). The server never learns who uses which skin. |
+| **Elder config, family names, photos (built, 0.21.0)** | Sealed, signed records (`member`, `alias` in the records store), verified on the phones against the setter's right to set them (admin, or the person themself). Photos are encrypted files like today's uploads. |
 | **Games** | Moves sealed with the pair's direct key, signed, rule-checked on both phones; races resolved by the server's existing message order. |
 | **Languages and audio (built, 0.20.0; recordings are placeholders)** | The phrase catalog and recordings ship in the app; only keys and names travel, sealed. Nothing language-specific reaches the server. |
 
@@ -131,9 +131,9 @@ The server is deliberately thin: it authenticates devices, scopes every request 
 |---|---|
 | `routes.js`, `http.js` | REST API (see `PROTOCOL.md` for the full table). |
 | `hub.js` | One WebSocket per open app per circle; auth in the first frame; pings every 25 s. |
-| `db.js` | SQLite tables: circles, members, invites, rejoin requests, key envelopes, locations (latest only), frequent places, chirps, messages, files, places. |
+| `db.js` | SQLite tables: circles, members, invites, rejoin requests, key envelopes, locations (latest only), frequent places, chirps, messages, files (helper files and members' photos), places, records (sealed member settings and family names). |
 | `push.js` | Batches pushes to Expo, which forwards to APNs and FCM. Payloads carry no names, locations or text. |
-| `files.js` | Stores client-encrypted uploads; the key travels inside the sealed message. |
+| `files.js` | Stores client-encrypted uploads: files for the helper (the key in a sealed message) and members' photos (the key in a sealed profile or `member` record). |
 | `plugins/` | Optional per-circle features; each declares the outside hosts it may call and gets a fetch limited to those. |
 | `agent/` | The AI helper (see below). |
 
@@ -158,10 +158,10 @@ Summary of `PROTOCOL.md`:
 
 | Planned | Purpose | Encrypted with |
 |---|---|---|
-| Skin (built: in the elder's invite) and Elderly Companion config (planned: admin record) | Which skin a person's app shows; her tiles, sleep hours, language, Ring everyone switch | Invite wrap key; then circle key |
+| Skin and Elderly Companion config (built: in the elder's invite, then a `member` record) | Which skin a person's app shows; her tiles, photos, sleep hours, language, Ring everyone switch | Invite wrap key; then circle key |
 | Call-back request, reply, taken (built: `callback` in group chat, see `PROTOCOL.md`) | The call-back loop | Circle key (group chat) |
-| `alias` (family names and other names) | Who calls whom what; several names for one person | Circle key |
-| Photo reference | Profile and admin-added tile photos (the image is an encrypted file) | Circle key |
+| `alias` (built, 0.21.0: family names, per pair) | Who calls whom what; several names for one person | Circle key |
+| Photo reference (built, 0.21.0) | Profile and admin-added tile photos (the image is an encrypted file) | Circle key (inside the profile or `member` record) |
 | `game.create`, `game.move`, `game.resign`, `game.rematch` | Turn-based games between two people | The pair's direct key |
 | Outer `urgent` flag on `POST /messages` (built; not sealed: the server must read it) | Skip push coalescing for call-backs and SOS | None: it's routing metadata, like `to` on a DM |
 
@@ -218,6 +218,7 @@ Planned items move from dashed to solid once they ship.
 
 | Doc version | Date | Changes |
 |---|---|---|
+| 1.4 | 2026-10-28 | HomeCircle 0.21.0: the records store (`member`, `alias`), Elderly Companion settings, family names, he/she and members' photos are built. Principles table, server modules and record kinds updated. Diagrams unchanged: these live in the existing API, SQLite and encrypted files boxes. |
 | 1.3 | 2026-10-28 | HomeCircle 0.20.0: the Elderly Companion skin, skins system, call-back loop, urgent delivery and phrase catalog are built (solid in the diagram). Repository layout, mobile app, principles table and record kinds updated. |
 | 1.2 | 2026-10-28 | Bundle 1.2: PRD added to the handoff. No architecture changes; diagrams unchanged. |
 | 1.1 | 2026-10-28 | Decided the call-back urgency question: an outer `urgent` flag skips push coalescing for call-backs and SOS, rate-limited per sender, with an identical push payload. Updated principles table, planned records, sequence diagram and architecture diagram. |

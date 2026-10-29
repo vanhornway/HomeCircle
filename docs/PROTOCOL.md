@@ -17,7 +17,7 @@ so the circles can't read each other even through a shared device account.
 
 | Party | Can see | Cannot see |
 |---|---|---|
-| Your server / hosting provider (Render, Railway, Hetzner, …) | number of circles and members, IP addresses, when each phone uploads, ciphertext sizes, push tokens (and so which members share a phone), and which messages their sender marked `urgent` (call-back requests and replies, SOS) and when | names, locations, messages, places, battery, what an urgent message is or why |
+| Your server / hosting provider (Render, Railway, Hetzner, …) | number of circles and members, IP addresses, when each phone uploads, ciphertext sizes, push tokens (and so which members share a phone), which messages their sender marked `urgent` (call-back requests and replies, SOS) and when, which members have admin settings (a `member` record) and which pairs have a family name (an `alias` record, never the name), and how many photos each member uploaded and their sizes | names, locations, messages, places, battery, what an urgent message is or why, skins and settings, family names, photos |
 | Network attacker | nothing beyond TLS metadata | everything else |
 | Apple / Google / Expo push relay | that a push was sent to a device, and its type (`loc_req`, `msg`); urgent messages are pushed at once rather than batched, so their timing is less bunched | any content (an urgent push is identical to any other) |
 | Map tile provider (OpenStreetMap by default) | which map area you *view*, and your IP | who you are tracking or why |
@@ -61,7 +61,7 @@ the server from replaying a chat message as a location, or one member's data as
 another's. The signature is inside the ciphertext, so the server can't even
 tell who signed what beyond its own routing metadata.
 
-Kinds: `profile`, `location`, `chat`, `event`, `place`, `circle`.
+Kinds: `profile`, `location`, `chat`, `event`, `place`, `circle`, `frequent`, `member`, `alias`.
 
 ## Profiles and trust
 
@@ -227,6 +227,39 @@ waiting; the push itself is the same as any other. Past 10 urgent messages
 a minute from one sender, the rest are delivered like ordinary messages,
 never refused.
 
+**Records** are sealed settings the server keeps one copy of per kind and
+subject, written by admins or the people concerned and read by every member
+(`GET /records`, `PUT` and `DELETE /records/:kind/:subject`):
+
+- `member`, subject a member id: admin settings about that member: which
+  skin their app shows (`full` or `elderly`), and for an elder her page
+  (`care` or `grandkids`), Ring everyone, Games, tile order, photos an admin
+  added for her tiles, sleep hours, reminder interval, inactivity check-in,
+  language and he/she. Only admins may write one, and phones accept it only
+  if an admin signed it.
+- `alias`, subject `caller.member`: a family name, what one member calls
+  another ("Nani"), with an optional relationship. Either of them or an admin
+  may write it, and phones accept it only from one of those. Names are per
+  pair, so the same person can be "Nani" to one grandchild and "Dadi" to
+  another.
+
+The server checks who may write from the ids alone and can't read a record.
+Phones also check that the ids sealed inside match the subject, so a record
+can't be moved to another member or pair. A removed member's records are
+deleted with them. A phone takes its skin from the `member` records about
+its own person (the most restricted across its circles); an elder's phone
+announces itself in the group chat (`elderJoined`), and an admin's phone then
+saves her settings as a `member` record.
+
+**Photos** are files encrypted on the phone with a key of their own
+(`POST /files?purpose=photo`, up to 2 MB, 40 per member, behind the circle's
+Photos feature). The key travels only inside a sealed profile (your own
+photo, as `photo: { id, key, at }`) or a `member` record (photos an admin
+adds for an elder's tiles). Photos are kept until replaced or until whoever
+uploaded them leaves; removing the circle's helper deletes only its own
+files. Profiles may also carry `g` (`m` or `f`), a member's he/she for
+languages whose verbs need it.
+
 **Retention.** Each circle keeps messages (group and direct) for 1, 7, 30, 90
 or 365 days, chosen by its admins (`PUT /circle/retention`, default 90).
 Nothing is ever kept longer than a year; `MESSAGE_RETENTION_DAYS` can only
@@ -266,6 +299,9 @@ circle that has it. Addresses are looked up with the phone's own geocoder
 | POST | `/keys/rotate` | admin |
 | GET | `/keys/envelopes` | your rotated keys |
 | GET / PUT | `/locations`, `/locations/me` | latest sealed locations |
+| GET | `/records` | sealed member settings and family names (`?kind=member` or `alias`) |
+| PUT / DELETE | `/records/:kind/:subject` | `member`: admins; `alias` (`caller.member`): either of them or an admin |
+| POST / GET / DELETE | `/files`, `/files/:id` | encrypted files; `?purpose=photo` for a member's photo (kept) |
 | POST | `/locations/request` | ask phones for a fresh fix |
 | GET / POST | `/messages` | `?after=seq&limit=n` |
 | GET / PUT / DELETE | `/places`, `/places/:id` | sealed places |
