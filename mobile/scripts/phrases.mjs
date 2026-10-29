@@ -11,6 +11,7 @@
 // "آپ کا پیغام {name} کو بھیج دیا گیا ہے۔" is two recordings with the
 // person's name clip played between them. A recording is
 // assets/phrases/<lang>_<key>_<part>[_f].wav, e.g. ur_sent_one_2.wav.
+import { Buffer } from 'node:buffer';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,15 +30,26 @@ function readCsv(text) {
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (quoted) {
-      if (ch === '"' && text[i + 1] === '"') (field += '"'), i++;
-      else if (ch === '"') quoted = false;
+      if (ch === '"' && text[i + 1] === '"') {
+        field += '"';
+        i++;
+      } else if (ch === '"') quoted = false;
       else field += ch;
     } else if (ch === '"') quoted = true;
-    else if (ch === ',') row.push(field), (field = '');
-    else if (ch === '\n') row.push(field), rows.push(row), (row = []), (field = '');
-    else if (ch !== '\r') field += ch;
+    else if (ch === ',') {
+      row.push(field);
+      field = '';
+    } else if (ch === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+    } else if (ch !== '\r') field += ch;
   }
-  if (field || row.length) row.push(field), rows.push(row);
+  if (field || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
   const [head, ...body] = rows;
   return body.filter((r) => r.length > 1).map((r) => Object.fromEntries(head.map((h, i) => [h, r[i] ?? ''])));
 }
