@@ -1,10 +1,7 @@
-// Two apps from one project: HomeCircle, and with APP_VARIANT=companion the
-// Elderly Companion app (big photo tiles, call-back requests, SOS and games
-// for an elderly family member). Both share every screen-independent part:
-// background location, push, SOS, the native module and packages/core.
+// HomeCircle, with every skin built in (src/skins): one app, one APK.
 //
-//   npx expo run:android                              HomeCircle
-//   APP_VARIANT=companion npx expo prebuild --clean   then build: Elderly Companion
+// APP_VARIANT=companion is the door to a separate store listing for the
+// Elderly Companion skin (its own app id, name and icon), not used today.
 /* global __dirname */
 const fs = require('fs');
 const path = require('path');
@@ -24,15 +21,18 @@ function hasFirebaseClient(file, pkg) {
 module.exports = ({ config }) => {
   const variant = process.env.APP_VARIANT === 'companion' ? 'companion' : 'homecircle';
   config.extra = { ...config.extra, variant };
+
+  // The phrase recordings (every skin's spoken lines) play from res/raw,
+  // where expo-notifications puts its sounds. Every build has them.
+  const recordings = fs
+    .readdirSync(path.join(__dirname, 'assets/phrases'))
+    .filter((f) => /^[a-z]{2}_[a-z0-9_]+\.wav$/.test(f))
+    .map((f) => `./assets/phrases/${f}`);
+  config.plugins = config.plugins.map((p) => (Array.isArray(p) && p[0] === 'expo-notifications' ? [p[0], { ...p[1], sounds: [...p[1].sounds, ...recordings] }] : p));
   if (variant !== 'companion') return config;
 
-  // The Urdu clips play from res/raw, where expo-notifications puts its sounds.
-  const clips = fs
-    .readdirSync(path.join(__dirname, 'assets/clips'))
-    .filter((f) => /^ur_[a-z0-9_]+\.wav$/.test(f))
-    .map((f) => `./assets/clips/${f}`);
-  const plugins = config.plugins.map((p) => (Array.isArray(p) && p[0] === 'expo-notifications' ? [p[0], { ...p[1], sounds: [...p[1].sounds, ...clips] }] : p));
-
+  // A separate store listing for the Elderly Companion skin: not built now,
+  // kept so it can be. The phone then always shows that skin.
   const android = { ...config.android, package: COMPANION_ID, adaptiveIcon: { ...config.android.adaptiveIcon, backgroundColor: '#1F7A4D' } };
   // Without a Firebase client for this package the build would fail; it then
   // runs without push (live updates still arrive while it's open).
@@ -42,10 +42,7 @@ module.exports = ({ config }) => {
     ...config,
     name: 'Elderly Companion',
     scheme: 'homecircle-companion',
-    // Big tiles are easier to read in a light theme; it doesn't follow the phone.
-    userInterfaceStyle: 'light',
     ios: { ...config.ios, bundleIdentifier: COMPANION_ID },
     android,
-    plugins,
   };
 };

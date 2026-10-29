@@ -7,7 +7,7 @@ import { AndroidImportance, AndroidNotificationVisibility } from 'expo-notificat
 import type { CircleClient, Message } from '@homecircle/core';
 import { alertSos, stopAlarm } from '../lib/sosAlarm';
 import { replyLine } from './status';
-import { say, urdu, type Line } from './lines';
+import { say, text, type Line } from './lines';
 
 const CHANNEL = 'companion-replies';
 
@@ -43,7 +43,7 @@ export async function companionAlerts(client: CircleClient, messages: Message[],
   if (AppState.currentState === 'active') return;
   await ensureChannel();
   await Notifications.scheduleNotificationAsync({
-    content: { title: urdu(latest), data: { t: 'companion', circle: client.circleId ?? '' } },
+    content: { title: text(latest), data: { t: 'companion', circle: client.circleId ?? '' } },
     trigger: Platform.OS === 'android' ? { channelId: CHANNEL } : null,
   });
 }

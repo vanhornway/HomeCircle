@@ -1,39 +1,45 @@
-// What she hears, and the same line written in Urdu for the screen. Every
-// clip and its Urdu text come from assets/clips/clips.json (one source).
-import clips from '../../assets/clips/clips.json';
-import type { CallbackReply } from '@homecircle/core';
+// What she hears, and the same line written for the screen, from the phrase
+// catalog (assets/phrases, built from phrases.csv by scripts/phrases.mjs).
+// A phrase plays as recorded parts around its slots: a person's name clip
+// (recorded by an admin, coming later) goes where {name} is; until one is
+// recorded the slot is skipped and the screen shows who it's about.
+import catalog from '../../assets/phrases/phrases.json';
 import { playSequence, stopSequence } from '../../modules/hc-attention/src/HcAttentionModule';
 
 export type Gender = 'm' | 'f';
-type Clip = { id: string; ur: string | Record<Gender, string>; variants: string[] };
-const BY_ID = new Map((clips.clips as Clip[]).map((c) => [c.id, c]));
+type Part = { clip?: string; slot?: string };
+type Form = { text: string; parts: Part[] };
+type Phrase = { en: string; gender: string | null } & Record<string, unknown>;
 
-export const REPLY_CLIP: Record<CallbackReply, string> = { now: 'cb_now', '5min': 'cb_5min', morning: 'cb_morning', evening: 'cb_evening' };
+const PHRASES = catalog.phrases as Record<string, Phrase>;
+export const LANGUAGES = catalog.languages as Record<string, { name: string; english: string; rtl: boolean }>;
 
-/** One line: a clip, the person it's about (their he/she picks the recording), and their name. */
-export type Line = { id: string; g?: Gender; name?: string };
-
-/** The res/raw name of a line's recording. */
-export function clipName({ id, g }: Line): string {
-  const c = BY_ID.get(id);
-  return c?.variants.length ? `ur_${id}_${g ?? 'm'}` : `ur_${id}`;
+/** Her language; admins choose it (one language today: Urdu). */
+let language = 'ur';
+export function setLanguage(lang: string) {
+  if (LANGUAGES[lang]) language = lang;
 }
 
-/** The line in Urdu, with the person's name in place of [نام]. */
-export function urdu({ id, g, name }: Line): string {
-  const c = BY_ID.get(id);
-  if (!c) return '';
-  const text = typeof c.ur === 'string' ? c.ur : c.ur[g ?? 'm'];
-  return text.replace('[نام]', name ?? '').trim();
+/** One line: a phrase, the he/she its verbs follow, and what fills its slots. */
+export type Line = { key: string; g?: Gender; name?: string; game?: string };
+
+function form({ key, g }: Line): Form | null {
+  const forms = PHRASES[key]?.[language] as Partial<Record<Gender, Form>> | undefined;
+  if (!forms) return null;
+  return (g === 'f' && forms.f) || forms.m || null;
 }
 
-/**
- * Say lines one after the other. A person's own name clip (recorded by an
- * admin, coming later) will play before a line about them; until then the
- * line plays alone while the screen shows who it's about.
- */
+/** The line as written, with names in place of its slots. */
+export function text(line: Line): string {
+  const f = form(line);
+  if (!f) return '';
+  return f.text.replace(/\{([a-z]+)\}/g, (_, slot: string) => String((line as Record<string, unknown>)[slot] ?? '')).trim();
+}
+
+/** Say lines one after the other. */
 export function say(...lines: Line[]): boolean {
-  return playSequence(lines.map(clipName));
+  const clips = lines.flatMap((l) => (form(l)?.parts ?? []).map((p) => p.clip).filter((c): c is string => !!c));
+  return playSequence(clips);
 }
 
 export function hush() {

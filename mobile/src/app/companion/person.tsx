@@ -6,7 +6,7 @@ import Svg, { Path } from 'react-native-svg';
 import { clientForCircle, errorText, useCircles } from '../../lib/circle';
 import { myTimeZone, pageOf } from '../../companion/people';
 import { currentRequest, statusLine } from '../../companion/status';
-import { say, urdu } from '../../companion/lines';
+import { say, text } from '../../companion/lines';
 import { C, TILE_COLORS, URDU } from '../../companion/theme';
 
 /** One person (design 03): their face, then Call me. Play a game comes with games. */
@@ -25,7 +25,7 @@ export default function Person() {
     const open = currentRequest(client);
     // Already asked (everyone, or this person): tell her where it stands.
     if (open?.open && (!open.for || open.for.includes(m.id))) {
-      say(open.replies.length ? statusLine(client, open) : { id: 'cb_waiting' });
+      say(statusLine(client, open));
       router.back();
       return;
     }
@@ -33,7 +33,7 @@ export default function Person() {
     setError(null);
     try {
       await client.askCallback({ to: m.id, tz: myTimeZone(), awake: true, remind: pageOf(client) === 'care' ? 10 : 0 });
-      say({ id: 'cb_sent_one', name: m.name });
+      say({ key: 'sent.one', name: m.name });
       router.back();
     } catch (e) {
       setError(errorText(e));
@@ -70,7 +70,7 @@ export default function Person() {
             accessibilityRole="button"
             accessibilityLabel={`Ask ${m.name} to call you`}
             onPress={() => {
-              say({ id: 'btn_callme' });
+              say({ key: 'ui.call_me' });
               callMe();
             }}
             style={({ pressed }) => ({ flex: 1, maxHeight: 220, borderRadius: 28, backgroundColor: C.green, flexDirection: 'row', alignItems: 'center', gap: 20, paddingHorizontal: 28, opacity: pressed || busy ? 0.8 : 1 })}
@@ -78,7 +78,7 @@ export default function Person() {
             <Svg width={52} height={52} viewBox="0 0 24 24" fill="none">
               <Path d="M5 4h3.5l1.5 4-2 1.5a11 11 0 0 0 6.5 6.5l1.5-2 4 1.5V19a1.5 1.5 0 0 1-1.5 1.5A15.5 15.5 0 0 1 3.5 5.5 1.5 1.5 0 0 1 5 4Z" stroke={C.white} strokeWidth={2.2} strokeLinejoin="round" />
             </Svg>
-            <Text style={[URDU, { flex: 1, color: C.white, fontSize: 28, lineHeight: 56 }]}>{urdu({ id: 'btn_callme' })}</Text>
+            <Text style={[URDU, { flex: 1, color: C.white, fontSize: 28, lineHeight: 56 }]}>{text({ key: 'ui.call_me' })}</Text>
           </Pressable>
         </View>
         {error ? <Text style={{ color: C.red, fontSize: 16, textAlign: 'center' }}>{error}</Text> : null}

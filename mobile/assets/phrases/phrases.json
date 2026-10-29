@@ -1,0 +1,724 @@
+{
+ "languages": {
+  "ur": {
+   "name": "اردو",
+   "english": "Urdu",
+   "rtl": true
+  }
+ },
+ "phrases": {
+  "ui.ring_everyone": {
+   "en": "Ask everyone to call me",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "سب سے کہیں کہ مجھے فون کریں",
+     "parts": [
+      {
+       "clip": "ur_ui_ring_everyone_1"
+      }
+     ]
+    }
+   }
+  },
+  "ui.call_me": {
+   "en": "Call me back",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "مجھے فون کریں",
+     "parts": [
+      {
+       "clip": "ur_ui_call_me_1"
+      }
+     ]
+    }
+   }
+  },
+  "ui.play_game": {
+   "en": "Play a game",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "کھیل کھیلیں",
+     "parts": [
+      {
+       "clip": "ur_ui_play_game_1"
+      }
+     ]
+    }
+   }
+  },
+  "ui.close": {
+   "en": "Close",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "بند کریں",
+     "parts": [
+      {
+       "clip": "ur_ui_close_1"
+      }
+     ]
+    }
+   }
+  },
+  "ui.sos_hold": {
+   "en": "Keep holding to send SOS",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "ایس او ایس بھیجنے کے لیے دبائے رکھیں",
+     "parts": [
+      {
+       "clip": "ur_ui_sos_hold_1"
+      }
+     ]
+    }
+   }
+  },
+  "ui.games_page": {
+   "en": "Games",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "کھیل",
+     "parts": [
+      {
+       "clip": "ur_ui_games_page_1"
+      }
+     ]
+    }
+   }
+  },
+  "sent.everyone": {
+   "en": "Your message has been sent to everyone.",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "آپ کا پیغام سب کو بھیج دیا گیا ہے۔",
+     "parts": [
+      {
+       "clip": "ur_sent_everyone_1"
+      }
+     ]
+    }
+   }
+  },
+  "sent.one": {
+   "en": "Your message has been sent to {name}.",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "آپ کا پیغام {name} کو بھیج دیا گیا ہے۔",
+     "parts": [
+      {
+       "clip": "ur_sent_one_1"
+      },
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_sent_one_2"
+      }
+     ]
+    }
+   }
+  },
+  "reply.calling_now": {
+   "en": "{name} is calling you now.",
+   "gender": "name",
+   "ur": {
+    "m": {
+     "text": "{name} ابھی آپ کو فون کر رہے ہیں۔",
+     "parts": [
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_reply_calling_now_1"
+      }
+     ]
+    },
+    "f": {
+     "text": "{name} ابھی آپ کو فون کر رہی ہیں۔",
+     "parts": [
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_reply_calling_now_1_f"
+      }
+     ]
+    }
+   }
+  },
+  "reply.five_min": {
+   "en": "{name} will call you in 5 minutes.",
+   "gender": "name",
+   "ur": {
+    "m": {
+     "text": "{name} پانچ منٹ میں آپ کو فون کریں گے۔",
+     "parts": [
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_reply_five_min_1"
+      }
+     ]
+    },
+    "f": {
+     "text": "{name} پانچ منٹ میں آپ کو فون کریں گی۔",
+     "parts": [
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_reply_five_min_1_f"
+      }
+     ]
+    }
+   }
+  },
+  "reply.morning": {
+   "en": "{name} will call you in the morning.",
+   "gender": "name",
+   "ur": {
+    "m": {
+     "text": "{name} صبح آپ کو فون کریں گے۔",
+     "parts": [
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_reply_morning_1"
+      }
+     ]
+    },
+    "f": {
+     "text": "{name} صبح آپ کو فون کریں گی۔",
+     "parts": [
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_reply_morning_1_f"
+      }
+     ]
+    }
+   }
+  },
+  "reply.evening": {
+   "en": "{name} will call you in the evening.",
+   "gender": "name",
+   "ur": {
+    "m": {
+     "text": "{name} شام کو آپ کو فون کریں گے۔",
+     "parts": [
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_reply_evening_1"
+      }
+     ]
+    },
+    "f": {
+     "text": "{name} شام کو آپ کو فون کریں گی۔",
+     "parts": [
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_reply_evening_1_f"
+      }
+     ]
+    }
+   }
+  },
+  "asleep.one": {
+   "en": "{name} is asleep right now and will call you back later.",
+   "gender": "name",
+   "ur": {
+    "m": {
+     "text": "{name} ابھی سو رہے ہیں، بعد میں آپ کو فون کریں گے۔",
+     "parts": [
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_asleep_one_1"
+      }
+     ]
+    },
+    "f": {
+     "text": "{name} ابھی سو رہی ہیں، بعد میں آپ کو فون کریں گی۔",
+     "parts": [
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_asleep_one_1_f"
+      }
+     ]
+    }
+   }
+  },
+  "asleep.many": {
+   "en": "{names} are asleep right now and will call you back later.",
+   "gender": "names",
+   "ur": {
+    "m": {
+     "text": "{names} ابھی سو رہے ہیں، بعد میں آپ کو فون کریں گے۔",
+     "parts": [
+      {
+       "slot": "names"
+      },
+      {
+       "clip": "ur_asleep_many_1"
+      }
+     ]
+    },
+    "f": {
+     "text": "{names} ابھی سو رہی ہیں، بعد میں آپ کو فون کریں گی۔",
+     "parts": [
+      {
+       "slot": "names"
+      },
+      {
+       "clip": "ur_asleep_many_1_f"
+      }
+     ]
+    }
+   }
+  },
+  "names.and": {
+   "en": "{a} and {b}",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "{a} اور {b}",
+     "parts": [
+      {
+       "slot": "a"
+      },
+      {
+       "clip": "ur_names_and_1"
+      },
+      {
+       "slot": "b"
+      }
+     ]
+    }
+   }
+  },
+  "sos.sent": {
+   "en": "Your SOS has been sent to the family.",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "آپ کا ایس او ایس گھر والوں کو بھیج دیا گیا ہے۔",
+     "parts": [
+      {
+       "clip": "ur_sos_sent_1"
+      }
+     ]
+    }
+   }
+  },
+  "offline.queued": {
+   "en": "There's no internet right now. Your message will be sent later.",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "ابھی انٹرنیٹ نہیں ہے۔ آپ کا پیغام بعد میں بھیج دیا جائے گا۔",
+     "parts": [
+      {
+       "clip": "ur_offline_queued_1"
+      }
+     ]
+    }
+   }
+  },
+  "offline.sent": {
+   "en": "Your earlier message has now been sent.",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "آپ کا پہلے والا پیغام اب بھیج دیا گیا ہے۔",
+     "parts": [
+      {
+       "clip": "ur_offline_sent_1"
+      }
+     ]
+    }
+   }
+  },
+  "game.name.tictactoe": {
+   "en": "Tic-tac-toe",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "زیرو کاٹا",
+     "parts": [
+      {
+       "clip": "ur_game_name_tictactoe_1"
+      }
+     ]
+    }
+   }
+  },
+  "game.name.dots": {
+   "en": "Dots and Boxes",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "نقطے اور ڈبے",
+     "parts": [
+      {
+       "clip": "ur_game_name_dots_1"
+      }
+     ]
+    }
+   }
+  },
+  "game.name.connect4": {
+   "en": "Connect Four",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "چار ملاؤ",
+     "parts": [
+      {
+       "clip": "ur_game_name_connect4_1"
+      }
+     ]
+    }
+   }
+  },
+  "game.name.matchsticks": {
+   "en": "Matchsticks",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "تیلیوں کا کھیل",
+     "parts": [
+      {
+       "clip": "ur_game_name_matchsticks_1"
+      }
+     ]
+    }
+   }
+  },
+  "game.name.checkers": {
+   "en": "Checkers",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "چیکرز",
+     "parts": [
+      {
+       "clip": "ur_game_name_checkers_1"
+      }
+     ]
+    }
+   }
+  },
+  "game.name.chess": {
+   "en": "Chess",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "شطرنج",
+     "parts": [
+      {
+       "clip": "ur_game_name_chess_1"
+      }
+     ]
+    }
+   }
+  },
+  "game.invite": {
+   "en": "{name} wants to play {game} with you.",
+   "gender": "name",
+   "ur": {
+    "m": {
+     "text": "{name} آپ کے ساتھ {game} کھیلنا چاہتے ہیں۔",
+     "parts": [
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_game_invite_1"
+      },
+      {
+       "slot": "game"
+      },
+      {
+       "clip": "ur_game_invite_2"
+      }
+     ]
+    },
+    "f": {
+     "text": "{name} آپ کے ساتھ {game} کھیلنا چاہتی ہیں۔",
+     "parts": [
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_game_invite_1_f"
+      },
+      {
+       "slot": "game"
+      },
+      {
+       "clip": "ur_game_invite_2_f"
+      }
+     ]
+    }
+   }
+  },
+  "game.sent": {
+   "en": "Your game has been sent to {name}.",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "آپ کا کھیل {name} کو بھیج دیا گیا ہے۔",
+     "parts": [
+      {
+       "clip": "ur_game_sent_1"
+      },
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_game_sent_2"
+      }
+     ]
+    }
+   }
+  },
+  "game.their_move": {
+   "en": "{name} played. Your turn.",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "{name} نے چال چل دی۔ اب آپ کی باری ہے۔",
+     "parts": [
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_game_their_move_1"
+      }
+     ]
+    }
+   }
+  },
+  "game.your_turn": {
+   "en": "Your turn.",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "آپ کی باری ہے۔",
+     "parts": [
+      {
+       "clip": "ur_game_your_turn_1"
+      }
+     ]
+    }
+   }
+  },
+  "game.not_your_turn": {
+   "en": "It's {name}'s turn. Please wait.",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "ابھی {name} کی باری ہے۔ انتظار کریں۔",
+     "parts": [
+      {
+       "clip": "ur_game_not_your_turn_1"
+      },
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_game_not_your_turn_2"
+      }
+     ]
+    }
+   }
+  },
+  "game.send_move": {
+   "en": "Send move",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "چال بھیجیں",
+     "parts": [
+      {
+       "clip": "ur_game_send_move_1"
+      }
+     ]
+    }
+   }
+  },
+  "game.move_sent": {
+   "en": "Move sent.",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "چال بھیج دی گئی۔",
+     "parts": [
+      {
+       "clip": "ur_game_move_sent_1"
+      }
+     ]
+    }
+   }
+  },
+  "game.you_won": {
+   "en": "You won!",
+   "gender": "elder",
+   "ur": {
+    "m": {
+     "text": "آپ جیت گئے!",
+     "parts": [
+      {
+       "clip": "ur_game_you_won_1"
+      }
+     ]
+    },
+    "f": {
+     "text": "آپ جیت گئیں!",
+     "parts": [
+      {
+       "clip": "ur_game_you_won_1_f"
+      }
+     ]
+    }
+   }
+  },
+  "game.they_won": {
+   "en": "{name} won this time. Play again?",
+   "gender": "name",
+   "ur": {
+    "m": {
+     "text": "اس بار {name} جیت گئے۔ دوبارہ کھیلیں؟",
+     "parts": [
+      {
+       "clip": "ur_game_they_won_1"
+      },
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_game_they_won_2"
+      }
+     ]
+    },
+    "f": {
+     "text": "اس بار {name} جیت گئیں۔ دوبارہ کھیلیں؟",
+     "parts": [
+      {
+       "clip": "ur_game_they_won_1_f"
+      },
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_game_they_won_2_f"
+      }
+     ]
+    }
+   }
+  },
+  "game.draw": {
+   "en": "It's a draw. Great game!",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "مقابلہ برابر رہا۔ بہت اچھا کھیل!",
+     "parts": [
+      {
+       "clip": "ur_game_draw_1"
+      }
+     ]
+    }
+   }
+  },
+  "game.play_again": {
+   "en": "Play again",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "دوبارہ کھیلیں",
+     "parts": [
+      {
+       "clip": "ur_game_play_again_1"
+      }
+     ]
+    }
+   }
+  },
+  "family.request.everyone": {
+   "en": "{elder} wants a call back",
+   "gender": "elder"
+  },
+  "family.request.one": {
+   "en": "{elder} wants you to call back",
+   "gender": "elder"
+  },
+  "family.reply.calling_now": {
+   "en": "I'm calling you now",
+   "gender": null
+  },
+  "family.reply.five_min": {
+   "en": "I'll call you back in 5 minutes",
+   "gender": null
+  },
+  "family.reply.morning": {
+   "en": "I'll call you in the morning",
+   "gender": null
+  },
+  "family.reply.evening": {
+   "en": "I'll call you in the evening",
+   "gender": null
+  },
+  "family.taken": {
+   "en": "{member} is calling {elder} now",
+   "gender": null
+  },
+  "family.her_time": {
+   "en": "Her time {time}, {city}",
+   "gender": "elder"
+  },
+  "family.asleep_told": {
+   "en": "{member} is asleep. {elder} was told.",
+   "gender": null
+  },
+  "family.inactive": {
+   "en": "{elder} hasn't used her phone for {hours} hours",
+   "gender": "elder"
+  },
+  "family.game_invite": {
+   "en": "{elder} wants to play {game} with you",
+   "gender": "elder"
+  },
+  "sos.safe": {
+   "en": "I'm safe now",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "اب میں ٹھیک ہوں",
+     "parts": [
+      {
+       "clip": "ur_sos_safe_1"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

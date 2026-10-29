@@ -8,7 +8,7 @@ import { allClients, errorText, useCircles } from '../../lib/circle';
 import { startMySos, useMySos } from '../../lib/sos';
 import { pageOf, myTimeZone, tilePeople } from '../../companion/people';
 import { currentRequest, statusLine, tileReplies } from '../../companion/status';
-import { hush, say, urdu } from '../../companion/lines';
+import { hush, say, text } from '../../companion/lines';
 import { C, TILE_COLORS, URDU } from '../../companion/theme';
 
 /** Minutes between reminders on the family's phones: care circles remind, grandkids circles don't. */
@@ -65,10 +65,10 @@ function CirclePage({ client, index, count, current }: { client: CircleClient; i
   const ringEveryone = async () => {
     setError(null);
     // Already asked: tell her where it stands instead of asking again.
-    if (request) return say(request.open && !request.replies.length && !request.takenBy ? { id: 'cb_waiting' } : statusLine(client, request));
+    if (request) return say(statusLine(client, request));
     try {
       await client.askCallback({ tz: myTimeZone(), awake: true, remind: care ? CARE_REMIND_MIN : 0 });
-      say({ id: 'cb_sent_all' });
+      say({ key: 'sent.everyone' });
     } catch (e) {
       setError(errorText(e));
     }
@@ -140,7 +140,7 @@ function StatusBanner({ client, onPress }: { client: CircleClient; onPress: () =
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${urdu(line)}. Tap to hear it again`}
+      accessibilityLabel={`${text(line)}. Tap to hear it again`}
       onPress={onPress}
       style={({ pressed }) => ({ height: 124, borderRadius: 32, backgroundColor: C.green, flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 20, opacity: pressed ? 0.85 : 1 })}
     >
@@ -150,7 +150,7 @@ function StatusBanner({ client, onPress }: { client: CircleClient; onPress: () =
         </Svg>
       </View>
       <Text style={[URDU, { flex: 1, color: C.white, fontSize: 24, lineHeight: 46 }]} numberOfLines={2}>
-        {urdu(line)}
+        {text(line)}
       </Text>
     </Pressable>
   );
@@ -230,7 +230,7 @@ function SosHold() {
     if (sos) return router.push('/companion/sos');
     setError(null);
     done.current = false;
-    say({ id: 'sos_start' });
+    say({ key: 'ui.sos_hold' });
     run.current = Animated.timing(fill, { toValue: 1, duration: SOS_HOLD_MS, easing: Easing.linear, useNativeDriver: false });
     run.current.start(async ({ finished }) => {
       if (!finished) return;
@@ -238,7 +238,7 @@ function SosHold() {
       fill.setValue(0);
       try {
         await startMySos((c) => allClients().includes(c) && pageOf(c) === 'care');
-        say({ id: 'sos_sent' });
+        say({ key: 'sos.sent' });
         router.push('/companion/sos');
       } catch (e) {
         setError(errorText(e));

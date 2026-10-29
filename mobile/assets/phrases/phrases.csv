@@ -1,0 +1,48 @@
+key,where,gender_follows,en,ur,ur_female
+ui.ring_everyone,Her app: spoken when she touches Ring everyone,,Ask everyone to call me,سب سے کہیں کہ مجھے فون کریں,
+ui.call_me,Her app: Call me back choice,,Call me back,مجھے فون کریں,
+ui.play_game,Her app: Play a game choice,,Play a game,کھیل کھیلیں,
+ui.close,Her app: close button,,Close,بند کریں,
+ui.sos_hold,Her app: when she touches SOS,,Keep holding to send SOS,ایس او ایس بھیجنے کے لیے دبائے رکھیں,
+ui.games_page,Her app: games page,,Games,کھیل,
+sent.everyone,Her app: after Ring everyone,,Your message has been sent to everyone.,آپ کا پیغام سب کو بھیج دیا گیا ہے۔,
+sent.one,Her app: after Call me back,,Your message has been sent to {name}.,آپ کا پیغام {name} کو بھیج دیا گیا ہے۔,
+reply.calling_now,Her app: reply played,name,{name} is calling you now.,{name} ابھی آپ کو فون کر رہے ہیں۔,{name} ابھی آپ کو فون کر رہی ہیں۔
+reply.five_min,Her app: reply played,name,{name} will call you in 5 minutes.,{name} پانچ منٹ میں آپ کو فون کریں گے۔,{name} پانچ منٹ میں آپ کو فون کریں گی۔
+reply.morning,Her app: reply played,name,{name} will call you in the morning.,{name} صبح آپ کو فون کریں گے۔,{name} صبح آپ کو فون کریں گی۔
+reply.evening,Her app: reply played,name,{name} will call you in the evening.,{name} شام کو آپ کو فون کریں گے۔,{name} شام کو آپ کو فون کریں گی۔
+asleep.one,Her app: the person is asleep or on DND,name,{name} is asleep right now and will call you back later.,{name} ابھی سو رہے ہیں، بعد میں آپ کو فون کریں گے۔,{name} ابھی سو رہی ہیں، بعد میں آپ کو فون کریں گی۔
+asleep.many,Her app: several people asleep (male form if any man is in the group),names,{names} are asleep right now and will call you back later.,{names} ابھی سو رہے ہیں، بعد میں آپ کو فون کریں گے۔,{names} ابھی سو رہی ہیں، بعد میں آپ کو فون کریں گی۔
+names.and,Joins names in asleep.many,,{a} and {b},{a} اور {b},
+sos.sent,Her app: after SOS,,Your SOS has been sent to the family.,آپ کا ایس او ایس گھر والوں کو بھیج دیا گیا ہے۔,
+offline.queued,Her app: no internet,,There's no internet right now. Your message will be sent later.,ابھی انٹرنیٹ نہیں ہے۔ آپ کا پیغام بعد میں بھیج دیا جائے گا۔,
+offline.sent,Her app: queued message went out,,Your earlier message has now been sent.,آپ کا پہلے والا پیغام اب بھیج دیا گیا ہے۔,
+game.name.tictactoe,Game tile and voice,,Tic-tac-toe,زیرو کاٹا,
+game.name.dots,Game tile and voice,,Dots and Boxes,نقطے اور ڈبے,
+game.name.connect4,Game tile and voice,,Connect Four,چار ملاؤ,
+game.name.matchsticks,Game tile and voice,,Matchsticks,تیلیوں کا کھیل,
+game.name.checkers,Game tile and voice,,Checkers,چیکرز,
+game.name.chess,Game tile and voice,,Chess,شطرنج,
+game.invite,Her app: someone starts a game with her,name,{name} wants to play {game} with you.,{name} آپ کے ساتھ {game} کھیلنا چاہتے ہیں۔,{name} آپ کے ساتھ {game} کھیلنا چاہتی ہیں۔
+game.sent,Her app: after she starts a game,,Your game has been sent to {name}.,آپ کا کھیل {name} کو بھیج دیا گیا ہے۔,
+game.their_move,Her app: the other player moved,,{name} played. Your turn.,{name} نے چال چل دی۔ اب آپ کی باری ہے۔,
+game.your_turn,Her app: game screen,,Your turn.,آپ کی باری ہے۔,
+game.not_your_turn,Her app: she taps the board out of turn,,It's {name}'s turn. Please wait.,ابھی {name} کی باری ہے۔ انتظار کریں۔,
+game.send_move,Her app: Send move button,,Send move,چال بھیجیں,
+game.move_sent,Her app: after Send move,,Move sent.,چال بھیج دی گئی۔,
+game.you_won,Her app: she won (form follows her gender),elder,You won!,آپ جیت گئے!,آپ جیت گئیں!
+game.they_won,Her app: the other player won,name,{name} won this time. Play again?,اس بار {name} جیت گئے۔ دوبارہ کھیلیں؟,اس بار {name} جیت گئیں۔ دوبارہ کھیلیں؟
+game.draw,Her app: draw,,It's a draw. Great game!,مقابلہ برابر رہا۔ بہت اچھا کھیل!,
+game.play_again,Her app: Play again,,Play again,دوبارہ کھیلیں,
+family.request.everyone,Family app: group chat card,elder,{elder} wants a call back,,
+family.request.one,Family app: request to one person,elder,{elder} wants you to call back,,
+family.reply.calling_now,Family app: long-press reply,,I'm calling you now,,
+family.reply.five_min,Family app: long-press reply,,I'll call you back in 5 minutes,,
+family.reply.morning,Family app: long-press reply,,I'll call you in the morning,,
+family.reply.evening,Family app: long-press reply,,I'll call you in the evening,,
+family.taken,Family app: someone took the request,,{member} is calling {elder} now,,
+family.her_time,Family app: request card (her/his follows the elder's gender),elder,"Her time {time}, {city}",,
+family.asleep_told,Family app: chat note,,{member} is asleep. {elder} was told.,,
+family.inactive,Family app: inactivity check-in,elder,{elder} hasn't used her phone for {hours} hours,,
+family.game_invite,Family app: she starts a game,elder,{elder} wants to play {game} with you,,
+sos.safe,Her app: I'm safe now button (added; Urdu from the owner's 27 Oct review),,I'm safe now,اب میں ٹھیک ہوں,

@@ -2,7 +2,10 @@
 // her page, the badges on the tiles and what she hears.
 import type { CallbackReply, CallbackState, CircleClient } from '@homecircle/core';
 import { genderOf } from './people';
-import { REPLY_CLIP, type Line } from './lines';
+import type { Line } from './lines';
+
+/** The phrase each reply plays. */
+export const REPLY_PHRASE: Record<CallbackReply, string> = { now: 'reply.calling_now', '5min': 'reply.five_min', morning: 'reply.morning', evening: 'reply.evening' };
 
 // After someone says "I'm calling you now", the page shows it this long.
 const TAKEN_SHOWN_MS = 30 * 60_000;
@@ -18,15 +21,15 @@ export function currentRequest(client: CircleClient, now = Date.now()): Callback
 
 /** What the banner says (and she hears) about a request. */
 export function statusLine(client: CircleClient, s: CallbackState): Line {
-  if (s.takenBy) return { id: 'cb_now', g: genderOf(client, s.takenBy.memberId), name: s.takenBy.name };
+  if (s.takenBy) return { key: 'reply.calling_now', g: genderOf(client, s.takenBy.memberId), name: s.takenBy.name };
   const last = s.replies.at(-1);
   if (last) return replyLine(client, last.memberId, last.name, last.reply);
-  if (s.for?.length === 1) return { id: 'cb_sent_one', name: client.members.get(s.for[0])?.name ?? '' };
-  return { id: 'cb_sent_all' };
+  if (s.for?.length === 1) return { key: 'sent.one', name: client.members.get(s.for[0])?.name ?? '' };
+  return { key: 'sent.everyone' };
 }
 
 export function replyLine(client: CircleClient, memberId: string, name: string, reply: CallbackReply): Line {
-  return { id: REPLY_CLIP[reply], g: genderOf(client, memberId), name };
+  return { key: REPLY_PHRASE[reply], g: genderOf(client, memberId), name };
 }
 
 /** Each person's answer on her tiles: memberId -> reply. */
