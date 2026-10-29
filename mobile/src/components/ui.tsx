@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -195,7 +196,9 @@ export function Checkbox({ checked, onChange, label, detail }: { checked: boolea
   );
 }
 
-export function Avatar({ name, color, size = 44 }: { name: string; color: string; size?: number }) {
+/** Someone's photo (`uri`), else their initials on their colour. */
+export function Avatar({ name, color, size = 44, uri }: { name: string; color: string; size?: number; uri?: string | null }) {
+  if (uri) return <Image source={{ uri }} accessibilityLabel={name} style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }} />;
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
       <Text style={{ color: '#fff', fontWeight: '700', fontSize: size * 0.38 }}>{initials(name)}</Text>

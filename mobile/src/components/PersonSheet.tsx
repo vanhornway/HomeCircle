@@ -3,13 +3,14 @@ import { Alert, Modal, Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CircleClient } from '@homecircle/core';
-import { Avatar, Icon } from './ui';
+import { Icon } from './ui';
 import { AlertRuleSheet } from './AlertRuleSheet';
 import { errorText } from '../lib/circle';
 import { chirpWithChoice } from '../lib/chirp';
 import { KIND_EMOJI } from '../lib/visits';
 import { spotName, type Anchor } from '../lib/visitsCore';
 import { FamilyNameEditor } from './FamilyNames';
+import { MemberAvatar } from './MemberAvatar';
 import { canLocate, locatePerson, locateState, openDirections, statusLine, useLocateVersion } from '../lib/people';
 import { timeAgo } from '../lib/useCircle';
 import { useTheme } from '../theme';
@@ -92,7 +93,7 @@ export function PersonSheet({
             <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
               <SafeAreaView edges={['bottom']} style={{ padding: 18, gap: 14 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <Avatar name={m.name} color={m.color} size={52} />
+                  <MemberAvatar client={client} member={m} size={52} />
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>{client.displayName(m.id)}</Text>
                     {client.displayName(m.id) !== m.name ? <Text style={{ color: t.muted, fontSize: 13 }}>{m.name}</Text> : null}

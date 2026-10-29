@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import type { Member } from '@homecircle/core';
-import { Avatar, Button, Tag } from '../../components/ui';
+import { Button, Tag } from '../../components/ui';
 import { GroupBody, SettingsGroup, SettingsPage, SettingsRow } from '../../components/SettingsKit';
+import { MemberAvatar } from '../../components/MemberAvatar';
 import { errorText, useCircles } from '../../lib/circle';
 import { setLastUpload, clearDeviceData } from '../../lib/storage';
 import { stopBackgroundUpdates, syncGeofences } from '../../lib/location';
@@ -49,7 +50,7 @@ export default function CircleSettings() {
     return (
       <Pressable key={m.id} accessibilityRole="button" accessibilityState={{ expanded: shown }} onPress={() => setOpen(shown ? null : m.id)} style={{ padding: 14 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <Avatar name={m.name} color={m.color} size={36} />
+          <MemberAvatar client={client} member={m} size={36} />
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
               <Text style={{ color: t.text, fontWeight: '600', fontSize: 16 }}>{m.name}</Text>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { Avatar, H1, Screen } from '../../components/ui';
+import { MemberAvatar } from '../../components/MemberAvatar';
 import { ServerBanner } from '../../components/ServerBanner';
 import { RejoinBanner } from '../../components/RejoinBanner';
 import { SettingsGroup, SettingsRow } from '../../components/SettingsKit';
@@ -45,7 +46,7 @@ export default function SettingsTab() {
         onPress={() => router.push('/settings/profile')}
         style={({ pressed }) => ({ marginTop: 18, flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: t.line, backgroundColor: pressed ? t.surface2 : t.surface })}
       >
-        <Avatar name={me?.name ?? '?'} color={me?.color ?? t.muted} size={52} />
+        {me ? <MemberAvatar client={client} member={me} size={52} /> : <Avatar name="?" color={t.muted} size={52} />}
         <View style={{ flex: 1 }}>
           <Text style={{ color: t.text, fontSize: 19, fontWeight: '700' }} numberOfLines={1}>
             {me?.name ?? 'You'}

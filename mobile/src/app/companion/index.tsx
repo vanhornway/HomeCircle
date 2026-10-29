@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Image, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Svg, { Circle, Path } from 'react-native-svg';
@@ -9,6 +9,7 @@ import { startMySos, useMySos } from '../../lib/sos';
 import { inSleepHours, myTimeZone, pageOf, settingsOf, tileName, tilePeople } from '../../companion/people';
 import { currentRequest, statusLine, tileReplies } from '../../companion/status';
 import { askOrQueue } from '../../companion/outbox';
+import { usePhotoUri } from '../../lib/photos';
 import { hush, say, text } from '../../companion/lines';
 import { C, TILE_COLORS, URDU, isUrdu } from '../../companion/theme';
 
@@ -110,7 +111,7 @@ function CirclePage({ client, index, count, current }: { client: CircleClient; i
 
       <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 14, alignContent: 'stretch' }}>
         {people.slice(0, 6).map((m, i) => (
-          <Tile key={m.id} member={m} label={tileName(client, m.id)} color={TILE_COLORS[i % TILE_COLORS.length]} reply={replies.get(m.id)} rows={Math.ceil(Math.min(people.length, 6) / 2)} onPress={() => router.push({ pathname: '/companion/person', params: { circle: client.circleId!, member: m.id } })} />
+          <Tile key={m.id} client={client} member={m} label={tileName(client, m.id)} color={TILE_COLORS[i % TILE_COLORS.length]} reply={replies.get(m.id)} rows={Math.ceil(Math.min(people.length, 6) / 2)} onPress={() => router.push({ pathname: '/companion/person', params: { circle: client.circleId!, member: m.id } })} />
         ))}
       </View>
 
@@ -162,8 +163,10 @@ const REPLY_BADGE: Record<CallbackReply, { bg: string; icon: 'phone' | 'clock' }
 };
 
 /** A person: their photo (coming with profile photos), else their name, big. Their answer shows as a badge. */
-function Tile({ member, label, color, reply, rows, onPress }: { member: Member; label: string; color: string; reply?: CallbackReply; rows: number; onPress: () => void }) {
+function Tile({ client, member, label, color, reply, rows, onPress }: { client: CircleClient; member: Member; label: string; color: string; reply?: CallbackReply; rows: number; onPress: () => void }) {
   const badge = reply ? REPLY_BADGE[reply] : null;
+  // Their own photo, else one an admin added, else the name she knows them by.
+  const photo = usePhotoUri(client, client.account ? client.tilePhoto(client.account.memberId, member.id) : null);
   return (
     <Pressable
       accessibilityRole="button"
@@ -178,17 +181,21 @@ function Tile({ member, label, color, reply, rows, onPress }: { member: Member; 
         backgroundColor: color,
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 8,
+        padding: photo ? 0 : 8,
+        overflow: 'hidden',
         opacity: pressed ? 0.8 : 1,
       })}
     >
-      <Text
+      {photo ? (
+        <Image source={{ uri: photo }} accessibilityLabel={label} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} resizeMode="cover" />
+      ) : null}
+      {photo ? null : <Text
         style={isUrdu(label) ? [URDU, { color: C.ink, fontSize: 32, lineHeight: 64, textAlign: 'center' }] : { color: C.ink, fontSize: 30, fontWeight: '800', textAlign: 'center' }}
         numberOfLines={2}
         adjustsFontSizeToFit
       >
         {label}
-      </Text>
+      </Text>}
       {badge ? (
         <View style={{ position: 'absolute', right: 8, top: 8, width: 46, height: 46, borderRadius: 23, backgroundColor: badge.bg, alignItems: 'center', justifyContent: 'center' }}>
           <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">

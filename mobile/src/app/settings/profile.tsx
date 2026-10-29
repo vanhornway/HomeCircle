@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Alert, Text, TextInput, View } from 'react-native';
-import { Avatar, Button } from '../../components/ui';
+import { Button } from '../../components/ui';
+import { MemberAvatar } from '../../components/MemberAvatar';
+import { PhotoButtons } from '../../components/PhotoPicker';
 import { GroupBody, SettingsGroup, SettingsPage } from '../../components/SettingsKit';
 import { FamilyNameEditor, GenderChips } from '../../components/FamilyNames';
 import { errorText, useCircles } from '../../lib/circle';
@@ -26,8 +28,10 @@ export default function ProfileSettings() {
   };
   return (
     <SettingsPage title="Profile">
-      <View style={{ alignItems: 'center', marginTop: 20, gap: 8 }}>
-        <Avatar name={name || '?'} color={me?.color ?? t.muted} size={72} />
+      <View style={{ alignItems: 'center', marginTop: 20, gap: 12 }}>
+        {me ? <MemberAvatar client={client} member={me} size={96} /> : null}
+        {client.feature('photos') ? <PhotoButtons has={!!me?.photo} onPhoto={(bytes) => client.setProfilePhoto(bytes)} /> : null}
+        <Text style={{ color: t.muted, fontSize: 13, textAlign: 'center' }}>Your photo shows wherever the app shows you, and on an elder’s tiles. It’s encrypted like everything else.</Text>
       </View>
       <SettingsGroup
         title={clients.length > 1 ? `Your name in ${client.circle.name}` : 'Your name'}

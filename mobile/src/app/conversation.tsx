@@ -9,6 +9,7 @@ import { shareNow } from '../lib/location';
 import { ServerBanner } from '../components/ServerBanner';
 import { PollCard } from '../components/PollCard';
 import { CallbackCard } from '../components/CallbackCard';
+import { MemberAvatar } from '../components/MemberAvatar';
 import { REPLY_LABELS, syncCallbackReminders, timeIn } from '../lib/callbacks';
 import { CreatePoll } from '../components/CreatePoll';
 import { LinkedText } from '../components/LinkedText';
@@ -382,7 +383,11 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
           <Text style={{ color: t.brand, fontSize: 34, lineHeight: 36, marginTop: -4 }}>‹</Text>
         </Pressable>
         {peer ? (
-          <Avatar name={title} color={other?.color || t.muted} size={40} />
+          other ? (
+            <MemberAvatar client={client} member={other} size={40} />
+          ) : (
+            <Avatar name={title} color={t.muted} size={40} />
+          )
         ) : (
           <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: t.brandSoft, alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ color: t.brand, fontWeight: '700' }}>{initials(title)}</Text>

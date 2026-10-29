@@ -5,7 +5,8 @@ import { needsAttention, setupChecklist } from '../../lib/health';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Place } from '@homecircle/core';
 import { FamilyMap, type MapMember } from '../../map/FamilyMap';
-import { Avatar, IconButton, Tag } from '../../components/ui';
+import { IconButton, Tag } from '../../components/ui';
+import { MemberAvatar } from '../../components/MemberAvatar';
 import { ServerBanner } from '../../components/ServerBanner';
 import { CircleSwitcher } from '../../components/CircleSwitcher';
 import { UpdateBanner } from '../../components/UpdateBanner';
@@ -229,7 +230,7 @@ export default function MapTab() {
                 accessibilityHint="Shows directions, Locate, check in and message"
                 style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 14, backgroundColor: pressed ? t.surface2 : 'transparent' })}
               >
-                <Avatar name={m.name} color={m.color} />
+                <MemberAvatar client={client} member={m} />
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <Text style={{ color: t.text, fontWeight: '700', fontSize: 17 }} numberOfLines={1}>

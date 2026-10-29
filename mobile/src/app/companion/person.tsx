@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Image, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import Svg, { Path } from 'react-native-svg';
@@ -7,6 +7,7 @@ import { allClients, clientForCircle, errorText, useCircles } from '../../lib/ci
 import { inSleepHours, myTimeZone, settingsOf, tileName } from '../../companion/people';
 import { currentRequest, statusLine } from '../../companion/status';
 import { askOrQueue } from '../../companion/outbox';
+import { usePhotoUri } from '../../lib/photos';
 import { say, text } from '../../companion/lines';
 import { C, TILE_COLORS, URDU, isUrdu } from '../../companion/theme';
 
@@ -18,6 +19,7 @@ export default function Person() {
   const m = client?.members.get(member);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const photo = usePhotoUri(client, client?.account && m ? client.tilePhoto(client.account.memberId, m.id) : null);
   if (!client || !m) return null;
   const index = client.memberList().filter((x) => !x.isMe).findIndex((x) => x.id === m.id);
   const label = tileName(client, m.id);
@@ -61,8 +63,11 @@ export default function Person() {
         </View>
         <View
           accessibilityLabel={`Photo of ${m.name}`}
-          style={{ width: 180, height: 180, borderRadius: 90, borderWidth: 5, borderColor: C.ink, backgroundColor: TILE_COLORS[Math.max(0, index) % TILE_COLORS.length], alignItems: 'center', justifyContent: 'center', padding: 12 }}
+          style={{ width: 180, height: 180, borderRadius: 90, borderWidth: 5, borderColor: C.ink, backgroundColor: TILE_COLORS[Math.max(0, index) % TILE_COLORS.length], alignItems: 'center', justifyContent: 'center', padding: photo ? 0 : 12, overflow: 'hidden' }}
         >
+          {photo ? (
+            <Image source={{ uri: photo }} accessibilityLabel={label} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} resizeMode="cover" />
+          ) : (
           <Text
             style={isUrdu(label) ? [URDU, { color: C.ink, fontSize: 34, lineHeight: 68, textAlign: 'center' }] : { color: C.ink, fontSize: 34, fontWeight: '800', textAlign: 'center' }}
             numberOfLines={2}
@@ -70,6 +75,7 @@ export default function Person() {
           >
             {label}
           </Text>
+          )}
         </View>
         <View style={{ alignSelf: 'stretch', flex: 1, gap: 14 }}>
           <Pressable

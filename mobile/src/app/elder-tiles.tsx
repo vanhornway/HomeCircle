@@ -1,6 +1,9 @@
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Alert, Image, Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import type { CircleClient, Member } from '@homecircle/core';
 import { Avatar } from '../components/ui';
+import { PhotoButtons } from '../components/PhotoPicker';
+import { usePhotoUri } from '../lib/photos';
 import { GroupBody, SettingsGroup, SettingsPage } from '../components/SettingsKit';
 import { FamilyNameEditor, GenderChips } from '../components/FamilyNames';
 import { errorText } from '../lib/circle';
@@ -49,7 +52,7 @@ export default function ElderTiles() {
         <SettingsGroup key={p.id}>
           <GroupBody>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <Avatar name={p.name} color={p.color} size={40} />
+              <TilePreview client={client} herId={member} member={p} />
               <View style={{ flex: 1 }}>
                 <Text style={{ color: t.text, fontSize: 16, fontWeight: '700' }}>{p.name}</Text>
                 <Text style={{ color: t.muted, fontSize: 13 }}>Tile {i + 1}</Text>
@@ -57,6 +60,19 @@ export default function ElderTiles() {
               {client.isAdmin ? arrow('Move up', i > 0, () => move(p.id, -1)) : null}
               {client.isAdmin ? arrow('Move down', i < people.length - 1, () => move(p.id, 1)) : null}
             </View>
+            <Text style={{ color: t.text, fontSize: 14, fontWeight: '600' }}>Photo on her tile</Text>
+            {p.photo ? (
+              <Text style={{ color: t.muted, fontSize: 13 }}>Their own photo, from their app.</Text>
+            ) : client.isAdmin && client.feature('photos') ? (
+              <>
+                <Text style={{ color: t.muted, fontSize: 13 }}>
+                  {client.memberRecord(member)?.photos?.[p.id] ? 'Chosen by an admin. If they add their own photo, it replaces this one.' : 'No photo yet. Pick a close, bright photo of their face that she’ll recognize.'}
+                </Text>
+                <PhotoButtons has={!!client.memberRecord(member)?.photos?.[p.id]} onPhoto={(bytes) => client.setTilePhoto(member, p.id, bytes)} />
+              </>
+            ) : (
+              <Text style={{ color: t.muted, fontSize: 13 }}>No photo yet.</Text>
+            )}
             <Text style={{ color: t.text, fontSize: 14, fontWeight: '600' }}>What {her.name} calls them, in Urdu</Text>
             <FamilyNameEditor client={client} callerId={member} memberId={p.id} chips={[]} placeholder="e.g. عمیر" />
             <Text style={{ color: t.text, fontSize: 14, fontWeight: '600' }}>He or she</Text>
@@ -70,4 +86,11 @@ export default function ElderTiles() {
       ))}
     </SettingsPage>
   );
+}
+
+/** How the tile looks on her phone: the photo cropped to the tile, else the name. */
+function TilePreview({ client, herId, member }: { client: CircleClient; herId: string; member: Member }) {
+  const uri = usePhotoUri(client, client.tilePhoto(herId, member.id));
+  if (uri) return <Image source={{ uri }} accessibilityLabel={`${member.name}’s tile`} style={{ width: 56, height: 56, borderRadius: 14, borderWidth: 2, borderColor: '#1B1B1F' }} />;
+  return <Avatar name={member.name} color={member.color} size={56} />;
 }
