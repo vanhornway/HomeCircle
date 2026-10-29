@@ -1,0 +1,61 @@
+---
+config:
+  layout: elk
+---
+flowchart LR
+  subgraph Phones["Phones (one HomeCircle app, iOS + Android)"]
+    direction TB
+    Full["Full skin<br/>map · chat · places · settings"]
+    Elder["Elderly Companion skin<br/>photo tiles · call-back · SOS · games"]:::planned
+    Teen["Teens skin (later)"]:::later
+    Catalog["Phrase catalog + Urdu audio<br/>(on the phone, offline)"]:::planned
+    Core["packages/core<br/>crypto · CircleClient · sealing"]
+    Native["Background location · geofences<br/>push · hc-attention (Android)"]
+    Full --> Core
+    Elder --> Core
+    Elder --> Catalog
+    Teen -.-> Core
+    Core --> Native
+  end
+
+  Web["Built-in web app<br/>server/public"]
+
+  subgraph Server["HomeCircle server (Node 22, one Docker image)"]
+    direction TB
+    API["REST API /api/v1<br/>routes.js"]
+    Hub["WebSocket hub<br/>hub.js"]
+    DB[("SQLite<br/>ciphertext only")]
+    Files["Encrypted files<br/>files.js"]
+    Push["Push relay<br/>push.js"]
+    Plugins["Plugins<br/>weather · air · prayer · Home Assistant"]
+    Games["Games plugin (tab surface)"]:::planned
+    Agent["AI helper (agent host)<br/>brain · memory · calendars · lists"]
+    Agent -- "joins like a member" --> API
+    API --> DB
+    API --> Files
+    Hub --> DB
+    API --> Push
+    API --> Plugins
+    Plugins -.-> Games
+  end
+
+  subgraph Outside["Outside services"]
+    direction TB
+    Expo["Expo push service<br/>→ APNs / FCM"]
+    AI["AI provider<br/>(names masked)"]
+    Ext["Plugin hosts<br/>weather, air, HA"]
+    Tiles["Map tiles<br/>OpenStreetMap"]
+  end
+
+  Core -- "HTTPS: sealed envelopes" --> API
+  Core -- "WebSocket: live events" --> Hub
+  Web --> API
+  Web --> Hub
+  Push -- "content-free push<br/>urgent: no 45 s wait" --> Expo
+  Expo -- "wakes the phone" --> Native
+  Agent --> AI
+  Plugins --> Ext
+  Full --> Tiles
+
+  classDef planned stroke-dasharray: 6 4,stroke:#2F7D6D,fill:#E1EFEB;
+  classDef later stroke-dasharray: 2 4,stroke:#97A29E,fill:#F6F3EE,color:#66706C;
