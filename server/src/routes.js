@@ -27,6 +27,7 @@ const MAX_OPEN_INVITES = 20;
 const MAX_PLACES = 100;
 const MAX_CIRCLES = 100;
 const MAX_OPEN_REJOINS = 3;
+const MAX_RECORDS = 3000;
 const REJOIN_HOURS = 48;
 // Chirps: three in a row to the same person (or the whole circle), then a
 // break of 30 minutes. A new run starts after 30 minutes without a chirp.
@@ -141,6 +142,8 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       frequentPlaces: true,
       // Urgent messages skip push coalescing (0.20+).
       urgent: true,
+      // Sealed member and alias records (0.21+).
+      records: true,
       // The optional AI helper runs here (0.11+).
       agent: !!agentHost,
       // Plugins this server has (0.14+): an app shows only these in Features.
@@ -678,6 +681,56 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   // Each phone works out its own most visited places from its own location
   // history (which never leaves it) and shares only a short summary, sealed
   // with the circle key like a location.
+
+  // --- records ------------------------------------------------------------
+  // Sealed settings that admins (or the people concerned) write and every
+  // member reads. "member": about one member, admins only (her skin and
+  // Elderly Companion settings, someone's he/she). "alias": what one member
+  // calls another (subject "caller.member"), set by either of them or an
+  // admin. The server checks who may write from the ids alone; it can't read
+  // the records, and phones check the signatures again.
+
+  const recordTarget = (me, kind, subject) => {
+    const active = (id) => {
+      const m = store.member(me.circleId, vId(id, 'subject'));
+      if (!m || m.removed || m.kind === 'agent') fail(404, 'not_found', 'No such member in this circle');
+      return m;
+    };
+    if (kind === 'member') return [active(subject)];
+    if (kind === 'alias') {
+      const ids = String(subject).split('.');
+      if (ids.length !== 2 || ids[0] === ids[1]) fail(400, 'invalid', 'An alias names two different members: caller.member');
+      return ids.map(active);
+    }
+    return fail(404, 'not_found', 'No such kind of record');
+  };
+  const mayWriteRecord = (me, kind, people) => {
+    if (kind === 'member') requireAdmin(me);
+    else if (!isAdmin(me) && !people.some((m) => m.id === me.id)) fail(403, 'forbidden', 'Only either of them or an admin can set that');
+  };
+
+  r.add('GET', '/records', ({ me, query }) => {
+    const kind = query.get('kind');
+    return { records: store.records(me.circleId, kind === 'member' || kind === 'alias' ? kind : null) };
+  });
+
+  r.add('PUT', '/records/:kind/:subject', ({ me, params, body }) => {
+    const people = recordTarget(me, params.kind, params.subject);
+    mayWriteRecord(me, params.kind, people);
+    const env = vEnvelope(body, 'record', 16 * 1024);
+    currentEpoch(me.circleId, env.epoch);
+    if (store.countRecords(me.circleId) >= MAX_RECORDS) fail(507, 'circle_full', 'This circle has too many settings saved');
+    store.putRecord({ circleId: me.circleId, kind: params.kind, subject: params.subject, env, by: me.id, now: Date.now() });
+    hub.broadcast(me.circleId, { type: 'records', kind: params.kind, subject: params.subject }, me.id);
+    return { ok: true };
+  });
+
+  r.add('DELETE', '/records/:kind/:subject', ({ me, params }) => {
+    const people = recordTarget(me, params.kind, params.subject);
+    mayWriteRecord(me, params.kind, people);
+    if (store.deleteRecord(me.circleId, params.kind, params.subject)) hub.broadcast(me.circleId, { type: 'records', kind: params.kind, subject: params.subject }, me.id);
+    return { ok: true };
+  });
 
   r.add('GET', '/frequent', ({ me }) => ({ frequent: store.frequent(me.circleId) }));
 

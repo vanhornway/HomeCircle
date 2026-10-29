@@ -84,6 +84,15 @@ CREATE TABLE IF NOT EXISTS frequent_places (
   env TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS records (
+  circle_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  env TEXT NOT NULL,
+  by_id TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (circle_id, kind, subject)
+);
 CREATE TABLE IF NOT EXISTS chirps (
   id TEXT PRIMARY KEY,
   circle_id TEXT NOT NULL,
@@ -327,7 +336,7 @@ export class Store {
       this.q('DELETE FROM frequent_places WHERE member_id = ?').run(m);
       this.q('DELETE FROM key_envelopes WHERE member_id = ?').run(m);
     }
-    for (const t of ['messages', 'places', 'invites', 'rejoin_requests', 'chirps', 'members']) this.q(`DELETE FROM ${t} WHERE circle_id = ?`).run(id);
+    for (const t of ['messages', 'places', 'invites', 'rejoin_requests', 'chirps', 'records', 'members']) this.q(`DELETE FROM ${t} WHERE circle_id = ?`).run(id);
     this.q('DELETE FROM circles WHERE id = ?').run(id);
     return members;
   }
@@ -384,6 +393,7 @@ export class Store {
     this.q('DELETE FROM locations WHERE member_id = ?').run(id);
     this.q('DELETE FROM frequent_places WHERE member_id = ?').run(id);
     this.q('DELETE FROM chirps WHERE to_id = ? OR from_id = ?').run(id, id);
+    this.deleteRecordsAbout(id);
   }
 
   // invites
@@ -455,6 +465,31 @@ export class Store {
     )
       .all(circleId)
       .map((r) => ({ memberId: r.member_id, env: parse(r.env), updatedAt: r.updated_at }));
+  }
+
+  // admin records: sealed settings about a member (kind "member") or a pair
+  // ("alias": what one member calls another, subject "caller.member"); the
+  // latest copy of each is kept
+  putRecord({ circleId, kind, subject, env, by, now }) {
+    this.q(
+      `INSERT INTO records (circle_id, kind, subject, env, by_id, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(circle_id, kind, subject) DO UPDATE SET env = excluded.env, by_id = excluded.by_id, updated_at = excluded.updated_at`,
+    ).run(circleId, kind, subject, JSON.stringify(env), by, now);
+  }
+  deleteRecord(circleId, kind, subject) {
+    return this.q('DELETE FROM records WHERE circle_id = ? AND kind = ? AND subject = ?').run(circleId, kind, subject).changes > 0;
+  }
+  records(circleId, kind = null) {
+    return this.q(`SELECT * FROM records WHERE circle_id = ?${kind ? ' AND kind = ?' : ''} ORDER BY updated_at`)
+      .all(...(kind ? [circleId, kind] : [circleId]))
+      .map((r) => ({ kind: r.kind, subject: r.subject, env: parse(r.env), by: r.by_id, updatedAt: r.updated_at }));
+  }
+  countRecords(circleId) {
+    return this.q('SELECT COUNT(*) AS n FROM records WHERE circle_id = ?').get(circleId).n;
+  }
+  /** Records about a member who left: theirs, and any pair they're in. */
+  deleteRecordsAbout(memberId) {
+    this.q("DELETE FROM records WHERE subject = ? OR subject LIKE ? || '.%' OR subject LIKE '%.' || ?").run(memberId, memberId, memberId);
   }
 
   // most visited places: each member's latest sealed summary, like locations

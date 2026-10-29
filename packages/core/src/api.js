@@ -122,6 +122,9 @@ export class Api {
   deletePlace = (id) => this.req('DELETE', `/places/${encodeURIComponent(id)}`);
   putCircle = (env) => this.req('PUT', '/circle', env);
   frequent = () => this.req('GET', '/frequent');
+  records = (kind = null) => this.req('GET', `/records${kind ? `?kind=${kind}` : ''}`);
+  putRecord = (kind, subject, env) => this.req('PUT', `/records/${kind}/${encodeURIComponent(subject)}`, env);
+  deleteRecord = (kind, subject) => this.req('DELETE', `/records/${kind}/${encodeURIComponent(subject)}`);
   putFrequent = (env) => this.req('PUT', '/frequent/me', env);
   deleteFrequent = () => this.req('DELETE', '/frequent/me');
   chirp = (body) => this.req('POST', '/chirps', body);

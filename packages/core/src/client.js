@@ -126,6 +126,9 @@ export class CircleClient {
     this.places = new Map();
     // memberId -> { places: [...], ts } for members who share their most visited places
     this.frequent = new Map();
+    // Sealed records (fetchRecords): member settings by member id, and
+    // family names by "caller.member".
+    this.records = { member: new Map(), alias: new Map() };
     // The newest message seen, live or fetched.
     this.lastSeq = 0;
     // Where the next fetch starts: moved only by fetches. Messages that arrive
@@ -317,6 +320,7 @@ export class CircleClient {
       name: a.profile.name,
       color: a.profile.color,
       ...(a.profile.chirp ? { chirp: a.profile.chirp } : {}),
+      ...(GENDERS.includes(a.profile.g) ? { g: a.profile.g } : {}),
       boxPub: a.identity.boxPub,
       signPub: a.identity.signPub,
     };
@@ -681,6 +685,7 @@ export class CircleClient {
           view.name = cleanName(p.body.name) || 'Member';
           view.color = MEMBER_COLORS.includes(p.body.color) ? p.body.color : MEMBER_COLORS[0];
           view.chirp = CHIRP_SOUNDS.includes(p.body.chirp) ? p.body.chirp : null;
+          view.g = GENDERS.includes(p.body.g) ? p.body.g : null;
           view.verified = true;
           view.current = m.profile.epoch === st.epoch;
           known[m.id] = { signPub: m.signPub, boxPub: m.boxPub, name: view.name };
@@ -1580,6 +1585,139 @@ export class CircleClient {
     return this.openCallbacks().filter((s) => s.remind > 0 && this.callbackAsks(s, me) && !s.replies.some((r) => r.memberId === me));
   }
 
+  // --- records: member settings and family names --------------------------
+  //
+  // Sealed and signed, kept on the server by kind and subject (it checks who
+  // may write from the ids alone). A member record holds admin settings about
+  // one member (her skin and Elderly Companion settings, someone's he/she)
+  // and counts only if an admin signed it. An alias is what one member calls
+  // another ("Nani"), set by either of them or an admin; it counts only if
+  // one of those signed it. The latest valid copy wins.
+
+  _isAdminMember(id) {
+    const m = this.members.get(id);
+    return !!m && !m.removed && (m.role === 'owner' || m.role === 'admin');
+  }
+
+  async fetchRecords() {
+    const { records } = await this.api.records();
+    const member = new Map();
+    const alias = new Map();
+    for (const r of records) {
+      const msg = this._open(r.env, r.by, [r.kind]);
+      if (!msg || msg === REPLAYED) continue;
+      if (r.kind === 'member') {
+        const body = cleanMemberRecord(msg.body);
+        if (body && body.member === r.subject && this._isAdminMember(r.by)) member.set(r.subject, { ...body, by: r.by, ts: msg.ts });
+      } else if (r.kind === 'alias') {
+        const body = cleanAlias(msg.body);
+        const allowed = body && (r.by === body.caller || r.by === body.member || this._isAdminMember(r.by));
+        if (allowed && `${body.caller}.${body.member}` === r.subject) alias.set(r.subject, { ...body, by: r.by, ts: msg.ts });
+      }
+    }
+    this.records = { member, alias };
+    this.emit('records', this.records);
+    return this.records;
+  }
+
+  async _putRecord(kind, subject, body) {
+    await this._withEpochRetry(() => this.api.putRecord(kind, subject, this._seal(kind, body)));
+    await this.fetchRecords();
+  }
+
+  /** Admin settings about a member, or null: { member, skin, page, ringEveryone, games, tiles, sleep, remindEvery, inactiveHours, lang, g }. */
+  memberRecord(memberId) {
+    return this.records.member.get(memberId) ?? null;
+  }
+
+  /** Admins: change settings about a member (merged into what's there). */
+  async setMemberRecord(memberId, patch) {
+    if (!this.isAdmin) throw new Error('Only circle admins can change that');
+    if (!this.members.get(memberId)) throw new Error('No such member in this circle');
+    const { by, ts, ...current } = this.memberRecord(memberId) ?? {};
+    const body = cleanMemberRecord({ ...current, ...patch, member: memberId });
+    await this._putRecord('member', memberId, body);
+    return this.memberRecord(memberId);
+  }
+
+  /**
+   * Admins: mark someone as an elder. Their phone switches to `skin` (the
+   * Elderly Companion screens by default), and they stop being an admin;
+   * only the owner can do that to an admin, and nobody to the owner.
+   */
+  async markElder(memberId, settings = {}) {
+    const m = this.members.get(memberId);
+    if (!m || m.removed) throw new Error('No such member in this circle');
+    if (m.role === 'owner') throw new Error('The circle’s owner can’t be marked as an elder');
+    if (m.role === 'admin' && this.me?.role !== 'owner') throw new Error(`${m.name} is an admin. Only the circle’s owner can mark them as an elder.`);
+    const record = await this.setMemberRecord(memberId, { skin: 'elderly', ...settings });
+    if (m.role === 'admin') await this.setRole(memberId, 'member');
+    return record;
+  }
+
+  /** What `callerId` calls `memberId` ("Nani"), or null. */
+  familyName(callerId, memberId) {
+    return this.records.alias.get(`${callerId}.${memberId}`)?.name || null;
+  }
+
+  /** How to name a member to a viewer (you by default): their family name for them, else their own name. */
+  displayName(memberId, viewerId = this.account?.memberId) {
+    return this.familyName(viewerId, memberId) || this.members.get(memberId)?.name || this.account?.known[memberId]?.name || 'Former member';
+  }
+
+  /**
+   * Set what `callerId` calls `memberId` (empty `name` removes it). Either of
+   * them, or an admin, can.
+   */
+  async setFamilyName(callerId, memberId, { name, rel = null } = {}) {
+    const me = this.account.memberId;
+    if (callerId === memberId) throw new Error('A family name is what one person calls another');
+    if (me !== callerId && me !== memberId && !this.isAdmin) throw new Error('Only either of them or an admin can set that');
+    const subject = `${callerId}.${memberId}`;
+    const clean = cleanName(name);
+    if (!clean) {
+      await this._withEpochRetry(() => this.api.deleteRecord('alias', subject));
+      await this.fetchRecords();
+      return null;
+    }
+    await this._putRecord('alias', subject, cleanAlias({ caller: callerId, member: memberId, name: clean, rel }));
+    return this.familyName(callerId, memberId);
+  }
+
+  /** A member's he/she for languages whose verbs need it: their own choice, else an admin's, else null. */
+  genderOf(memberId) {
+    return this.members.get(memberId)?.g || this.memberRecord(memberId)?.g || null;
+  }
+
+  /** Your own he/she ('m', 'f', or null to clear it), in your profile. */
+  async setGender(g) {
+    this.account.profile.g = GENDERS.includes(g) ? g : undefined;
+    await this.api.putProfile(this._seal('profile', this._profileBody()));
+    await this._save();
+    await this.refresh();
+  }
+
+  /**
+   * An elder's phone, once joined: tell the circle (a readable line), so an
+   * admin's phone can save her settings as a member record.
+   */
+  announceElder({ page = 'care', skin = 'elderly' } = {}) {
+    const elder = cleanCompanionInvite({ name: this.myName, page, skin });
+    return this._post('chat', { text: `👵 ${this.myName} joined with the Elderly Companion screens.`, elderJoined: { page: elder.page, skin: elder.skin } });
+  }
+
+  /** Elders who announced themselves and have no member record yet: [{ memberId, page, skin }]. */
+  unrecordedElders() {
+    const out = new Map();
+    for (const m of this.messages) {
+      const e = m.kind === 'chat' && !m.peer ? m.body?.elderJoined : null;
+      if (!e || !this.members.get(m.from) || this.memberRecord(m.from)) continue;
+      const clean = cleanCompanionInvite({ page: e.page, skin: e.skin });
+      out.set(m.from, { memberId: m.from, page: clean.page, skin: clean.skin });
+    }
+    return [...out.values()];
+  }
+
   /** Direct-message partners, most recent conversation first. */
   directPeers() {
     const last = new Map();
@@ -1947,7 +2085,7 @@ export class CircleClient {
     }
     await this.refresh();
     await this._loadCache();
-    await Promise.all([this.fetchLocations(), this.fetchPlaces()]);
+    await Promise.all([this.fetchLocations(), this.fetchPlaces(), this.fetchRecords().catch(() => {})]);
     this.connect();
     await this.fetchMessages();
     this._started = true;
@@ -2101,6 +2239,9 @@ export class CircleClient {
       case 'frequent':
         await this.fetchFrequent();
         break;
+      case 'records':
+        await this.fetchRecords().catch(() => {});
+        break;
       default:
         break;
     }
@@ -2126,6 +2267,40 @@ function cleanCompanionInvite(c) {
   if (!c || typeof c !== 'object') return null;
   const skin = typeof c.skin === 'string' && /^[a-z]{2,16}$/.test(c.skin) ? c.skin : 'elderly';
   return { name: cleanName(c.name), page: c.page === 'grandkids' ? 'grandkids' : 'care', skin };
+}
+
+export const GENDERS = ['m', 'f'];
+const ALIAS_RELS = ['grandparent', 'grandchild', 'parent', 'child', 'sibling', 'other'];
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const MAX_TILES = 50;
+
+/** A member record as sealed: only known fields, each checked. */
+function cleanMemberRecord(b) {
+  if (!b || typeof b !== 'object' || typeof b.member !== 'string' || !b.member) return null;
+  const bool = (v) => (typeof v === 'boolean' ? v : null);
+  const int = (v, lo, hi) => (Number.isInteger(v) && v >= lo && v <= hi ? v : null);
+  const sleep = b.sleep && HHMM.test(b.sleep.from) && HHMM.test(b.sleep.to) ? { from: b.sleep.from, to: b.sleep.to } : null;
+  return {
+    member: b.member,
+    skin: typeof b.skin === 'string' && /^[a-z]{2,16}$/.test(b.skin) ? b.skin : 'full',
+    page: b.page === 'care' || b.page === 'grandkids' ? b.page : null,
+    ringEveryone: bool(b.ringEveryone),
+    games: bool(b.games),
+    tiles: Array.isArray(b.tiles) ? [...new Set(b.tiles.filter((x) => typeof x === 'string'))].slice(0, MAX_TILES) : null,
+    sleep,
+    remindEvery: int(b.remindEvery, 1, 240),
+    inactiveHours: int(b.inactiveHours, 1, 168),
+    lang: typeof b.lang === 'string' && /^[a-z]{2,3}$/.test(b.lang) ? b.lang : null,
+    g: GENDERS.includes(b.g) ? b.g : null,
+  };
+}
+
+/** A family name as sealed: who calls whom what, and how they're related (optional). */
+function cleanAlias(b) {
+  if (!b || typeof b.caller !== 'string' || typeof b.member !== 'string' || b.caller === b.member) return null;
+  const name = cleanName(b.name);
+  if (!name) return null;
+  return { caller: b.caller, member: b.member, name, rel: ALIAS_RELS.includes(b.rel) ? b.rel : null };
 }
 
 /** An IANA time zone name such as "Asia/Karachi", or null. */

@@ -32,10 +32,47 @@ export interface Member {
   kind?: 'person' | 'agent';
   /** Their chirp sound (one of CHIRP_SOUNDS), or null if they haven't picked one. */
   chirp?: ChirpSound | null;
+  /** Their he/she for languages whose verbs need it, from their own profile. */
+  g?: Gender | null;
 }
 
 export type ChirpSound = 'robin' | 'wren' | 'finch' | 'chickadee' | 'cardinal' | 'bluebird' | 'canary' | 'sparrow' | 'lark' | 'dove';
 export const CHIRP_SOUNDS: ChirpSound[];
+/** He or she, for languages whose verbs change with the person (Urdu). */
+export type Gender = 'm' | 'f';
+export const GENDERS: Gender[];
+
+/** Admin settings about one member (her skin and Elderly Companion settings, someone's he/she). */
+export interface MemberRecord {
+  member: string;
+  /** Which skin their phone shows ('full', 'elderly', …). */
+  skin: string;
+  page: 'care' | 'grandkids' | null;
+  ringEveryone: boolean | null;
+  games: boolean | null;
+  /** Her tiles' order (member ids). */
+  tiles: string[] | null;
+  /** Her sleep hours, "HH:MM" her time. */
+  sleep: { from: string; to: string } | null;
+  remindEvery: number | null;
+  inactiveHours: number | null;
+  lang: string | null;
+  g: Gender | null;
+  /** Who signed it (an admin) and when. */
+  by: string;
+  ts: number;
+}
+
+/** What one member calls another ("Nani"), and how they're related. */
+export interface FamilyName {
+  caller: string;
+  member: string;
+  name: string;
+  rel: 'grandparent' | 'grandchild' | 'parent' | 'child' | 'sibling' | 'other' | null;
+  by: string;
+  ts: number;
+}
+
 /** Answers to a call-back request. Only 'now' closes it. */
 export type CallbackReply = 'now' | '5min' | 'morning' | 'evening';
 export const CALLBACK_REPLIES: CallbackReply[];
@@ -539,6 +576,30 @@ export class CircleClient {
   openCallbacks(opts?: { from?: string | null }): CallbackState[];
   /** Open requests that ask you, have reminders on, and you haven't answered. */
   callbacksAwaitingMe(): CallbackState[];
+  /** Member settings and family names as last fetched. */
+  records: { member: Map<string, MemberRecord>; alias: Map<string, FamilyName> };
+  /** Fetch and check the circle's sealed records (emits 'records'). */
+  fetchRecords(): Promise<{ member: Map<string, MemberRecord>; alias: Map<string, FamilyName> }>;
+  /** Admin settings about a member, or null. */
+  memberRecord(memberId: string): MemberRecord | null;
+  /** Admins: change settings about a member (merged into what's there). */
+  setMemberRecord(memberId: string, patch: Partial<Omit<MemberRecord, 'member' | 'by' | 'ts'>>): Promise<MemberRecord | null>;
+  /** Admins: mark someone as an elder (their phone switches skin; they stop being an admin). */
+  markElder(memberId: string, settings?: Partial<Omit<MemberRecord, 'member' | 'by' | 'ts'>>): Promise<MemberRecord | null>;
+  /** What `callerId` calls `memberId`, or null. */
+  familyName(callerId: string, memberId: string): string | null;
+  /** How to name a member to a viewer (you by default). */
+  displayName(memberId: string, viewerId?: string): string;
+  /** Set what `callerId` calls `memberId` (empty name removes it). */
+  setFamilyName(callerId: string, memberId: string, opts: { name: string; rel?: FamilyName['rel'] }): Promise<string | null>;
+  /** A member's he/she: their own choice, else an admin's, else null. */
+  genderOf(memberId: string): Gender | null;
+  /** Your own he/she in your profile (null clears it). */
+  setGender(g: Gender | null): Promise<void>;
+  /** An elder's phone, once joined: tell the circle, so an admin's phone saves her settings. */
+  announceElder(opts?: { page?: 'care' | 'grandkids'; skin?: string }): Promise<void>;
+  /** Elders who announced themselves and have no member record yet. */
+  unrecordedElders(): { memberId: string; page: 'care' | 'grandkids'; skin: string }[];
   /** Tell the others you've read a conversation (peer null = the group) up to `seq`. */
   sendReadReceipt(peer: string | null, seq: number): Promise<void>;
   /** For your own message: 'sent', 'delivered' (every recipient's phone has it) or 'read'. */
