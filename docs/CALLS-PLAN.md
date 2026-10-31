@@ -25,7 +25,7 @@ What the server learns: that member A sent a signal to member B at time T, how b
 
 - `react-native-webrtc` 155 with `@config-plugins/react-native-webrtc` (Expo config plugin: camera/microphone strings, Android `RECORD_AUDIO`, `MODIFY_AUDIO_SETTINGS`, `BLUETOOTH_CONNECT`; no video, so the camera permission is not requested for calls). Dev builds only, as today. Untested on Expo SDK 58 / RN 0.88 (the plugin table stops at SDK 56): the first APK build is the compatibility test.
 - `VoiceCallEngine` (`mobile/src/lib/callEngine.ts`): pure logic, peer-connection factory and signal sender injected, unit-tested in Node. One call at a time. Handles ICE candidate queueing until the remote description is set, glare, busy, ring timeout (45 s), connect timeout (30 s), hang-up, mute with `track.enabled = false` (never `stop()`), Opus tuning in the SDP (about 32 kbit/s, mono, in-band FEC, DTX off), ICE restart after `disconnected` (5 s grace) or `failed`.
-- `CallManager` (`mobile/src/lib/calls.ts`): wires the engine to the active circles' clients, microphone permission, native audio routing and the call UI state. `IncomingCall` and `Call` screens live in new files (`mobile/src/app/call.tsx`, `components/CallScreen.tsx`); `PersonSheet.tsx` gets one tile and an import (a few lines).
+- Call manager (`mobile/src/lib/calls.ts`): wires the engine to every circle's client, the microphone permission, native audio and the call UI state. The call screen is a full-screen modal in a new `components/CallScreen.tsx`, mounted once in the root layout by `components/CallHost.tsx` so it covers whatever screen is open; `PersonSheet.tsx` gets one tile and an import.
 - Audio: a small native Expo module `hc-calls` owns audio mode/focus, speaker and Bluetooth routing, the foreground service, wake and Wi-Fi locks and the incoming-call notification, instead of adding `react-native-incall-manager` (4.3.0, old-style module, unclear on RN 0.88) as a second unmaintained-risk dependency. It is new Kotlin that **I cannot compile here** (no Gradle, by instruction): reviewed by hand, to be verified by the parent's APK build.
 
 ## Phases
@@ -40,8 +40,8 @@ What the server learns: that member A sent a signal to member B at time T, how b
 - HTTP POST for signals, WebSocket only for delivery: reuses auth, rate limits and the server's `hub`; the sender may be backgrounded with no socket. The cost is one request per ICE candidate; candidates are batched for 100 ms client-side.
 - Glare: **the lower member id keeps its offer**; the higher id abandons its own and answers the other (the brief says this; the spec's table says the opposite, and the two sides must agree, so the brief's rule is implemented and documented).
 - Busy while in another call (any circle). A phone cellular call in progress is not detected in phase 1.
-- Missed calls: the caller sends an ordinary sealed DM `{ call: { missed: true } }` (existing path, ordinary push) when a ring times out. Left out of phase 1 unless time allows; listed in open decisions.
-- Several devices of one member: all their sockets ring; the first to answer wins; the rest get a sealed "answered elsewhere" (a `hangup` with reason `elsewhere`, sent to the same member id).
+- Missed calls: the callee's phone shows a local "Missed call" notification when a ring ends unanswered. A "missed call" line in the chat (an ordinary sealed DM from the caller) is not built; open decision in the build notes.
+- One device per member in HomeCircle (each phone is its own member), so there is no "answered on another phone" case to handle.
 - No video, no group calls, no screen sharing.
 
 ## Differences from the spec
