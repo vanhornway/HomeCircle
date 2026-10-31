@@ -5,6 +5,7 @@ import type { Member } from '@homecircle/core';
 import { Button, Tag } from '../../components/ui';
 import { GroupBody, SettingsGroup, SettingsPage, SettingsRow } from '../../components/SettingsKit';
 import { MemberAvatar } from '../../components/MemberAvatar';
+import { FamilyNameEditor } from '../../components/FamilyNames';
 import { errorText, useCircles } from '../../lib/circle';
 import { setLastUpload, clearDeviceData } from '../../lib/storage';
 import { stopBackgroundUpdates, syncGeofences } from '../../lib/location';
@@ -48,8 +49,8 @@ export default function CircleSettings() {
     const canPromote = me?.role === 'owner' && !m.isMe && m.role !== 'owner';
     const shown = open === m.id;
     return (
-      <Pressable key={m.id} accessibilityRole="button" accessibilityState={{ expanded: shown }} onPress={() => setOpen(shown ? null : m.id)} style={{ padding: 14 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+      <View key={m.id} style={{ padding: 14 }}>
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: shown }} onPress={() => setOpen(shown ? null : m.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <MemberAvatar client={client} member={m} size={36} />
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -58,11 +59,20 @@ export default function CircleSettings() {
               {m.role !== 'member' ? <Tag label={m.role} /> : null}
               {m.keyChanged ? <Tag label="Keys changed" warn /> : null}
             </View>
-            <Text style={{ color: t.muted, fontSize: 13 }}>Tap for safety number</Text>
+            <Text style={{ color: t.muted, fontSize: 13 }}>{m.isMe ? 'Tap for safety number' : 'Tap for what you call them, and safety number'}</Text>
           </View>
-        </View>
+        </Pressable>
         {shown ? (
           <View style={{ marginTop: 10, gap: 10 }}>
+            {!m.isMe ? (
+              <View style={{ gap: 8 }}>
+                <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700' }}>WHAT DO YOU CALL {m.name.toUpperCase()}?</Text>
+                <FamilyNameEditor client={client} callerId={client.account!.memberId} memberId={m.id} />
+                <Text style={{ color: t.muted, fontSize: 13 }}>Only shows for you, like “Nani” or “Abbu”. It appears on the map and in chats.</Text>
+              </View>
+            ) : (
+              <Text style={{ color: t.muted, fontSize: 13 }}>What others call you is under Profile, at the top of Settings.</Text>
+            )}
             <Text style={{ color: t.text, fontFamily: 'Menlo', fontSize: 15, letterSpacing: 1 }}>{m.safetyNumber}</Text>
             <Text style={{ color: t.muted, fontSize: 13 }}>Compare this with {m.isMe ? 'other people’s phones' : `${m.name}’s phone`} in person. If it matches, no one has been swapped in.</Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -73,7 +83,7 @@ export default function CircleSettings() {
             </View>
           </View>
         ) : null}
-      </Pressable>
+      </View>
     );
   };
 

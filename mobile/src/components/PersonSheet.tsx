@@ -1,7 +1,6 @@
-import { useState } from 'react';
-import { Alert, Modal, Pressable, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, BackHandler, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CircleClient } from '@homecircle/core';
 import { Icon } from './ui';
 import { AlertRuleSheet } from './AlertRuleSheet';
@@ -9,13 +8,17 @@ import { errorText } from '../lib/circle';
 import { chirpWithChoice } from '../lib/chirp';
 import { KIND_EMOJI } from '../lib/visits';
 import { spotName, type Anchor } from '../lib/visitsCore';
-import { FamilyNameEditor } from './FamilyNames';
 import { MemberAvatar } from './MemberAvatar';
 import { canLocate, locatePerson, locateState, openDirections, statusLine, useLocateVersion } from '../lib/people';
 import { timeAgo } from '../lib/useCircle';
 import { useTheme } from '../theme';
 
-/** Everything you can do about one person, in a bottom sheet. */
+/**
+ * Everything you can do about one person, in a bottom sheet. It isn't a
+ * modal: the map above stays live, so you can still pan it and tap another
+ * person while this is open. Close it with ✕, Back, or by choosing something.
+ * Render it last inside a full-size parent (it sits at the bottom of it).
+ */
 export function PersonSheet({
   client,
   memberId,
@@ -32,10 +35,21 @@ export function PersonSheet({
   useLocateVersion();
   const [alerting, setAlerting] = useState(false);
   const [checking, setChecking] = useState(false);
+  const { height } = useWindowDimensions();
   const m = memberId ? client.members.get(memberId) : null;
   const loc = m ? client.locations.get(m.id) : undefined;
   const paused = m ? client.paused.get(m.id) : undefined;
   const state = m ? locateState(client, m.id) : 'idle';
+
+  const showing = !!m && !alerting;
+  useEffect(() => {
+    if (!showing) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [showing, onClose]);
 
   const go = (fn: () => void) => () => {
     onClose();
@@ -87,11 +101,12 @@ export function PersonSheet({
 
   return (
     <>
-      <Modal visible={!!m && !alerting} animationType="slide" transparent onRequestClose={onClose}>
-        <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' }}>
-          {m ? (
-            <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
-              <SafeAreaView edges={['bottom']} style={{ padding: 18, gap: 14 }}>
+      {/* Touches outside the sheet fall through to the map under it. */}
+      <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}>
+        <View pointerEvents="box-none" style={{ flex: 1, justifyContent: 'flex-end' }}>
+          {showing && m ? (
+            <View style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderBottomWidth: 0, borderColor: t.line, elevation: 12, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10 }}>
+              <ScrollView style={{ maxHeight: height * 0.5 }} contentContainerStyle={{ padding: 18, paddingBottom: 22, gap: 14 }} keyboardShouldPersistTaps="handled">
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   <MemberAvatar client={client} member={m} size={52} />
                   <View style={{ flex: 1 }}>
@@ -99,6 +114,9 @@ export function PersonSheet({
                     {client.displayName(m.id) !== m.name ? <Text style={{ color: t.muted, fontSize: 13 }}>{m.name}</Text> : null}
                     <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>{statusLine(client, m)}</Text>
                   </View>
+                  <Pressable accessibilityRole="button" accessibilityLabel="Close" hitSlop={8} onPress={onClose} style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: t.surface2 }}>
+                    <Text style={{ color: t.muted, fontSize: 20, lineHeight: 22 }}>✕</Text>
+                  </Pressable>
                 </View>
                 {m.isMe ? (
                   <Text style={{ color: t.muted, fontSize: 14 }}>This is you. Change how you share, and your most visited places, in Settings.</Text>
@@ -138,12 +156,6 @@ export function PersonSheet({
                     {client.feature('chirps') && tile('bird', 'Chirp', 'A sound they’ll know is you', go(() => chirpWithChoice(client, m.id)))}
                   </View>
                 )}
-                {!m.isMe ? (
-                  <View style={{ gap: 8 }}>
-                    <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700' }}>WHAT DO YOU CALL {m.name.toUpperCase()}?</Text>
-                    <FamilyNameEditor client={client} callerId={client.account!.memberId} memberId={m.id} />
-                  </View>
-                ) : null}
                 {!m.isMe && client.feature('frequentPlaces') && client.frequent.get(m.id)?.places.length ? (
                   <View style={{ gap: 8 }}>
                     <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700' }}>MOST VISITED · LAST 30 DAYS</Text>
@@ -174,11 +186,11 @@ export function PersonSheet({
                     })()}
                   </View>
                 ) : null}
-              </SafeAreaView>
-            </Pressable>
+              </ScrollView>
+            </View>
           ) : null}
-        </Pressable>
-      </Modal>
+        </View>
+      </View>
       {m ? (
         <AlertRuleSheet
           key={`${client.circleId}:${m.id}`}
