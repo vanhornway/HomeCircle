@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { useTheme } from '../theme';
+import { CallHost } from '../components/CallHost';
 import '../lib/push';
 
 export default function RootLayout() {
@@ -39,6 +40,7 @@ export default function RootLayout() {
           <Stack.Screen name="sos" options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }} />
           <Stack.Screen name="circle-health" options={{ headerShown: true, title: 'Circle health' }} />
         </Stack>
+        <CallHost />
       </KeyboardProvider>
     </SafeAreaProvider>
   );
