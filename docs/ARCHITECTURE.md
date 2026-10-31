@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Doc version** | 1.4 |
-| **Updated** | 2026-10-28 |
-| **Describes** | HomeCircle 0.21.0 as built, including the Elderly Companion skin and its settings, the call-back loop, urgent delivery, the phrase catalog, family names and photos; plus the planned Games plugin, asleep detection and inactivity check-ins (marked *planned*) |
+| **Doc version** | 1.5 |
+| **Updated** | 2026-10-31 |
+| **Describes** | HomeCircle 0.22.0 as built, including the Elderly Companion skin and its settings, the call-back loop, urgent delivery, the phrase catalog, family names and photos, asleep and Do Not Disturb sharing, inactivity check-ins, in-app voice calls and WhatsApp links; plus the planned Games plugin (marked *planned*) |
 | **Source of truth for planned features** | `PRD.md` and the handoff kickoff. Where this doc and the PRD disagree, the PRD wins. |
 
 HomeCircle is a self-hosted, end-to-end encrypted family app: a live family map, Locate, place arrival alerts, family chat, an AI helper and optional plugins. One server hosts many isolated **circles**. Phones encrypt everything before upload; the server stores and relays ciphertext it cannot read.
@@ -28,8 +28,10 @@ These come first. A feature that can't meet them is redesigned, not shipped.
 |---|---|
 | **Call-back urgency (built, 0.20.0)** | The server coalesces chat pushes to one per member every 45 s (`push.js`, `ACTIVITY_COALESCE_MS`), and it can't tell a call-back request from a chat message, so a request could arrive up to 45 s late. Decision: messages carry an outer `urgent: true` flag that skips coalescing and is pushed at once, at high priority. It's used only for call-back requests, replies to the elder, "taken" notices and SOS. The push payload stays identical to a normal message push, so Apple, Google and Expo learn nothing new. The server learns that member X sent an urgent message at time T (never what or why); this is added to the threat model in `PROTOCOL.md`. The server rate-limits urgent messages per sender (10 a minute), and anything over the limit falls back to normal coalesced delivery, never dropped. |
 | **Call-back reminders (built, 0.20.0)** | The server can't read requests, so it can't send reminders. Each family member's phone schedules its own local reminders when a request arrives and cancels them when it sees "taken". This works even if her phone goes offline and adds no server traffic. |
-| **Asleep and DND (planned)** | Detected on each family member's phone, which then sends her the sealed "asleep" reply. The server never learns who is asleep. |
-| **Inactivity check-in (planned)** | Family phones already see when her phone last uploaded a location (sealed, with a time). They raise the check-in locally; no new server logic. |
+| **Asleep and DND (built, 0.22.0)** | Each phone seals its Do Not Disturb state and time zone into its own location body (`dnd`, `tz`). A family phone checks them and sends her the sealed "asleep" reply itself. The server never learns who is asleep. |
+| **Inactivity check-in (built, 0.22.0)** | Family phones already see when her phone last uploaded a location (sealed, with a time), plus a sealed `used` time for the last time she touched the app. They raise the check-in locally; no new server logic. |
+| **Voice calls (built, 0.22.0; off by default)** | Audio is WebRTC, phone to phone and encrypted by WebRTC itself. The call set-up messages (offer, answer, candidates) are sealed with the pair's direct key, signed, and relayed by the server from memory for at most 45 s, never written to the database or logs. A relay for phones that can't connect directly is optional; the server only hands out short-lived credentials. |
+| **WhatsApp links (built, 0.22.0; plugin off by default)** | The app opens WhatsApp with a number or a group call link. The numbers are sealed in profiles and the group link in the circle record; nothing goes through the server. |
 | **Skins (built, 0.20.0; settings 0.21.0)** | Chosen by an admin: sealed inside the elder's invite, then in the admins' `member` record about her, which the phone follows (most restricted across its circles). The server never learns who uses which skin. |
 | **Elder config, family names, photos (built, 0.21.0)** | Sealed, signed records (`member`, `alias` in the records store), verified on the phones against the setter's right to set them (admin, or the person themself). Photos are encrypted files like today's uploads. |
 | **Games** | Moves sealed with the pair's direct key, signed, rule-checked on both phones; races resolved by the server's existing message order. |
@@ -66,12 +68,16 @@ flowchart LR
     Teen["Teens skin (later)"]:::later
     Catalog["Phrase catalog + Urdu audio<br/>(on the phone, offline)"]
     Core["packages/core<br/>crypto · CircleClient · sealing"]
-    Native["Background location · geofences<br/>push · hc-attention (Android)"]
+    Native["Background location · geofences<br/>push · hc-attention · hc-calls (Android)"]
+    Calls["Voice calls (WebRTC)<br/>WhatsApp links"]
     Full --> Core
     Elder --> Core
     Elder --> Catalog
     Teen -.-> Core
     Core --> Native
+    Elder --> Calls
+    Full --> Calls
+    Calls --> Core
   end
 
   Web["Built-in web app<br/>server/public"]
@@ -83,6 +89,7 @@ flowchart LR
     DB[("SQLite<br/>ciphertext only")]
     Files["Encrypted files<br/>files.js"]
     Push["Push relay<br/>push.js"]
+    CallRelay["Call set-up relay<br/>calls.js · ice.js<br/>memory only, never stored"]
     Plugins["Plugins<br/>weather · air · prayer · Home Assistant"]
     Games["Games plugin (tab surface)"]:::planned
     Agent["AI helper (agent host)<br/>brain · memory · calendars · lists"]
@@ -91,6 +98,7 @@ flowchart LR
     API --> Files
     Hub --> DB
     API --> Push
+    API --> CallRelay
     API --> Plugins
     Plugins -.-> Games
   end
@@ -101,6 +109,7 @@ flowchart LR
     AI["AI provider<br/>(names masked)"]
     Ext["Plugin hosts<br/>weather, air, HA"]
     Tiles["Map tiles<br/>OpenStreetMap"]
+    Turn["Optional call relay<br/>Cloudflare · Metered · coturn"]
   end
 
   Core -- "HTTPS: sealed envelopes" --> API
@@ -111,6 +120,8 @@ flowchart LR
   Expo -- "wakes the phone" --> Native
   Agent --> AI
   Plugins --> Ext
+  CallRelay -- "short-lived credentials" --> Turn
+  Calls -. "encrypted voice, phone to phone" .-> Calls
   Full --> Tiles
 
   classDef planned stroke-dasharray: 6 4,stroke:#2F7D6D,fill:#E1EFEB;
@@ -132,7 +143,8 @@ The server is deliberately thin: it authenticates devices, scopes every request 
 | `routes.js`, `http.js` | REST API (see `PROTOCOL.md` for the full table). |
 | `hub.js` | One WebSocket per open app per circle; auth in the first frame; pings every 25 s. |
 | `db.js` | SQLite tables: circles, members, invites, rejoin requests, key envelopes, locations (latest only), frequent places, chirps, messages, files (helper files and members' photos), places, records (sealed member settings and family names). |
-| `push.js` | Batches pushes to Expo, which forwards to APNs and FCM. Payloads carry no names, locations or text. |
+| `push.js` | Batches pushes to Expo, which forwards to APNs and FCM. Payloads carry no names, locations or text. For an Android phone that opted in, it sends one generic visible backup alert if the phone hasn't fetched a message soon after its wake-up. |
+| `calls.js`, `ice.js` | Voice-call set-up: holds sealed signals in memory for a phone that is asleep (`calls.js`) and hands out STUN and, if configured, short-lived relay credentials (`ice.js`; Cloudflare, Metered or coturn). |
 | `files.js` | Stores client-encrypted uploads: files for the helper (the key in a sealed message) and members' photos (the key in a sealed profile or `member` record). |
 | `plugins/` | Optional per-circle features; each declares the outside hosts it may call and gets a fetch limited to those. |
 | `agent/` | The AI helper (see below). |
@@ -143,6 +155,10 @@ Runs next to the server when `AGENT=true`. It joins a circle like a member, thro
 ### Mobile app
 Expo Router app with tabs Map, Chats, Places (hidden when location sharing is off) and Settings.
 
+**Calls and WhatsApp.** `src/lib/rtc.ts`, `callEngine.ts` and `calls.ts` run one-to-one voice calls over `react-native-webrtc`; Android's `hc-calls` module keeps the call alive in a foreground service and rings from a locked phone. `src/lib/whatsapp*` and `CallActions.tsx` build the WhatsApp links. Both are circle features, off until an admin turns them on.
+
+**Startup.** The app opens from the local cache first (written atomically, newest 500 messages) and then fetches only what is new (`GET /messages?tail=1`, `?before=` for older).
+
 **Skins.** `src/skins` lists the skins: Full (the tabs) and Elderly Companion (`src/app/companion`: big tiles per circle, Ring everyone, a person's Call me back, SOS by press and hold to care circles only). A skin is a route root and whether it's locked. The phone remembers its skin; a locked skin's phone never reaches the tabs, and new skins (teens, later) add an entry and a route folder without touching the plumbing. An elder's invite carries her name, page (care or grandkids) and skin, sealed; HomeCircle's normal join screen takes it. Her phone never shows message text: replies to her requests play as phrase recordings (`playSequence` in `hc-attention`), and requests made offline wait and go by themselves. Background location runs on a schedule (about every 15 minutes), on big moves and on geofence events; Locate sends a silent push that triggers one fresh fix. Android-only code is guarded by `Platform.OS` and the optional `hc-attention` native module; on iOS those calls do nothing. iOS has not been shipped yet (see the iOS checklist).
 
 ## 4. Data and encryption
@@ -150,7 +166,7 @@ Expo Router app with tabs Map, Chats, Places (hidden when location sharing is of
 Summary of `PROTOCOL.md`:
 
 - **Circle key** (per epoch) encrypts everything shared; **member keys** sign everything sent and receive rotated keys; **direct keys** (X25519 between two members) encrypt DMs.
-- **Sealed envelope:** `secretbox(sign({ v, kind, from, circle, epoch, ts, body }), CK_epoch)`. Kinds today: `profile`, `location`, `chat`, `event`, `place`, `circle`, plus reactions.
+- **Sealed envelope:** `secretbox(sign({ v, kind, from, circle, epoch, ts, body }), CK_epoch)`. Kinds today: `profile`, `location`, `chat`, `event`, `place`, `circle`, `frequent`, `member`, `alias`, `call` (voice-call signals, relayed, never stored), plus reactions.
 - **The server can see:** circles and members, IP addresses, upload timing, ciphertext sizes, push tokens. **It cannot see:** names, locations, messages, places, battery or anything in a body.
 - **Retention:** messages are kept 1 to 365 days per circle (default 90).
 
@@ -162,6 +178,7 @@ Summary of `PROTOCOL.md`:
 | Call-back request, reply, taken (built: `callback` in group chat, see `PROTOCOL.md`) | The call-back loop | Circle key (group chat) |
 | `alias` (built, 0.21.0: family names, per pair) | Who calls whom what; several names for one person | Circle key |
 | Photo reference (built, 0.21.0) | Profile and admin-added tile photos (the image is an encrypted file) | Circle key (inside the profile or `member` record) |
+| Call signals (built, 0.22.0: `POST /calls/signal`, never stored) | Offer, answer, candidates, hang-up of a voice call | The pair's direct key |
 | `game.create`, `game.move`, `game.resign`, `game.rematch` | Turn-based games between two people | The pair's direct key |
 | Outer `urgent` flag on `POST /messages` (built; not sealed: the server must read it) | Skip push coalescing for call-backs and SOS | None: it's routing metadata, like `to` on a DM |
 
@@ -218,6 +235,7 @@ Planned items move from dashed to solid once they ship.
 
 | Doc version | Date | Changes |
 |---|---|---|
+| 1.5 | 2026-10-31 | HomeCircle 0.22.0: asleep and Do Not Disturb sharing, inactivity check-ins, SOS through Do Not Disturb, in-app voice calls (relay and credentials) and WhatsApp links are built. New call set-up relay in the server and diagram, startup cache, backup push alert. Only the Games plugin is still planned. |
 | 1.4 | 2026-10-28 | HomeCircle 0.21.0: the records store (`member`, `alias`), Elderly Companion settings, family names, he/she and members' photos are built. Principles table, server modules and record kinds updated. Diagrams unchanged: these live in the existing API, SQLite and encrypted files boxes. |
 | 1.3 | 2026-10-28 | HomeCircle 0.20.0: the Elderly Companion skin, skins system, call-back loop, urgent delivery and phrase catalog are built (solid in the diagram). Repository layout, mobile app, principles table and record kinds updated. |
 | 1.2 | 2026-10-28 | Bundle 1.2: PRD added to the handoff. No architecture changes; diagrams unchanged. |

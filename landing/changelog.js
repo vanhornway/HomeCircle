@@ -1,6 +1,21 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.22.0',
+    date: '2026-10-31',
+    title: 'Calls, WhatsApp links and a quicker start',
+    items: [
+      'Voice calls inside the app (an admin turns them on): one person to one person, the voice goes phone to phone and stays encrypted. Missed calls and call lengths show in the chat.',
+      'A WhatsApp plugin: Call on WhatsApp from a person’s sheet or a call-back card, and a Group call button for the family chat. It opens WhatsApp; nothing goes through the server.',
+      'Asleep and Do Not Disturb: a family phone tells a grandparent “asleep” on its owner’s behalf, rings quietly at night, and her SOS still rings through. If her phone goes quiet for too long, the family is asked to check on her.',
+      'The grandparent screen speaks Urdu more reliably, clears its top message after 2 minutes so she can ask again, and only reminds about her newest request.',
+      'Pinch to zoom the chat text. Reminders and call-backs appear as highlighted cards, and Done closes a reminder on every phone.',
+      'Shopping lists show estimated prices (regular prices only), a quantity you can raise, and an estimate and range for the whole cart.',
+      'The chat opens on the newest messages and the app starts faster. Notifications are one per conversation, with an optional backup alert for locked Android phones.',
+      'The map drawer and tab labels fit large text, and the plugin tile starts as a small circle you can double-tap to grow.',
+    ],
+  },
+  {
     version: '0.21.0',
     date: '2026-10-28',
     title: 'Photos, family names and the elder’s settings',

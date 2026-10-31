@@ -8,6 +8,8 @@ arrival alerts for places, and family chat.
 - **End-to-end encrypted.** Phones encrypt everything before upload. The server and your hosting provider only see ciphertext.
 - **Call me back, for grandparents.** An Elderly Companion skin turns an elder's phone into big photo tiles: one tap asks the family to call her, and she hears their answer in Urdu. Admins set it all up from their own phone: her tiles, photos, the names she knows you by, her sleep hours.
 - **Photos and family names.** Add your photo, and set what you call each person (Ammi, Nani). Both are encrypted like everything else.
+- **Calls and WhatsApp links.** Optional one-to-one voice calls in the app (phone to phone, end-to-end encrypted, with an optional relay), and a plugin that opens WhatsApp calls from a person's sheet. Both are off until an admin turns them on.
+- **Asleep and Do Not Disturb.** A family phone tells a grandparent "asleep" for its owner, an elder's SOS still rings through, and the family is asked to check if her phone has been quiet too long.
 - **Battery-friendly.** Updates about every 15 minutes (configurable from 5 to 60), on big moves, on place arrivals, or right away when someone taps **Locate**.
 - **Host anywhere.** Render, Railway, Fly.io, DigitalOcean, Hetzner, any VPS, or a Raspberry Pi at home. They all use one Docker image.
 

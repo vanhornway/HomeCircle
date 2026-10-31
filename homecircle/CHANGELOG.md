@@ -2,6 +2,48 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.22.0
+
+- Voice calls (Settings → Features → Voice calls, off until an admin
+  turns it on): call one person in the app. The voice goes phone to phone,
+  encrypted; the server only passes the sealed set-up messages along and keeps
+  none. Missed calls and call lengths show in the chat, and both people can
+  compare four words to be sure nobody is in the middle. Optional relay for
+  phones that can't reach each other directly (Cloudflare, Metered or your own
+  coturn: see docs/CALLS-NOTES.md).
+- WhatsApp links (a plugin, off until an admin turns it on): Call on WhatsApp
+  on a person's sheet and on call-back cards, and a Group call button in the
+  group chat. It opens WhatsApp on the phone. Phone numbers are sealed in the
+  profile; the group call link is set by an admin.
+- Asleep and Do Not Disturb: phones share (sealed) when they're in Do Not
+  Disturb and what time it is for them. A family phone answers an elder's
+  call-back request with "asleep" when its owner is, and rings quietly at
+  night. An elder's tile fades with a moon while they sleep.
+- Check-ins for elders: when an elder's phone hasn't been seen for a long
+  while, the family is asked to check on them.
+- SOS from an elder rings through Do Not Disturb on family phones that have
+  allowed it (Settings → Chirps & SOS → Do Not Disturb access).
+- Elder app: Urdu is spoken more reliably (it retries the phone's voice and
+  falls back to the recordings), the top message clears after 2 minutes so she
+  can ask again, the heart badge is gone, and only her newest request is
+  reminded.
+- Family chat: the person sheet is compact and leaves the map tappable, “What
+  do you call …?” moved to Settings → Circle, pinch to zoom the chat text
+  (85–200%, with a Reset chip; Settings → This phone), and reminders and
+  call-backs are highlighted cards. Marking a reminder Done now closes it on
+  every phone (needs this server version).
+- Shopping lists: estimated prices (marked “~”, regular prices only), a
+  quantity you set with +, and an estimate and cost range for the whole cart.
+- Faster start: the chat opens on the newest messages, the cache is safer, and
+  a cold start is quicker (the server now answers “newest messages” requests).
+- Notifications: one per conversation, old messages stay quiet, an optional
+  backup alert for Android phones that hold the wake-up back when locked, and
+  push timing in Diagnostics. Other people's arrivals and departures no longer
+  notify by default (a switch in Places; “notify me when” rules still work).
+- Map: the People drawer and the tab labels fit large text, and the plugin tile
+  starts as a small circle; double-tap it to step through small and big and
+  back. The size is remembered on each phone.
+
 ## 0.21.0
 
 - Photos: add your own photo in Settings → You → Profile. It shows wherever
