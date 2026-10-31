@@ -1,6 +1,9 @@
 import { Text } from 'react-native';
 import { router } from 'expo-router';
 import { Button } from '../../components/ui';
+import { Chips } from '../../components/FamilyNames';
+import { setChatScale, useChatScale } from '../../lib/chatZoom';
+import { CHAT_SCALE_STEPS, percentLabel } from '../../lib/chatZoomCore';
 import { GroupBody, SettingsGroup, SettingsPage, SettingsRow } from '../../components/SettingsKit';
 import { useServerState } from '../../lib/connection';
 import { useCircle } from '../../lib/useCircle';
@@ -12,11 +15,23 @@ export default function PhoneSettings() {
   const t = useTheme();
   const client = useCircle();
   const server = useServerState();
+  const zoom = useChatScale();
   return (
     <SettingsPage title="This phone">
       <SettingsGroup>
         <SettingsRow icon="✅" title="Setup check" detail="Location, battery and notifications set so your circle always sees where you are" href="/setup-check" />
         <SettingsRow icon="🩺" title="Diagnostics" detail="A 7-day log of what HomeCircle did in the background" href="/diagnostics" />
+      </SettingsGroup>
+
+      <SettingsGroup title="Chat text size" footer="Bigger text in chats and the cards in them (call-backs, reminders). You can also pinch the messages in any chat with two fingers. This adds to your phone’s own text size setting.">
+        <GroupBody>
+          <Chips
+            label="Chat text size"
+            options={CHAT_SCALE_STEPS.map((v) => ({ value: String(v), label: v === 1 ? 'Normal' : percentLabel(v) }))}
+            value={CHAT_SCALE_STEPS.some((v) => v === zoom) ? String(zoom) : null}
+            onPick={(v) => setChatScale(Number(v))}
+          />
+        </GroupBody>
       </SettingsGroup>
 
       <SettingsGroup title="Server">

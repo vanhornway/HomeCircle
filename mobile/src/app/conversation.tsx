@@ -9,6 +9,7 @@ import { shareNow } from '../lib/location';
 import { ServerBanner } from '../components/ServerBanner';
 import { PollCard } from '../components/PollCard';
 import { CallbackCard } from '../components/CallbackCard';
+import { ReminderCard } from '../components/ReminderCard';
 import { MemberAvatar } from '../components/MemberAvatar';
 import { REPLY_LABELS, syncCallbackReminders, timeIn } from '../lib/callbacks';
 import { CreatePoll } from '../components/CreatePoll';
@@ -19,6 +20,8 @@ import { initials } from '../lib/useCircle';
 import { setVisibleConversation } from '../lib/notify';
 import { conversationKey, markRead } from '../lib/unread';
 import { useSettings } from '../lib/storage';
+import { setChatScale, useChatScale, usePinchZoom } from '../lib/chatZoom';
+import { percentLabel, scaled } from '../lib/chatZoomCore';
 import { useTheme } from '../theme';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -70,6 +73,10 @@ function useClientEvents(client: CircleClient) {
 function Conversation({ client, peer }: { client: CircleClient; peer: string | null }) {
   const t = useTheme();
   const tick = useClientEvents(client);
+  // Pinch the messages to make their text bigger or smaller; remembered on this phone.
+  const zoom = useChatScale();
+  const fs = (n: number) => scaled(n, zoom);
+  const pinch = usePinchZoom();
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -196,7 +203,10 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
 
   const eventLabel = (m: Message) =>
     `${client.members.get(m.from)?.name || 'Former member'} ${m.body?.action === 'left' ? 'left' : 'arrived at'} ${m.body?.placeName || 'a place'} · ${clock(typeof m.body?.at === 'number' ? m.body.at : m.ts)}`;
-  const pill = { alignSelf: 'center', color: t.muted, backgroundColor: t.surface2, fontSize: 14, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, overflow: 'hidden', marginVertical: 4 } as const;
+  const pill = { alignSelf: 'center', color: t.muted, backgroundColor: t.surface2, fontSize: fs(14), paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, overflow: 'hidden', marginVertical: 4 } as const;
+  // Each reminder from the helper: Done goes on its latest message, earlier ones are history.
+  const latestReminder = new Map<string, string>();
+  for (const x of all) if (typeof x.body?.reminder?.id === 'string') latestReminder.set(x.body.reminder.id, x.id);
 
   const renderRow = ({ item }: { item: ChatRow }) => {
     if (item.type === 'message') return render(item.m);
@@ -248,40 +258,54 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
       return (
         <View style={{ marginVertical: 3 }}>
           <PollCard client={client} pollId={m.id} />
-          <Text style={{ color: t.muted, fontSize: 12, marginHorizontal: 6, alignSelf: mine ? 'flex-end' : 'flex-start' }}>{clock(m.ts)}</Text>
+          <Text style={{ color: t.muted, fontSize: fs(12), marginHorizontal: 6, alignSelf: mine ? 'flex-end' : 'flex-start' }}>{clock(m.ts)}</Text>
         </View>
       );
     }
     const big = isEmojiOnly(m.body?.text);
     const reactions = client.reactionsFor(m.id);
+    // A reminder from the helper: the same highlighted card as a call-back request.
+    const reminderId = who?.kind === 'agent' && typeof m.body?.reminder?.id === 'string' ? (m.body.reminder.id as string) : null;
     return (
-      <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', alignItems: mine ? 'flex-end' : 'flex-start', maxWidth: '82%', marginVertical: 3 }}>
+      <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', alignItems: mine ? 'flex-end' : 'flex-start', maxWidth: '82%', marginVertical: 3, ...(reminderId ? { width: '84%', maxWidth: undefined, alignItems: 'stretch' } : null) }}>
         {!mine && !peer ? (
-          <Text style={{ color: who?.kind === 'agent' ? t.brand : who?.color || t.muted, fontSize: 13, fontWeight: '700', marginLeft: 4, marginBottom: 2 }}>
+          <Text style={{ color: who?.kind === 'agent' ? t.brand : who?.color || t.muted, fontSize: fs(13), fontWeight: '700', marginLeft: 4, marginBottom: 2 }}>
             {who?.kind === 'agent' ? `🤖 ${name}` : name}
           </Text>
         ) : null}
-        <Pressable
-          onLongPress={() => {
-            Keyboard.dismiss();
-            setReactingTo(m);
-          }}
-          delayLongPress={300}
-          accessibilityHint="Long-press to react"
-          style={({ pressed }) => ({
-            backgroundColor: big ? 'transparent' : mine ? t.brand : t.surface,
-            borderRadius: 18,
-            paddingHorizontal: big ? 2 : 14,
-            paddingVertical: big ? 0 : 10,
-            opacity: pressed ? 0.75 : 1,
-          })}
-        >
-          {big ? (
-            <Text style={{ fontSize: 44, lineHeight: 54 }}>{m.body?.text}</Text>
-          ) : (
-            <LinkedText text={String(m.body?.text ?? '')} style={{ color: mine ? t.brandInk : t.text, fontSize: 17, lineHeight: 23 }} linkColor={mine ? t.brandInk : t.brand} />
-          )}
-        </Pressable>
+        {reminderId ? (
+          <ReminderCard
+            m={m}
+            state={savedLists.has(reminderId) ? 'done' : latestReminder.get(reminderId) === m.id ? 'open' : 'earlier'}
+            onLongPress={() => setReactingTo(m)}
+            onDone={() => {
+              setSavedLists((s) => new Set(s).add(reminderId));
+              client.doneAgentReminder(reminderId, { peer }).catch((e) => setError(errorText(e)));
+            }}
+          />
+        ) : (
+          <Pressable
+            onLongPress={() => {
+              Keyboard.dismiss();
+              setReactingTo(m);
+            }}
+            delayLongPress={300}
+            accessibilityHint="Long-press to react"
+            style={({ pressed }) => ({
+              backgroundColor: big ? 'transparent' : mine ? t.brand : t.surface,
+              borderRadius: 18,
+              paddingHorizontal: big ? 2 : 14,
+              paddingVertical: big ? 0 : 10,
+              opacity: pressed ? 0.75 : 1,
+            })}
+          >
+            {big ? (
+              <Text style={{ fontSize: fs(44), lineHeight: fs(54) }}>{m.body?.text}</Text>
+            ) : (
+              <LinkedText text={String(m.body?.text ?? '')} style={{ color: mine ? t.brandInk : t.text, fontSize: fs(17), lineHeight: fs(23) }} linkColor={mine ? t.brandInk : t.brand} />
+            )}
+          </Pressable>
+        )}
         {who?.kind === 'agent' && Array.isArray(m.body?.undo) && m.body.undo.length ? (
           <Button small title="Undo" onPress={() => client.undoAgent(m.body!.undo, { peer }).catch((e) => setError(errorText(e)))} style={{ marginTop: 6 }} />
         ) : null}
@@ -319,25 +343,12 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             ))}
           </View>
         ) : null}
-        {who?.kind === 'agent' && typeof m.body?.reminder?.id === 'string' && !savedLists.has(m.body.reminder.id) ? (
-          <Button
-            small
-            variant="primary"
-            title="Done"
-            onPress={() => {
-              const id = m.body!.reminder.id as string;
-              setSavedLists((s) => new Set(s).add(id));
-              client.doneAgentReminder(id, { peer }).catch((e) => setError(errorText(e)));
-            }}
-            style={{ marginTop: 6 }}
-          />
-        ) : null}
         {m.body?.nudge === true && !mine ? (
           <Button small variant="primary" title="Open setup check" onPress={() => router.push('/setup-check')} style={{ marginTop: 6 }} />
         ) : null}
         {m.body?.checkin === 'request' && !mine && peer ? (
           answered(m) ? (
-            <Text style={{ color: t.brand, fontSize: 14, fontWeight: '600', marginTop: 4, marginLeft: 4 }}>✓ You checked in</Text>
+            <Text style={{ color: t.brand, fontSize: fs(14), fontWeight: '600', marginTop: 4, marginLeft: 4 }}>✓ You checked in</Text>
           ) : (
             <Button small variant="primary" title="I’m OK" loading={checkingIn === m.id} onPress={() => answer(m)} style={{ marginTop: 6 }} />
           )
@@ -362,13 +373,13 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
                   backgroundColor: r.mine ? t.brandSoft : t.surface,
                 }}
               >
-                <Text style={{ fontSize: 16 }}>{r.emoji}</Text>
-                {r.count > 1 ? <Text style={{ fontSize: 13, color: r.mine ? t.brand : t.muted, fontWeight: '600' }}>{r.count}</Text> : null}
+                <Text style={{ fontSize: fs(16) }}>{r.emoji}</Text>
+                {r.count > 1 ? <Text style={{ fontSize: fs(13), color: r.mine ? t.brand : t.muted, fontWeight: '600' }}>{r.count}</Text> : null}
               </Pressable>
             ))}
           </View>
         ) : null}
-        <Text style={{ color: t.muted, fontSize: 12, marginTop: 2, marginHorizontal: 6 }}>
+        <Text style={{ color: t.muted, fontSize: fs(12), marginTop: 2, marginHorizontal: 6 }}>
           {clock(m.ts)}
           {mine ? <Ticks state={client.receipt(m)} showRead={readReceipts} /> : null}
         </Text>
@@ -438,21 +449,36 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             </Text>
           </View>
         )}
-        <FlatList
-          style={rows.length ? undefined : { display: 'none' }}
-          ref={list}
-          inverted
-          data={rows}
-          extraData={tick}
-          // Most chats fit: draw the recent ones in one go, so the list isn't re-measured as it redraws.
-          initialNumToRender={30}
-          maxToRenderPerBatch={30}
-          windowSize={31}
-          keyExtractor={(r) => (r.type === 'message' ? r.m.id : r.id)}
-          renderItem={renderRow}
-          contentContainerStyle={{ padding: 14 }}
-          keyboardShouldPersistTaps="handled"
-        />
+        {/* Two fingers on the messages zoom their text; one finger scrolls, taps and long-presses as before. */}
+        <View style={rows.length ? { flex: 1 } : { display: 'none' }} {...pinch.panHandlers}>
+          <FlatList
+            ref={list}
+            inverted
+            data={rows}
+            extraData={`${tick}:${zoom}`}
+            scrollEnabled={!pinch.pinching}
+            // Most chats fit: draw the recent ones in one go, so the list isn't re-measured as it redraws.
+            initialNumToRender={30}
+            maxToRenderPerBatch={30}
+            windowSize={31}
+            keyExtractor={(r) => (r.type === 'message' ? r.m.id : r.id)}
+            renderItem={renderRow}
+            contentContainerStyle={{ padding: 14 }}
+            keyboardShouldPersistTaps="handled"
+          />
+          {pinch.showing ? (
+            <View pointerEvents="box-none" style={{ position: 'absolute', top: 10, left: 0, right: 0, alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingLeft: 14, paddingRight: 6, minHeight: 44, borderRadius: 22, backgroundColor: t.surface, borderWidth: 1, borderColor: t.line, elevation: 4 }}>
+                <Text style={{ color: t.text, fontSize: 15, fontWeight: '700' }}>Text size {percentLabel(zoom)}</Text>
+                {zoom !== 1 ? (
+                  <Pressable accessibilityRole="button" accessibilityLabel="Reset text size" onPress={() => setChatScale(1)} style={{ minHeight: 36, paddingHorizontal: 12, borderRadius: 18, justifyContent: 'center', backgroundColor: t.brandSoft }}>
+                    <Text style={{ color: t.brand, fontSize: 15, fontWeight: '700' }}>Reset</Text>
+                  </Pressable>
+                ) : null}
+            </View>
+          </View>
+        ) : null}
+        </View>
         {error ? <Text style={{ color: t.danger, paddingHorizontal: 16, fontSize: 15 }}>{error}</Text> : null}
         {sendingFile ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 6 }}>
