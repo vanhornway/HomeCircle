@@ -3,7 +3,7 @@ import nacl from 'tweetnacl';
 import { toB64, fromB64, utf8Encode, utf8Decode, concat } from './encoding.js';
 
 export const PROTOCOL_VERSION = 1;
-export const KINDS = ['profile', 'location', 'chat', 'event', 'reaction', 'place', 'circle', 'frequent', 'member', 'alias'];
+export const KINDS = ['profile', 'location', 'chat', 'event', 'reaction', 'place', 'circle', 'frequent', 'member', 'alias', 'call'];
 
 export class CryptoError extends Error {
   constructor(reason) {
@@ -77,6 +77,8 @@ const PAD_TO = {
   reaction: [256, 1024, 4096, 8192],
   event: [256, 1024, 4096, 8192],
   location: [256, 1024],
+  // Call signals (offer, candidate, hang-up) look alike on the wire.
+  call: [256, 1024, 4096, 8192],
 };
 // ,"pad":""
 const PAD_FIELD = 9;
