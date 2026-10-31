@@ -683,6 +683,16 @@ test('reminders: set in chat, sent to admins and whoever set it in the morning, 
   const [rem] = await dad.agentRpc('reminders');
   assert.deepEqual([rem.due, rem.repeat, rem.createdByName], ['2027-11-30', 'yearly', 'Dad']);
   assert.equal(mom.conversation(mom.agent.id).filter((m) => m.body?.reminder).length, 1);
+  // The cards close on every phone that got the reminder: the answer carries the reminder's id, and the others are told who did it.
+  const id = toMom.body.reminder.id;
+  const doneFor = (c) => [...c.conversation(c.agent.id)].reverse().find((m) => m.body?.reminderDoneId === id);
+  assert.match((await until(mom, doneFor)).body.text, /^✅ Car registration is done\. Next one:/);
+  assert.match((await until(dad, doneFor)).body.text, /^✅ \w+ marked Car registration done\. Next one: Nov 30, 2027\.$/);
+  assert.equal(mom.conversation(mom.agent.id).filter((m) => m.body?.reminderDoneId === id).length, 1);
+  // Done from the Reminders screen is told to everyone too, the person who tapped included.
+  await dad.agentRpc('reminderDone', { id: rem.id });
+  await until(mom, (c) => (c.conversation(c.agent.id).filter((m) => m.body?.reminderDoneId === id).length === 2 ? 1 : null));
+  await until(dad, (c) => (c.conversation(c.agent.id).filter((m) => m.body?.reminderDoneId === id).length === 2 ? 1 : null));
 });
 
 test('contacts, health, documents, trips and the home manual: details kept, reminders set, secrets never kept', async () => {
