@@ -80,7 +80,15 @@ async function synthesize(lang, text, voice = VOICES[lang]) {
         response_format: { type: 'audio', mime_type: 'audio/wav' },
         generation_config: { speech_config: [{ voice }] },
       }),
-    });
+    }).catch((e) => e);
+    if (res instanceof Error) {
+      // A dropped connection (often after the Mac wakes): try again shortly.
+      if (attempt === 10) throw res;
+      console.log(`  ${res.cause?.code ?? res.message}, trying again in 30 s`);
+      await new Promise((r) => setTimeout(r, 30_000));
+      attempt++;
+      continue;
+    }
     if (res.status !== 429 || attempt === 10) break;
     // The free tier allows a few requests a minute (wait as long as it asks)
     // and a few a day (stop, keeping what's recorded so far, or with --wait
