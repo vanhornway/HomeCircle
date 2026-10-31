@@ -1,7 +1,7 @@
 // Shopping lists and reminders, as the helper keeps them.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_USUAL, addItems, cleanPrice, createList, doneShopping, emptyLists, findList, itemKey, listText, money, parseListCommand, priceEstimate, rangeText, recipeWanted, recordBought, removeItems, shoppingName, viewList } from '../src/agent/lists.js';
+import { MAX_USUAL, addItems, cleanPrice, createList, doneShopping, emptyLists, findList, itemKey, listText, money, parseListCommand, priceEstimate, rangeText, recipeWanted, recordBought, removeItems, setQty, shoppingName, viewList } from '../src/agent/lists.js';
 import { addMonths, addReminder, canSeeReminder, cleanReminder, dueMessage, markDone, nextYear, reminderLine } from '../src/agent/reminders.js';
 
 test('lists: one per store; items once each; usual items first and suggested', () => {
@@ -114,7 +114,7 @@ const DAY = 86_400_000;
 const T0 = Date.parse('2026-09-01T12:00:00Z');
 const receipt = (s, list, day, buys, currency = 'USD') => recordBought(s, list, buys, T0 + day * DAY, { currency, at: T0 + day * DAY });
 
-test('prices: every receipt adds a sighting; a one-off sale barely moves the usual price', () => {
+test('prices: every receipt adds a sighting; a price that is off for one week barely moves the usual price', () => {
   const s = emptyLists();
   const costco = createList(s, 'Costco', 'mom', 1);
   receipt(s, costco, 0, [{ name: 'Milk', price: 4.2 }, { name: 'Eggs', price: 7.5 }, 'paper towels']);
@@ -132,7 +132,7 @@ test('prices: every receipt adds a sighting; a one-off sale barely moves the usu
   assert.deepEqual(price('milk'), { est: 4.2, low: 3.88, high: 4.41, n: 4 });
   // Seen twice at the same price: a small margin either way. Never priced: no price at all.
   assert.deepEqual(price('eggs'), { est: 7.5, low: 7.13, high: 7.88, n: 2 });
-  assert.deepEqual(Object.keys(v.items.find((i) => i.name === 'paper towels')), ['id', 'name', 'by', 'at', 'ticked', 'usual']);
+  assert.deepEqual(Object.keys(v.items.find((i) => i.name === 'paper towels')), ['id', 'name', 'by', 'at', 'ticked', 'qty', 'usual']);
   assert.equal(v.items.find((i) => i.name === 'batteries').price, undefined);
   // Suggestions carry the price too, and only when there is one.
   receipt(s, costco, 50, [{ name: 'Olive oil', price: 18.99 }, 'bananas']);
@@ -171,12 +171,29 @@ test('prices: the list total is a range over the items still to get, with how ma
   assert.match(listText(s, l), /Estimated about \$32 to \$37 \(3 of 4 items priced\)/);
   assert.match(listText(s, l), /• milk · about \$4\.50/);
   assert.match(listText(s, l), /• batteries$/m);
-  // Ticking or removing moves it; the unpriced one never reads as free.
+  // The cart estimate is the whole list: ticking doesn't change it, removing does; the unpriced one never reads as free.
   l.items.find((i) => i.name === 'coffee').ticked = true;
+  assert.deepEqual(viewList(s, l).total, { low: 32.75, high: 36.25, priced: 3, count: 4 });
+  // Two of the milk: its price twice.
+  setQty(l.items.find((i) => i.name === 'milk'), 2);
   v = viewList(s, l);
-  assert.deepEqual([v.total.low, v.total.high, v.total.priced, v.total.count], [11.85, 13.15, 2, 3]);
-  removeItems(l, ['milk', 'eggs']);
+  assert.equal(v.items.find((i) => i.name === 'milk').qty, 2);
+  assert.deepEqual([v.total.low, v.total.high], [37, 41], 'the milk is counted twice');
+  assert.match(listText(s, l), /• 2 × milk · about \$9\.00/);
+  removeItems(l, ['milk', 'eggs', 'coffee']);
   assert.equal(viewList(s, l).total, undefined);
+});
+
+test('quantity: 1 to 99, and 1 is the default', () => {
+  const item = {};
+  setQty(item, 3);
+  assert.equal(item.qty, 3);
+  setQty(item, 500);
+  assert.equal(item.qty, 99);
+  setQty(item, 0);
+  assert.equal(item.qty, undefined);
+  setQty(item, 'x');
+  assert.equal(item.qty, undefined);
 });
 
 test('prices: lists with no prices show none; currencies never mix', () => {

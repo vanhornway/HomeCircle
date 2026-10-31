@@ -5,8 +5,8 @@
 // offered back to pick from, most often bought first, and what's bought
 // most goes to the top of the list. Receipts also leave what each thing cost
 // (every sighting, with its date), so items and the whole list can show an
-// estimated price: a usual price (the median, so a one-off sale doesn't move
-// it) and a low to high range.
+// estimated price: a usual price (the median of regular prices as printed
+// before discounts, so sales don't pull it down) and a low to high range.
 import { randomBytes } from 'node:crypto';
 
 const MAX_LISTS = 30;
@@ -72,6 +72,13 @@ export function addItems(state, list, names, by, now) {
     added.push(item);
   }
   return added;
+}
+
+/** How many of an item to get (1 to 99); anything else is 1. */
+export function setQty(item, qty) {
+  const n = Math.floor(Number(qty));
+  if (n > 1) item.qty = Math.min(n, 99);
+  else delete item.qty;
 }
 
 /** Remove items by name. Returns what was removed. */
@@ -191,8 +198,9 @@ const usualCount = (state, list, name) => state.bought[list.id]?.[itemKey(name)]
  * bought there before that isn't on it (most often first; `minCount` 2 for
  * only what's bought again and again). Items and suggestions with a price
  * history carry `price` ({ est, low, high, n }); when anything is priced,
- * `currency` and `total` say what the items still to get should cost
- * ({ low, high, priced, count }, from the items priced in that currency).
+ * `currency` and `total` say what the whole list (ticked or not, each times
+ * its quantity) should cost ({ low, high, priced, count }, from the items
+ * priced in that currency).
  * Nothing is added for a list with no prices.
  */
 export function viewList(state, list, { suggest = MAX_USUAL, minCount = 1 } = {}) {
@@ -203,7 +211,7 @@ export function viewList(state, list, { suggest = MAX_USUAL, minCount = 1 } = {}
     return price ? { price } : {};
   };
   const items = [...list.items]
-    .map((i) => ({ ...i, usual: usualCount(state, list, i.name), ...priced(i.name) }))
+    .map((i) => ({ ...i, qty: i.qty ?? 1, usual: usualCount(state, list, i.name), ...priced(i.name) }))
     .sort((a, b) => Number(a.ticked) - Number(b.ticked) || b.usual - a.usual || a.at - b.at);
   const on = new Set(list.items.map((i) => itemKey(i.name)));
   const usual = Object.entries(known)
@@ -217,25 +225,20 @@ export function viewList(state, list, { suggest = MAX_USUAL, minCount = 1 } = {}
   return view;
 }
 
-/** What the unticked items with a price should cost: { low, high, priced, count }, or null if none is priced. */
+/** What every item on the list should cost, times its quantity: { low, high, priced, count }, or null if none is priced. */
 export function listTotal(items) {
-  const open = items.filter((i) => !i.ticked);
-  const priced = open.filter((i) => i.price);
+  const priced = items.filter((i) => i.price);
   if (!priced.length) return null;
-  return {
-    low: cents(priced.reduce((sum, i) => sum + i.price.low, 0)),
-    high: cents(priced.reduce((sum, i) => sum + i.price.high, 0)),
-    priced: priced.length,
-    count: open.length,
-  };
+  const sum = (key) => cents(priced.reduce((t, i) => t + i.price[key] * (i.qty ?? 1), 0));
+  return { low: sum('low'), high: sum('high'), priced: priced.length, count: items.length };
 }
 
 /** For chat: "Costco: milk, eggs (2 ticked)". */
 export function listText(state, list) {
   const v = viewList(state, list, { suggest: 5, minCount: 2 });
   const open = v.items.filter((i) => !i.ticked);
-  const about = (p) => (p ? ` · about ${money(p.est, v.currency)}` : '');
-  const lines = [`🛒 ${v.name}${open.length ? ':' : ' is empty.'}`, ...open.map((i) => `• ${i.name}${about(i.price)}`)];
+  const about = (p, qty = 1) => (p ? ` · about ${money(p.est * qty, v.currency)}` : '');
+  const lines = [`🛒 ${v.name}${open.length ? ':' : ' is empty.'}`, ...open.map((i) => `• ${i.qty > 1 ? `${i.qty} × ` : ''}${i.name}${about(i.price, i.qty)}`)];
   const ticked = v.items.length - open.length;
   if (ticked) lines.push(`(${ticked} ticked off)`);
   if (v.total) lines.push(`Estimated ${rangeText(v.total.low, v.total.high, v.currency)} (${v.total.priced} of ${v.total.count} item${v.total.count === 1 ? '' : 's'} priced)`);

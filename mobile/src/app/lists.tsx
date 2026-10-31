@@ -8,14 +8,14 @@ import { useTheme } from '../theme';
 
 // What one costs, from past receipts: the usual price, and the range it has been.
 type Price = { est: number; low: number; high: number; n: number };
-type Item = { id: string; name: string; by: string; at: number; ticked: boolean; usual: number; price?: Price };
+type Item = { id: string; name: string; by: string; at: number; ticked: boolean; qty: number; usual: number; price?: Price };
 type List = {
   id: string;
   name: string;
   createdBy: string;
   items: Item[];
   usual: { name: string; count: number; price?: Price }[];
-  // Set when anything on the list has a price: what's still to get, and how many of those are priced.
+  // Set when anything on the list has a price: the whole list (each times its quantity), and how many items are priced.
   currency?: string;
   total?: { low: number; high: number; priced: number; count: number };
 };
@@ -44,7 +44,8 @@ function rangeText(low: number, high: number, currency = '') {
  * bought, so usual items go first. Everything bought there before (receipts
  * too) is offered to pick from; typing in the add box narrows it. What receipts
  * showed it cost makes an estimated price on each item and an estimated range
- * for the list (always marked as an estimate: sales come and go).
+ * for the whole cart, shown at the bottom (regular prices, marked as an
+ * estimate; tap + on an item for more than one).
  */
 // What's bought before, shown before "Show all".
 const FIRST_USUAL = 24;
@@ -195,23 +196,10 @@ export default function ShoppingLists() {
                   }}
                 />
               }
-              contentContainerStyle={{ padding: 16, paddingTop: 4, gap: 6, paddingBottom: 120 }}
+              contentContainerStyle={{ padding: 16, paddingTop: 4, gap: 6, paddingBottom: 24 }}
               keyboardShouldPersistTaps="handled"
               ListHeaderComponent={
                 <View style={{ gap: 10, marginBottom: 8 }}>
-                  {list.total ? (
-                    <View
-                      accessible
-                      accessibilityLabel={`Estimated cost: ${rangeText(list.total.low, list.total.high, list.currency)}. ${list.total.priced} of ${list.total.count} items priced.`}
-                      style={{ gap: 2, padding: 12, borderRadius: 12, backgroundColor: t.brandSoft }}
-                    >
-                      <Text style={{ color: t.brand, fontSize: 13, fontWeight: '700' }}>ESTIMATED COST</Text>
-                      <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>{rangeText(list.total.low, list.total.high, list.currency)}</Text>
-                      <Text style={{ color: t.muted, fontSize: 13 }}>
-                        {list.total.priced} of {list.total.count} item{list.total.count === 1 ? '' : 's'} priced · from your past receipts; sales can change it
-                      </Text>
-                    </View>
-                  ) : null}
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <TextInput
                       value={adding}
@@ -260,16 +248,37 @@ export default function ShoppingLists() {
                   <Pressable
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: item.ticked }}
-                    accessibilityLabel={item.price ? `${item.name}, about ${money(item.price.est, list.currency)}` : item.name}
+                    accessibilityLabel={`${item.qty > 1 ? `${item.qty} ` : ''}${item.name}${item.price ? `, about ${money(item.price.est * item.qty, list.currency)}` : ''}`}
                     onPress={() => run('itemTick', { listId: list.id, itemId: item.id, ticked: !item.ticked })}
                     style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 48 }}
                   >
                     <Text style={{ fontSize: 22 }}>{item.ticked ? '☑️' : '⬜️'}</Text>
                     <Text style={{ flex: 1, color: item.ticked ? t.muted : t.text, fontSize: 17, textDecorationLine: item.ticked ? 'line-through' : 'none' }}>
+                      {item.qty > 1 ? `${item.qty} × ` : ''}
                       {item.name}
-                      {item.price ? <Text style={{ color: t.muted, fontSize: 14, textDecorationLine: 'none' }}> · about {money(item.price.est, list.currency)}</Text> : null}
+                      {item.price ? <Text style={{ color: t.muted, fontSize: 14, textDecorationLine: 'none' }}> · about {money(item.price.est * item.qty, list.currency)}</Text> : null}
                     </Text>
                     {item.usual >= 2 && !item.ticked ? <Text style={{ color: t.muted, fontSize: 12 }}>usual</Text> : null}
+                  </Pressable>
+                  {item.qty > 1 ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`One fewer ${item.name}`}
+                      hitSlop={4}
+                      onPress={() => run('itemQty', { listId: list.id, itemId: item.id, qty: item.qty - 1 })}
+                      style={{ minWidth: 36, minHeight: 40, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text style={{ color: t.brand, fontSize: 22, fontWeight: '600' }}>−</Text>
+                    </Pressable>
+                  ) : null}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`One more ${item.name}`}
+                    hitSlop={4}
+                    onPress={() => run('itemQty', { listId: list.id, itemId: item.id, qty: item.qty + 1 })}
+                    style={{ minWidth: 36, minHeight: 40, alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Text style={{ color: t.brand, fontSize: 22, fontWeight: '600' }}>+</Text>
                   </Pressable>
                   <Pressable
                     accessibilityRole="button"
@@ -284,9 +293,24 @@ export default function ShoppingLists() {
               )}
             />
           )}
-          {list && ticked ? (
-            <View style={{ position: 'absolute', left: 16, right: 16, bottom: 28 }}>
-              <Button variant="primary" title={`Done shopping · clear ${ticked} ticked`} onPress={() => run('doneShopping', { listId: list.id })} />
+          {list && (ticked || list.total) ? (
+            <View style={{ gap: 10, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 24, borderTopWidth: 1, borderTopColor: t.line, backgroundColor: t.bg }}>
+              {ticked ? <Button variant="primary" title={`Done shopping · clear ${ticked} ticked`} onPress={() => run('doneShopping', { listId: list.id })} /> : null}
+              {list.total ? (
+                <View
+                  accessible
+                  accessibilityLabel={`Estimated cart cost: ${rangeText(list.total.low, list.total.high, list.currency)}. ${list.total.priced} of ${list.total.count} items priced.`}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700' }}>ESTIMATED CART</Text>
+                    <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>{rangeText(list.total.low, list.total.high, list.currency)}</Text>
+                  </View>
+                  <Text style={{ color: t.muted, fontSize: 13, textAlign: 'right', flexShrink: 1 }}>
+                    {list.total.priced} of {list.total.count} item{list.total.count === 1 ? '' : 's'} priced{'\n'}regular prices, from receipts
+                  </Text>
+                </View>
+              ) : null}
             </View>
           ) : null}
         </>

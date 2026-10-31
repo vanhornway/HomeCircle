@@ -604,7 +604,11 @@ test('shopping lists: in chat and from the app; a receipt counts as bought and p
   lists = await mom.agentRpc('itemAdd', { listId: costco.id, names: ['paper towels'] });
   const priced = lists.find((l) => l.id === costco.id);
   assert.deepEqual([priced.currency, priced.total], ['USD', { low: 17.99, high: 21.99, priced: 1, count: 3 }]);
-  await mom.agentRpc('itemRemove', { listId: costco.id, itemId: priced.items.find((i) => i.name === 'paper towels').id });
+  // Two of them: twice the price.
+  const towels = priced.items.find((i) => i.name === 'paper towels');
+  lists = await mom.agentRpc('itemQty', { listId: costco.id, itemId: towels.id, qty: 2 });
+  assert.deepEqual(lists.find((l) => l.id === costco.id).total, { low: 35.98, high: 43.98, priced: 1, count: 3 });
+  await mom.agentRpc('itemRemove', { listId: costco.id, itemId: towels.id });
   await mom.askAgent("what's on the Costco list?");
   await until(mom, (c) => (lastFromAgent(c)?.body.text === '🛒 Costco:\n• Eggs\n• batteries' ? 1 : null));
 });

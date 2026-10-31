@@ -11,7 +11,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { calendarUrl, fetchPublic, parseIcs, freeStretches, isDayOff } from './calendar.js';
 import { isPdf, pdfText } from './pdf.js';
 import { readFile } from './read-file.js';
-import { addItems, cleanCurrency, cleanPrice, createList, doneShopping, emptyLists, findList, itemKey, listText, parseListCommand, recipeWanted, recordBought, removeItems, shoppingName, splitItems, viewList } from './lists.js';
+import { addItems, cleanCurrency, cleanPrice, createList, doneShopping, emptyLists, findList, itemKey, listText, parseListCommand, recipeWanted, recordBought, removeItems, setQty, shoppingName, splitItems, viewList } from './lists.js';
 import { addMonths, addReminder, canSeeReminder, cleanReminder, dueMessage, fmtDue, markDone, reminderLine, repeatText } from './reminders.js';
 import { exportVault, zipVault } from './export.js';
 
@@ -158,7 +158,7 @@ export const UPLOAD = {
         // ISO currency code ("USD") and the receipt's date (YYYY-MM-DD), when printed.
         currency: orNull({ type: 'string' }),
         date: orNull({ type: 'string' }),
-        // price: what one of it cost, as paid (after any discount on the receipt), else null.
+        // price: the regular price of one of it (before any discount on the receipt), else null.
         items: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, price: orNull({ type: 'number' }) }, required: ['name', 'price'], additionalProperties: false } },
       },
       required: ['store', 'currency', 'date', 'items'],
@@ -1352,7 +1352,7 @@ export class Brain {
       `You read a file a family sent their helper, ${this.name}: a photo, a scan, a document or a spreadsheet. Today is ${this.today()}.`,
       'Read all of it, including handwriting and text in pictures. People and places in text appear as stand-ins (Person A, Place 1): copy them exactly as written.',
       'title: what the file is, short ("Lincoln Elementary 2026–27 calendar", "Soccer team contacts"). summary: one or two sentences on what it says.',
-      'If it is a shop’s receipt, order history or a list of what is bought at a store: receipt with the store’s name ("Costco") and every item on it, however many (all pages), each as name in plain words a family would put on a shopping list ("milk", "paper towels", not codes) and price: what ONE of it cost, as paid (a "2 @ 4.99" line is 4.99; take off an instant saving or coupon printed under the item; the price for a weighed item as charged), null when no price is shown. currency: the three-letter code of the receipt’s currency ("USD", "CAD", "GBP", "PKR"), null if you can’t tell. date: the receipt or order date as YYYY-MM-DD, null if not shown. Leave out totals, tax, tips and fees; then events and notes are empty. Otherwise receipt null.',
+      'If it is a shop’s receipt, order history or a list of what is bought at a store: receipt with the store’s name ("Costco") and every item on it, however many (all pages), each as name in plain words a family would put on a shopping list ("milk", "paper towels", not codes) and price: the REGULAR price of ONE of it, the price printed on the item’s own line before any discount (a "2 @ 4.99" line is 4.99; ignore instant savings, coupon and markdown lines, never subtract them; if the receipt shows a regular or was price, use that; the price for a weighed item as charged), null when no price is shown. currency: the three-letter code of the receipt’s currency ("USD", "CAD", "GBP", "PKR"), null if you can’t tell. date: the receipt or order date as YYYY-MM-DD, null if not shown. Leave out totals, tax, tips and fees; then events and notes are empty. Otherwise receipt null.',
       'If it is a calendar or schedule with many dates (a school calendar, a season schedule): calendar true, and events with summary, start and end (YYYY-MM-DD, end null for one day) and off: true for days without school or activity. school: true for a school calendar.',
       'Otherwise notes: one note per thing worth remembering (a date, a deadline, contact details, a decision, a list, a recipe), each with type, a short title, a body of one to three sentences linking people and places as [[Person A]] (a recipe: all of it, as below), people, start/end when dated, and role null. Skip what isn’t worth keeping.',
       RECIPE_RULE,
@@ -1548,6 +1548,7 @@ export class Brain {
       case 'listDelete':
       case 'itemAdd':
       case 'itemTick':
+      case 'itemQty':
       case 'itemRemove':
       case 'doneShopping': {
         if (!this.agent.feature('shoppingLists')) throw new BrainError('Shopping lists are turned off in this circle');
@@ -1565,6 +1566,10 @@ export class Brain {
         if (op === 'itemTick') {
           const item = list.items.find((i) => i.id === args.itemId);
           if (item) item.ticked = !!args.ticked;
+        }
+        if (op === 'itemQty') {
+          const item = list.items.find((i) => i.id === args.itemId);
+          if (item) setQty(item, args.qty);
         }
         if (op === 'itemRemove') list.items = list.items.filter((i) => i.id !== args.itemId);
         if (op === 'doneShopping') doneShopping(state, list, now);
