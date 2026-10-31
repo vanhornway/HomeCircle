@@ -206,20 +206,25 @@ test('a phone that missed more than a page opens on the newest and fills the gap
   const w = watch(phone);
   await phone.start();
   const first = texts(phone);
-  // The cached 256 plus the newest page: the latest is on screen without waiting for the 520.
+  // The cached copy and the newest page: the latest is on screen without waiting for the 520.
   assert.equal(first.at(-1), 'missed 519');
-  assert.equal(first.length, 256 + 80);
+  assert.equal(first.length, 80);
   assert.equal(phone.hasOlder, true);
   assert.equal(w.calls.slice(0, 2).map((c) => c[0]).join(), 'messages,messagesTail');
   await phone.backfillHistory();
+  // Missing about as many as the phone keeps: the old copy would only leave a hole, so the newest 520 come in instead.
   assert.equal(phone.hasOlder, false);
-  assert.deepEqual(texts(phone).slice(-520), run('missed', 520));
-  assert.equal(texts(phone).length, 256 + 520);
-  // The cached history wasn't opened again; only what was missed.
-  assert.ok(w.opened < 520 + phone.memberList().length + phone.locations.size + 10, `opened ${w.opened}`);
-  // Read back only as far as the cache, not all the way down again.
+  const have = texts(phone);
+  assert.ok(have.length >= 500 && have.length < 500 + 100, `${have.length} messages`);
+  assert.deepEqual(have.slice(-520), run('missed', 520));
+  assert.ok(w.opened < 600 + phone.memberList().length + phone.locations.size, `opened ${w.opened}`);
   const before = w.calls.filter((c) => c[0] === 'messagesBefore');
   assert.ok(before.length <= 6, `${before.length} pages read back`);
+  await phone.flushCache();
+  // And what's kept is the newest 500.
+  const saved = JSON.parse(await cache.getItem(`${phone.accountKey}.messages`));
+  assert.equal(saved.rows.length, 500);
+  assert.equal(saved.backSeq, 0);
   await phone.flushCache();
   kill(phone);
 });
@@ -267,7 +272,8 @@ test('a background task that only sends or fetches does not replace the cache wi
   await task.flushCache();
   kill(task);
   const afterPost = JSON.parse(await cache.getItem(key));
-  assert.equal(afterPost.rows.length, before.rows.length + 1);
+  assert.equal(afterPost.rows.at(-1).opened.body.text, 'arrived at school');
+  assert.equal(afterPost.rows.length, Math.min(500, before.rows.length + 1));
   assert.ok(afterPost.fetchedSeq >= before.fetchedSeq);
   assert.equal(afterPost.backSeq, before.backSeq);
 
@@ -282,7 +288,8 @@ test('a background task that only sends or fetches does not replace the cache wi
   assert.ok(w.calls[0][1] > 0);
   assert.ok(w.opened <= 2, `opened ${w.opened}`);
   const afterFetch = JSON.parse(await cache.getItem(key));
-  assert.equal(afterFetch.rows.length, afterPost.rows.length + 1);
+  assert.equal(afterFetch.rows.at(-1).opened.body.text, 'push me');
+  assert.equal(afterFetch.rows.length, Math.min(500, afterPost.rows.length + 1));
   assert.equal(afterFetch.state.members.length, (await mom.api.state()).members.length);
 });
 

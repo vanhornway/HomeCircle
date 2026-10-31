@@ -86,7 +86,7 @@ const FIRST_PAGE = 80;
 const FORWARD_PAGE = 500;
 const OLDER_PAGE = 100;
 // The most messages kept on the phone between launches.
-const CACHE_MAX = 1000;
+const CACHE_MAX = 500;
 
 export class CircleClient {
   /**
@@ -150,9 +150,6 @@ export class CircleClient {
     // fetched yet (0 = all of it is). Fetching starts from the newest
     // messages and works back, so this is what reading further back needs.
     this.backSeq = 0;
-    // A run of older messages from the cache that a gap cut off from the
-    // newest ones: { back, top }, joined up again when reading back reaches it.
-    this._older = null;
     this._generation = (this._generation || 0) + 1;
     this.connection = null;
     this.status = 'offline';
@@ -1932,10 +1929,13 @@ export class CircleClient {
   async _openTail(rows, limit) {
     const full = rows.length >= limit;
     if (this.fetchedSeq > 0 && full) {
-      // What was held before is cut off from these by a gap.
-      this._older = this.backSeq < this.fetchedSeq ? { back: this.backSeq, top: this.fetchedSeq } : null;
-    } else {
-      this._older = null;
+      // Missed about as many messages as the phone keeps: what it had is too
+      // old to join up with these, and would only leave a hole. Reading back
+      // fills in the newest ones instead.
+      this.messages.length = 0;
+      this.seenMessageIds.clear();
+      this.seenNonces.clear();
+      this._cacheRows.clear();
     }
     this.backSeq = full ? rows[0].seq - 1 : 0;
     await this._take(rows);
@@ -1963,15 +1963,7 @@ export class CircleClient {
     const { messages } = await this.api.messagesBefore(this.backSeq + 1, limit);
     if (gen !== this._generation) return 0;
     await this._take(messages, { forward: false });
-    const full = messages.length >= limit;
-    let back = full ? messages[0].seq - 1 : 0;
-    if (full && this._older && back <= this._older.top) {
-      // Reached the run from the cache: everything in between is held now.
-      back = this._older.back;
-      this._older = null;
-    } else if (!full) {
-      this._older = null;
-    }
+    let back = messages.length >= limit ? messages[0].seq - 1 : 0;
     // The cache keeps this many; reading further back would only be dropped again.
     if (this._cacheRows.size >= CACHE_MAX) back = 0;
     this.backSeq = back;
@@ -2081,8 +2073,6 @@ export class CircleClient {
     if (!this.fetchedSeq) {
       this.fetchedSeq = Number(c.fetchedSeq) || 0;
       this.backSeq = c.v === 2 ? Math.max(0, Number(c.backSeq) || 0) : 0;
-      const o = c.older;
-      this._older = o && Number.isInteger(o.back) && Number.isInteger(o.top) && o.top > o.back ? { back: o.back, top: o.top } : null;
     }
     if (Array.isArray(c.locations) && !this.locations.size) {
       this._rawLocations = c.locations;
@@ -2121,7 +2111,7 @@ export class CircleClient {
     return run;
   }
 
-  /** Kept as long as the circle keeps messages, and at most the newest 1000. */
+  /** Kept as long as the circle keeps messages, and at most the newest 500. */
   async _writeCache() {
     if (!this.cache || !this.account) return;
     const gen = this._generation;
@@ -2132,12 +2122,11 @@ export class CircleClient {
     const since = Date.now() - days * 86400_000;
     const rows = [...this._cacheRows.values()].filter((r) => !r.createdAt || r.createdAt >= since).sort((a, b) => a.seq - b.seq);
     const kept = rows.slice(-CACHE_MAX);
-    let { backSeq, _older: older } = this;
+    let { backSeq } = this;
     if (kept.length < this._cacheRows.size) this._cacheRows = new Map(kept.map((r) => [r.seq, r]));
     // Messages cut off for being too many aren't fetched again.
     if (kept.length < rows.length) {
       backSeq = 0;
-      older = null;
     }
     await this.cache.setItem(
       this._cacheKey,
@@ -2147,7 +2136,6 @@ export class CircleClient {
         memberId: this.account.memberId,
         fetchedSeq: this.fetchedSeq,
         backSeq,
-        older,
         state: this.state,
         locations: this._rawLocations,
         rows: kept,
