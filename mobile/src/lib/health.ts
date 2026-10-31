@@ -43,6 +43,26 @@ export type CheckItem = {
 const openAppSettings = () => Linking.openSettings();
 const packageName = () => Constants.expoConfig?.android?.package ?? 'us.umair.homecircle';
 
+/**
+ * Whether Android lets HomeCircle run freely in the background ("Unrestricted").
+ * Without it a phone that sits locked holds back the silent wake-ups messages
+ * depend on, so nothing sounds until it's picked up. null where it can't be read.
+ */
+export async function batteryUnrestricted(): Promise<boolean | null> {
+  if (Platform.OS !== 'android') return null;
+  const optimized = await Battery.isBatteryOptimizationEnabledAsync().catch(() => null);
+  return optimized == null ? null : !optimized;
+}
+
+/** Asks directly for the exemption; falls back to the list of apps. */
+export async function requestBatteryExemption() {
+  try {
+    await IntentLauncher.startActivityAsync('android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS', { data: `package:${packageName()}` });
+  } catch {
+    await IntentLauncher.startActivityAsync('android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS').catch(openAppSettings);
+  }
+}
+
 /** The setup checklist for this phone, with a one-tap fix for each item. */
 export async function setupChecklist(): Promise<CheckItem[]> {
   const [fg, bg, notif, optimized, bgTask, saver] = await Promise.all([
@@ -97,18 +117,11 @@ export async function setupChecklist(): Promise<CheckItem[]> {
       {
         id: 'battery',
         title: 'Battery: Unrestricted',
-        why: 'Battery optimization can stop updates when the phone sits still for a while.',
+        why: 'Otherwise Android holds back message wake-ups while the phone is locked, so nothing sounds until you pick it up, and location updates can stop when it sits still.',
         ok: optimized === false,
         unknown: optimized == null,
         fixLabel: 'Allow',
-        fix: async () => {
-          // Asks directly for the exemption; falls back to the list of apps.
-          try {
-            await IntentLauncher.startActivityAsync('android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS', { data: `package:${packageName()}` });
-          } catch {
-            await IntentLauncher.startActivityAsync('android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS').catch(openAppSettings);
-          }
-        },
+        fix: requestBatteryExemption,
       },
       {
         id: 'unused',

@@ -68,6 +68,13 @@ export interface Settings {
   locationView: 'basic' | 'advanced';
   /** Show sender and text in notifications (otherwise just "New message"). */
   showPreviews: boolean;
+  /**
+   * Android: when the silent wake-up for a message goes unanswered because the
+   * phone is asleep, let the server send one generic visible alert ("New
+   * message in your circle") that sounds at once. Off until you opt in: that
+   * text can show on a locked screen before the app decrypts anything.
+   */
+  backupAlerts: boolean;
   /** Circles (by id) this phone doesn't share its location with. */
   pausedCircles: string[];
   /** Post "arrived at / left" messages to the group chats when this phone crosses a place. */
@@ -115,6 +122,7 @@ export const DEFAULT_SETTINGS: Settings = {
   location: { ...STOPS[DEFAULT_STOP], fullDetailCharging: true, saveWithBatterySaver: true },
   locationView: 'basic',
   showPreviews: true,
+  backupAlerts: false,
   pausedCircles: [],
   announcePlaces: true,
   showPlaceAlerts: true,

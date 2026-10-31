@@ -7,6 +7,7 @@ import { AndroidImportance } from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { allClients } from './circle';
+import { getSettings } from './storage';
 
 Notifications.setNotificationHandler({
   handleNotification: async (n) => {
@@ -45,7 +46,9 @@ export async function registerPush({ ask = false } = {}): Promise<string | null>
   }
   try {
     const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
-    await Promise.allSettled(allClients().map((c) => c.api.putPush(token, Platform.OS)));
+    // Android: whether this person wants a backup alert when the wake-up for a message is held back.
+    const fallback = Platform.OS === 'android' && (await getSettings()).backupAlerts;
+    await Promise.allSettled(allClients().map((c) => c.api.putPush(token, Platform.OS, { fallback })));
     return token;
   } catch (e) {
     if (__DEV__) console.warn('[homecircle] push registration failed', e);

@@ -5,6 +5,8 @@ import { Button, Card, P } from '../components/ui';
 import { clearDiagnostics, diagnosticsText, formatEntry, formatGap, readDiagnostics, summarize, type DiagEntry } from '../lib/diagnostics';
 import { errorText, getClient } from '../lib/circle';
 import { energyReport, formatMah, type Counts } from '../lib/energy';
+import { pushTimingLines } from '../lib/pushTiming';
+import { batteryUnrestricted } from '../lib/health';
 import { useTheme } from '../theme';
 
 /** "today 9:12" or "Oct 25, 18:40". */
@@ -36,8 +38,10 @@ export default function Diagnostics() {
   const [entries, setEntries] = useState<DiagEntry[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [energy, setEnergy] = useState<Awaited<ReturnType<typeof energyReport>> | null>(null);
+  const [battery, setBattery] = useState<boolean | null>(null);
   const load = useCallback(() => {
     readDiagnostics().then(setEntries);
+    batteryUnrestricted().then(setBattery).catch(() => {});
     energyReport().then(setEnergy);
   }, []);
   useFocusEffect(load);
@@ -90,6 +94,25 @@ export default function Diagnostics() {
               {stat('Locate requests', s.locateRequests)}
               {stat(s.gapOngoing ? 'Since last upload' : 'Longest without an upload', formatGap(s.longestGapMin))}
               {stat('Errors', s.errors)}
+            </Card>
+          ) : null}
+          {entries && (pushTimingLines(entries).length || battery !== null) ? (
+            <Card style={{ gap: 6 }}>
+              <Text style={{ color: t.text, fontSize: 16, fontWeight: '700' }}>Message alerts</Text>
+              {pushTimingLines(entries).map((l) => (
+                <Text key={l} style={{ color: t.muted, fontSize: 13, lineHeight: 18 }}>
+                  {l}
+                </Text>
+              ))}
+              {battery !== null ? (
+                <Text style={{ color: battery ? t.muted : t.danger, fontSize: 13, lineHeight: 18 }}>
+                  {battery ? 'Battery: Unrestricted.' : 'Battery: Optimized. Android may hold back wake-ups while the phone is locked (Setup check → Battery).'}
+                </Text>
+              ) : null}
+              <Text style={{ color: t.muted, fontSize: 12, lineHeight: 17 }}>
+                “In transit” is how long a push waited between your server’s relay sending it and this phone receiving it. Minutes or hours here with the phone locked means Android
+                held it back.
+              </Text>
             </Card>
           ) : null}
           {energy ? (
