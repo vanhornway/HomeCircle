@@ -12,7 +12,9 @@
       "bundleIdentifier": "us.umair.homecircle",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "LSApplicationQueriesSchemes": ["whatsapp"]
+        "LSApplicationQueriesSchemes": [
+          "whatsapp"
+        ]
       }
     },
     "android": {
@@ -104,10 +106,20 @@
         {
           "android": {
             "manifestQueries": {
-              "package": ["com.whatsapp", "com.whatsapp.w4b"],
-              "intent": [{ "action": "VIEW", "data": { "scheme": "whatsapp" } }]
+              "package": [
+                "com.whatsapp",
+                "com.whatsapp.w4b"
+              ],
+              "intent": [
+                {
+                  "action": "VIEW",
+                  "data": {
+                    "scheme": "whatsapp"
+                  }
+                }
+              ]
             },
-            "extraProguardRules": "# WorkManager (pulled in by expo-background-task) creates its Room database by reflection;\n# without these rules R8 strips it and the app crashes on launch.\n-keep class * extends androidx.room.RoomDatabase { <init>(); }\n-keep class androidx.work.impl.** { *; }\n"
+            "extraProguardRules": "# WorkManager (pulled in by expo-background-task) creates its Room database by reflection;\n# without these rules R8 strips it and the app crashes on launch.\n-keep class * extends androidx.room.RoomDatabase { <init>(); }\n-keep class androidx.work.impl.** { *; }\n# WebRTC (react-native-webrtc): its native library calls these classes by name, so R8 must keep them; an optional AV1 decoder helper it mentions isn't bundled.\n-keep class org.webrtc.** { *; }\n-dontwarn org.webrtc.**\n"
           }
         }
       ],
