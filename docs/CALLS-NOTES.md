@@ -90,6 +90,6 @@ Phones fetch short-lived credentials (6 hours by default) from `GET /calls/confi
 
 1. Should the Decline button decline without opening the app? It needs a native receiver that can send the sealed decline (a headless task) or a server "decline by token" path; today it opens the app.
 2. A "missed call" line in the chat (sealed DM from the caller) so history shows it, and a "called" line for answered calls?
-3. Which STUN servers are acceptable by default (they see each phone's address at call start); the default is Cloudflare then Google, change with `CALLS_STUN` or leave empty-list to your own coturn (it also does STUN).
+3. Which STUN servers are acceptable by default (they see each phone's address at call start); the default is Cloudflare then Google, change with `CALLS_STUN`, for example to your own coturn (it also answers STUN).
 4. Whether to add Core-Telecom now, and the Play Console declarations (full-screen intent, `phoneCall` service) if the app goes to Google Play.
 5. Calls from or to the web client (browsers have WebRTC; the web client has no push, so it could only ring while open).
