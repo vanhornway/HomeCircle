@@ -49,12 +49,19 @@ class DrawerMotion {
   }
 }
 
-/** A drawer's controls: its height (for things that sit above it) and its state. */
+/**
+ * A drawer's controls: its height (for things that sit above it) and its state.
+ * `closedH` is the least it closes to; it closes to the height of its handle
+ * and header if that's more (large text makes the header taller, and a fixed
+ * height would cut it off).
+ */
 export function useDrawer(closedH: number, openH: number) {
   const [open, setOpen] = useState(kept.open);
-  const [motion] = useState(() => new DrawerMotion(closedH, openH, setOpen));
-  useEffect(() => motion.sizes(closedH, openH), [motion, closedH, openH]);
-  return { motion, open, toggle: () => motion.snap(!open) };
+  const [headerH, setHeaderH] = useState(0);
+  const closed = Math.max(closedH, headerH);
+  const [motion] = useState(() => new DrawerMotion(closed, openH, setOpen));
+  useEffect(() => motion.sizes(closed, openH), [motion, closed, openH]);
+  return { motion, open, setHeaderH, toggle: () => motion.snap(!open) };
 }
 
 /**
@@ -82,7 +89,11 @@ export function Drawer({ drawer, header, children }: { drawer: ReturnType<typeof
         overflow: 'hidden',
       }}
     >
-      <View {...drawer.motion.pan.panHandlers}>
+      <View
+        {...drawer.motion.pan.panHandlers}
+        // The handle and header as tall as they really are, so they're never cut off.
+        onLayout={(e) => drawer.setHeaderH(Math.ceil(e.nativeEvent.layout.height) + 2)}
+      >
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ expanded: drawer.open }}

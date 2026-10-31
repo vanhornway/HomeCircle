@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
-import { AppState } from 'react-native';
+import { AppState, PixelRatio } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Tabs } from 'expo-router/js-tabs';
 import { Redirect, router, useRouter } from 'expo-router';
 import { SKINS, useSkin } from '../../skins';
@@ -338,6 +339,11 @@ function FullTabs() {
     const sub = AppState.addEventListener('change', (s) => s === 'active' && checkForUpdate().catch(() => {}));
     return () => sub.remove();
   }, []);
+  // The labels follow the phone's text size up to 1.5 times; the bar grows with them,
+  // or the bottom of the words is cut off (a fixed-height bar clips larger text).
+  const insets = useSafeAreaInsets();
+  const labelSize = Math.round(13 * Math.min(PixelRatio.getFontScale(), 1.5));
+  const barHeight = 6 + 28 + 4 + Math.ceil(labelSize * 1.3) + 8 + insets.bottom;
   return (
     <Tabs
       // Back from a tab returns to the tab you came from.
@@ -346,9 +352,10 @@ function FullTabs() {
         headerShown: false,
         tabBarActiveTintColor: t.brand,
         tabBarInactiveTintColor: t.muted,
-        tabBarStyle: { backgroundColor: t.surface, borderTopColor: t.line },
+        tabBarStyle: { backgroundColor: t.surface, borderTopColor: t.line, height: barHeight },
         // Bigger targets: larger icons and labels, more padding per tab.
-        tabBarLabelStyle: { fontSize: 13, fontWeight: '600' },
+        tabBarAllowFontScaling: false,
+        tabBarLabelStyle: { fontSize: labelSize, fontWeight: '600' },
         tabBarItemStyle: { paddingTop: 6 },
       }}
     >
