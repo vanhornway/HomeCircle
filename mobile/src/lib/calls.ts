@@ -4,12 +4,12 @@
 // (components/CallHost.tsx). One call at a time, in any circle. See
 // docs/CALLS-PLAN.md.
 import { useSyncExternalStore } from 'react';
-import { AppState, Platform } from 'react-native';
+import { Alert, AppState, Platform } from 'react-native';
 import * as Network from 'expo-network';
 import { randomId, type CircleClient, type CallSignal } from '@homecircle/core';
 import { VoiceCallEngine, type CallSnapshot, type EndInfo, type IceServer } from './callEngine';
-import { FALLBACK_STUN, createPeerConnection, ensureBluetooth, getLocalAudio, rtcAvailable } from './rtc';
-import { allClients, clientForCircle } from './circle';
+import { FALLBACK_STUN, createPeerConnection, ensureBluetooth, ensureMicrophone, getLocalAudio, rtcAvailable } from './rtc';
+import { allClients, clientForCircle, errorText } from './circle';
 import { sasWords } from './callSas';
 import { diag } from './diagnostics';
 import {
@@ -260,6 +260,10 @@ export async function startCall(client: CircleClient, peerId: string): Promise<v
   // Calling the person who is calling you: that is answering.
   if (snap.phase === 'incoming' && snap.peerId === peerId && active === client) return answerCall();
   if (snap.phase !== 'idle') throw new Error('You’re already on a call.');
+  // The microphone first: the service that keeps a call going (started as the
+  // call begins) is a microphone service, and Android stops the app if it
+  // starts without the permission.
+  await ensureMicrophone();
   attachCalls(client);
   active = client;
   publish({ circleId: client.circleId });
@@ -269,6 +273,14 @@ export async function startCall(client: CircleClient, peerId: string): Promise<v
 }
 
 export async function answerCall() {
+  // As for calling: the microphone before the call (and its service) starts.
+  try {
+    await ensureMicrophone();
+  } catch (e) {
+    await engine.decline();
+    Alert.alert('Couldn’t answer', errorText(e));
+    return;
+  }
   await engine.accept();
 }
 export async function declineCall() {

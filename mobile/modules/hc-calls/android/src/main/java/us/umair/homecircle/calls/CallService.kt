@@ -1,5 +1,6 @@
 package us.umair.homecircle.calls
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -7,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -52,7 +54,11 @@ class CallService : Service() {
       .setCategory(Notification.CATEGORY_CALL)
       .apply { if (pi != null) setContentIntent(pi) }
       .build()
-    startAsForeground(notification)
+    // Android refused every kind of service: no call service, but no crash either.
+    if (!startAsForeground(notification)) {
+      stopSelf()
+      return START_NOT_STICKY
+    }
     acquireLocks()
     return START_NOT_STICKY
   }
@@ -62,17 +68,37 @@ class CallService : Service() {
     return if (id != 0) id else applicationInfo.icon
   }
 
-  private fun startAsForeground(notification: Notification) {
-    if (Build.VERSION.SDK_INT >= 30) {
-      // phoneCall needs MANAGE_OWN_CALLS (declared); if Android still refuses it, the microphone type alone keeps the call.
-      try {
-        startForeground(ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
-      } catch (e: SecurityException) {
-        startForeground(ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+  /**
+   * As a foreground service of the first type Android accepts: phoneCall and
+   * microphone, then microphone, then phoneCall. The microphone types need
+   * RECORD_AUDIO already granted (Android stops the app otherwise), so they're
+   * only tried with it. False if every one is refused.
+   */
+  private fun startAsForeground(notification: Notification): Boolean {
+    if (Build.VERSION.SDK_INT < 30) {
+      return try {
+        startForeground(ID, notification)
+        true
+      } catch (e: RuntimeException) {
+        false
       }
-    } else {
-      startForeground(ID, notification)
     }
+    val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+    val types = mutableListOf<Int>()
+    if (mic) {
+      types.add(ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+      types.add(ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+    }
+    types.add(ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL)
+    for (type in types) {
+      try {
+        startForeground(ID, notification, type)
+        return true
+      } catch (e: RuntimeException) {
+        // SecurityException, or ForegroundServiceStartNotAllowedException: try the next type.
+      }
+    }
+    return false
   }
 
   private fun acquireLocks() {
