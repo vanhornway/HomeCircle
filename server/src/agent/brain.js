@@ -1205,15 +1205,32 @@ export class Brain {
     const { today, hour } = this._localNow();
     if (hour < 9) return;
     const list = this._reminders();
-    const admins = this.agent.people().filter((p) => this.agent.isAdmin(p.id)).map((p) => p.id);
     for (const r of list) {
       const text = dueMessage(r, today);
       if (!text) continue;
-      // A private one (a refill) only to its person.
-      const to = new Set((r.only ? [r.only] : [...admins, r.createdBy]).filter((id) => this.agent.people().some((p) => p.id === id)));
-      for (const id of to) await this.agent.send(id, { text, thread: 'dm', reminder: { id: r.id } }).catch(() => {});
+      for (const id of this._reminderPeople(r)) await this.agent.send(id, { text, thread: 'dm', reminder: { id: r.id } }).catch(() => {});
     }
     this._saveReminders(list);
+  }
+
+  /** Who hears about a reminder: every admin and whoever added it; a private one (a refill) only its person. */
+  _reminderPeople(r) {
+    const admins = this.agent.people().filter((p) => this.agent.isAdmin(p.id)).map((p) => p.id);
+    return new Set((r.only ? [r.only] : [...admins, r.createdBy]).filter((id) => this.agent.people().some((p) => p.id === id)));
+  }
+
+  /**
+   * Done, told to everyone who got the reminder (except `skip`, who has had
+   * their own answer), so their cards close too. `reminderDoneId` is what the
+   * app looks for; older apps just show the line.
+   */
+  async _announceReminderDone(r, by, skip = null) {
+    const who = this._nameOf(by);
+    const next = r.done ? '' : ` Next one: ${fmtDue(r.due)}.`;
+    for (const id of this._reminderPeople(r)) {
+      if (id === skip) continue;
+      await this.agent.send(id, { text: `✅ ${id === by ? `${r.title} is` : `${who} marked ${r.title}`} done.${next}`, thread: 'dm', reminderDoneId: r.id }).catch(() => {});
+    }
   }
 
   async _reminderDone(msg, { id }) {
@@ -1223,7 +1240,8 @@ export class Brain {
     if (r.done) return this.reply(msg, `${r.title} was already marked done.`);
     markDone(r, msg.from, this.now().getTime());
     this._saveReminders(list);
-    await this.reply(msg, r.done ? `✅ ${r.title} is done.` : `✅ ${r.title} is done. Next one: ${fmtDue(r.due)}; I’ll remind you again before then.`);
+    await this.reply(msg, r.done ? `✅ ${r.title} is done.` : `✅ ${r.title} is done. Next one: ${fmtDue(r.due)}; I’ll remind you again before then.`, { reminderDoneId: r.id });
+    await this._announceReminderDone(r, msg.from, msg.from);
   }
 
   // --- files people send --------------------------------------------------
@@ -1573,6 +1591,7 @@ export class Brain {
         if (op === 'reminderDone') markDone(r, by, now);
         if (op === 'reminderRemove') list.splice(list.indexOf(r), 1);
         if (op !== 'reminders') this._saveReminders(list);
+        if (op === 'reminderDone') await this._announceReminderDone(r, by);
         return this._rpcReply(msg, true, list.filter((x) => canSeeReminder(x, by)).map((x) => ({ ...x, createdByName: this._nameOf(x.createdBy) })).sort((a, b) => Number(a.done) - Number(b.done) || a.due.localeCompare(b.due)));
       }
       case 'deleteFile':

@@ -205,8 +205,13 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     `${client.members.get(m.from)?.name || 'Former member'} ${m.body?.action === 'left' ? 'left' : 'arrived at'} ${m.body?.placeName || 'a place'} · ${clock(typeof m.body?.at === 'number' ? m.body.at : m.ts)}`;
   const pill = { alignSelf: 'center', color: t.muted, backgroundColor: t.surface2, fontSize: fs(14), paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, overflow: 'hidden', marginVertical: 4 } as const;
   // Each reminder from the helper: Done goes on its latest message, earlier ones are history.
+  // The helper's "✅ … done" says which reminder, and closes the cards sent before it.
   const latestReminder = new Map<string, string>();
-  for (const x of all) if (typeof x.body?.reminder?.id === 'string') latestReminder.set(x.body.reminder.id, x.id);
+  const reminderDoneAt = new Map<string, number>();
+  for (const x of all) {
+    if (typeof x.body?.reminder?.id === 'string') latestReminder.set(x.body.reminder.id, x.id);
+    if (typeof x.body?.reminderDoneId === 'string') reminderDoneAt.set(x.body.reminderDoneId, x.seq);
+  }
 
   const renderRow = ({ item }: { item: ChatRow }) => {
     if (item.type === 'message') return render(item.m);
@@ -276,7 +281,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
         {reminderId ? (
           <ReminderCard
             m={m}
-            state={savedLists.has(reminderId) ? 'done' : latestReminder.get(reminderId) === m.id ? 'open' : 'earlier'}
+            state={savedLists.has(reminderId) || (reminderDoneAt.get(reminderId) ?? -1) > m.seq ? 'done' : latestReminder.get(reminderId) === m.id ? 'open' : 'earlier'}
             onLongPress={() => setReactingTo(m)}
             onDone={() => {
               setSavedLists((s) => new Set(s).add(reminderId));
