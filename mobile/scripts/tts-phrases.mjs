@@ -257,6 +257,27 @@ function split(x, n, label) {
   return Array.from({ length: n }, (_, i) => x.subarray(bounds[i * 2], bounds[i * 2 + 1]));
 }
 
+/** Hold peaks under -1 dBFS: gain dips 5 ms ahead of a peak and recovers over 50 ms. */
+function limit(x) {
+  const ahead = Math.round(RATE * 0.005);
+  const need = x.map((s) => Math.min(1, PEAK / (Math.abs(s) || 1e-9)));
+  const env = new Float32Array(x.length);
+  const recover = 1 - Math.exp(-1 / (RATE * 0.05));
+  let g = 1;
+  for (let i = 0; i < x.length; i++) {
+    let low = 1;
+    for (let k = Math.max(0, i - ahead); k <= Math.min(x.length - 1, i + ahead); k++) low = Math.min(low, need[k]);
+    g = Math.min(low, g + (1 - g) * recover);
+    env[i] = g;
+  }
+  // Smooth the dips so they don't click, then clamp what's left.
+  return x.map((s, i) => {
+    let sum = 0;
+    for (let k = i - ahead; k <= i + ahead; k++) sum += env[Math.max(0, Math.min(x.length - 1, k))];
+    return Math.max(-PEAK, Math.min(PEAK, s * Math.min(env[i], sum / (2 * ahead + 1))));
+  });
+}
+
 /** Trim to PAD seconds of silence (or the recording's own fade) each end. */
 function trim(x) {
   const v = voiced(x);
@@ -291,15 +312,12 @@ async function record(lang, g, form, label) {
       console.log(`  ${e.message}, again`);
     }
   }
-  const lufs = loudness(audio);
-  let gain = 10 ** ((TARGET_LUFS - lufs) / 20);
-  const peak = Math.max(...ps.flatMap((p, i) => (p.clip ? [cut[i].reduce((m, s) => Math.max(m, Math.abs(s)), 0)] : [])));
-  if (peak * gain > PEAK) gain = PEAK / peak;
+  const gain = 10 ** ((TARGET_LUFS - loudness(audio)) / 20);
   const out = {};
   ps.forEach((p, i) => {
-    if (p.clip) out[p.clip] = trim(cut[i].map((s) => s * gain));
+    if (p.clip) out[p.clip] = trim(limit(cut[i].map((s) => s * gain)));
   });
-  return { out, lufs: lufs + 20 * Math.log10(gain) };
+  return { out, lufs: loudness(Float32Array.from(Object.values(out).flatMap((x) => [...x]))) };
 }
 
 execFileSync(process.execPath, [join(scripts, 'phrases.mjs'), 'build'], {
