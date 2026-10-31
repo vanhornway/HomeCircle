@@ -19,7 +19,7 @@ so the circles can't read each other even through a shared device account.
 |---|---|---|
 | Your server / hosting provider (Render, Railway, Hetzner, …) | number of circles and members, IP addresses, when each phone uploads, ciphertext sizes, push tokens (and so which members share a phone), which messages their sender marked `urgent` (call-back requests and replies, SOS) and when, that a member sent a call set-up message to another member (and whether it was a ring) and when, which members opted in to the Android backup alert, which members have admin settings (a `member` record) and which pairs have a family name (an `alias` record, never the name), and how many photos each member uploaded and their sizes | names, locations, messages, places, battery, what an urgent message is or why, skins and settings, family names, photos |
 | Network attacker | nothing beyond TLS metadata | everything else |
-| Apple / Google / Expo push relay | that a push was sent to a device, and its type (`loc_req`, `msg`, `call`); urgent messages are pushed at once rather than batched, so their timing is less bunched | any content (an urgent push is identical to any other) |
+| Apple / Google / Expo push relay | that a push was sent to a device, and its type (`loc_req`, `msg`, `call`, `rec`); urgent messages are pushed at once rather than batched, so their timing is less bunched | any content (an urgent push is identical to any other) |
 | Map tile provider (OpenStreetMap by default) | which map area you *view*, and your IP | who you are tracking or why |
 | A removed member | everything up to their removal | anything after the key is rotated |
 
@@ -193,6 +193,10 @@ for timeouts too, and apps before 0.8 deleted their keys on any 4001.)
   that sees a call-back request while its owner is asleep or in Do Not
   Disturb sends the reply `asleep` for them (see Chat and events). Like the
   rest of the body, the server can't read any of it.
+- **Skin acknowledgement (0.22.1)**: the body may carry `skin` (`full` or
+  `elderly`) and, in the Elderly Companion, `page` (`care` or `grandkids`):
+  what the phone is showing. It lets an admin who switched someone see that
+  their phone followed ("Updated"), or that it hasn't yet ("Waiting…").
 - **Check-ins** are direct messages whose sealed body carries
   `checkin: "request"` or `"ok"`; asking also sends a location request to that
   one person.
@@ -265,6 +269,14 @@ subject, written by admins or the people concerned and read by every member
   may write it, and phones accept it only from one of those. Names are per
   pair, so the same person can be "Nani" to one grandchild and "Dadi" to
   another.
+
+A change to a `member` record (and its deletion) also sends that member a
+silent, content-free push `{ t: "rec", c }` (never to the writer), so a
+phone that is closed or whose live connection is down fetches the records
+and follows a switch between the full app, the care page and the grandkids
+page. Phones also fetch the records whenever they reconnect or come back to
+the app. After a key rotation the admin who rotated seals every record it
+can read again under the new key, so members who join later can read them.
 
 The server checks who may write from the ids alone and can't read a record.
 Phones also check that the ids sealed inside match the subject, so a record

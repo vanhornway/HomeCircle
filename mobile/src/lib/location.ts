@@ -124,6 +124,8 @@ export async function upload(
     tz: timeZone(),
     used: (await loadSkin()) === 'elderly' ? await lastUsed() : null,
   };
+  // Which skin and page this phone shows, so an admin who switched it sees it did.
+  const skin = await loadSkin();
   const results = await Promise.allSettled(
     targets.map((client) => {
       const approx = approxCircles.has(client.circleId!);
@@ -140,6 +142,8 @@ export async function upload(
         precise: health.precise,
         app: APP_VERSION,
         ...presence,
+        skin,
+        page: skin === 'elderly' ? (client.memberRecord(client.account!.memberId)?.page ?? 'care') : null,
         cadence: {
           stop: policy.stop,
           moving: policy.movingGapMs / 60_000,

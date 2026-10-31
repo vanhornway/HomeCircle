@@ -14,7 +14,7 @@ Notifications.setNotificationHandler({
     const data = JSON.stringify(n.request.content.data ?? {});
     // Location requests are silent. Remote "new message" pushes are replaced by
     // the decrypted notification the app shows itself (lib/notify.ts).
-    const silent = data.includes('loc_req') || ((n.request.trigger as { type?: string } | null)?.type === 'push' && data.includes('"msg"'));
+    const silent = data.includes('loc_req') || /"t":"rec"/.test(data) || ((n.request.trigger as { type?: string } | null)?.type === 'push' && data.includes('"msg"'));
     return { shouldShowBanner: !silent, shouldShowList: !silent, shouldPlaySound: !silent, shouldSetBadge: false };
   },
 });

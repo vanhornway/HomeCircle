@@ -206,6 +206,23 @@ export class Push {
     );
   }
 
+  /**
+   * An admin saved settings about this member (their skin and page): wake the
+   * phone so it picks them up even if it's closed. Content-free like the rest,
+   * and silent: nothing shows. `collapseId` keeps only the latest in transit.
+   */
+  settingsChanged(members) {
+    return this._send(
+      members.map((m) => ({
+        to: m.pushToken,
+        data: { t: 'rec', c: circleHint(m.id) },
+        priority: 'high',
+        collapseId: `rec-${circleHint(m.id)}`,
+        _contentAvailable: true,
+      })),
+    );
+  }
+
   /** Someone used the setup code to ask to rejoin. No name: just open the app. */
   rejoinRequest(members) {
     return this._send(

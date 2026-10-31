@@ -15,6 +15,7 @@ import { SOS_TASK, onSosFix } from '../lib/sos';
 import { countFetch, countFixes, countWake, currentNet } from '../lib/energy';
 import { pushHint } from '@homecircle/core';
 import { loadSkin } from '../skins';
+import { syncSkinFromRecords } from '../skins/sync';
 import { flushOutbox as flushHerRequests } from '../companion/outbox';
 import { checkInactivityInBackground } from '../lib/inactivity';
 import { handleCallPush } from '../lib/calls';
@@ -166,7 +167,7 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(PUSH_TASK, async (
   const woke = Date.now();
   const raw = JSON.stringify(data ?? {});
   try {
-    const type = raw.includes('loc_req') ? 'locate' : raw.includes('rejoin') ? 'rejoin' : raw.includes('chirp') ? 'chirp' : 'message';
+    const type = raw.includes('loc_req') ? 'locate' : /\\?"t\\?"\s*:\s*\\?"rec/.test(raw) ? 'settings' : raw.includes('rejoin') ? 'rejoin' : raw.includes('chirp') ? 'chirp' : 'message';
     diag('wake:push', { type, ...deliveryOf(data, woke) });
     countWake('push');
     if (raw.includes('"chirp"') || raw.includes('\\"chirp\\"')) {
@@ -175,6 +176,12 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(PUSH_TASK, async (
     } else if (raw.includes('loc_req')) {
       diag('locate-request', { via: 'push' });
       await shareNow('requested');
+    } else if (/\\?"t\\?"\s*:\s*\\?"rec/.test(raw)) {
+      // An admin changed what this phone's person is set up as (full app, elder,
+      // grandkids): fetch the settings and follow, even though the app is closed.
+      const clients = await loadedClients();
+      await Promise.allSettled(clients.map((c) => c.fetchRecords()));
+      if (await syncSkinFromRecords(clients)) await shareNow('manual').catch(() => false);
     } else if (/\\?"t\\?"\s*:\s*\\?"call/.test(raw)) {
       // Someone is calling: fetch the sealed call that waited, which rings (lib/calls.ts).
       await handleCallPush(await loadedClients());

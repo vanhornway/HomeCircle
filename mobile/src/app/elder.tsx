@@ -7,10 +7,10 @@ import { Chips, GenderChips } from '../components/FamilyNames';
 import { ElderPhoneGroup } from '../components/PhoneSettings';
 import { errorText } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
-import { SKINS, isSkin, type SkinId } from '../skins';
+import { PROFILES, profileOf, profilePatch, skinStatus, type Profile } from '../skins/profile';
 import { useTheme } from '../theme';
 
-const EVENTS = ['members', 'records', 'circle'] as const;
+const EVENTS = ['members', 'records', 'circle', 'locations'] as const;
 const SLEEP_FROM = ['21:00', '22:00', '23:00', '00:00'];
 const SLEEP_TO = ['06:00', '07:00', '08:00', '09:00'];
 const REMIND = [5, 10, 15, 30];
@@ -43,28 +43,42 @@ export default function ElderSettings() {
       .catch((e) => Alert.alert('Couldn’t save', errorText(e)))
       .finally(() => setBusy(false));
   };
-  const skin: SkinId = rec && isSkin(rec.skin) ? rec.skin : 'full';
+  const profile = profileOf(rec);
+  const elder = profile !== 'full';
+  const status = skinStatus(rec, client.locations.get(member), m.name);
+
+  // Full ↔ elder ↔ grandkids, in any order and as often as needed. Their phone
+  // follows by itself (while open, when it next connects, and by a silent push
+  // when closed); the line under the choices says where it stands.
+  const choose = (p: Profile) => {
+    if (!admin || busy || p === profile) return;
+    const go = () => {
+      setBusy(true);
+      (p === 'full' ? client.setMemberRecord(member, profilePatch('full')) : client.markElder(member, { page: profilePatch(p).page }))
+        .catch((e) => Alert.alert('Couldn’t save', errorText(e)))
+        .finally(() => setBusy(false));
+    };
+    if (p !== 'full' && m.role === 'admin') {
+      Alert.alert(`Make ${m.name} an elder?`, `They stop being an admin. You can switch them back to the full app any time, but that won’t make them an admin again.`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Switch', onPress: go },
+      ]);
+    } else go();
+  };
 
   return (
     <SettingsPage title={m.name}>
-      <SettingsGroup title="Skin" footer="What their HomeCircle app shows. Their phone switches by itself. Location sharing and everything else keeps working underneath.">
+      <SettingsGroup title="Profile" footer="What their HomeCircle app shows. Their phone switches by itself, even if the app is closed, and you can change it as often as you like. Location sharing and everything else keeps working underneath.">
         <GroupBody>
-          <Chips options={(Object.keys(SKINS) as SkinId[]).map((id) => ({ value: id, label: SKINS[id].label }))} value={skin} onPick={(id) => admin && !busy && save({ skin: id })} />
-          <Text style={{ color: t.muted, fontSize: 13 }}>{SKINS[skin].detail}</Text>
+          <Chips options={PROFILES.map((p) => ({ value: p.id, label: p.label }))} value={profile} onPick={(id) => choose(id as Profile)} />
+          <Text style={{ color: t.muted, fontSize: 13 }}>{PROFILES.find((p) => p.id === profile)!.detail}</Text>
+          {status.text ? <Text style={{ color: status.state === 'updated' ? t.brand : t.muted, fontSize: 13, fontWeight: status.state === 'updated' ? '700' : '400' }}>{status.text}</Text> : null}
         </GroupBody>
       </SettingsGroup>
 
-      <SettingsGroup title={`${m.name}’s page for this circle`} footer="Admins of each circle choose these for their own circle. Asking one person to call always stays available.">
-        <GroupBody>
-          <Chips
-            options={[
-              { value: 'care', label: 'Care circle' },
-              { value: 'grandkids', label: 'Grandkids' },
-            ]}
-            value={page}
-            onPick={(p) => admin && save({ page: p })}
-          />
-        </GroupBody>
+      {elder ? (
+        <>
+      <SettingsGroup title={`${m.name}’s tiles for this circle`} footer="Admins of each circle choose these for their own circle. Asking one person to call always stays available.">
         <ToggleRow
           title="Ring everyone"
           detail={(rec?.ringEveryone ?? care) ? 'On · one button asks the whole circle to call her' : 'Off · she asks one person at a time'}
@@ -115,10 +129,7 @@ export default function ElderSettings() {
 
       <ElderPhoneGroup client={client} memberId={member} admin={admin} />
 
-      {admin && skin !== 'full' ? (
-        <SettingsGroup>
-          <SettingsRow icon="↩️" title="Back to the full app" detail={`${m.name}’s phone switches to the full HomeCircle app`} onPress={() => save({ skin: 'full' })} />
-        </SettingsGroup>
+        </>
       ) : null}
       {!admin ? <Text style={{ color: t.muted, fontSize: 13, marginTop: 16 }}>Only the circle’s admins can change these.</Text> : null}
     </SettingsPage>

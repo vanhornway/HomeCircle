@@ -10,6 +10,7 @@ import { errorText, useCircles } from '../../lib/circle';
 import { setLastUpload, clearDeviceData } from '../../lib/storage';
 import { stopBackgroundUpdates, syncGeofences } from '../../lib/location';
 import { useCircle } from '../../lib/useCircle';
+import { profileLabel, profileOf, skinStatus } from '../../skins/profile';
 import { useTheme } from '../../theme';
 
 const RETENTION_LABELS: Record<number, string> = { 1: '1 day', 7: '1 week', 30: '1 month', 90: '3 months', 365: '1 year' };
@@ -99,19 +100,23 @@ export default function CircleSettings() {
       </SettingsGroup>
 
       {client.isAdmin ? (
-        <SettingsGroup title="Elderly Companion" footer="Choose which skin an elder’s HomeCircle app shows: the full app, or the simple Elderly Companion screens. Their phone switches automatically. Location sharing and everything else keeps working underneath.">
+        <SettingsGroup title="Elderly Companion" footer="Choose what each person’s HomeCircle app shows: the full app, or the simple Elderly Companion screens (care circle or grandkids). Their phone switches automatically, and you can change it back and forth as often as you like. Location sharing and everything else keeps working underneath.">
           {client
             .memberList()
-            .filter((m) => client.memberRecord(m.id)?.skin === 'elderly')
-            .map((m) => (
-              <SettingsRow
-                key={m.id}
-                icon="👵"
-                title={m.name}
-                detail={`Skin: Elderly Companion · ${client.memberRecord(m.id)?.page === 'grandkids' ? 'grandkids page' : 'care page'}`}
-                href={{ pathname: '/elder', params: { member: m.id } }}
-              />
-            ))}
+            .filter((m) => !m.isMe && m.role !== 'owner')
+            .map((m) => {
+              const rec = client.memberRecord(m.id);
+              const p = profileOf(rec);
+              return (
+                <SettingsRow
+                  key={m.id}
+                  icon={p === 'full' ? '📱' : '👵'}
+                  title={m.name}
+                  detail={`${profileLabel(p)}${skinStatus(rec, client.locations.get(m.id), m.name).state === 'waiting' ? ' · waiting for their phone…' : ''}`}
+                  href={{ pathname: '/elder', params: { member: m.id } }}
+                />
+              );
+            })}
           <SettingsRow icon="➕" title="Mark someone as an elder" detail="Someone already here, or someone new with an invite" href="/mark-elder" />
         </SettingsGroup>
       ) : null}

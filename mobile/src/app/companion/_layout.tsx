@@ -48,9 +48,10 @@ export default function CompanionLayout() {
           // Offline: the page still works from what's on the phone, and it tries again on the next open.
         }
       }
-      syncSkinFromRecords(clients).catch(() => {});
+      const followed = await syncSkinFromRecords(clients).catch(() => false);
       if (clients[0]) setLanguage(settingsOf(clients[0]).lang);
-      shareNow('open').catch(() => {});
+      // Followed an admin's change: a location now, which tells them it did.
+      shareNow(followed ? 'manual' : 'open').catch(() => {});
       registerPush().catch(() => {});
       // Requests that waited for the internet go out now.
       flushOutbox().catch(() => {});
@@ -66,7 +67,9 @@ export default function CompanionLayout() {
       }),
       // An admin changed her settings: her skin may change too.
       c.on('records', () => {
-        syncSkinFromRecords(clients).catch(() => {});
+        syncSkinFromRecords(clients)
+          .then((followed) => followed && shareNow('manual'))
+          .catch(() => {});
         setLanguage(settingsOf(c).lang);
       }),
       // Back online while open: send what waited.
