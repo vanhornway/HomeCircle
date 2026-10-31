@@ -11,7 +11,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { calendarUrl, fetchPublic, parseIcs, freeStretches, isDayOff } from './calendar.js';
 import { isPdf, pdfText } from './pdf.js';
 import { readFile } from './read-file.js';
-import { addItems, createList, doneShopping, emptyLists, findList, itemKey, listText, parseListCommand, recipeWanted, recordBought, removeItems, shoppingName, splitItems, viewList } from './lists.js';
+import { addItems, cleanCurrency, cleanPrice, createList, doneShopping, emptyLists, findList, itemKey, listText, parseListCommand, recipeWanted, recordBought, removeItems, setQty, shoppingName, splitItems, viewList } from './lists.js';
 import { addMonths, addReminder, canSeeReminder, cleanReminder, dueMessage, fmtDue, markDone, reminderLine, repeatText } from './reminders.js';
 import { exportVault, zipVault } from './export.js';
 
@@ -150,11 +150,18 @@ export const UPLOAD = {
   properties: {
     title: { type: 'string' },
     summary: { type: 'string' },
-    // A shop's receipt: the store and what was bought (for the shopping lists).
+    // A shop's receipt: the store, what was bought and what each cost (for the shopping lists).
     receipt: orNull({
       type: 'object',
-      properties: { store: { type: 'string' }, items: { type: 'array', items: { type: 'string' } } },
-      required: ['store', 'items'],
+      properties: {
+        store: { type: 'string' },
+        // ISO currency code ("USD") and the receipt's date (YYYY-MM-DD), when printed.
+        currency: orNull({ type: 'string' }),
+        date: orNull({ type: 'string' }),
+        // price: the regular price of one of it (before any discount on the receipt), else null.
+        items: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, price: orNull({ type: 'number' }) }, required: ['name', 'price'], additionalProperties: false } },
+      },
+      required: ['store', 'currency', 'date', 'items'],
       additionalProperties: false,
     }),
     calendar: { type: 'boolean' },
@@ -1022,7 +1029,8 @@ export class Brain {
       const state = this._lists();
       const now = this.now().getTime();
       const list = findList(state, found.receipt.store) ?? createList(state, found.receipt.store, msg.from, now);
-      recordBought(state, list, found.receipt.items, now);
+      const { buys = found.receipt.items, currency = '', at = null } = found.receipt;
+      recordBought(state, list, buys, now, { currency, at: at ?? now });
       const gone = removeItems(list, found.receipt.items);
       this._saveLists(state);
       await this.reply(back, `🧾 Counted ${found.receipt.items.length} items as bought at ${list.name}${gone.length ? `, and took ${gone.map((i) => i.name).join(', ')} off the list` : ''}. Your usual ${list.name} items now go first.`);
@@ -1289,16 +1297,25 @@ export class Brain {
       .sort((a, b) => a.start.localeCompare(b.start));
     const notes = (out.notes ?? []).filter((n) => n.title || n.body).map((n) => ({ ...unmaskNote(n, s), source: `file: ${file.name}` }));
     // A receipt: what was bought feeds the shopping lists.
-    const receiptItems = (out.receipt?.items ?? []).map((i) => s.unmask(String(i)).slice(0, 60)).filter(Boolean);
+    const buys = (out.receipt?.items ?? [])
+      .map((i) => (typeof i === 'string' ? { name: i, price: null } : i))
+      .map((i) => ({ name: s.unmask(String(i?.name ?? '')).slice(0, 60), price: cleanPrice(i?.price) }))
+      .filter((i) => i.name);
+    const receiptItems = buys.map((i) => i.name);
     if (receiptItems.length && this.agent.feature('shoppingLists')) {
       const store = s.unmask(String(out.receipt.store || 'Store')).slice(0, 40);
+      const currency = cleanCurrency(out.receipt.currency);
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(out.receipt.date ?? '') ? Date.parse(`${out.receipt.date}T12:00:00Z`) : NaN;
+      // A receipt dated in the future (a misread) counts as today's.
+      const at = Number.isFinite(date) && date <= this.now().getTime() ? date : null;
       const id = randomBytes(6).toString('base64url');
-      this.memory.setSetting(`found:${id}`, { file, title: store, receipt: { store, items: receiptItems }, thread: msg.body.thread, replyTo: msg.body.replyTo ?? null, scope: this._scopeFor(msg), by: msg.from });
+      this.memory.setSetting(`found:${id}`, { file, title: store, receipt: { store, items: receiptItems, buys, currency, at }, thread: msg.body.thread, replyTo: msg.body.replyTo ?? null, scope: this._scopeFor(msg), by: msg.from });
       this.memory.setSetting(`lastFound:${msg.from}`, id);
       const shown = receiptItems.slice(0, 25).join(', ');
+      const priced = buys.filter((i) => i.price !== null).length;
       return this.reply(
         msg,
-        `🧾 ${store} receipt: ${receiptItems.length} item${receiptItems.length === 1 ? '' : 's'}: ${shown}${receiptItems.length > 25 ? ', …' : ''}.\nSave to count these as bought at ${store}, so your usual items go first on that list (and anything bought comes off it). Or Discard.`,
+        `🧾 ${store} receipt: ${receiptItems.length} item${receiptItems.length === 1 ? '' : 's'}: ${shown}${receiptItems.length > 25 ? ', …' : ''}.\nSave to count these as bought at ${store}, so your usual items go first on that list (and anything bought comes off it)${priced ? `, and to learn what they cost (${priced} priced), so the list can estimate its total` : ''}. Or Discard.`,
         { save: { id, by: msg.from } },
       );
     }
@@ -1353,7 +1370,7 @@ export class Brain {
       `You read a file a family sent their helper, ${this.name}: a photo, a scan, a document or a spreadsheet. Today is ${this.today()}.`,
       'Read all of it, including handwriting and text in pictures. People and places in text appear as stand-ins (Person A, Place 1): copy them exactly as written.',
       'title: what the file is, short ("Lincoln Elementary 2026–27 calendar", "Soccer team contacts"). summary: one or two sentences on what it says.',
-      'If it is a shop’s receipt, order history or a list of what is bought at a store: receipt with the store’s name ("Costco") and every item on it, however many (all pages), in plain words a family would put on a shopping list ("milk", "paper towels", not codes or prices); then events and notes are empty. Otherwise receipt null.',
+      'If it is a shop’s receipt, order history or a list of what is bought at a store: receipt with the store’s name ("Costco") and every item on it, however many (all pages), each as name in plain words a family would put on a shopping list ("milk", "paper towels", not codes) and price: the REGULAR price of ONE of it, the price printed on the item’s own line before any discount (a "2 @ 4.99" line is 4.99; ignore instant savings, coupon and markdown lines, never subtract them; if the receipt shows a regular or was price, use that; the price for a weighed item as charged), null when no price is shown. currency: the three-letter code of the receipt’s currency ("USD", "CAD", "GBP", "PKR"), null if you can’t tell. date: the receipt or order date as YYYY-MM-DD, null if not shown. Leave out totals, tax, tips and fees; then events and notes are empty. Otherwise receipt null.',
       'If it is a calendar or schedule with many dates (a school calendar, a season schedule): calendar true, and events with summary, start and end (YYYY-MM-DD, end null for one day) and off: true for days without school or activity. school: true for a school calendar.',
       'Otherwise notes: one note per thing worth remembering (a date, a deadline, contact details, a decision, a list, a recipe), each with type, a short title, a body of one to three sentences linking people and places as [[Person A]] (a recipe: all of it, as below), people, start/end when dated, and role null. Skip what isn’t worth keeping.',
       RECIPE_RULE,
@@ -1549,6 +1566,7 @@ export class Brain {
       case 'listDelete':
       case 'itemAdd':
       case 'itemTick':
+      case 'itemQty':
       case 'itemRemove':
       case 'doneShopping': {
         if (!this.agent.feature('shoppingLists')) throw new BrainError('Shopping lists are turned off in this circle');
@@ -1566,6 +1584,10 @@ export class Brain {
         if (op === 'itemTick') {
           const item = list.items.find((i) => i.id === args.itemId);
           if (item) item.ticked = !!args.ticked;
+        }
+        if (op === 'itemQty') {
+          const item = list.items.find((i) => i.id === args.itemId);
+          if (item) setQty(item, args.qty);
         }
         if (op === 'itemRemove') list.items = list.items.filter((i) => i.id !== args.itemId);
         if (op === 'doneShopping') doneShopping(state, list, now);
