@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/index.js';
-import { CircleClient, allFeatures, cleanPhone, cleanCallLink } from '../../packages/core/src/index.js';
+import { CircleClient, allFeatures, defaultFeatures, hasFeature, cleanPhone, cleanCallLink } from '../../packages/core/src/index.js';
 
 const SETUP = 'test-setup-token-phone';
 let app;
@@ -157,6 +157,18 @@ test('the group call link: admins set it, everyone reads it, the server cannot',
   await umair.setGroupCallLink('');
   await refreshAll();
   assert.equal(fatima.groupCallLink, null);
+});
+
+test('WhatsApp calls are a plugin: off in a new circle, on only when an admin switches it on', async () => {
+  assert.equal(defaultFeatures().whatsapp, false);
+  assert.equal(hasFeature(allFeatures(), 'whatsapp'), true, 'circles from before features keep everything');
+  await umair.setFeatures({ whatsapp: false });
+  await refreshAll();
+  for (const c of all) assert.equal(c.feature('whatsapp'), false);
+  await assert.rejects(zara.setFeatures({ whatsapp: true }), (e) => e.status === 403);
+  await sara.setFeatures({ whatsapp: true });
+  await refreshAll();
+  for (const c of all) assert.equal(c.feature('whatsapp'), true);
 });
 
 test('no client reported an error', () => {

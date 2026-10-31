@@ -8,16 +8,20 @@ import { useSkin } from '../skins';
 import { useTheme } from '../theme';
 
 /**
- * The number to call someone on, or null: theirs (sealed in their profile, or
+ * The number to call someone on, or null: nothing when the circle hasn't
+ * turned the WhatsApp plugin on; theirs (sealed in their profile, or
  * saved by an admin for an elder), never your own, and never on an elder's own
  * phone (she asks for a call; she doesn't place them).
  */
 function usePhone(client: CircleClient, memberId: string): string | null {
   const [, bump] = useState(0);
   const skin = useSkin();
-  useEffect(() => client.on('records', () => bump((n) => n + 1)), [client]);
+  useEffect(() => {
+    const offs = ['records', 'members', 'circle'].map((e) => client.on(e, () => bump((n) => n + 1)));
+    return () => offs.forEach((off) => off());
+  }, [client]);
   const m = client.members.get(memberId);
-  if (skin === 'elderly' || !m || m.isMe || m.removed || m.kind === 'agent') return null;
+  if (!client.feature('whatsapp') || skin === 'elderly' || !m || m.isMe || m.removed || m.kind === 'agent') return null;
   return client.phoneOf(memberId);
 }
 
@@ -48,7 +52,7 @@ export function WhatsAppTile({ client, memberId, onDone }: { client: CircleClien
 }
 
 /** "Call on WhatsApp" as a wide button (a call-back card, the reply sheet). Nothing when they have no number. */
-export function WhatsAppCallButton({ client, memberId, onDone }: { client: CircleClient; memberId: string; onDone?: () => void }) {
+export function WhatsAppCallButton({ client, memberId, label = 'Call on WhatsApp', onDone }: { client: CircleClient; memberId: string; label?: string; onDone?: () => void }) {
   const t = useTheme();
   const phone = usePhone(client, memberId);
   if (!phone) return null;
@@ -75,7 +79,7 @@ export function WhatsAppCallButton({ client, memberId, onDone }: { client: Circl
       })}
     >
       <Icon name="phone" color={t.brand} size={20} />
-      <Text style={{ color: t.brand, fontSize: 16, fontWeight: '700' }}>Call on WhatsApp</Text>
+      <Text style={{ color: t.brand, fontSize: 16, fontWeight: '700' }}>{label}</Text>
     </Pressable>
   );
 }
@@ -91,7 +95,7 @@ export function GroupCallButton({ client }: { client: CircleClient }) {
   const [sheet, setSheet] = useState(false);
   const [, bump] = useState(0);
   useEffect(() => client.on('circle', () => bump((n) => n + 1)), [client]);
-  if (skin === 'elderly') return null;
+  if (!client.feature('whatsapp') || skin === 'elderly') return null;
   const link = client.groupCallLink;
   return (
     <>
@@ -107,6 +111,29 @@ export function GroupCallButton({ client }: { client: CircleClient }) {
       >
         <Icon name="phone" color={t.brand} size={20} />
         <Text style={{ color: t.brand, fontSize: 14, fontWeight: '700' }}>Group call</Text>
+      </Pressable>
+      <GroupCallSheet client={client} visible={sheet} onClose={() => setSheet(false)} />
+    </>
+  );
+}
+
+/** The WhatsApp plugin's settings, under its switch in Settings → Features: the circle's group call link (admins). */
+export function WhatsAppSetup({ client }: { client: CircleClient }) {
+  const t = useTheme();
+  const [sheet, setSheet] = useState(false);
+  const [, bump] = useState(0);
+  useEffect(() => client.on('circle', () => bump((n) => n + 1)), [client]);
+  const link = client.groupCallLink;
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Group call link"
+        onPress={() => setSheet(true)}
+        style={({ pressed }) => ({ minHeight: 44, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
+      >
+        <Text style={{ color: t.brand, fontSize: 15, fontWeight: '700' }}>{link ? 'Group call link · change' : 'Add the group call link'}</Text>
+        <Text style={{ color: t.muted, fontSize: 13 }}>{link ? link.replace('https://', '') : 'People tap Group call in the group chat to join it. Phone numbers go in Settings → You → Profile.'}</Text>
       </Pressable>
       <GroupCallSheet client={client} visible={sheet} onClose={() => setSheet(false)} />
     </>

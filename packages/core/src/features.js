@@ -26,6 +26,7 @@ export const FEATURES = [
   { id: 'weather', group: 'Plugins', label: 'Weather', detail: 'The weather where the person you select is, in the corner of the map.', on: false },
   { id: 'air', group: 'Plugins', label: 'Air and pollen', detail: 'Air quality and pollen where the person you select is, next to the weather (swipe the tile).', on: false },
   { id: 'prayer', group: 'Plugins', label: 'Prayer times', detail: 'The next of the five daily prayers where the person you select is (swipe the tile; double-tap for the day’s times). Each person picks their madhab.', on: false },
+  { id: 'whatsapp', group: 'Plugins', label: 'WhatsApp calls', detail: 'A Call on WhatsApp button for people with a phone number, and a Group call button in the group chat. It opens WhatsApp on the phone; nothing goes through the server.', on: false },
   { id: 'homeAssistant', group: 'Plugins', label: 'Home Assistant', detail: 'Everyone’s location in your Home Assistant, to start automations. Each person can turn theirs off.', on: false, needs: 'locationSharing' },
 ];
 

@@ -761,6 +761,7 @@ export type FeatureId =
   | 'weather'
   | 'air'
   | 'prayer'
+  | 'whatsapp'
   | 'homeAssistant';
 export type Features = Record<FeatureId, boolean>;
 export type FeatureInfo = { id: FeatureId; group: 'Location' | 'Chat' | 'Alerts' | 'Helper' | 'Plugins'; label: string; detail: string; on: boolean; needs?: FeatureId };

@@ -48,9 +48,10 @@ function PhoneEditor({ saved, label, onSave }: { saved: string | null; label: st
   );
 }
 
-/** Your own phone number, for Settings → You → Profile: sealed in your profile, so only your circle sees it. */
+/** Your own phone number, for Settings → You → Profile (when the circle has the WhatsApp plugin on): sealed in your profile, so only your circle sees it. */
 export function MyPhoneGroup({ client }: { client: CircleClient }) {
   const me = client.me;
+  if (!client.feature('whatsapp')) return null;
   return (
     <SettingsGroup title="Phone number" footer="Optional. Shown only to people in this circle, end-to-end encrypted like everything else. It lets them tap “Call on WhatsApp”. Start with the country code, such as +1 or +92.">
       <GroupBody>
@@ -65,6 +66,7 @@ export function ElderPhoneGroup({ client, memberId, admin }: { client: CircleCli
   const t = useTheme();
   const m = client.members.get(memberId);
   const own = m?.phone ?? null;
+  if (!client.feature('whatsapp')) return null;
   return (
     <SettingsGroup title="Phone number" footer="For “Call on WhatsApp” in the family’s app, never on her phone. Encrypted, so only the circle can read it. Start with the country code, such as +92.">
       <GroupBody>
