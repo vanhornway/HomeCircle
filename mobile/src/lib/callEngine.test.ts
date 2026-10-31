@@ -28,11 +28,12 @@ class FakePc implements PeerConnectionLike {
   added: IceCandidateInit[] = [];
   tracks: TrackLike[] = [];
   n = 0;
+  fp = `FP:${Math.random().toString(16).slice(2, 8)}`;
   async createOffer(o?: { iceRestart?: boolean }): Promise<Sdp> {
-    return { type: 'offer', sdp: `v=0\r\na=rtpmap:111 opus/48000/2\r\na=fmtp:111 minptime=10\r\nx-offer ${++this.n}${o?.iceRestart ? ' restart' : ''}\r\n` };
+    return { type: 'offer', sdp: `v=0\r\na=fingerprint:sha-256 ${this.fp}\r\na=rtpmap:111 opus/48000/2\r\na=fmtp:111 minptime=10\r\nx-offer ${++this.n}${o?.iceRestart ? ' restart' : ''}\r\n` };
   }
   async createAnswer(): Promise<Sdp> {
-    return { type: 'answer', sdp: `v=0\r\na=rtpmap:111 opus/48000/2\r\nx-answer ${++this.n}\r\n` };
+    return { type: 'answer', sdp: `v=0\r\na=fingerprint:sha-256 ${this.fp}\r\na=rtpmap:111 opus/48000/2\r\nx-answer ${++this.n}\r\n` };
   }
   async setLocalDescription(d: Sdp) {
     this.log.push(`local:${d.type}`);
@@ -545,4 +546,24 @@ test('one call at a time: starting another while in a call is refused', async ()
   const w = world(['a', 'b']);
   await w.get('a').engine.start('b');
   await assert.rejects(() => w.get('a').engine.start('b'), /Already in a call/);
+});
+
+test('both sides know each other’s DTLS fingerprints once the call is set up', async () => {
+  const w = world(['a', 'b']);
+  const [a, b] = [w.get('a'), w.get('b')];
+  await a.engine.start('b');
+  await flush();
+  assert.equal(a.engine.fingerprints, null); // no answer yet
+  await b.engine.accept();
+  await flush();
+  const fa = a.engine.fingerprints!;
+  const fb = b.engine.fingerprints!;
+  assert.deepEqual(fa.local, fb.remote);
+  assert.deepEqual(fa.remote, fb.local);
+  assert.equal(fa.local.length, 1);
+  // A restart doesn't change them.
+  connect(a, b);
+  a.engine.networkChanged();
+  await flush();
+  assert.deepEqual(a.engine.fingerprints, fa);
 });

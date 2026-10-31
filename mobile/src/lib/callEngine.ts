@@ -2,7 +2,7 @@
 // connection, the microphone, the signal sender and the clock are all handed
 // in, so it is tested with plain Node (callEngine.test.ts). lib/calls.ts
 // connects it to the real things. See docs/CALLS-PLAN.md.
-import { tuneOpusSdp } from './callSdp.ts';
+import { fingerprintsOf, tuneOpusSdp } from './callSdp.ts';
 
 // --- what the engine needs from the outside ----------------------------------
 
@@ -151,6 +151,9 @@ export class VoiceCallEngine {
   private retryTimer: Timer | null = null;
   private restarting = false;
   private everConnected = false;
+  // The DTLS fingerprints each side offered for this call (for the four words).
+  private localFp: string[] = [];
+  private remoteFp: string[] = [];
 
   constructor(deps: EngineDeps) {
     this.deps = deps;
@@ -180,6 +183,7 @@ export class VoiceCallEngine {
       const offer = await pc.createOffer({ offerToReceiveAudio: true });
       offer.sdp = tuneOpusSdp(offer.sdp ?? '');
       await pc.setLocalDescription(offer);
+      this.localFp = fingerprintsOf(offer.sdp ?? '');
       this.armRing(callId, 'no_answer');
       await this.deps.send(peerId, { callId, op: 'offer', sdp: offer.sdp }, { ring: true });
       this.localReady = true;
@@ -227,6 +231,11 @@ export class VoiceCallEngine {
     this.finish('hangup', { notify: true, op: 'hangup' });
   }
 
+  /** The two sides' DTLS fingerprints once both are known (for the four words), else null. */
+  get fingerprints(): { local: string[]; remote: string[] } | null {
+    return this.localFp.length && this.remoteFp.length ? { local: this.localFp, remote: this.remoteFp } : null;
+  }
+
   /** Mute by switching the microphone track off. It is never stopped: the connection keeps sending. */
   setMuted(muted: boolean) {
     for (const t of this.audio?.tracks ?? []) t.enabled = !muted;
@@ -259,6 +268,7 @@ export class VoiceCallEngine {
         if (!this.pc || sig.sdp == null) return;
         if (this.pc.signalingState !== 'have-local-offer') return;
         await this.pc.setRemoteDescription({ type: 'answer', sdp: sig.sdp });
+        if (!this.remoteFp.length) this.remoteFp = fingerprintsOf(sig.sdp);
         this.remoteSet = true;
         await this.drainRemote();
         if (phase === 'outgoing') {
@@ -346,11 +356,13 @@ export class VoiceCallEngine {
     const peerId = this.snap.peerId!;
     const callId = this.snap.callId!;
     await pc.setRemoteDescription({ type: 'offer', sdp: offerSdp });
+    if (!this.remoteFp.length) this.remoteFp = fingerprintsOf(offerSdp);
     this.remoteSet = true;
     await this.drainRemote();
     const answer = await pc.createAnswer();
     answer.sdp = tuneOpusSdp(answer.sdp ?? '');
     await pc.setLocalDescription(answer);
+    if (!this.localFp.length) this.localFp = fingerprintsOf(answer.sdp ?? '');
     await this.deps.send(peerId, { callId, op: 'answer', sdp: answer.sdp });
     this.localReady = true;
     this.flushCandidates();
@@ -583,6 +595,8 @@ export class VoiceCallEngine {
     this.restarting = false;
     const durationMs = startedAt ? Date.now() - startedAt : 0;
     this.everConnected = false;
+    this.localFp = [];
+    this.remoteFp = [];
     this.set(IDLE);
     this.deps.onEnded?.({ reason, callId, peerId, incoming, durationMs, ...(error ? { error } : {}) });
   }

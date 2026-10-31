@@ -10,6 +10,7 @@ import { randomId, type CircleClient, type CallSignal } from '@homecircle/core';
 import { VoiceCallEngine, type CallSnapshot, type EndInfo, type IceServer } from './callEngine';
 import { FALLBACK_STUN, createPeerConnection, ensureBluetooth, getLocalAudio, rtcAvailable } from './rtc';
 import { allClients, clientForCircle } from './circle';
+import { sasWords } from './callSas';
 import { diag } from './diagnostics';
 import {
   cancelIncomingCall,
@@ -38,10 +39,12 @@ export interface CallUi {
   /** How the last call ended, for a few seconds. */
   ended: (EndInfo & { text: string }) | null;
   routes: Routes;
+  /** Four words both people can compare, once the call is connected. */
+  words: string[] | null;
 }
 
 const IDLE_ROUTES: Routes = { available: ['earpiece', 'speaker'], current: 'earpiece' };
-let ui: CallUi = { snap: { phase: 'idle', callId: null, peerId: null, incoming: false, remoteRinging: false, muted: false, startedAt: null }, circleId: null, ended: null, routes: IDLE_ROUTES };
+let ui: CallUi = { snap: { phase: 'idle', callId: null, peerId: null, incoming: false, remoteRinging: false, muted: false, startedAt: null }, circleId: null, ended: null, routes: IDLE_ROUTES, words: null };
 const subs = new Set<() => void>();
 const publish = (patch: Partial<CallUi>) => {
   ui = { ...ui, ...patch };
@@ -90,6 +93,10 @@ engine.subscribe((snap) => {
   const prev = lastPhase;
   lastPhase = snap.phase;
   publish({ snap, circleId: active?.circleId ?? ui.circleId });
+  if (snap.phase === 'active' && !ui.words) {
+    const fp = engine.fingerprints;
+    if (fp) publish({ words: sasWords(fp.local, fp.remote) });
+  }
   if (prev !== snap.phase) applyPhase(prev, snap);
 });
 
@@ -135,7 +142,7 @@ function applyPhase(prev: CallSnapshot['phase'], snap: CallSnapshot) {
     stopNetwork = null;
     stopRoutes?.();
     stopRoutes = null;
-    publish({ routes: IDLE_ROUTES });
+    publish({ routes: IDLE_ROUTES, words: null });
   }
 }
 

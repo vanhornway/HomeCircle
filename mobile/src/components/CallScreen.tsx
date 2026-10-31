@@ -55,7 +55,8 @@ const ROUTE_LABEL: Record<AudioRoute, string> = { earpiece: 'Phone', speaker: 'S
 /** The call: ringing, calling, on the line (with a timer, mute, speaker) and how it ended. Covers whatever screen is open. */
 export function CallScreen() {
   const t = useTheme();
-  const { snap, circleId, ended, routes } = useCall();
+  const { snap, circleId, ended, routes, words } = useCall();
+  const [showWords, setShowWords] = useState(false);
   const client: CircleClient | undefined = clientForCircle(circleId);
   const peerId = snap.peerId ?? ended?.peerId ?? null;
   const member = client && peerId ? client.members.get(peerId) : undefined;
@@ -98,7 +99,17 @@ export function CallScreen() {
             {name}
           </Text>
           <Text style={{ color: '#FFFFFFD9', fontSize: 18, marginTop: 8, fontVariant: ['tabular-nums'] }}>{status}</Text>
-          {snap.phase === 'active' && !ended ? <Text style={{ color: '#FFFFFF99', fontSize: 12, marginTop: 10 }}>End-to-end encrypted</Text> : null}
+          {snap.phase === 'active' && !ended ? (
+            <Pressable accessibilityRole="button" accessibilityHint="Shows four words to compare with the other person" onPress={() => setShowWords((v) => !v)} style={{ marginTop: 14, alignItems: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 }}>
+              <Text style={{ color: '#FFFFFFB3', fontSize: 13 }}>End-to-end encrypted · {showWords ? 'Hide words' : 'Check words'}</Text>
+              {showWords && words ? (
+                <>
+                  <Text style={{ color: '#FFFFFF', fontSize: 20, fontWeight: '700', marginTop: 8, textTransform: 'capitalize' }}>{words.join(' · ')}</Text>
+                  <Text style={{ color: '#FFFFFF99', fontSize: 12, marginTop: 6, textAlign: 'center' }}>Say them to each other. The same four words on both phones mean the voice goes straight between you.</Text>
+                </>
+              ) : null}
+            </Pressable>
+          ) : null}
         </View>
         <View style={{ paddingBottom: 40, paddingHorizontal: 24, gap: 28 }}>
           {incoming ? (
