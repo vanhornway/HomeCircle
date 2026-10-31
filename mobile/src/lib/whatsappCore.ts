@@ -70,6 +70,21 @@ export function cleanCallUrl(raw: unknown): string | null {
   return m ? `https://call.whatsapp.com/${m[1]}/${m[2]}` : null;
 }
 
+/**
+ * The call link in whatever was copied or typed: the link itself, WhatsApp's
+ * share text around it ("Join my call: https://call.whatsapp.com/video/…"), a
+ * link without https://, or just the code at its end. The result is always
+ * built here from the code, on the real host, so nothing else in the paste can
+ * end up in it. A bare code gets /video/ (WhatsApp's own links say which).
+ */
+export function callLinkFrom(raw: unknown): string | null {
+  if (typeof raw !== 'string' || raw.length > 2000) return null;
+  const text = raw.trim();
+  const found = /(?:^|[^A-Za-z0-9.@-])(?:https?:\/\/)?call\.whatsapp\.com\/(video|voice)\/([A-Za-z0-9_-]{8,64})(?![A-Za-z0-9_-])/.exec(text);
+  if (found) return `https://call.whatsapp.com/${found[1]}/${found[2]}`;
+  return /^[A-Za-z0-9_-]{16,64}$/.test(text) ? `https://call.whatsapp.com/video/${text}` : null;
+}
+
 /** Where to get WhatsApp: the Play Store app first, then its web page; the App Store on iOS. */
 export function storeUrls(os: 'ios' | 'android' | string): string[] {
   if (os === 'ios') return ['https://apps.apple.com/app/whatsapp-messenger/id310633997'];

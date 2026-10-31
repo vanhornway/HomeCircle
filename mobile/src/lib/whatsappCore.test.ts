@@ -2,7 +2,7 @@
 //   node --test --experimental-strip-types src/lib/whatsappCore.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chatUrls, cleanCallUrl, cleanNumber, storeUrls, type NumberProblem } from './whatsappCore.ts';
+import { callLinkFrom, chatUrls, cleanCallUrl, cleanNumber, storeUrls, type NumberProblem } from './whatsappCore.ts';
 
 const digits = (raw: unknown) => {
   const r = cleanNumber(raw);
@@ -81,6 +81,19 @@ test('call links: only https call.whatsapp.com video or voice links', () => {
     7,
   ]) {
     assert.equal(cleanCallUrl(bad), null, String(bad));
+  }
+});
+
+test('the call link is built from whatever was pasted', () => {
+  const link = 'https://call.whatsapp.com/video/AbCdEfGh1234567890xyz';
+  assert.equal(callLinkFrom(link), link);
+  assert.equal(callLinkFrom(`Join my WhatsApp call: ${link}\nSee you there`), link, 'share text around it');
+  assert.equal(callLinkFrom('call.whatsapp.com/voice/AbCdEfGh1234567890xyz?x=1'), 'https://call.whatsapp.com/voice/AbCdEfGh1234567890xyz');
+  assert.equal(callLinkFrom('http://call.whatsapp.com/video/AbCdEfGh1234567890xyz'), link, 'upgraded to https');
+  assert.equal(callLinkFrom('  AbCdEfGh1234567890xyz  '), link, 'just the code');
+  assert.equal(cleanCallUrl(callLinkFrom('x https://evil.com/?u=https://call.whatsapp.com/video/AbCdEfGh1234567890xyz')), link, 'only the code is taken; the host is ours');
+  for (const bad of ['', 'hello', 'https://call.whatsapp.com/video/', 'https://call.whatsapp.com.evil.com/video/AbCdEfGh1234567890xyz', 'https://evil.com/video/AbCdEfGh1234567890xyz', 'short', 'two words here that are long enough', null, 5]) {
+    assert.equal(callLinkFrom(bad), null, String(bad));
   }
 });
 

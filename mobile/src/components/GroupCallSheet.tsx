@@ -7,7 +7,7 @@ import { Button } from './ui';
 import { errorText } from '../lib/circle';
 import { inAppCalls } from '../lib/inAppCalls';
 import { openGroupCallLink, showOutcome } from '../lib/whatsapp';
-import { cleanCallUrl } from '../lib/whatsappCore';
+import { callLinkFrom } from '../lib/whatsappCore';
 import { useTheme } from '../theme';
 
 /**
@@ -33,9 +33,11 @@ export function GroupCallSheet({ client, visible, onClose }: { client: CircleCli
     onClose();
   };
 
-  const save = async (value: string) => {
-    if (value && !cleanCallUrl(value)) {
-      setProblem('That isn’t a WhatsApp call link. It starts with https://call.whatsapp.com/');
+  // Whatever was copied or typed: the link is built from the code in it.
+  const save = async (typed: string) => {
+    const value = typed ? callLinkFrom(typed) : '';
+    if (value === null) {
+      setProblem('I can’t find a WhatsApp call link in that. In WhatsApp: Calls → Create call link → Copy link, then tap Paste again.');
       return;
     }
     setBusy(true);
@@ -52,9 +54,11 @@ export function GroupCallSheet({ client, visible, onClose }: { client: CircleCli
     }
   };
 
-  const paste = async () => {
+  // One tap: take the link from the clipboard and save it.
+  const pasteAndSave = async () => {
     const text = (await Clipboard.getStringAsync().catch(() => '')).trim();
-    if (text) setDraft(text);
+    if (!text) setProblem('Nothing copied yet. In WhatsApp: Calls → Create call link → Copy link, then come back and tap Paste.');
+    else await save(text);
   };
 
   return (
@@ -84,8 +88,9 @@ export function GroupCallSheet({ client, visible, onClose }: { client: CircleCli
             ) : editing ? (
               <>
                 <Text style={{ color: t.muted, fontSize: 14, lineHeight: 20 }}>
-                  WhatsApp can’t start a group call from a link by itself, so make one there once: Calls tab → Create call link → choose video or voice → copy it, then paste it here. It stays the same for every call.
+                  Make the call link once in WhatsApp (Calls → Create call link → Copy link). Then tap Paste: that’s all, I’ll set it up. It stays the same for every call.
                 </Text>
+                <Button variant="primary" title="Paste link and save" loading={busy} onPress={() => void pasteAndSave()} />
                 <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                   <TextInput
                     value={draft}
@@ -93,18 +98,16 @@ export function GroupCallSheet({ client, visible, onClose }: { client: CircleCli
                       setDraft(v);
                       setProblem(null);
                     }}
-                    placeholder="https://call.whatsapp.com/video/…"
+                    placeholder="Or type or paste it here"
                     placeholderTextColor={t.muted}
                     autoCapitalize="none"
                     autoCorrect={false}
-                    keyboardType="url"
                     accessibilityLabel="WhatsApp call link"
                     style={{ flex: 1, color: t.text, fontSize: 15, minHeight: 44, borderBottomWidth: 1, borderBottomColor: problem ? t.danger : t.line }}
                   />
-                  <Button small title="Paste" onPress={() => void paste()} />
+                  <Button small title="Save" loading={busy} disabled={!draft.trim()} onPress={() => void save(draft.trim())} />
                 </View>
                 {problem ? <Text style={{ color: t.danger, fontSize: 14 }}>{problem}</Text> : null}
-                <Button variant="primary" title="Save link" loading={busy} disabled={!draft.trim()} onPress={() => void save(draft.trim())} />
                 <Text style={{ color: t.muted, fontSize: 12 }}>Saved encrypted, like the circle’s name: only your circle can read it.</Text>
               </>
             ) : (
