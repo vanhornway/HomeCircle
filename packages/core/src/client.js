@@ -2104,6 +2104,17 @@ export class CircleClient {
     return this.api.callSignal(to, id, env, { ring });
   }
 
+  /**
+   * Leave a line in the direct chat with the person called: "Missed voice
+   * call" (they never answered) or "Voice call · 3:12". An ordinary sealed
+   * direct message, so it shows in any version of the app as text.
+   */
+  logCall(to, { missed = false, seconds = 0 } = {}) {
+    const mm = Math.floor(seconds / 60);
+    const text = missed ? '📞 Missed voice call' : `📞 Voice call · ${mm}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
+    return this._post('chat', { text, call: missed ? { state: 'missed' } : { state: 'ended', seconds: Math.round(seconds) } }, { to, silent: !missed });
+  }
+
   /** The STUN (and, if the server has one, TURN) servers for a call: { iceServers }. */
   callsConfig() {
     return this.api.callsConfig();

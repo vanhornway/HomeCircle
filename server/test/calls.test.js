@@ -340,3 +340,14 @@ test('a TURN relay is offered only when configured, with credentials that expire
     rmSync(dir3, { recursive: true, force: true });
   }
 });
+
+test('the caller leaves "missed" and "how long" lines in the direct chat', async () => {
+  const seen = waitFor(dad, 'newMessage', (m) => m.body?.call?.state === 'missed');
+  await mom.logCall(id(dad), { missed: true });
+  assert.match((await seen).body.text, /Missed voice call/);
+  const done = waitFor(dad, 'newMessage', (m) => m.body?.call?.state === 'ended');
+  await mom.logCall(id(dad), { seconds: 192 });
+  const m = await done;
+  assert.equal(m.body.text, '📞 Voice call · 3:12');
+  assert.equal(m.body.call.seconds, 192);
+});

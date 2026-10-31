@@ -690,6 +690,8 @@ export class CircleClient {
   collectChirps(): Promise<IncomingChirp[]>;
   /** Send a sealed call signal to a member; `ring` (the first offer) also pushes their phone. */
   sendCallSignal(to: string, body: CallSignalBody, opts?: { ring?: boolean }): Promise<{ online: boolean; held: boolean; pushed: boolean }>;
+  /** Leave "Missed voice call" or "Voice call · 3:12" in the direct chat with someone. */
+  logCall(to: string, opts?: { missed?: boolean; seconds?: number }): Promise<unknown>;
   /** STUN (and optional TURN) servers for a call. */
   callsConfig(): Promise<{ iceServers: { urls: string | string[]; username?: string; credential?: string }[]; relayOnly?: boolean }>;
   /** Handle call signals that waited for this phone; returns how many were new. */

@@ -175,6 +175,10 @@ function ended(info: EndInfo) {
   diag('call:end', { reason: info.reason, incoming: info.incoming, sec: Math.round(info.durationMs / 1000) });
   if (info.reason === 'missed' && active) showMissedCall(nameOf(active, info.peerId));
   const text = endText(info);
+  // The caller leaves a line in the chat: missed (the push tells them), or how long it lasted (no push).
+  if (active && !info.incoming && active.feature('directMessages') && (info.reason === 'no_answer' || info.durationMs > 0)) {
+    active.logCall(info.peerId, { missed: info.reason === 'no_answer', seconds: info.durationMs / 1000 }).catch(() => {});
+  }
   active = null;
   publish({ ended: { ...info, text } });
   if (endedTimer) clearTimeout(endedTimer);
