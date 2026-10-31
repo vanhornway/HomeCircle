@@ -352,6 +352,7 @@ export class CircleClient {
       color: a.profile.color,
       ...(a.profile.chirp ? { chirp: a.profile.chirp } : {}),
       ...(GENDERS.includes(a.profile.g) ? { g: a.profile.g } : {}),
+      ...(cleanPhone(a.profile.phone) ? { phone: cleanPhone(a.profile.phone) } : {}),
       ...(cleanPhotoRef(a.profile.photo) ? { photo: a.profile.photo } : {}),
       boxPub: a.identity.boxPub,
       signPub: a.identity.signPub,
@@ -719,6 +720,7 @@ export class CircleClient {
           view.color = MEMBER_COLORS.includes(p.body.color) ? p.body.color : MEMBER_COLORS[0];
           view.chirp = CHIRP_SOUNDS.includes(p.body.chirp) ? p.body.chirp : null;
           view.g = GENDERS.includes(p.body.g) ? p.body.g : null;
+          view.phone = cleanPhone(p.body.phone);
           view.photo = cleanPhotoRef(p.body.photo);
           view.verified = true;
           view.current = m.profile.epoch === st.epoch;
@@ -742,7 +744,7 @@ export class CircleClient {
     if (!signPub || !key) return;
     try {
       const msg = open(env, { key, signPub, kind: 'circle', from: st.circle.by, circle: this.account.circleId });
-      this.circle = { name: cleanName(msg.body.name) || 'Our Circle', agent: cleanAgentCard(msg.body.agent) };
+      this.circle = { name: cleanName(msg.body.name) || 'Our Circle', agent: cleanAgentCard(msg.body.agent), groupCallLink: cleanCallLink(msg.body.groupCallLink) };
       this.account.circleName = this.circle.name;
       // The agent's keys, as the admin who added it saw them: trusted only if
       // the server lists the same ones for an agent.
@@ -1239,6 +1241,8 @@ export class CircleClient {
     const body = { name: this.circle.name, ...patch };
     if (this.circle.agent && !('agent' in patch)) body.agent = this.circle.agent;
     if (!body.agent) delete body.agent;
+    if (this.circle.groupCallLink && !('groupCallLink' in patch)) body.groupCallLink = this.circle.groupCallLink;
+    if (!body.groupCallLink) delete body.groupCallLink;
     return body;
   }
 
@@ -1830,6 +1834,38 @@ export class CircleClient {
     this.account.profile.g = GENDERS.includes(g) ? g : undefined;
     await this.api.putProfile(this._seal('profile', this._profileBody()));
     await this._save();
+    await this.refresh();
+  }
+
+  /**
+   * Your own phone number (international format, "+92 300 1234567" is fine),
+   * in your profile: only your circle can read it. Empty clears it.
+   */
+  async setPhone(phone) {
+    const clean = cleanPhone(phone);
+    if (String(phone ?? '').trim() && !clean) throw new Error('Enter the number with its country code, such as +1 555 123 4567');
+    this.account.profile.phone = clean || undefined;
+    await this.api.putProfile(this._seal('profile', this._profileBody()));
+    await this._save();
+    await this.refresh();
+  }
+
+  /** A member's phone number: their own, else the one an admin saved for them, else null. */
+  phoneOf(memberId) {
+    return this.members.get(memberId)?.phone || this.memberRecord(memberId)?.phone || null;
+  }
+
+  /** The circle's WhatsApp call link, or null. */
+  get groupCallLink() {
+    return this.circle?.groupCallLink || null;
+  }
+
+  /** Admins: save (or, empty, remove) the circle's WhatsApp group call link, sealed in the circle's record. */
+  async setGroupCallLink(link) {
+    if (!this.isAdmin) throw new Error('Only circle admins can change that');
+    const clean = cleanCallLink(link);
+    if (String(link ?? '').trim() && !clean) throw new Error('That isn’t a WhatsApp call link (it starts with https://call.whatsapp.com/)');
+    await this.api.putCircle(this._seal('circle', this._circleBody({ groupCallLink: clean })));
     await this.refresh();
   }
 
@@ -2638,7 +2674,39 @@ function cleanMemberRecord(b) {
     lang: typeof b.lang === 'string' && /^[a-z]{2,3}$/.test(b.lang) ? b.lang : null,
     g: GENDERS.includes(b.g) ? b.g : null,
     photos: cleanPhotoMap(b.photos),
+    phone: cleanPhone(b.phone),
   };
+}
+
+/**
+ * A phone number as kept: "+" and 8 to 15 digits (E.164), or null. Spaces,
+ * hyphens, dots and brackets are dropped; a leading 00 means "+". A number
+ * without a country code is refused, never guessed.
+ */
+export function cleanPhone(p) {
+  if (typeof p !== 'string' || p.length > 40) return null;
+  const t = p.trim();
+  if (/[^\d\s()\-.+]/.test(t) || t.indexOf('+') > 0 || (t.match(/\+/g) ?? []).length > 1) return null;
+  let digits = t.replace(/\D/g, '');
+  if (!t.startsWith('+')) {
+    if (!digits.startsWith('00')) return null;
+    digits = digits.slice(2);
+  }
+  return /^[1-9]\d{7,14}$/.test(digits) ? `+${digits}` : null;
+}
+
+/** A WhatsApp call link ("https://call.whatsapp.com/video/…" or "/voice/…") as kept, or null. */
+export function cleanCallLink(u) {
+  if (typeof u !== 'string' || u.length > 300) return null;
+  let url;
+  try {
+    url = new URL(u.trim());
+  } catch {
+    return null;
+  }
+  const m = /^\/(video|voice)\/([A-Za-z0-9_-]{8,64})\/?$/.exec(url.pathname);
+  if (url.protocol !== 'https:' || url.hostname !== 'call.whatsapp.com' || url.port || url.username || url.password || !m) return null;
+  return `https://call.whatsapp.com/${m[1]}/${m[2]}`;
 }
 
 /** A photo reference: { id, key, at } of an encrypted file, or null. */

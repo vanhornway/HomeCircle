@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import type { CircleClient } from '@homecircle/core';
 import { Icon } from './ui';
 import { AlertRuleSheet } from './AlertRuleSheet';
+import { WhatsAppTile } from './CallActions';
 import { errorText } from '../lib/circle';
 import { chirpWithChoice } from '../lib/chirp';
 import { KIND_EMOJI } from '../lib/visits';
@@ -152,6 +153,7 @@ export function PersonSheet({
                     {client.feature('checkIns') && tile('checkin', checking ? 'Sending…' : 'Check in', 'Ask “where are you?”', askCheckIn, checking)}
                     {client.feature('directMessages') &&
                       tile('chat', 'Message', 'Only you two can read it', go(() => router.push({ pathname: '/conversation', params: { circle: client.circleId!, peer: m.id } })))}
+                    <WhatsAppTile client={client} memberId={m.id} onDone={onClose} />
                     {client.feature('placeAlerts') && tile('bell', 'Alert me', 'When they arrive or leave', () => setAlerting(true))}
                     {client.feature('chirps') && tile('bird', 'Chirp', 'A sound they’ll know is you', go(() => chirpWithChoice(client, m.id)))}
                   </View>

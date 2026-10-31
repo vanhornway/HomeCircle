@@ -36,10 +36,16 @@ export interface Member {
   g?: Gender | null;
   /** Their own photo, if they added one (an encrypted file). */
   photo?: PhotoRef | null;
+  /** Their phone number ("+15551234567"), if they added one to their profile. */
+  phone?: string | null;
 }
 
 export type ChirpSound = 'robin' | 'wren' | 'finch' | 'chickadee' | 'cardinal' | 'bluebird' | 'canary' | 'sparrow' | 'lark' | 'dove';
 export const CHIRP_SOUNDS: ChirpSound[];
+/** "+" and 8–15 digits, from a number typed any way with a country code; null otherwise. */
+export function cleanPhone(p: unknown): string | null;
+/** A WhatsApp call link as kept (https://call.whatsapp.com/video/… or /voice/…), or null. */
+export function cleanCallLink(u: unknown): string | null;
 /** He or she, for languages whose verbs change with the person (Urdu). */
 export type Gender = 'm' | 'f';
 export const GENDERS: Gender[];
@@ -69,6 +75,8 @@ export interface MemberRecord {
   g: Gender | null;
   /** Photos an admin added for her tiles, by member id. */
   photos: Record<string, PhotoRef> | null;
+  /** Her phone number ("+15551234567"), when an admin saved one. */
+  phone: string | null;
   /** Who signed it (an admin) and when. */
   by: string;
   ts: number;
@@ -445,7 +453,7 @@ export class CircleClient {
 
   account: Account | null;
   api: Api;
-  circle: { name: string };
+  circle: { name: string; agent?: { name: string; id?: string } | null; groupCallLink?: string | null };
   members: Map<string, Member>;
   locations: Map<string, MemberLocation>;
   /** Members who paused sharing with this circle: since when, and their optional reason. */
@@ -651,6 +659,14 @@ export class CircleClient {
   photoBytes(ref: PhotoRef): Promise<Uint8Array>;
   /** Your own he/she in your profile (null clears it). */
   setGender(g: Gender | null): Promise<void>;
+  /** Your own phone number, sealed in your profile (empty clears it; throws without a country code). */
+  setPhone(phone: string | null): Promise<void>;
+  /** A member's phone number: their own, else an admin's, else null. */
+  phoneOf(memberId: string): string | null;
+  /** The circle's WhatsApp call link, or null. */
+  readonly groupCallLink: string | null;
+  /** Admins: save (empty removes) the circle's WhatsApp call link, sealed in the circle's record. */
+  setGroupCallLink(link: string | null): Promise<void>;
   /** An elder's phone, once joined: tell the circle, so an admin's phone saves her settings. */
   announceElder(opts?: { page?: 'care' | 'grandkids'; skin?: string }): Promise<void>;
   /** Elders who announced themselves and have no member record yet. */
@@ -762,6 +778,7 @@ export type FeatureId =
   | 'weather'
   | 'air'
   | 'prayer'
+  | 'whatsapp'
   | 'homeAssistant';
 export type Features = Record<FeatureId, boolean>;
 export type FeatureInfo = { id: FeatureId; group: 'Location' | 'Chat' | 'Alerts' | 'Helper' | 'Plugins'; label: string; detail: string; on: boolean; needs?: FeatureId };

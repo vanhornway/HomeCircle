@@ -10,6 +10,7 @@ import { ServerBanner } from '../components/ServerBanner';
 import { PollCard } from '../components/PollCard';
 import { CallbackCard } from '../components/CallbackCard';
 import { ReminderCard } from '../components/ReminderCard';
+import { GroupCallButton, WhatsAppCallButton } from '../components/CallActions';
 import { MemberAvatar } from '../components/MemberAvatar';
 import { REPLY_LABELS, syncCallbackReminders, timeIn } from '../lib/callbacks';
 import { CreatePoll } from '../components/CreatePoll';
@@ -417,6 +418,11 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             {subtitle}
           </Text>
         </View>
+        {!peer ? (
+          <View style={{ marginRight: 6 }}>
+            <GroupCallButton client={client} />
+          </View>
+        ) : null}
         {peer && other && !other.removed && other.kind !== 'agent' ? (
           <View style={{ flexDirection: 'row', gap: 6, marginRight: 6 }}>
             {client.feature('locationSharing') ? (
@@ -671,6 +677,18 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
                           </Pressable>
                         ))
                       : null}
+                    {canReply ? (
+                      <WhatsAppCallButton
+                        client={client}
+                        memberId={s.from}
+                        label={s.takenBy ? 'Call on WhatsApp' : 'Call on WhatsApp now'}
+                        // Calling is saying so: nobody has taken it yet, so this also replies "I’m calling you now".
+                        onDone={() => (s.takenBy ? setReactingTo(null) : replyCallback(s.id, 'now'))}
+                      />
+                    ) : null}
+                    {canReply && !s.takenBy && client.feature('whatsapp') && client.phoneOf(s.from) ? (
+                      <Text style={{ color: t.muted, fontSize: 13, textAlign: 'center' }}>Opens WhatsApp and tells {s.name} you’re calling now.</Text>
+                    ) : null}
                     {canReply ? (
                       <Text style={{ color: t.muted, fontSize: 13, lineHeight: 18, textAlign: 'center' }}>
                         {s.name} hears your reply in Urdu. Morning and evening mean their time ({timeIn(s.tz)} now).

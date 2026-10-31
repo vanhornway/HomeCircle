@@ -2,6 +2,7 @@ import { Text, View } from 'react-native';
 import type { CircleClient, Message } from '@homecircle/core';
 import { HighlightCard } from './HighlightCard';
 import { useChatFont } from '../lib/chatZoom';
+import { WhatsAppCallButton } from './CallActions';
 import { askedLine, REPLY_SHORT, timeIn } from '../lib/callbacks';
 import { useTheme } from '../theme';
 
@@ -46,6 +47,7 @@ export function CallbackCard({ client, m, onReply }: { client: CircleClient; m: 
         ) : (
           <Text style={{ color: t.muted, fontSize: fs(14), lineHeight: fs(19) }}>{detail}</Text>
         )}
+        {s.takenBy?.memberId === me ? <WhatsAppCallButton client={client} memberId={s.from} /> : null}
         {s.open && !s.takenBy && s.replies.length ? (
           <Text style={{ color: t.text, fontSize: fs(14), lineHeight: fs(19) }}>{s.replies.map((r) => `${nameOf(r.memberId)}: ${REPLY_SHORT[r.reply]}`).join(' · ')}</Text>
         ) : null}

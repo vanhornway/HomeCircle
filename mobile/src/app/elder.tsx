@@ -4,6 +4,7 @@ import { useLocalSearchParams } from 'expo-router';
 import type { MemberRecord } from '@homecircle/core';
 import { GroupBody, SettingsGroup, SettingsPage, SettingsRow, ToggleRow } from '../components/SettingsKit';
 import { Chips, GenderChips } from '../components/FamilyNames';
+import { ElderPhoneGroup } from '../components/PhoneSettings';
 import { errorText } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
 import { SKINS, isSkin, type SkinId } from '../skins';
@@ -111,6 +112,8 @@ export default function ElderSettings() {
           <GenderChips value={rec?.g ?? m.g ?? null} onPick={(g) => save({ g })} />
         </GroupBody>
       </SettingsGroup>
+
+      <ElderPhoneGroup client={client} memberId={member} admin={admin} />
 
       {admin && skin !== 'full' ? (
         <SettingsGroup>
