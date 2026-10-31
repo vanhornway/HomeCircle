@@ -9,6 +9,7 @@ import { shareNow } from '../lib/location';
 import { ServerBanner } from '../components/ServerBanner';
 import { PollCard } from '../components/PollCard';
 import { CallbackCard } from '../components/CallbackCard';
+import { GroupCallButton, WhatsAppCallButton } from '../components/CallActions';
 import { MemberAvatar } from '../components/MemberAvatar';
 import { REPLY_LABELS, syncCallbackReminders, timeIn } from '../lib/callbacks';
 import { CreatePoll } from '../components/CreatePoll';
@@ -401,6 +402,11 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             {subtitle}
           </Text>
         </View>
+        {!peer ? (
+          <View style={{ marginRight: 6 }}>
+            <GroupCallButton client={client} />
+          </View>
+        ) : null}
         {peer && other && !other.removed && other.kind !== 'agent' ? (
           <View style={{ flexDirection: 'row', gap: 6, marginRight: 6 }}>
             {client.feature('locationSharing') ? (
@@ -640,6 +646,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
                           </Pressable>
                         ))
                       : null}
+                    {canReply ? <WhatsAppCallButton client={client} memberId={s.from} onDone={() => setReactingTo(null)} /> : null}
                     {canReply ? (
                       <Text style={{ color: t.muted, fontSize: 13, lineHeight: 18, textAlign: 'center' }}>
                         {s.name} hears your reply in Urdu. Morning and evening mean their time ({timeIn(s.tz)} now).
