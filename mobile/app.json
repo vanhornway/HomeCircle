@@ -92,7 +92,7 @@
         "expo-camera",
         {
           "cameraPermission": "HomeCircle uses the camera to scan invite QR codes and, when you choose, to take a photo for your circle’s helper.",
-          "microphonePermission": false,
+          "microphonePermission": "HomeCircle uses the microphone only while you are on a voice call with someone in your circle.",
           "recordAudioAndroid": false
         }
       ],
@@ -111,7 +111,7 @@
         {
           "photosPermission": "HomeCircle lets you send a photo to your circle’s helper, only when you pick one.",
           "cameraPermission": "HomeCircle uses the camera to scan invite QR codes and, when you choose, to take a photo for your circle’s helper.",
-          "microphonePermission": false
+          "microphonePermission": "HomeCircle uses the microphone only while you are on a voice call with someone in your circle."
         }
       ],
       "expo-font",
