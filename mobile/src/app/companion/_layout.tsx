@@ -76,7 +76,11 @@ export default function CompanionLayout() {
     ]);
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') resume();
-      else if (state === 'background') clients.forEach((c) => c.disconnect());
+      else {
+        // Leaving the app: written down now, in case it's closed.
+        clients.forEach((c) => c.flushCache().catch(() => {}));
+        if (state === 'background') clients.forEach((c) => c.disconnect());
+      }
     });
     return () => {
       alive = false;

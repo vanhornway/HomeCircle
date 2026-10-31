@@ -571,6 +571,13 @@ export class Store {
       .all(circleId, after, memberId, memberId, limit)
       .map(messageRow);
   }
+  /** The newest `limit` messages below `before` (or the newest of all), oldest first: for opening on the latest, then reading back. */
+  messagesBefore(circleId, memberId, before, limit, { directOnly = false } = {}) {
+    const sql = directOnly ? '(to_id = ? OR (from_id = ? AND to_id IS NOT NULL))' : '(to_id IS NULL OR to_id = ? OR from_id = ?)';
+    return this.q(`SELECT * FROM (SELECT * FROM messages WHERE circle_id = ? AND seq < ? AND ${sql} ORDER BY seq DESC LIMIT ?) ORDER BY seq`)
+      .all(circleId, before, memberId, memberId, limit)
+      .map(messageRow);
+  }
   messageExists(id) {
     return !!this.q('SELECT 1 FROM messages WHERE id = ?').get(id);
   }

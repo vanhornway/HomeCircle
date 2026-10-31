@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetch as expoFetch } from 'expo/fetch';
 import { ACCOUNT_KEY, CircleClient } from '@homecircle/core';
 import { diag } from './diagnostics';
+import { mark } from './startup';
 import { messageCache } from './messageCache';
 import { secureStorage } from './storage';
 
@@ -65,25 +66,75 @@ async function forget(accountKey: string) {
 }
 
 async function loadAll() {
+  const t0 = Date.now();
   let keys: string[] = [];
+  let stored: string | null = null;
+  let saved: string | null = null;
+  [stored, saved] = await Promise.all([AsyncStorage.getItem(LIST_KEY), AsyncStorage.getItem(ACTIVE_KEY)]).catch(() => [null, null]);
   try {
-    keys = JSON.parse((await AsyncStorage.getItem(LIST_KEY)) || '[]');
+    keys = JSON.parse(stored || '[]');
   } catch {
     keys = [];
   }
   // Phones from before multiple circles had one account under ACCOUNT_KEY.
   if (!keys.length) keys = [ACCOUNT_KEY];
-  for (const key of keys) {
-    if (clients.has(key)) continue;
-    const client = makeClient(key);
-    if (await client.load().catch(() => false)) clients.set(key, client);
-  }
-  const saved = await AsyncStorage.getItem(ACTIVE_KEY);
+  // Every circle's keys at once: each is several reads from the Keychain /
+  // Keystore, and one after another they added up to seconds of white screen.
+  const slowest = { key: '', ms: 0 };
+  let failed = 0;
+  const results = await Promise.all(
+    keys.map(async (key) => {
+      if (clients.has(key)) return { key, client: clients.get(key)!, found: true };
+      const client = makeClient(key);
+      const t = Date.now();
+      let found = false;
+      try {
+        found = await client.load();
+      } catch (e) {
+        // The keys are there but couldn't be read right now (the phone is
+        // locked, the Keystore is busy): not the same as "no account".
+        failed++;
+        diag('error', { where: 'load-circle', msg: errorText(e).slice(0, 100) });
+        return { key, client, found: false, error: true };
+      }
+      if (Date.now() - t > slowest.ms) Object.assign(slowest, { key, ms: Date.now() - t });
+      return { key, client, found };
+    }),
+  );
+  for (const r of results) if (r.found) clients.set(r.key, r.client);
   active = saved && clients.has(saved) ? saved : (clients.keys().next().value ?? null);
-  await saveList();
-  loaded = true;
+  // The list drops a circle only when its account is really gone, not when it couldn't be read this time.
+  const keep = results.filter((r) => r.found || r.error).map((r) => r.key);
+  mark('circles');
+  // Not waited for: the screens don't need the list written to draw.
+  if (JSON.stringify(keep) !== stored || active !== saved) {
+    AsyncStorage.setItem(LIST_KEY, JSON.stringify(keep))
+      .then(() => (active ? AsyncStorage.setItem(ACTIVE_KEY, active) : AsyncStorage.removeItem(ACTIVE_KEY)))
+      .catch(() => {});
+  }
+  // Retried by the next call when something couldn't be read.
+  loaded = !failed;
   changed();
+  startupDiag.circlesMs = Date.now() - t0;
+  startupDiag.circles = clients.size;
+  startupDiag.slowestLoadMs = slowest.ms;
+  warmCaches();
 }
+
+/**
+ * Read what each circle's phone copy holds (messages, members, last locations)
+ * once the first screen is up, the one on screen first, so it's there when
+ * the chat opens and not after the server has answered.
+ */
+function warmCaches() {
+  setTimeout(async () => {
+    const order = [...clients.values()].sort((a, b) => Number(b.accountKey === active) - Number(a.accountKey === active));
+    for (const client of order) await client.loadCache().catch(() => {});
+  }, 50);
+}
+
+/** What loading the circles took, for Diagnostics (see startup.ts). */
+export const startupDiag: Record<string, number> = {};
 
 /** Loads this phone's circles once. Returns whether it's in any circle. */
 export async function ensureLoaded(): Promise<boolean> {

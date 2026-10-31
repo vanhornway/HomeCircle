@@ -17,12 +17,11 @@ export const secureStorage: Storage = {
   async getItem(key) {
     const n = await SecureStore.getItemAsync(`${key}.n`, OPTS);
     if (n == null) return null;
-    const parts: string[] = [];
-    for (let i = 0; i < Number(n); i++) {
-      const part = await SecureStore.getItemAsync(`${key}.${i}`, OPTS);
-      if (part == null) return null;
-      parts.push(part);
-    }
+    // All the chunks at once: each is a call into the Keychain / Keystore,
+    // which can take tens of ms (much more on a phone that just woke up), and
+    // an account with many members and keys is a dozen of them.
+    const parts = await Promise.all(Array.from({ length: Number(n) }, (_, i) => SecureStore.getItemAsync(`${key}.${i}`, OPTS)));
+    if (parts.some((p) => p == null)) return null;
     return parts.join('');
   },
   async setItem(key, value) {

@@ -540,7 +540,24 @@ export class CircleClient {
     delivery?: Record<string, 'delivered' | 'pushed' | 'unreachable'>;
     cooldown: number;
   }>;
+  /** The messages this phone doesn't have yet, newest first (see backfillHistory for the older ones). */
   fetchMessages(): Promise<Message[]>;
+  /** Whether older history exists on the server that this phone hasn't fetched yet. */
+  readonly hasOlder: boolean;
+  /** Fetch one more page of older messages (the person scrolled up). Resolves to how many arrived. */
+  loadOlder(limit?: number): Promise<number>;
+  /** Read the rest of the history in behind the screen, a page at a time (starts by itself after start()). */
+  backfillHistory(): Promise<void>;
+  /** Read this phone's saved copy (messages, members, last locations) without waiting for the network; once. */
+  loadCache(): Promise<void>;
+  /** Save the phone's copy now if anything changed, e.g. as the app goes to the background. */
+  flushCache(): Promise<void>;
+  /** How long the pieces of opening took, for Diagnostics. */
+  timings: {
+    cache?: { ms: number; rows: number; fetchedSeq: number };
+    refreshMs?: number;
+    firstFetch?: { mode: 'tail' | 'forward' | 'gap'; count: number; ms: number };
+  };
   /** Group chat, or a direct message when `to` is set. */
   sendChat(text: string, opts?: { to?: string | null }): Promise<void>;
   /** Messages of the group (peer null) or of a direct chat. */
