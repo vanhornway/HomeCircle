@@ -911,6 +911,17 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   r.add('GET', '/messages', ({ me, query }) => {
     const after = Math.max(0, Number.parseInt(query.get('after') || '0', 10) || 0);
     const limit = Math.min(500, Math.max(1, Number.parseInt(query.get('limit') || '200', 10) || 200));
+    // `tail=1` is the newest `limit` messages, `before=<seq>` the newest below
+    // it: a phone with nothing yet opens on the latest and reads back from there.
+    const tail = query.get('tail') === '1';
+    const before = Number.parseInt(query.get('before') || '0', 10) || 0;
+    if (tail || before > 0) {
+      const rows = store.messagesBefore(me.circleId, me.id, tail ? Number.MAX_SAFE_INTEGER : before, limit, { directOnly: me.kind === 'agent' });
+      // The newest page is everything that exists now: those are delivered.
+      const upTo = tail ? (rows.at(-1)?.seq ?? 0) : 0;
+      if (me.kind !== 'agent' && upTo > 0 && store.setDelivered(me.id, upTo)) hub.broadcast(me.circleId, { type: 'delivered', delivered: { [me.id]: upTo } }, me.id);
+      return { messages: rows };
+    }
     const rows = me.kind === 'agent' ? store.directMessagesAfter(me.circleId, me.id, after, limit) : store.messagesAfter(me.circleId, me.id, after, limit);
     // A phone asking for what's after `after` has everything up to it; a page
     // that isn't full means it now has everything. Delivered ticks follow.

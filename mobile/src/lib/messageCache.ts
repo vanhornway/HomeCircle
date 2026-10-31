@@ -19,7 +19,13 @@ export const messageCache = {
   },
   async setItem(key: string, value: string): Promise<void> {
     if (!dir.exists) dir.create({ intermediates: true, idempotent: true });
-    await fileFor(key).write(value);
+    // Written beside it and moved into place: an app closed in the middle of
+    // a save (it is several MB) leaves the last whole copy, not a cut-off one
+    // that would be thrown away and fetched all over again.
+    const tmp = new File(dir, `${fileFor(key).name}.tmp`);
+    if (tmp.exists) tmp.delete();
+    await tmp.write(value);
+    tmp.move(fileFor(key), { overwrite: true });
   },
   async removeItem(key: string): Promise<void> {
     try {

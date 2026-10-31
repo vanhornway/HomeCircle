@@ -153,6 +153,8 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(PUSH_TASK, async (
         try {
           await client.fetchMessages();
           await notifyNewMessages(client, client.messages);
+          // This task can be ended as soon as it returns: keep what was fetched.
+          await client.flushCache();
         } catch (e) {
           log('fetch failed for a circle', e);
         }

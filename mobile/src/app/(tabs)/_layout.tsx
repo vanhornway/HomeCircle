@@ -7,7 +7,8 @@ import { SKINS, useSkin } from '../../skins';
 import { recordNewElders, syncSkinFromRecords } from '../../skins/sync';
 import { checkInactivity } from '../../lib/inactivity';
 import { CircleClient } from '@homecircle/core';
-import { allClients, clientForCircle, errorText, getClient, useCircles } from '../../lib/circle';
+import { allClients, clientForCircle, errorText, getClient, startupDiag, useCircles } from '../../lib/circle';
+import { mark, takeStartup } from '../../lib/startup';
 import { getServerState, isUnreachable, RECONNECT_GRACE_MS, setRetryHandler, setServerState } from '../../lib/connection';
 import { registerPush } from '../../lib/push';
 import { ensureNotificationChannels, markSeen, notifyNewMessages } from '../../lib/notify';
@@ -158,6 +159,12 @@ function useCircleLifecycle(circlesKey: string) {
       phoneHealth()
         .then((h) => diag('app-open', { ...h, circles: allClients().length, failed: failed.length, activeMs, totalMs: Date.now() - t0 }))
         .catch(() => {});
+      // Once per launch: where the time went, so a slow start can be read off Diagnostics.
+      const marks = takeStartup();
+      if (marks) {
+        const { cache, firstFetch, refreshMs } = active.timings;
+        diag('startup', { ...marks, ...startupDiag, cacheMs: cache?.ms, cacheRows: cache?.rows, refreshMs, fetchMs: firstFetch?.ms, fetchMode: firstFetch?.mode, fetched: firstFetch?.count, activeMs });
+      }
     };
 
     // One reconnect at a time: unlocking twice, or Retry mid-way, waits for
@@ -248,9 +255,14 @@ function useCircleLifecycle(circlesKey: string) {
 
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') resume();
-      else if (state === 'background') {
-        if (retryTimer) clearTimeout(retryTimer);
-        allClients().forEach((c) => c.disconnect());
+      else {
+        // Leaving the app: it can be closed any moment now, so what arrived
+        // is written down now, not on the timer.
+        allClients().forEach((c) => c.flushCache().catch(() => {}));
+        if (state === 'background') {
+          if (retryTimer) clearTimeout(retryTimer);
+          allClients().forEach((c) => c.disconnect());
+        }
       }
     });
     return () => {
@@ -317,6 +329,7 @@ function FullTabs() {
   const places = !all.length || all.some((c) => c.feature('locationSharing'));
   useCircleLifecycle(clients.map((c) => c.accountKey).join('|'));
   useOpenChatFromNotification();
+  useEffect(() => mark('tabs'), []);
   // A newer app? Checked at most every 4 hours, on opening and coming back.
   useEffect(() => {
     checkForUpdate().catch(() => {});

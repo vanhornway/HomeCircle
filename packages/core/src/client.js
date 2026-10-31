@@ -78,6 +78,15 @@ const REPLAYED = Symbol('replayed');
 
 /** Let the screen draw and taps through (a macrotask), then carry on. */
 const yieldToUi = () => new Promise((r) => setTimeout(r, 0));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// History is fetched newest first: the latest page opens the chat, older
+// pages fill in behind it. Opening a message (checking its signature) takes
+// tens of ms on a phone, so the first page is small.
+const FIRST_PAGE = 80;
+const FORWARD_PAGE = 500;
+const OLDER_PAGE = 100;
+// The most messages kept on the phone between launches.
+const CACHE_MAX = 500;
 
 export class CircleClient {
   /**
@@ -137,6 +146,11 @@ export class CircleClient {
     // live can't move it, or a catch-up after reconnecting would skip whatever
     // was sent just before them.
     this.fetchedSeq = 0;
+    // History is held from here up to fetchedSeq: older than this is not
+    // fetched yet (0 = all of it is). Fetching starts from the newest
+    // messages and works back, so this is what reading further back needs.
+    this.backSeq = 0;
+    this._generation = (this._generation || 0) + 1;
     this.connection = null;
     this.status = 'offline';
     // Opened envelopes, so the same location, place or profile isn't
@@ -145,8 +159,20 @@ export class CircleClient {
     // Messages as opened, kept on this phone between launches (opts.cache):
     // a cold start then only opens what's new. seq -> row.
     this._cacheRows = new Map();
-    this._cacheLoaded = false;
+    this._cacheLoading = null;
     this._cacheTimer = null;
+    this._cacheDue = 0;
+    this._cacheDirty = false;
+    this._saving = Promise.resolve();
+    this._rawLocations = null;
+    // Fetches of messages take turns; reading further back is its own queue.
+    this._fetchLock = Promise.resolve();
+    this._olderLock = Promise.resolve();
+    this._backfilling = null;
+    this._backfillStop = false;
+    this.backfillPauseMs = 150;
+    // How long the pieces of opening took, for Diagnostics.
+    this.timings = {};
     this._started = false;
     this._catching = null;
   }
@@ -224,6 +250,9 @@ export class CircleClient {
   async signOut(reason = 'signed_out') {
     this.disconnect();
     clearTimeout(this._cacheTimer);
+    this._generation++;
+    // A save still being written must not bring the cache back after it's deleted.
+    await this._saving;
     await this.storage.removeItem(this.accountKey);
     await this.cache?.removeItem(this._cacheKey).catch(() => {});
     this._reset();
@@ -574,6 +603,7 @@ export class CircleClient {
   async refresh() {
     const st = await this.api.state();
     this.state = st;
+    this._cacheDirty = true;
     for (const m of st.members) if ((m.deliveredSeq ?? 0) > (this.delivered.get(m.id) ?? 0)) this.delivered.set(m.id, m.deliveredSeq);
     if (st.epoch > this.account.epoch || !this.account.keyring[st.epoch]) {
       // Recognize members we can already verify first: a new key is only
@@ -831,6 +861,8 @@ export class CircleClient {
 
   async fetchLocations() {
     const { locations } = await this.api.locations();
+    this._rawLocations = locations;
+    this._cacheDirty = true;
     this.paused = new Map();
     for (const l of locations) this._decodeLocation(l.memberId, l.env, l.updatedAt);
     this.emit('locations', this.locations);
@@ -890,7 +922,7 @@ export class CircleClient {
 
   // --- messages ----------------------------------------------------------
 
-  _addMessage(m) {
+  _addMessage(m, { bulk = false } = {}) {
     // Before the duplicate check: a fetch that returns our own messages
     // (already shown) must still move past them.
     this.lastSeq = Math.max(this.lastSeq, m.seq);
@@ -905,7 +937,7 @@ export class CircleClient {
     // From this phone's cache: opened (and checked) on an earlier launch.
     const msg = m.opened ? (kinds.includes(m.opened.kind) ? m.opened : null) : this._open(m.env, m.from, kinds, to, m.id);
     if (msg === REPLAYED) return false;
-    this._remember(m, msg);
+    this._remember(m, msg, { quiet: bulk });
     if (msg?.kind === 'reaction') {
       // A read receipt: "I've read this conversation up to here".
       if (Number.isInteger(msg.body?.read) && msg.body.read > 0) {
@@ -948,7 +980,8 @@ export class CircleClient {
       body: msg?.body || null,
     };
     this.messages.push(entry);
-    this.messages.sort((a, b) => a.seq - b.seq);
+    // Many at once (the cache): the caller sorts when it's done.
+    if (!bulk) this.messages.sort((a, b) => a.seq - b.seq);
     return entry;
   }
 
@@ -1828,27 +1861,145 @@ export class CircleClient {
     return [...last].sort((a, b) => b[1] - a[1]).map(([id]) => id);
   }
 
-  async fetchMessages() {
-    for (;;) {
-      const { messages } = await this.api.messages(this.fetchedSeq, 500);
-      let since = Date.now();
-      for (const m of messages) {
-        this._addMessage(m);
-        this.fetchedSeq = Math.max(this.fetchedSeq, m.seq);
-        // Opening a message takes tens of ms on a phone: after every ~12 ms of
-        // it, let the screen draw and taps through, instead of freezing for
-        // the whole page (a first load can be hundreds of messages).
-        if (Date.now() - since > 12) {
-          await yieldToUi();
-          since = Date.now();
+  /**
+   * Fetch what this phone doesn't have yet, newest first. With nothing held
+   * (a new phone, or the cache is gone) the chat opens on the latest
+   * messages; older history is read back in behind them (backfillHistory,
+   * loadOlder). With a cache it's only what came after it, unless more than
+   * a page was missed: then the latest page opens first too, and the gap
+   * fills in from there. One at a time.
+   */
+  fetchMessages() {
+    const run = this._fetchLock.then(() => this._fetchMessages());
+    this._fetchLock = run.catch(() => {});
+    return run;
+  }
+
+  async _fetchMessages() {
+    // What was already opened comes first; fetching from 0 instead would
+    // open it all again, and a save would then overwrite the cache with less.
+    await this._loadCache();
+    if (!this.account) return this.messages;
+    const t0 = Date.now();
+    let mode = 'forward';
+    let count = 0;
+    if (this.fetchedSeq === 0) {
+      mode = 'tail';
+      const { messages } = await this.api.messagesTail(FIRST_PAGE);
+      await this._openTail(messages, FIRST_PAGE);
+      count = messages.length;
+    } else {
+      for (let first = true; ; first = false) {
+        const { messages } = await this.api.messages(this.fetchedSeq, FORWARD_PAGE);
+        if (first && messages.length >= FORWARD_PAGE) {
+          // Missed more than a page: the latest first, the gap behind it later.
+          const { messages: tail } = await this.api.messagesTail(FIRST_PAGE);
+          if (tail.length) {
+            mode = 'gap';
+            await this._openTail(tail, FIRST_PAGE);
+            count = tail.length;
+            break;
+          }
         }
+        await this._take(messages);
+        count += messages.length;
+        if (messages.length) this.emit('messages', this.messages);
+        if (messages.length < FORWARD_PAGE) break;
       }
-      if (messages.length) this.emit('messages', this.messages);
-      if (messages.length < 500) break;
     }
-    this._saveCacheSoon();
+    if (!this.timings.firstFetch) this.timings.firstFetch = { mode, count, ms: Date.now() - t0 };
+    // Soon: this is the moment a killed app would lose the most.
+    this._saveCacheSoon(count ? 300 : 2000);
     this.emit('messages', this.messages);
     return this.messages;
+  }
+
+  /** Open each fetched message, letting the screen draw in between. */
+  async _take(messages, { forward = true } = {}) {
+    let since = Date.now();
+    for (const m of messages) {
+      this._addMessage(m);
+      if (forward) this.fetchedSeq = Math.max(this.fetchedSeq, m.seq);
+      // Opening a message takes tens of ms on a phone: after every ~12 ms of
+      // it, let the screen draw and taps through, instead of freezing for
+      // the whole page.
+      if (Date.now() - since > 12) {
+        await yieldToUi();
+        since = Date.now();
+      }
+    }
+  }
+
+  /** `rows` are the newest messages there are: held from them up, whatever is older not yet. */
+  async _openTail(rows, limit) {
+    const full = rows.length >= limit;
+    if (this.fetchedSeq > 0 && full) {
+      // Missed about as many messages as the phone keeps: what it had is too
+      // old to join up with these, and would only leave a hole. Reading back
+      // fills in the newest ones instead.
+      this.messages.length = 0;
+      this.seenMessageIds.clear();
+      this.seenNonces.clear();
+      this._cacheRows.clear();
+    }
+    this.backSeq = full ? rows[0].seq - 1 : 0;
+    await this._take(rows);
+  }
+
+  /** Whether there is older history on the server this phone hasn't fetched. */
+  get hasOlder() {
+    return this.backSeq > 0;
+  }
+
+  /**
+   * Read back one more page of older messages (the person scrolled up).
+   * Returns how many were fetched; 0 when there is nothing older.
+   */
+  loadOlder(limit = OLDER_PAGE) {
+    const run = this._olderLock.then(() => this._loadOlder(limit));
+    this._olderLock = run.catch(() => {});
+    return run;
+  }
+
+  async _loadOlder(limit) {
+    await this._loadCache();
+    const gen = this._generation;
+    if (!this.account || this.backSeq <= 0) return 0;
+    const { messages } = await this.api.messagesBefore(this.backSeq + 1, limit);
+    if (gen !== this._generation) return 0;
+    await this._take(messages, { forward: false });
+    let back = messages.length >= limit ? messages[0].seq - 1 : 0;
+    // The cache keeps this many; reading further back would only be dropped again.
+    if (this._cacheRows.size >= CACHE_MAX) back = 0;
+    this.backSeq = back;
+    if (messages.length) this.emit('messages', this.messages);
+    this._saveCacheSoon(back ? 5000 : 1000);
+    return messages.length;
+  }
+
+  /**
+   * Read the rest of the history back in while the app is open: a page at a
+   * time with a rest in between, so the screen and the live connection come
+   * first. Stops when the connection is closed (the app went to the
+   * background) and carries on when it's started again.
+   */
+  backfillHistory() {
+    this._backfillStop = false;
+    if (this._backfilling) return this._backfilling;
+    this._backfilling = (async () => {
+      try {
+        while (this.account && this.backSeq > 0 && !this._backfillStop) {
+          await sleep(this.backfillPauseMs);
+          if (this._backfillStop) break;
+          if (!(await this.loadOlder())) break;
+        }
+      } catch (e) {
+        this.onError(e);
+      } finally {
+        this._backfilling = null;
+      }
+    })();
+    return this._backfilling;
   }
 
   // --- this phone's copy of the messages ----------------------------------
@@ -1858,7 +2009,7 @@ export class CircleClient {
   }
 
   /** Keep what a message opened to, for the cache (failures keep the envelope, to try again). */
-  _remember(m, msg) {
+  _remember(m, msg, { quiet = false } = {}) {
     if (!this.cache || !Number.isInteger(m.seq)) return;
     // The helper's answers to the app (Memory and the like) are never shown: not kept.
     if (msg?.body?.agentCopy && msg.body.rpcResult) return;
@@ -1870,47 +2021,131 @@ export class CircleClient {
       createdAt: m.createdAt,
       ...(msg ? { opened: msg, env: { nonce: m.env?.nonce, epoch: m.env?.epoch } } : { env: m.env }),
     });
-    if (!this._cacheTimer) this._saveCacheSoon();
+    if (!quiet) this._saveCacheSoon(4000);
   }
 
-  /** The messages this phone already opened, back in place without opening them again. */
-  async _loadCache() {
-    if (!this.cache || this._cacheLoaded) return;
-    this._cacheLoaded = true;
+  /**
+   * The messages (and members and last locations) this phone already has,
+   * back in place without opening them again. Every way of adding or saving
+   * messages waits for this first: a client that saved before reading would
+   * replace a good cache with whatever it had fetched since.
+   */
+  _loadCache() {
+    if (!this.cache || !this.account) return Promise.resolve();
+    if (!this._cacheLoading) {
+      const t0 = Date.now();
+      this._cacheLoading = this._readCache()
+        .catch((e) => this.onError(e))
+        .then(() => {
+          this.timings.cache = { ms: Date.now() - t0, rows: this._cacheRows.size, fetchedSeq: this.fetchedSeq };
+        });
+    }
+    return this._cacheLoading;
+  }
+
+  /** Start reading the cache without waiting for it (it's read once). */
+  loadCache() {
+    return this._loadCache();
+  }
+
+  async _readCache() {
     let c = null;
     try {
       c = JSON.parse((await this.cache.getItem(this._cacheKey)) || 'null');
     } catch (e) {
       this.onError(e);
     }
-    if (!c || c.v !== 1 || c.circleId !== this.account.circleId || c.memberId !== this.account.memberId || !Array.isArray(c.rows)) return;
+    if (!c || (c.v !== 1 && c.v !== 2) || c.circleId !== this.account.circleId || c.memberId !== this.account.memberId || !Array.isArray(c.rows)) return;
+    // Members and the circle's name first: messages are filed under the agent, and names show at once.
+    if (c.state && !this.state) {
+      try {
+        this.state = c.state;
+        this._decodeMembers(c.state);
+        this._decodeCircle(c.state);
+        this.emit('members', this.memberList());
+        this.emit('circle', this.circle);
+      } catch (e) {
+        this.state = null;
+        this.onError(e);
+      }
+    }
     for (const [i, row] of c.rows.entries()) {
-      this._addMessage(row);
+      this._addMessage(row, { bulk: true });
       if (i % 200 === 199) await yieldToUi();
     }
-    // Only messages after these are fetched.
-    this.fetchedSeq = Math.max(this.fetchedSeq, Number(c.fetchedSeq) || 0);
+    this.messages.sort((a, b) => a.seq - b.seq);
+    // Only messages after these are fetched; older than backSeq, not yet.
+    if (!this.fetchedSeq) {
+      this.fetchedSeq = Number(c.fetchedSeq) || 0;
+      this.backSeq = c.v === 2 ? Math.max(0, Number(c.backSeq) || 0) : 0;
+    }
+    if (Array.isArray(c.locations) && !this.locations.size) {
+      this._rawLocations = c.locations;
+      for (const l of c.locations) this._decodeLocation(l.memberId, l.env, l.updatedAt);
+      this.emit('locations', this.locations);
+    }
     this.emit('messages', this.messages);
   }
 
-  _saveCacheSoon() {
+  /** Save after a while (a burst of messages is one save). An earlier time asked for wins. */
+  _saveCacheSoon(delay = 2000) {
     if (!this.cache) return;
+    this._cacheDirty = true;
+    const due = Date.now() + delay;
+    if (this._cacheTimer && this._cacheDue <= due) return;
     clearTimeout(this._cacheTimer);
+    this._cacheDue = due;
     this._cacheTimer = setTimeout(() => {
       this._cacheTimer = null;
       this._saveCache().catch(this.onError);
-    }, 2000);
+    }, delay);
   }
 
-  /** Kept as long as the circle keeps messages, and at most the newest 6000. */
-  async _saveCache() {
+  /** Save now if anything changed: the app is going to the background, where it can be closed any moment. */
+  async flushCache() {
+    clearTimeout(this._cacheTimer);
+    this._cacheTimer = null;
+    if (!this._cacheDirty || !this.cache || !this.account) return;
+    await this._saveCache();
+  }
+
+  /** One save at a time, in order. */
+  _saveCache() {
+    const run = this._saving.then(() => this._writeCache());
+    this._saving = run.catch(() => {});
+    return run;
+  }
+
+  /** Kept as long as the circle keeps messages, and at most the newest 500. */
+  async _writeCache() {
     if (!this.cache || !this.account) return;
+    const gen = this._generation;
+    await this._loadCache();
+    if (gen !== this._generation || !this.account) return;
+    this._cacheDirty = false;
     const days = this.state?.retentionDays ?? 90;
     const since = Date.now() - days * 86400_000;
     const rows = [...this._cacheRows.values()].filter((r) => !r.createdAt || r.createdAt >= since).sort((a, b) => a.seq - b.seq);
-    const kept = rows.slice(-6000);
+    const kept = rows.slice(-CACHE_MAX);
+    let { backSeq } = this;
     if (kept.length < this._cacheRows.size) this._cacheRows = new Map(kept.map((r) => [r.seq, r]));
-    await this.cache.setItem(this._cacheKey, JSON.stringify({ v: 1, circleId: this.account.circleId, memberId: this.account.memberId, fetchedSeq: this.fetchedSeq, rows: kept }));
+    // Messages cut off for being too many aren't fetched again.
+    if (kept.length < rows.length) {
+      backSeq = 0;
+    }
+    await this.cache.setItem(
+      this._cacheKey,
+      JSON.stringify({
+        v: 2,
+        circleId: this.account.circleId,
+        memberId: this.account.memberId,
+        fetchedSeq: this.fetchedSeq,
+        backSeq,
+        state: this.state,
+        locations: this._rawLocations,
+        rows: kept,
+      }),
+    );
   }
 
   async _post(kind, body, { silent = false, to = null, id = randomId(12), urgent = false } = {}) {
@@ -2184,14 +2419,19 @@ export class CircleClient {
   async start() {
     if (this._started) {
       this.connect();
-      return this.catchUp();
+      return this.catchUp().finally(() => this.backfillHistory().catch(() => {}));
     }
-    await this.refresh();
+    // What this phone already has shows at once, before the network answers.
     await this._loadCache();
+    const t0 = Date.now();
+    await this.refresh();
+    this.timings.refreshMs = Date.now() - t0;
     await Promise.all([this.fetchLocations(), this.fetchPlaces(), this.fetchRecords().catch(() => {})]);
     this.connect();
     await this.fetchMessages();
     this._started = true;
+    // The rest of the history, behind the screen.
+    this.backfillHistory().catch(() => {});
   }
 
   connect() {
@@ -2238,6 +2478,8 @@ export class CircleClient {
   }
 
   disconnect() {
+    // Reading history back pauses with the connection (the app went away).
+    this._backfillStop = true;
     if (this.connection) this.connection.close();
     this.connection = null;
     if (this.status !== 'offline') {
@@ -2290,7 +2532,7 @@ export class CircleClient {
       }
       case 'message': {
         const m = this._addMessage(e.message);
-        this._saveCacheSoon();
+        this._saveCacheSoon(1500);
         if (m) {
           this.emit('messages', this.messages);
           if (m.from !== this.account.memberId && m.kind !== 'reaction') this.emit('newMessage', m);

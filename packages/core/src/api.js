@@ -114,6 +114,10 @@ export class Api {
   deleteLocation = () => this.req('DELETE', '/locations/me');
   requestLocations = (targets) => this.req('POST', '/locations/request', { targets });
   messages = (after = 0, limit = 200) => this.req('GET', `/messages?after=${after}&limit=${limit}`);
+  /** The newest `limit` messages (oldest first), for opening on the latest. */
+  messagesTail = (limit = 80) => this.req('GET', `/messages?tail=1&limit=${limit}`);
+  /** The newest `limit` messages below `before` (oldest first), for reading back. */
+  messagesBefore = (before, limit = 200) => this.req('GET', `/messages?before=${before}&limit=${limit}`);
   postMessage = (id, env, { silent = false, to = null, urgent = false } = {}) => this.req('POST', '/messages', { id, ...env, silent, ...(to ? { to } : {}), ...(urgent ? { urgent: true } : {}) });
   putRetention = (days) => this.req('PUT', '/circle/retention', { days });
   putFeatures = (features) => this.req('PUT', '/circle/features', { features });
