@@ -56,11 +56,16 @@ let endedTimer: ReturnType<typeof setTimeout> | null = null;
 let stopNetwork: (() => void) | null = null;
 let stopRoutes: (() => void) | null = null;
 
+// The server asked for the relay only (CALLS_RELAY_ONLY), for the call being set up.
+let relayOnly = false;
+
 const iceServers = async (): Promise<IceServer[]> => {
   try {
-    const { iceServers: list } = await active!.callsConfig();
-    return list?.length ? list : FALLBACK_STUN;
+    const cfg = await active!.callsConfig();
+    relayOnly = !!cfg.relayOnly;
+    return cfg.iceServers?.length ? cfg.iceServers : FALLBACK_STUN;
   } catch {
+    relayOnly = false;
     return FALLBACK_STUN; // an older server, or no answer: the public ones
   }
 };
@@ -70,7 +75,7 @@ const engine = new VoiceCallEngine({
     return active?.account?.memberId ?? '';
   },
   send: (to, body, opts) => active!.sendCallSignal(to, body as never, opts),
-  createPeerConnection,
+  createPeerConnection: (servers) => createPeerConnection(servers, { relayOnly }),
   getLocalAudio,
   iceServers,
   newId: () => randomId(12),
@@ -185,8 +190,6 @@ export function endText(info: Pick<EndInfo, 'reason' | 'error'>): string {
       return info.error || 'Couldn’t reach them';
     case 'no_microphone':
       return info.error || 'HomeCircle needs the microphone to make calls';
-    case 'elsewhere':
-      return 'Answered on another phone';
     case 'hangup':
     case 'remote_hangup':
       return 'Call ended';
@@ -249,7 +252,8 @@ export async function startCall(client: CircleClient, peerId: string): Promise<v
   active = client;
   publish({ circleId: client.circleId });
   diag('call:start', {});
-  await engine.start(peerId);
+  // A call that can't start ends with its reason on the call screen (see ended()).
+  await engine.start(peerId).catch(() => {});
 }
 
 export async function answerCall() {

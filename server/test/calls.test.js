@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHmac } from 'node:crypto';
 import { createApp } from '../src/index.js';
 import { CallRelay } from '../src/calls.js';
 import { CircleClient, allFeatures, defaultFeatures, seal, directKey, randomId } from '../../packages/core/src/index.js';
@@ -308,5 +309,34 @@ test('rings are limited: 3 a minute to one person, 6 in all; other signals have 
   } finally {
     await app2.close();
     rmSync(dir2, { recursive: true, force: true });
+  }
+});
+
+test('a TURN relay is offered only when configured, with credentials that expire', async () => {
+  // Not configured: STUN only.
+  const plain = (await dad.callsConfig()).iceServers;
+  assert.ok(plain.every((s) => !s.username && !String(s.urls).startsWith('turn')));
+
+  const dir3 = mkdtempSync(join(tmpdir(), 'homecircle-calls-turn-'));
+  const app3 = createApp({ ...baseConfig(dir3), callsStun: ['stun:stun.example.org:3478'], callsTurnUrls: ['turn:turn.example.org:3478?transport=udp', 'turns:turn.example.org:443?transport=tcp'], callsTurnSecret: 'a-long-shared-secret', callsTurnTtlHours: 2, callsRelayOnly: true });
+  await new Promise((r) => app3.server.listen(0, '127.0.0.1', r));
+  const a = client();
+  try {
+    await a.createCircle({ serverUrl: `http://127.0.0.1:${app3.server.address().port}`, setupToken: SETUP, name: 'A', circleName: 'Relay', features: { ...defaultFeatures(), calls: true } });
+    const cfg = await a.callsConfig();
+    assert.deepEqual(cfg.iceServers[0], { urls: 'stun:stun.example.org:3478' });
+    const turn = cfg.iceServers[1];
+    assert.deepEqual(turn.urls, ['turn:turn.example.org:3478?transport=udp', 'turns:turn.example.org:443?transport=tcp']);
+    // coturn's use-auth-secret: username "<expiry>:<name>", password = base64(HMAC-SHA1(secret, username)).
+    const [expiry] = turn.username.split(':');
+    const ttl = Number(expiry) - Date.now() / 1000;
+    assert.ok(ttl > 7000 && ttl <= 7200 + 5, `expires in about 2 hours, got ${ttl}`);
+    assert.equal(turn.credential, createHmac('sha1', 'a-long-shared-secret').update(turn.username).digest('base64'));
+    assert.equal(cfg.relayOnly, true);
+    // The member id isn't in the username.
+    assert.ok(!turn.username.includes(id(a)));
+  } finally {
+    await app3.close();
+    rmSync(dir3, { recursive: true, force: true });
   }
 });

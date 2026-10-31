@@ -99,8 +99,7 @@ export type EndReason =
   | 'missed' // it rang here and nobody answered
   | 'failed' // couldn't connect, or the connection was lost
   | 'unreachable' // the server wouldn't take the call
-  | 'no_microphone'
-  | 'elsewhere'; // answered on another of this person's phones
+  | 'no_microphone';
 
 export interface EndInfo {
   reason: EndReason;
@@ -198,10 +197,15 @@ export class VoiceCallEngine {
     if (phase !== 'incoming' || !callId || !peerId || this.pendingOffer == null) return;
     this.set({ phase: 'connecting' });
     this.clearTimer('ringTimer');
+    await this.answerPending(callId);
+  }
+
+  /** Open the microphone, build the connection and answer the offer held for this call. */
+  private async answerPending(callId: string) {
     try {
       if (!(await this.ensureAudio(callId))) return;
       const pc = await this.newPeerConnection(callId);
-      if (!pc) return;
+      if (!pc || this.pendingOffer == null) return;
       await this.answerOffer(pc, this.pendingOffer);
       this.pendingOffer = null;
       this.armConnect(callId);
@@ -269,7 +273,7 @@ export class VoiceCallEngine {
         for (const c of sig.cands ?? []) await this.addRemote(c);
         break;
       case 'hangup':
-        this.finish(sig.reason === 'elsewhere' ? 'elsewhere' : phase === 'incoming' ? 'missed' : 'remote_hangup', { notify: false });
+        this.finish(phase === 'incoming' ? 'missed' : 'remote_hangup', { notify: false });
         break;
       case 'decline':
         this.finish('declined', { notify: false });
@@ -294,9 +298,10 @@ export class VoiceCallEngine {
     if (phase === 'outgoing' && sig.from === peerId) {
       if (this.deps.selfId < sig.from) return; // ours stands; their phone will answer it
       this.dropOutgoingForGlare();
-      this.set({ ...IDLE, phase: 'incoming', callId: sig.callId, peerId: sig.from, incoming: true });
+      this.set({ ...IDLE, phase: 'connecting', callId: sig.callId, peerId: sig.from, incoming: true });
       this.pendingOffer = sdp;
-      await this.accept();
+      this.pendingRemote = [];
+      await this.answerPending(sig.callId);
       return;
     }
     // In a call already, or calling someone else.

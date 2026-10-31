@@ -46,6 +46,14 @@ export function loadConfig() {
     // They see each phone's public address when a call starts, so a family
     // can point this at its own (comma-separated stun: URLs).
     callsStun: (process.env.CALLS_STUN || '').split(',').map((u) => u.trim()).filter((u) => /^stuns?:/.test(u)),
+    // Optional TURN relay for calls that can't connect directly (two phones on strict
+    // mobile networks): a coturn the family runs (docs/CALLS-PLAN.md). Phones get
+    // short-lived credentials made from this secret; off unless both are set.
+    callsTurnUrls: (process.env.CALLS_TURN_URLS || '').split(',').map((u) => u.trim()).filter((u) => /^turns?:/.test(u)),
+    callsTurnSecret: process.env.CALLS_TURN_SECRET || '',
+    callsTurnTtlHours: int('CALLS_TURN_TTL_HOURS', 6),
+    // Send all call media through that relay (phones never see each other's address).
+    callsRelayOnly: bool('CALLS_RELAY_ONLY', false),
     // Run each circle's agent (the optional AI helper) in this server.
     agent: bool('AGENT', false),
   };

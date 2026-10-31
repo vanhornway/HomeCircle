@@ -691,7 +691,7 @@ export class CircleClient {
   /** Send a sealed call signal to a member; `ring` (the first offer) also pushes their phone. */
   sendCallSignal(to: string, body: CallSignalBody, opts?: { ring?: boolean }): Promise<{ online: boolean; held: boolean; pushed: boolean }>;
   /** STUN (and optional TURN) servers for a call. */
-  callsConfig(): Promise<{ iceServers: { urls: string | string[]; username?: string; credential?: string }[] }>;
+  callsConfig(): Promise<{ iceServers: { urls: string | string[]; username?: string; credential?: string }[]; relayOnly?: boolean }>;
   /** Handle call signals that waited for this phone; returns how many were new. */
   collectCallSignals(): Promise<number>;
   /** memberId -> their shared most visited places. */

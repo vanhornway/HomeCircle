@@ -3,7 +3,7 @@
 //
 // A server hosts any number of circles. A device's token identifies one member
 // of one circle, and every request only ever touches that circle's data.
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import {
   Router,
   fail,
@@ -850,7 +850,18 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   r.add('GET', '/calls/config', ({ me }) => {
     requireFeature(me, 'calls', 'Voice calls');
     const stun = config.callsStun?.length ? config.callsStun : DEFAULT_STUN;
-    return { iceServers: stun.map((urls) => ({ urls })) };
+    const iceServers = stun.map((urls) => ({ urls }));
+    const turn = config.callsTurnUrls?.length && config.callsTurnSecret;
+    if (turn) {
+      // coturn's "use-auth-secret": the username is when the credential expires,
+      // the password is an HMAC of it with the shared secret. It works for
+      // everyone in the circle for a few hours and for no one after.
+      const ttl = Math.max(1, config.callsTurnTtlHours ?? 6) * 3600;
+      const username = `${Math.floor(Date.now() / 1000) + ttl}:${sha256(me.id).slice(0, 8)}`;
+      const credential = createHmac('sha1', config.callsTurnSecret).update(username).digest('base64');
+      iceServers.push({ urls: config.callsTurnUrls, username, credential });
+    }
+    return { iceServers, ...(turn && config.callsRelayOnly ? { relayOnly: true } : {}) };
   });
 
   // --- the circle's agent ------------------------------------------------

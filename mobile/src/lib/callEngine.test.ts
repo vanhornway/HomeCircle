@@ -541,14 +541,6 @@ test('signals for another call, from another person, or after the end are ignore
   assert.notEqual(a.engine.snapshot.callId, callId);
 });
 
-test('answered on another of the person’s phones', async () => {
-  const w = world(['a', 'b']);
-  const b = w.get('b');
-  await b.engine.handleSignal({ from: 'a', callId: 'x', op: 'offer', sdp: 'o' });
-  await b.engine.handleSignal({ from: 'a', callId: 'x', op: 'hangup', reason: 'elsewhere' });
-  assert.equal(b.ended[0].reason, 'elsewhere');
-});
-
 test('one call at a time: starting another while in a call is refused', async () => {
   const w = world(['a', 'b']);
   await w.get('a').engine.start('b');

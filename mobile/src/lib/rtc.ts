@@ -52,13 +52,15 @@ export async function getLocalAudio(): Promise<LocalAudio> {
   return { tracks: stream.getAudioTracks() as never, stream };
 }
 
-export function createPeerConnection(iceServers: IceServer[]): PeerConnectionLike {
+export function createPeerConnection(iceServers: IceServer[], { relayOnly = false } = {}): PeerConnectionLike {
   const { RTCPeerConnection } = webrtc();
   const pc = new RTCPeerConnection({
     iceServers: (iceServers.length ? iceServers : FALLBACK_STUN) as never,
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require',
     iceCandidatePoolSize: 2,
+    // Through the family's own relay only: the phones never learn each other's address.
+    ...(relayOnly ? { iceTransportPolicy: 'relay' as const } : {}),
   });
   // Which kind of path the call found (direct or relayed): no addresses, only the kinds.
   let logged = false;
