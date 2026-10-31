@@ -143,7 +143,7 @@ export default function Places() {
               detail={
                 settings.notifyAllPlaceAlerts
                   ? 'Every arrival and departure in your circles notifies you.'
-                  : 'Only the alerts above notify you. Others still show in the group chat.'
+                  : 'Only the alerts above notify you. Everyone’s arrivals and departures still show in the group chat.'
               }
             />
           </Card>
