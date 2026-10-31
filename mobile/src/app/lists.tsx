@@ -6,14 +6,45 @@ import { errorText } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
 
-type Item = { id: string; name: string; by: string; at: number; ticked: boolean; usual: number };
-type List = { id: string; name: string; createdBy: string; items: Item[]; usual: { name: string; count: number }[] };
+// What one costs, from past receipts: the usual price, and the range it has been.
+type Price = { est: number; low: number; high: number; n: number };
+type Item = { id: string; name: string; by: string; at: number; ticked: boolean; usual: number; price?: Price };
+type List = {
+  id: string;
+  name: string;
+  createdBy: string;
+  items: Item[];
+  usual: { name: string; count: number; price?: Price }[];
+  // Set when anything on the list has a price: what's still to get, and how many of those are priced.
+  currency?: string;
+  total?: { low: number; high: number; priced: number; count: number };
+};
+
+/** "$4.20" (whole units for totals); just the number when the currency isn't known. */
+function money(amount: number, currency = '', whole = false) {
+  const digits = whole ? 0 : 2;
+  try {
+    return currency
+      ? new Intl.NumberFormat(undefined, { style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(amount)
+      : amount.toFixed(digits);
+  } catch {
+    return `${currency} ${amount.toFixed(digits)}`.trim();
+  }
+}
+/** "About $63 to $78": the low end rounded down and the high end up. */
+function rangeText(low: number, high: number, currency = '') {
+  const a = Math.floor(low);
+  const b = Math.ceil(high);
+  return a === b ? `About ${money(a, currency, true)}` : `About ${money(a, currency, true)} to ${money(b, currency, true)}`;
+}
 
 /**
  * The circle's shopping lists, kept by its helper: one per store. Anyone adds,
  * ticks and removes; Done shopping clears what was ticked and counts it as
  * bought, so usual items go first. Everything bought there before (receipts
- * too) is offered to pick from; typing in the add box narrows it.
+ * too) is offered to pick from; typing in the add box narrows it. What receipts
+ * showed it cost makes an estimated price on each item and an estimated range
+ * for the list (always marked as an estimate: sales come and go).
  */
 // What's bought before, shown before "Show all".
 const FIRST_USUAL = 24;
@@ -168,6 +199,19 @@ export default function ShoppingLists() {
               keyboardShouldPersistTaps="handled"
               ListHeaderComponent={
                 <View style={{ gap: 10, marginBottom: 8 }}>
+                  {list.total ? (
+                    <View
+                      accessible
+                      accessibilityLabel={`Estimated cost: ${rangeText(list.total.low, list.total.high, list.currency)}. ${list.total.priced} of ${list.total.count} items priced.`}
+                      style={{ gap: 2, padding: 12, borderRadius: 12, backgroundColor: t.brandSoft }}
+                    >
+                      <Text style={{ color: t.brand, fontSize: 13, fontWeight: '700' }}>ESTIMATED COST</Text>
+                      <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>{rangeText(list.total.low, list.total.high, list.currency)}</Text>
+                      <Text style={{ color: t.muted, fontSize: 13 }}>
+                        {list.total.priced} of {list.total.count} item{list.total.count === 1 ? '' : 's'} priced · from your past receipts; sales can change it
+                      </Text>
+                    </View>
+                  ) : null}
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <TextInput
                       value={adding}
@@ -190,11 +234,14 @@ export default function ShoppingLists() {
                           <Pressable
                             key={u.name}
                             accessibilityRole="button"
-                            accessibilityLabel={`Add ${u.name}`}
+                            accessibilityLabel={u.price ? `Add ${u.name}, about ${money(u.price.est, list.currency)}` : `Add ${u.name}`}
                             onPress={() => add(u.name, { fromBox: false })}
                             style={{ minHeight: 34, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, backgroundColor: t.surface2 }}
                           >
-                            <Text style={{ color: t.text }}>+ {u.name}</Text>
+                            <Text style={{ color: t.text }}>
+                              + {u.name}
+                              {u.price ? <Text style={{ color: t.muted, fontSize: 13 }}> · ~{money(u.price.est, list.currency)}</Text> : null}
+                            </Text>
                           </Pressable>
                         ))}
                       </View>
@@ -213,12 +260,15 @@ export default function ShoppingLists() {
                   <Pressable
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: item.ticked }}
-                    accessibilityLabel={item.name}
+                    accessibilityLabel={item.price ? `${item.name}, about ${money(item.price.est, list.currency)}` : item.name}
                     onPress={() => run('itemTick', { listId: list.id, itemId: item.id, ticked: !item.ticked })}
                     style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 48 }}
                   >
                     <Text style={{ fontSize: 22 }}>{item.ticked ? '☑️' : '⬜️'}</Text>
-                    <Text style={{ flex: 1, color: item.ticked ? t.muted : t.text, fontSize: 17, textDecorationLine: item.ticked ? 'line-through' : 'none' }}>{item.name}</Text>
+                    <Text style={{ flex: 1, color: item.ticked ? t.muted : t.text, fontSize: 17, textDecorationLine: item.ticked ? 'line-through' : 'none' }}>
+                      {item.name}
+                      {item.price ? <Text style={{ color: t.muted, fontSize: 14, textDecorationLine: 'none' }}> · about {money(item.price.est, list.currency)}</Text> : null}
+                    </Text>
                     {item.usual >= 2 && !item.ticked ? <Text style={{ color: t.muted, fontSize: 12 }}>usual</Text> : null}
                   </Pressable>
                   <Pressable
