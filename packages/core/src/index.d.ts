@@ -350,7 +350,7 @@ export class Api {
   baseUrl: string;
   token: string | null;
   info(): Promise<Omit<ServerInfo, 'server'>>;
-  putPush(token: string | null, platform: string): Promise<{ ok: true }>;
+  putPush(token: string | null, platform: string, opts?: { fallback?: boolean }): Promise<{ ok: true }>;
   listInvites(): Promise<{ invites: { id: string; createdBy: string; createdAt: number; expiresAt: number }[] }>;
   deleteInvite(id: string): Promise<{ ok: true }>;
   /** The weather plugin, for a grid cell (lat and lng rounded to 0.1°). */
