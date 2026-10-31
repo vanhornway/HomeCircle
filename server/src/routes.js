@@ -464,7 +464,9 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     const token = body.token == null ? null : body.token;
     if (token !== null && !isPushToken(token)) fail(400, 'invalid', 'Unsupported push token');
     const platform = ['ios', 'android', 'web'].includes(body.platform) ? body.platform : null;
-    store.setPush(me, token, platform);
+    // `fallback`: this person opted in to a generic visible alert when the
+    // silent wake-up for a message goes unanswered (the phone is asleep).
+    store.setPush(me, token, platform, body.fallback === true && platform === 'android');
     return { ok: true };
   });
 
@@ -967,7 +969,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       const recipients = to ? [to] : store.activeMembers(me.circleId).filter((m) => m.id !== me.id);
       // `urgent` is outer routing metadata, like `to`: the server learns only that it was set.
       const urgent = body.urgent === true && urgentLimiter.take(me.id) === 0;
-      push.activity(recipients.filter((m) => m.pushToken && !hub.isOnline(m.id)), { urgent });
+      push.activity(recipients.filter((m) => m.pushToken && !hub.isOnline(m.id)), { urgent, seq });
     }
     return { seq, createdAt: now };
   }, { agent: true });

@@ -11,7 +11,7 @@ import { allClients, clientForCircle, errorText, getClient, startupDiag, useCirc
 import { mark, takeStartup } from '../../lib/startup';
 import { getServerState, isUnreachable, RECONNECT_GRACE_MS, setRetryHandler, setServerState } from '../../lib/connection';
 import { registerPush } from '../../lib/push';
-import { ensureNotificationChannels, markSeen, notifyNewMessages } from '../../lib/notify';
+import { clearBackupAlerts, ensureNotificationChannels, markSeen, notifyNewMessages } from '../../lib/notify';
 import { ensureReadBase, unreadInCircle } from '../../lib/unread';
 import { useAllCircles } from '../../lib/useCircle';
 import { shareNow, startBackgroundUpdates, syncGeofences } from '../../lib/location';
@@ -136,6 +136,8 @@ function useCircleLifecycle(circlesKey: string) {
       flushOutbox().catch(() => 0);
       // Chirps that arrived while the app was closed and no push got through.
       collectAndPlay(allClients()).catch(() => {});
+      // A generic backup alert the system showed while the phone was asleep: the app is open now.
+      clearBackupAlerts().catch(() => {});
       if (!pushRegistered) {
         pushRegistered = true;
         registerPush().catch(() => {

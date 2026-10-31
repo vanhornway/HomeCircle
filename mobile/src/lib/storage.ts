@@ -67,14 +67,23 @@ export interface Settings {
   locationView: 'basic' | 'advanced';
   /** Show sender and text in notifications (otherwise just "New message"). */
   showPreviews: boolean;
+  /**
+   * Android: when the silent wake-up for a message goes unanswered because the
+   * phone is asleep, let the server send one generic visible alert ("New
+   * message in your circle") that sounds at once. Off until you opt in: that
+   * text can show on a locked screen before the app decrypts anything.
+   */
+  backupAlerts: boolean;
   /** Circles (by id) this phone doesn't share its location with. */
   pausedCircles: string[];
   /** Post "arrived at / left" messages to the group chats when this phone crosses a place. */
   announcePlaces: boolean;
   /** Show other people's arrived/left messages in chats (and notify for them). */
   showPlaceAlerts: boolean;
-  /** Notify for everyone's arrivals and departures, not only your alert rules. */
+  /** Notify for everyone's arrivals and departures, not only your alert rules. Off by default; they still show in the chats. */
   notifyAllPlaceAlerts: boolean;
+  /** Set once the 0.22 change (everyone's arrivals stop notifying unless asked) has been applied to this phone. */
+  placeAlertsQuietApplied: boolean;
   /** Circles (by id) that get an approximate (~1 km) location instead of an exact one. */
   approximateCircles: string[];
   /** Optional reason shown to a circle while sharing with it is paused. */
@@ -114,10 +123,12 @@ export const DEFAULT_SETTINGS: Settings = {
   location: { ...STOPS[DEFAULT_STOP], fullDetailCharging: true, saveWithBatterySaver: true },
   locationView: 'basic',
   showPreviews: true,
+  backupAlerts: false,
   pausedCircles: [],
   announcePlaces: true,
   showPlaceAlerts: true,
-  notifyAllPlaceAlerts: true,
+  notifyAllPlaceAlerts: false,
+  placeAlertsQuietApplied: true,
   approximateCircles: [],
   pauseReasons: {},
   alertRules: [],
@@ -147,7 +158,13 @@ export async function getSettings(): Promise<Settings> {
     const raw = await AsyncStorage.getItem(SETTINGS_KEY);
     // A new install starts at the default stop; a phone from before the
     // slider keeps the stop matching its old interval (locationProfile null).
-    const s = { ...DEFAULT_SETTINGS, ...(raw ? JSON.parse(raw) : { locationProfile: DEFAULT_STOP }) };
+    const stored = raw ? JSON.parse(raw) : { locationProfile: DEFAULT_STOP };
+    // Too many arrival and departure notifications: phones from before stop
+    // notifying about everyone once (your own "notify me when…" alerts stay,
+    // and the messages still appear in the chats). It can be turned back on.
+    const quiet = raw && !stored.placeAlertsQuietApplied ? { notifyAllPlaceAlerts: false, placeAlertsQuietApplied: true } : {};
+    const s = { ...DEFAULT_SETTINGS, ...stored, ...quiet };
+    if (Object.keys(quiet).length) AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(s)).catch(() => {});
     if (JSON.stringify(s) !== JSON.stringify(cached)) setCached(s);
     return s;
   } catch {

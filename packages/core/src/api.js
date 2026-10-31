@@ -101,7 +101,9 @@ export class Api {
   join = (body) => this.req('POST', '/join', body);
   state = () => this.req('GET', '/state');
   putProfile = (profile) => this.req('PUT', '/members/me/profile', { profile });
-  putPush = (token, platform) => this.req('PUT', '/members/me/push', { token, platform });
+  // `fallback`: an Android phone asks for one generic visible alert when the silent
+  // wake-up for a message goes unanswered (the server checks the delivered tick).
+  putPush = (token, platform, { fallback = false } = {}) => this.req('PUT', '/members/me/push', { token, platform, fallback });
   removeMember = (id) => this.req('DELETE', `/members/${encodeURIComponent(id)}`);
   setRole = (id, role) => this.req('POST', `/members/${encodeURIComponent(id)}/role`, { role });
   createInvite = (body) => this.req('POST', '/invites', body);

@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import nacl from 'tweetnacl';
 import { fromB64, toB64, utf8Decode, utf8Encode } from '@homecircle/core';
+import { pushTimingLines } from './pushTiming';
 
 const LOG_KEY = 'homecircle.diag';
 const KEY_NAME = 'homecircle.diagKey';
@@ -143,6 +144,7 @@ export function diagnosticsText(entries: DiagEntry[], header: string, maxLines?:
     `Since ${s.since ? time(s.since) : '—'}: ${s.wakeups} background wake-ups, ${s.uploads} location uploads (${s.uploadFailures} failed),`,
     `${s.arrivals} arrivals and ${s.departures} departures (${s.placeRetries} retried), ${s.locateRequests} Locate requests, ${s.errors} errors.`,
     `Longest time without an upload: ${formatGap(s.longestGapMin)}${s.gapOngoing ? ' (still going on)' : s.longestGapEnded ? ` (ended ${time(s.longestGapEnded)})` : ''}.`,
+    ...pushTimingLines(entries),
     '',
     ...lines,
   ].join('\n');
