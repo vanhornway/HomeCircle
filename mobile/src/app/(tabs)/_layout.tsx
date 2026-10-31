@@ -1,15 +1,18 @@
 import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
-import { AppState } from 'react-native';
+import { AppState, PixelRatio } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Tabs } from 'expo-router/js-tabs';
 import { Redirect, router, useRouter } from 'expo-router';
 import { SKINS, useSkin } from '../../skins';
 import { recordNewElders, syncSkinFromRecords } from '../../skins/sync';
+import { checkInactivity } from '../../lib/inactivity';
 import { CircleClient } from '@homecircle/core';
-import { allClients, clientForCircle, errorText, getClient, useCircles } from '../../lib/circle';
+import { allClients, clientForCircle, errorText, getClient, startupDiag, useCircles } from '../../lib/circle';
+import { mark, takeStartup } from '../../lib/startup';
 import { getServerState, isUnreachable, RECONNECT_GRACE_MS, setRetryHandler, setServerState } from '../../lib/connection';
 import { registerPush } from '../../lib/push';
-import { ensureNotificationChannels, markSeen, notifyNewMessages } from '../../lib/notify';
+import { clearBackupAlerts, ensureNotificationChannels, markSeen, notifyNewMessages } from '../../lib/notify';
 import { ensureReadBase, unreadInCircle } from '../../lib/unread';
 import { useAllCircles } from '../../lib/useCircle';
 import { shareNow, startBackgroundUpdates, syncGeofences } from '../../lib/location';
@@ -134,6 +137,8 @@ function useCircleLifecycle(circlesKey: string) {
       flushOutbox().catch(() => 0);
       // Chirps that arrived while the app was closed and no push got through.
       collectAndPlay(allClients()).catch(() => {});
+      // A generic backup alert the system showed while the phone was asleep: the app is open now.
+      clearBackupAlerts().catch(() => {});
       if (!pushRegistered) {
         pushRegistered = true;
         registerPush().catch(() => {
@@ -157,6 +162,12 @@ function useCircleLifecycle(circlesKey: string) {
       phoneHealth()
         .then((h) => diag('app-open', { ...h, circles: allClients().length, failed: failed.length, activeMs, totalMs: Date.now() - t0 }))
         .catch(() => {});
+      // Once per launch: where the time went, so a slow start can be read off Diagnostics.
+      const marks = takeStartup();
+      if (marks) {
+        const { cache, firstFetch, refreshMs } = active.timings;
+        diag('startup', { ...marks, ...startupDiag, cacheMs: cache?.ms, cacheRows: cache?.rows, refreshMs, fetchMs: firstFetch?.ms, fetchMode: firstFetch?.mode, fetched: firstFetch?.count, activeMs });
+      }
     };
 
     // One reconnect at a time: unlocking twice, or Retry mid-way, waits for
@@ -191,6 +202,11 @@ function useCircleLifecycle(circlesKey: string) {
       client.on('records', () => {
         syncSkinFromRecords(allClients()).catch(() => {});
         recordNewElders(client).catch(() => {});
+        checkInactivity(client).catch(() => {});
+      }),
+      // An elder's phone reported when she last used it: quiet for too long?
+      client.on('locations', () => {
+        checkInactivity(client).catch(() => {});
       }),
       // An elder joined with an elder's invite: an admin's phone saves her settings.
       client.on('messages', () => {
@@ -242,9 +258,14 @@ function useCircleLifecycle(circlesKey: string) {
 
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') resume();
-      else if (state === 'background') {
-        if (retryTimer) clearTimeout(retryTimer);
-        allClients().forEach((c) => c.disconnect());
+      else {
+        // Leaving the app: it can be closed any moment now, so what arrived
+        // is written down now, not on the timer.
+        allClients().forEach((c) => c.flushCache().catch(() => {}));
+        if (state === 'background') {
+          if (retryTimer) clearTimeout(retryTimer);
+          allClients().forEach((c) => c.disconnect());
+        }
       }
     });
     return () => {
@@ -311,12 +332,18 @@ function FullTabs() {
   const places = !all.length || all.some((c) => c.feature('locationSharing'));
   useCircleLifecycle(clients.map((c) => c.accountKey).join('|'));
   useOpenChatFromNotification();
+  useEffect(() => mark('tabs'), []);
   // A newer app? Checked at most every 4 hours, on opening and coming back.
   useEffect(() => {
     checkForUpdate().catch(() => {});
     const sub = AppState.addEventListener('change', (s) => s === 'active' && checkForUpdate().catch(() => {}));
     return () => sub.remove();
   }, []);
+  // The labels follow the phone's text size up to 1.5 times; the bar grows with them,
+  // or the bottom of the words is cut off (a fixed-height bar clips larger text).
+  const insets = useSafeAreaInsets();
+  const labelSize = Math.round(13 * Math.min(PixelRatio.getFontScale(), 1.5));
+  const barHeight = 6 + 28 + 4 + Math.ceil(labelSize * 1.3) + 8 + insets.bottom;
   return (
     <Tabs
       // Back from a tab returns to the tab you came from.
@@ -325,9 +352,10 @@ function FullTabs() {
         headerShown: false,
         tabBarActiveTintColor: t.brand,
         tabBarInactiveTintColor: t.muted,
-        tabBarStyle: { backgroundColor: t.surface, borderTopColor: t.line },
+        tabBarStyle: { backgroundColor: t.surface, borderTopColor: t.line, height: barHeight },
         // Bigger targets: larger icons and labels, more padding per tab.
-        tabBarLabelStyle: { fontSize: 13, fontWeight: '600' },
+        tabBarAllowFontScaling: false,
+        tabBarLabelStyle: { fontSize: labelSize, fontWeight: '600' },
         tabBarItemStyle: { paddingTop: 6 },
       }}
     >

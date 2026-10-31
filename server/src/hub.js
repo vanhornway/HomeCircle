@@ -4,8 +4,10 @@ import { WebSocketServer } from 'ws';
 import { sha256 } from './http.js';
 
 export class Hub {
-  constructor({ store, log, heartbeatMs = 25000, authTimeoutMs = 10000, maxSocketsPerIp = 40, ipOf = (req) => req.socket.remoteAddress || 'unknown' }) {
+  constructor({ store, log, onReady = null, heartbeatMs = 25000, authTimeoutMs = 10000, maxSocketsPerIp = 40, ipOf = (req) => req.socket.remoteAddress || 'unknown' }) {
     this.store = store;
+    // Called with a member's id once their connection is ready (held call signals follow).
+    this.onReady = onReady;
     this.authTimeoutMs = authTimeoutMs;
     this.log = log;
     // Open connections per address, signed in or not, so one address can't
@@ -76,6 +78,7 @@ export class Hub {
       this.circleOf.set(member.id, member.circleId);
       this.store.touchMember(member.id, Date.now());
       ws.send(JSON.stringify({ type: 'ready' }));
+      this.onReady?.(member.id);
     });
     ws.on('close', () => {
       clearTimeout(authTimer);

@@ -17,9 +17,9 @@ so the circles can't read each other even through a shared device account.
 
 | Party | Can see | Cannot see |
 |---|---|---|
-| Your server / hosting provider (Render, Railway, Hetzner, …) | number of circles and members, IP addresses, when each phone uploads, ciphertext sizes, push tokens (and so which members share a phone), and which messages their sender marked `urgent` (call-back requests and replies, SOS) and when | names, locations, messages, places, battery, what an urgent message is or why |
+| Your server / hosting provider (Render, Railway, Hetzner, …) | number of circles and members, IP addresses, when each phone uploads, ciphertext sizes, push tokens (and so which members share a phone), which messages their sender marked `urgent` (call-back requests and replies, SOS) and when, that a member sent a call set-up message to another member (and whether it was a ring) and when, which members opted in to the Android backup alert, which members have admin settings (a `member` record) and which pairs have a family name (an `alias` record, never the name), and how many photos each member uploaded and their sizes | names, locations, messages, places, battery, what an urgent message is or why, skins and settings, family names, photos |
 | Network attacker | nothing beyond TLS metadata | everything else |
-| Apple / Google / Expo push relay | that a push was sent to a device, and its type (`loc_req`, `msg`); urgent messages are pushed at once rather than batched, so their timing is less bunched | any content (an urgent push is identical to any other) |
+| Apple / Google / Expo push relay | that a push was sent to a device, and its type (`loc_req`, `msg`, `call`); urgent messages are pushed at once rather than batched, so their timing is less bunched | any content (an urgent push is identical to any other) |
 | Map tile provider (OpenStreetMap by default) | which map area you *view*, and your IP | who you are tracking or why |
 | A removed member | everything up to their removal | anything after the key is rotated |
 
@@ -61,7 +61,7 @@ the server from replaying a chat message as a location, or one member's data as
 another's. The signature is inside the ciphertext, so the server can't even
 tell who signed what beyond its own routing metadata.
 
-Kinds: `profile`, `location`, `chat`, `event`, `place`, `circle`.
+Kinds: `profile`, `location`, `chat`, `event`, `place`, `circle`, `frequent`, `member`, `alias`.
 
 ## Profiles and trust
 
@@ -186,6 +186,13 @@ for timeouts too, and apps before 0.8 deleted their keys on any 4001.)
   are kept for 7 days on the phone only, encrypted with a key in the OS
   keystore. They leave the phone only when the user sends them, as a direct
   message.
+- **Asleep and Do Not Disturb (0.22.0)**: the sealed location body may also
+  carry `dnd: true` (the phone is in Do Not Disturb), `tz` (its IANA time
+  zone, so others can tell the local time) and, on an elder's phone, `used`
+  (when she last used the app, for the inactivity check). A family phone
+  that sees a call-back request while its owner is asleep or in Do Not
+  Disturb sends the reply `asleep` for them (see Chat and events). Like the
+  rest of the body, the server can't read any of it.
 - **Check-ins** are direct messages whose sealed body carries
   `checkin: "request"` or `"ok"`; asking also sends a location request to that
   one person.
@@ -212,12 +219,28 @@ A request is a group `chat` message whose sealed body carries
 whether it's outside her sleep hours, and `remind` the minutes between
 reminders on the family's phones (`0` for none). Replies are group `chat`
 messages with `callback: { state: "reply", of, reply }`, where `reply` is
-`now`, `5min`, `morning` or `evening` (her time). The first `now` in server
+`now`, `5min`, `morning` or `evening` (her time), or `asleep`, which a family phone sends by itself when its owner is asleep or in Do Not Disturb (it doesn't take or close the request). The first `now` in server
 order takes the request and closes it for everyone; a reply from the asker
 herself, or sent as a direct message, doesn't count. Each family phone
 schedules its own reminders while a request that asks it is open and it
 hasn't replied, so the server never learns about reminders. Both carry a
 readable `text` for older apps.
+
+**Reminders done.** The circle helper's confirmation that a reminder is done
+carries a body field `reminderDoneId`, sent to everyone who got the reminder,
+so their reminder cards close too. Older apps show the line as text.
+
+**Fetching history.** `GET /messages?tail=1&limit=n` returns the newest `n`
+messages (group, and your direct ones); `?before=seq&limit=n` the `n` newest
+below `seq`. `?after=seq` still returns what's new. This lets an app open on
+the newest messages and fetch older ones as you scroll.
+
+**Phone numbers and WhatsApp.** A profile may carry a sealed `phone` (an
+international number, normalised to digits), used only to open WhatsApp on the phone of
+someone who tapped Call on WhatsApp, and the circle record may carry a
+`groupCallLink` (a WhatsApp group call link, `/video/…` or `/voice/…`, set by an admin). Both are
+behind the circle's WhatsApp feature (`whatsapp`, off by default). The app
+only opens WhatsApp; nothing reaches the server.
 
 **Urgent messages.** `POST /messages` takes an outer `urgent: true`
 (routing metadata, like `to`) on call-back requests, replies to them and SOS
@@ -227,10 +250,79 @@ waiting; the push itself is the same as any other. Past 10 urgent messages
 a minute from one sender, the rest are delivered like ordinary messages,
 never refused.
 
+**Records** are sealed settings the server keeps one copy of per kind and
+subject, written by admins or the people concerned and read by every member
+(`GET /records`, `PUT` and `DELETE /records/:kind/:subject`):
+
+- `member`, subject a member id: admin settings about that member: which
+  skin their app shows (`full` or `elderly`), and for an elder her page
+  (`care` or `grandkids`), Ring everyone, Games, tile order, photos an admin
+  added for her tiles, sleep hours, reminder interval, inactivity check-in,
+  language and he/she. Only admins may write one, and phones accept it only
+  if an admin signed it.
+- `alias`, subject `caller.member`: a family name, what one member calls
+  another ("Nani"), with an optional relationship. Either of them or an admin
+  may write it, and phones accept it only from one of those. Names are per
+  pair, so the same person can be "Nani" to one grandchild and "Dadi" to
+  another.
+
+The server checks who may write from the ids alone and can't read a record.
+Phones also check that the ids sealed inside match the subject, so a record
+can't be moved to another member or pair. A removed member's records are
+deleted with them. A phone takes its skin from the `member` records about
+its own person (the most restricted across its circles); an elder's phone
+announces itself in the group chat (`elderJoined`), and an admin's phone then
+saves her settings as a `member` record.
+
+**Photos** are files encrypted on the phone with a key of their own
+(`POST /files?purpose=photo`, up to 2 MB, 40 per member, behind the circle's
+Photos feature). The key travels only inside a sealed profile (your own
+photo, as `photo: { id, key, at }`) or a `member` record (photos an admin
+adds for an elder's tiles). Photos are kept until replaced or until whoever
+uploaded them leaves; removing the circle's helper deletes only its own
+files. Profiles may also carry `g` (`m` or `f`), a member's he/she for
+languages whose verbs need it.
+
 **Retention.** Each circle keeps messages (group and direct) for 1, 7, 30, 90
 or 365 days, chosen by its admins (`PUT /circle/retention`, default 90).
 Nothing is ever kept longer than a year; `MESSAGE_RETENTION_DAYS` can only
 lower that cap. Expired messages are deleted from the server hourly.
+
+## Voice calls (0.22.0, off until an admin turns on the `calls` feature)
+
+A call is between two members of one circle. The voice is WebRTC (DTLS-SRTP,
+Opus), phone to phone; the server never carries it unless a relay is used.
+
+- **Signals** (ring/offer, answer, ICE candidates, hang-up, busy, decline)
+  are sealed envelopes of kind `call`, sealed with the pair's direct key and
+  signed like any other, so the server can neither read nor alter them. They
+  are not messages: `POST /calls/signal` `{ to, id, epoch, nonce, ct, ring? }`
+  (the envelope at most 16 KB) relays one and **never stores it**. If the
+  recipient has an open WebSocket it gets `{ type: "call_signal", from, id,
+  env, at }`; otherwise the signal waits in server memory for 45 seconds (64
+  per member, 2,000 in all) and is fetched with `GET /calls/pending`, which
+  also removes it. A signal flagged `ring: true` (the first offer of a call)
+  also sends a content-free high-priority push (`{ t: "call" }`), even to a
+  phone that looks connected.
+- **Limits**: 90 signals a minute per sender, 6 rings a minute per sender and
+  3 a minute per sender and recipient; past that `429` with `retryAfter`.
+- **Connecting**: `GET /calls/config` returns `{ iceServers, relayOnly? }`:
+  STUN servers, and if the admin configured a relay, a TURN entry with
+  short-lived credentials (Cloudflare or Metered keys, or a coturn shared
+  secret: `username = expiry:hash`, `credential = HMAC-SHA1`). The app uses
+  the relay only when a direct connection fails (always, with
+  `CALLS_RELAY_ONLY`). See `docs/CALLS-NOTES.md`.
+- **Checking nobody is in the middle**: both phones show four words derived
+  from the two DTLS fingerprints; the people compare them aloud.
+- The server learns who sent a call signal to whom, when, and how big;
+  not the answer, the codec, the addresses inside the offer, or how long the
+  call lasted. A relay, if used, sees encrypted media packets and the
+  phones' IP addresses.
+
+**Missed calls and length.** After a call, the caller's phone sends an
+ordinary sealed direct message with a body `call: { state: "missed" }` or
+`call: { state: "ended", seconds }` (plus readable `text`), which the app
+shows as a line in the chat. A missed one notifies; an ended one is silent.
 
 ## Places
 
@@ -259,15 +351,21 @@ circle that has it. Addresses are looked up with the phone's own geocoder
 | PUT | `/circle/retention` | admin: `{ days: 1 \| 7 \| 30 \| 90 \| 365 }` |
 | GET / POST | `/messages` | group messages + your DMs; `to` makes a DM; `urgent: true` skips push batching (10 a minute per sender) |
 | PUT | `/members/me/profile` | re-seal profile |
-| PUT | `/members/me/push` | register push token |
+| PUT | `/members/me/push` | register push token; `fallback: true` (Android) opts in to one generic visible backup alert if the phone hasn't fetched a message soon after its wake-up (12 s, 4 s for urgent) |
 | DELETE | `/members/:id` | admin, or yourself (leave) |
 | POST | `/members/:id/role` | owner: promote/demote admin |
 | POST/GET/DELETE | `/invites` | admin |
 | POST | `/keys/rotate` | admin |
 | GET | `/keys/envelopes` | your rotated keys |
 | GET / PUT | `/locations`, `/locations/me` | latest sealed locations |
+| GET | `/records` | sealed member settings and family names (`?kind=member` or `alias`) |
+| PUT / DELETE | `/records/:kind/:subject` | `member`: admins; `alias` (`caller.member`): either of them or an admin |
+| POST / GET / DELETE | `/files`, `/files/:id` | encrypted files; `?purpose=photo` for a member's photo (kept) |
 | POST | `/locations/request` | ask phones for a fresh fix |
-| GET / POST | `/messages` | `?after=seq&limit=n` |
+| GET / POST | `/messages` | `?after=seq&limit=n`; `?tail=1&limit=n` newest; `?before=seq&limit=n` older |
+| POST | `/calls/signal` | feature `calls`: relay one sealed call signal, never stored; `ring: true` also pushes |
+| GET | `/calls/pending` | feature `calls`: signals held while this phone was asleep (removes them) |
+| GET | `/calls/config` | feature `calls`: STUN and optional TURN credentials |
 | GET / PUT / DELETE | `/places`, `/places/:id` | sealed places |
 | PUT | `/circle` | admin: re-seal circle info |
 | WS | `/api/v1/ws` | first frame `{type:"auth", token}` |

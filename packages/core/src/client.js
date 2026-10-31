@@ -51,6 +51,8 @@ export const CALLBACK_REPLY_TEXT = {
   evening: 'I’ll call you in the evening',
 };
 const MAX_MEMBERS_ASKED = 50;
+/** Every answer a request can get: the four buttons, and 'asleep', which a phone sends by itself. */
+export const CALLBACK_ANSWERS = [...CALLBACK_REPLIES, 'asleep'];
 
 const AGENT_NAME = /^[\p{L}\p{N}][\p{L}\p{N} _-]{0,23}$/u;
 /** An agent's name: what people call it (/Name), so letters, digits, space, _ and - only. */
@@ -73,9 +75,21 @@ function cleanAgentCard(c) {
 
 // What _open returns for an envelope signed under another id (a replay).
 const REPLAYED = Symbol('replayed');
+// A call signal signed longer ago than this, or further ahead (clocks differ), isn't part of a call now.
+const CALL_SIGNAL_MAX_AGE_MS = 90_000;
+const CALL_SIGNAL_MAX_SKEW_MS = 120_000;
 
 /** Let the screen draw and taps through (a macrotask), then carry on. */
 const yieldToUi = () => new Promise((r) => setTimeout(r, 0));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// History is fetched newest first: the latest page opens the chat, older
+// pages fill in behind it. Opening a message (checking its signature) takes
+// tens of ms on a phone, so the first page is small.
+const FIRST_PAGE = 80;
+const FORWARD_PAGE = 500;
+const OLDER_PAGE = 100;
+// The most messages kept on the phone between launches.
+const CACHE_MAX = 500;
 
 export class CircleClient {
   /**
@@ -135,16 +149,34 @@ export class CircleClient {
     // live can't move it, or a catch-up after reconnecting would skip whatever
     // was sent just before them.
     this.fetchedSeq = 0;
+    // History is held from here up to fetchedSeq: older than this is not
+    // fetched yet (0 = all of it is). Fetching starts from the newest
+    // messages and works back, so this is what reading further back needs.
+    this.backSeq = 0;
+    this._generation = (this._generation || 0) + 1;
     this.connection = null;
     this.status = 'offline';
     // Opened envelopes, so the same location, place or profile isn't
     // decrypted and checked again on every refresh: "from|to|id|ct" -> msg.
     this._opened = new Map();
+    this._seenCalls = new Set(); // ids of call signals already handled
     // Messages as opened, kept on this phone between launches (opts.cache):
     // a cold start then only opens what's new. seq -> row.
     this._cacheRows = new Map();
-    this._cacheLoaded = false;
+    this._cacheLoading = null;
     this._cacheTimer = null;
+    this._cacheDue = 0;
+    this._cacheDirty = false;
+    this._saving = Promise.resolve();
+    this._rawLocations = null;
+    // Fetches of messages take turns; reading further back is its own queue.
+    this._fetchLock = Promise.resolve();
+    this._olderLock = Promise.resolve();
+    this._backfilling = null;
+    this._backfillStop = false;
+    this.backfillPauseMs = 150;
+    // How long the pieces of opening took, for Diagnostics.
+    this.timings = {};
     this._started = false;
     this._catching = null;
   }
@@ -222,6 +254,9 @@ export class CircleClient {
   async signOut(reason = 'signed_out') {
     this.disconnect();
     clearTimeout(this._cacheTimer);
+    this._generation++;
+    // A save still being written must not bring the cache back after it's deleted.
+    await this._saving;
     await this.storage.removeItem(this.accountKey);
     await this.cache?.removeItem(this._cacheKey).catch(() => {});
     this._reset();
@@ -321,6 +356,7 @@ export class CircleClient {
       color: a.profile.color,
       ...(a.profile.chirp ? { chirp: a.profile.chirp } : {}),
       ...(GENDERS.includes(a.profile.g) ? { g: a.profile.g } : {}),
+      ...(cleanPhone(a.profile.phone) ? { phone: cleanPhone(a.profile.phone) } : {}),
       ...(cleanPhotoRef(a.profile.photo) ? { photo: a.profile.photo } : {}),
       boxPub: a.identity.boxPub,
       signPub: a.identity.signPub,
@@ -572,6 +608,7 @@ export class CircleClient {
   async refresh() {
     const st = await this.api.state();
     this.state = st;
+    this._cacheDirty = true;
     for (const m of st.members) if ((m.deliveredSeq ?? 0) > (this.delivered.get(m.id) ?? 0)) this.delivered.set(m.id, m.deliveredSeq);
     if (st.epoch > this.account.epoch || !this.account.keyring[st.epoch]) {
       // Recognize members we can already verify first: a new key is only
@@ -687,6 +724,7 @@ export class CircleClient {
           view.color = MEMBER_COLORS.includes(p.body.color) ? p.body.color : MEMBER_COLORS[0];
           view.chirp = CHIRP_SOUNDS.includes(p.body.chirp) ? p.body.chirp : null;
           view.g = GENDERS.includes(p.body.g) ? p.body.g : null;
+          view.phone = cleanPhone(p.body.phone);
           view.photo = cleanPhotoRef(p.body.photo);
           view.verified = true;
           view.current = m.profile.epoch === st.epoch;
@@ -710,7 +748,7 @@ export class CircleClient {
     if (!signPub || !key) return;
     try {
       const msg = open(env, { key, signPub, kind: 'circle', from: st.circle.by, circle: this.account.circleId });
-      this.circle = { name: cleanName(msg.body.name) || 'Our Circle', agent: cleanAgentCard(msg.body.agent) };
+      this.circle = { name: cleanName(msg.body.name) || 'Our Circle', agent: cleanAgentCard(msg.body.agent), groupCallLink: cleanCallLink(msg.body.groupCallLink) };
       this.account.circleName = this.circle.name;
       // The agent's keys, as the admin who added it saw them: trusted only if
       // the server lists the same ones for an agent.
@@ -812,6 +850,11 @@ export class CircleClient {
       precise: typeof b.precise === 'boolean' ? b.precise : null,
       app: typeof b.app === 'string' ? b.app.slice(0, 16) : null,
       cadence: cleanCadence(b.cadence),
+      // Do Not Disturb (or bedtime) on when sent, their time zone, and for
+      // an elder's phone when she last used it (0.22+).
+      dnd: b.dnd === true,
+      tz: cleanTimeZone(b.tz),
+      used: num(b.used),
       ts: msg.ts,
       receivedAt: updatedAt,
     };
@@ -824,6 +867,8 @@ export class CircleClient {
 
   async fetchLocations() {
     const { locations } = await this.api.locations();
+    this._rawLocations = locations;
+    this._cacheDirty = true;
     this.paused = new Map();
     for (const l of locations) this._decodeLocation(l.memberId, l.env, l.updatedAt);
     this.emit('locations', this.locations);
@@ -831,7 +876,7 @@ export class CircleClient {
   }
 
   /** Upload this device's location, encrypted. */
-  async shareLocation({ lat, lng, accuracy, battery, charging, speed, trigger = 'update', placeId = null, approx = false, power, perm, precise, app, cadence, ts }) {
+  async shareLocation({ lat, lng, accuracy, battery, charging, speed, trigger = 'update', placeId = null, approx = false, power, perm, precise, app, cadence, ts, dnd, tz, used }) {
     const body = { lat, lng, accuracy, battery, charging, speed, trigger, placeId };
     // Which HomeCircle app the phone runs, for Circle health (0.16+).
     if (typeof app === 'string' && app) body.app = app.slice(0, 16);
@@ -842,6 +887,11 @@ export class CircleClient {
     if (power) body.power = power;
     if (perm) body.perm = perm;
     if (typeof precise === 'boolean') body.precise = precise;
+    // Asleep or on Do Not Disturb, and the time where they are, for the
+    // Elderly Companion skin (sealed like the rest; 0.22+).
+    if (dnd === true) body.dnd = true;
+    if (cleanTimeZone(tz)) body.tz = tz;
+    if (typeof used === 'number' && Number.isFinite(used)) body.used = used;
     await this._withEpochRetry(() => {
       const env = this._seal('location', body);
       return this.api.putLocation(env);
@@ -878,7 +928,7 @@ export class CircleClient {
 
   // --- messages ----------------------------------------------------------
 
-  _addMessage(m) {
+  _addMessage(m, { bulk = false } = {}) {
     // Before the duplicate check: a fetch that returns our own messages
     // (already shown) must still move past them.
     this.lastSeq = Math.max(this.lastSeq, m.seq);
@@ -893,7 +943,7 @@ export class CircleClient {
     // From this phone's cache: opened (and checked) on an earlier launch.
     const msg = m.opened ? (kinds.includes(m.opened.kind) ? m.opened : null) : this._open(m.env, m.from, kinds, to, m.id);
     if (msg === REPLAYED) return false;
-    this._remember(m, msg);
+    this._remember(m, msg, { quiet: bulk });
     if (msg?.kind === 'reaction') {
       // A read receipt: "I've read this conversation up to here".
       if (Number.isInteger(msg.body?.read) && msg.body.read > 0) {
@@ -936,7 +986,8 @@ export class CircleClient {
       body: msg?.body || null,
     };
     this.messages.push(entry);
-    this.messages.sort((a, b) => a.seq - b.seq);
+    // Many at once (the cache): the caller sorts when it's done.
+    if (!bulk) this.messages.sort((a, b) => a.seq - b.seq);
     return entry;
   }
 
@@ -1194,6 +1245,8 @@ export class CircleClient {
     const body = { name: this.circle.name, ...patch };
     if (this.circle.agent && !('agent' in patch)) body.agent = this.circle.agent;
     if (!body.agent) delete body.agent;
+    if (this.circle.groupCallLink && !('groupCallLink' in patch)) body.groupCallLink = this.circle.groupCallLink;
+    if (!body.groupCallLink) delete body.groupCallLink;
     return body;
   }
 
@@ -1506,13 +1559,48 @@ export class CircleClient {
     return id;
   }
 
-  /** Answer a call-back request: 'now' (which closes it), '5min', 'morning' or 'evening'. */
+  /**
+   * Answer a call-back request: 'now' (which closes it), '5min', 'morning'
+   * or 'evening'; or 'asleep', which a phone sends by itself when a request
+   * reaches it at night or on Do Not Disturb (she's told; it stays open).
+   */
   replyCallback(requestId, reply) {
-    if (!CALLBACK_REPLIES.includes(reply)) return Promise.reject(new Error('Not a call-back reply'));
+    if (!CALLBACK_ANSWERS.includes(reply)) return Promise.reject(new Error('Not a call-back reply'));
     const req = this._callbackRequest(requestId);
     if (!req) return Promise.reject(new Error('No such call-back request'));
     const name = this.myName;
-    return this._post('chat', { text: `📞 ${name}: ${CALLBACK_REPLY_TEXT[reply]}`, callback: { state: 'reply', of: requestId, reply } }, { urgent: true });
+    const text = reply === 'asleep' ? `📞 ${name} is asleep. ${this._callbackName(req.from)} was told.` : `📞 ${name}: ${CALLBACK_REPLY_TEXT[reply]}`;
+    return this._post('chat', { text, callback: { state: 'reply', of: requestId, reply } }, { urgent: true });
+  }
+
+  /**
+   * Whether a member is likely asleep: their phone said Do Not Disturb was
+   * on (within the last 12 hours), or it's night where they are (10 pm to
+   * 7 am in their time zone).
+   */
+  availability(memberId, now = Date.now()) {
+    const loc = this.locations.get(memberId);
+    const tz = loc?.tz ?? null;
+    const hour = localHour(tz, now);
+    const night = hour != null && (hour >= 22 || hour < 7);
+    const dnd = !!loc?.dnd && now - loc.ts < 12 * 3600_000;
+    return { asleep: dnd || night, dnd, night, tz };
+  }
+
+  /**
+   * Elders whose phone hasn't been used for longer than their admins set
+   * (24 hours by default): [{ memberId, name, hours, used }].
+   */
+  inactiveElders(now = Date.now()) {
+    const out = [];
+    for (const [memberId, rec] of this.records.member) {
+      if (rec.skin !== 'elderly' || !this.members.get(memberId) || this.members.get(memberId).removed) continue;
+      const used = this.locations.get(memberId)?.used;
+      if (typeof used !== 'number') continue;
+      const hours = (now - used) / 3600_000;
+      if (hours >= (rec.inactiveHours ?? 24)) out.push({ memberId, name: this.members.get(memberId).name, hours: Math.floor(hours), used });
+    }
+    return out;
   }
 
   _callbackRequest(id) {
@@ -1540,7 +1628,7 @@ export class CircleClient {
     let takenBy = null;
     for (const m of this.messages) {
       const r = m.kind === 'chat' && !m.peer && m.seq > req.seq ? m.body?.callback : null;
-      if (!r || r.state !== 'reply' || r.of !== requestId || !CALLBACK_REPLIES.includes(r.reply)) continue;
+      if (!r || r.state !== 'reply' || r.of !== requestId || !CALLBACK_ANSWERS.includes(r.reply)) continue;
       const name = m.from === req.from ? null : this._callbackName(m.from);
       if (!name) continue;
       replies.set(m.from, { memberId: m.from, name, reply: r.reply, ts: m.ts, seq: m.seq });
@@ -1584,7 +1672,12 @@ export class CircleClient {
    */
   callbacksAwaitingMe() {
     const me = this.account?.memberId;
-    return this.openCallbacks().filter((s) => s.remind > 0 && this.callbackAsks(s, me) && !s.replies.some((r) => r.memberId === me));
+    const asks = this.openCallbacks().filter((s) => s.remind > 0 && this.callbackAsks(s, me) && !s.replies.some((r) => r.memberId === me));
+    // She may ask again: only the newest open request from each person is
+    // reminded about, so asking twice doesn't double the reminders.
+    const newest = new Map();
+    for (const s of asks) if (!newest.has(s.from)) newest.set(s.from, s);
+    return [...newest.values()];
   }
 
   // --- records: member settings and family names --------------------------
@@ -1749,6 +1842,38 @@ export class CircleClient {
   }
 
   /**
+   * Your own phone number (international format, "+92 300 1234567" is fine),
+   * in your profile: only your circle can read it. Empty clears it.
+   */
+  async setPhone(phone) {
+    const clean = cleanPhone(phone);
+    if (String(phone ?? '').trim() && !clean) throw new Error('Enter the number with its country code, such as +1 555 123 4567');
+    this.account.profile.phone = clean || undefined;
+    await this.api.putProfile(this._seal('profile', this._profileBody()));
+    await this._save();
+    await this.refresh();
+  }
+
+  /** A member's phone number: their own, else the one an admin saved for them, else null. */
+  phoneOf(memberId) {
+    return this.members.get(memberId)?.phone || this.memberRecord(memberId)?.phone || null;
+  }
+
+  /** The circle's WhatsApp call link, or null. */
+  get groupCallLink() {
+    return this.circle?.groupCallLink || null;
+  }
+
+  /** Admins: save (or, empty, remove) the circle's WhatsApp group call link, sealed in the circle's record. */
+  async setGroupCallLink(link) {
+    if (!this.isAdmin) throw new Error('Only circle admins can change that');
+    const clean = cleanCallLink(link);
+    if (String(link ?? '').trim() && !clean) throw new Error('That isn’t a WhatsApp call link (it starts with https://call.whatsapp.com/)');
+    await this.api.putCircle(this._seal('circle', this._circleBody({ groupCallLink: clean })));
+    await this.refresh();
+  }
+
+  /**
    * An elder's phone, once joined: tell the circle (a readable line), so an
    * admin's phone can save her settings as a member record.
    */
@@ -1776,27 +1901,145 @@ export class CircleClient {
     return [...last].sort((a, b) => b[1] - a[1]).map(([id]) => id);
   }
 
-  async fetchMessages() {
-    for (;;) {
-      const { messages } = await this.api.messages(this.fetchedSeq, 500);
-      let since = Date.now();
-      for (const m of messages) {
-        this._addMessage(m);
-        this.fetchedSeq = Math.max(this.fetchedSeq, m.seq);
-        // Opening a message takes tens of ms on a phone: after every ~12 ms of
-        // it, let the screen draw and taps through, instead of freezing for
-        // the whole page (a first load can be hundreds of messages).
-        if (Date.now() - since > 12) {
-          await yieldToUi();
-          since = Date.now();
+  /**
+   * Fetch what this phone doesn't have yet, newest first. With nothing held
+   * (a new phone, or the cache is gone) the chat opens on the latest
+   * messages; older history is read back in behind them (backfillHistory,
+   * loadOlder). With a cache it's only what came after it, unless more than
+   * a page was missed: then the latest page opens first too, and the gap
+   * fills in from there. One at a time.
+   */
+  fetchMessages() {
+    const run = this._fetchLock.then(() => this._fetchMessages());
+    this._fetchLock = run.catch(() => {});
+    return run;
+  }
+
+  async _fetchMessages() {
+    // What was already opened comes first; fetching from 0 instead would
+    // open it all again, and a save would then overwrite the cache with less.
+    await this._loadCache();
+    if (!this.account) return this.messages;
+    const t0 = Date.now();
+    let mode = 'forward';
+    let count = 0;
+    if (this.fetchedSeq === 0) {
+      mode = 'tail';
+      const { messages } = await this.api.messagesTail(FIRST_PAGE);
+      await this._openTail(messages, FIRST_PAGE);
+      count = messages.length;
+    } else {
+      for (let first = true; ; first = false) {
+        const { messages } = await this.api.messages(this.fetchedSeq, FORWARD_PAGE);
+        if (first && messages.length >= FORWARD_PAGE) {
+          // Missed more than a page: the latest first, the gap behind it later.
+          const { messages: tail } = await this.api.messagesTail(FIRST_PAGE);
+          if (tail.length) {
+            mode = 'gap';
+            await this._openTail(tail, FIRST_PAGE);
+            count = tail.length;
+            break;
+          }
         }
+        await this._take(messages);
+        count += messages.length;
+        if (messages.length) this.emit('messages', this.messages);
+        if (messages.length < FORWARD_PAGE) break;
       }
-      if (messages.length) this.emit('messages', this.messages);
-      if (messages.length < 500) break;
     }
-    this._saveCacheSoon();
+    if (!this.timings.firstFetch) this.timings.firstFetch = { mode, count, ms: Date.now() - t0 };
+    // Soon: this is the moment a killed app would lose the most.
+    this._saveCacheSoon(count ? 300 : 2000);
     this.emit('messages', this.messages);
     return this.messages;
+  }
+
+  /** Open each fetched message, letting the screen draw in between. */
+  async _take(messages, { forward = true } = {}) {
+    let since = Date.now();
+    for (const m of messages) {
+      this._addMessage(m);
+      if (forward) this.fetchedSeq = Math.max(this.fetchedSeq, m.seq);
+      // Opening a message takes tens of ms on a phone: after every ~12 ms of
+      // it, let the screen draw and taps through, instead of freezing for
+      // the whole page.
+      if (Date.now() - since > 12) {
+        await yieldToUi();
+        since = Date.now();
+      }
+    }
+  }
+
+  /** `rows` are the newest messages there are: held from them up, whatever is older not yet. */
+  async _openTail(rows, limit) {
+    const full = rows.length >= limit;
+    if (this.fetchedSeq > 0 && full) {
+      // Missed about as many messages as the phone keeps: what it had is too
+      // old to join up with these, and would only leave a hole. Reading back
+      // fills in the newest ones instead.
+      this.messages.length = 0;
+      this.seenMessageIds.clear();
+      this.seenNonces.clear();
+      this._cacheRows.clear();
+    }
+    this.backSeq = full ? rows[0].seq - 1 : 0;
+    await this._take(rows);
+  }
+
+  /** Whether there is older history on the server this phone hasn't fetched. */
+  get hasOlder() {
+    return this.backSeq > 0;
+  }
+
+  /**
+   * Read back one more page of older messages (the person scrolled up).
+   * Returns how many were fetched; 0 when there is nothing older.
+   */
+  loadOlder(limit = OLDER_PAGE) {
+    const run = this._olderLock.then(() => this._loadOlder(limit));
+    this._olderLock = run.catch(() => {});
+    return run;
+  }
+
+  async _loadOlder(limit) {
+    await this._loadCache();
+    const gen = this._generation;
+    if (!this.account || this.backSeq <= 0) return 0;
+    const { messages } = await this.api.messagesBefore(this.backSeq + 1, limit);
+    if (gen !== this._generation) return 0;
+    await this._take(messages, { forward: false });
+    let back = messages.length >= limit ? messages[0].seq - 1 : 0;
+    // The cache keeps this many; reading further back would only be dropped again.
+    if (this._cacheRows.size >= CACHE_MAX) back = 0;
+    this.backSeq = back;
+    if (messages.length) this.emit('messages', this.messages);
+    this._saveCacheSoon(back ? 5000 : 1000);
+    return messages.length;
+  }
+
+  /**
+   * Read the rest of the history back in while the app is open: a page at a
+   * time with a rest in between, so the screen and the live connection come
+   * first. Stops when the connection is closed (the app went to the
+   * background) and carries on when it's started again.
+   */
+  backfillHistory() {
+    this._backfillStop = false;
+    if (this._backfilling) return this._backfilling;
+    this._backfilling = (async () => {
+      try {
+        while (this.account && this.backSeq > 0 && !this._backfillStop) {
+          await sleep(this.backfillPauseMs);
+          if (this._backfillStop) break;
+          if (!(await this.loadOlder())) break;
+        }
+      } catch (e) {
+        this.onError(e);
+      } finally {
+        this._backfilling = null;
+      }
+    })();
+    return this._backfilling;
   }
 
   // --- this phone's copy of the messages ----------------------------------
@@ -1806,7 +2049,7 @@ export class CircleClient {
   }
 
   /** Keep what a message opened to, for the cache (failures keep the envelope, to try again). */
-  _remember(m, msg) {
+  _remember(m, msg, { quiet = false } = {}) {
     if (!this.cache || !Number.isInteger(m.seq)) return;
     // The helper's answers to the app (Memory and the like) are never shown: not kept.
     if (msg?.body?.agentCopy && msg.body.rpcResult) return;
@@ -1818,47 +2061,131 @@ export class CircleClient {
       createdAt: m.createdAt,
       ...(msg ? { opened: msg, env: { nonce: m.env?.nonce, epoch: m.env?.epoch } } : { env: m.env }),
     });
-    if (!this._cacheTimer) this._saveCacheSoon();
+    if (!quiet) this._saveCacheSoon(4000);
   }
 
-  /** The messages this phone already opened, back in place without opening them again. */
-  async _loadCache() {
-    if (!this.cache || this._cacheLoaded) return;
-    this._cacheLoaded = true;
+  /**
+   * The messages (and members and last locations) this phone already has,
+   * back in place without opening them again. Every way of adding or saving
+   * messages waits for this first: a client that saved before reading would
+   * replace a good cache with whatever it had fetched since.
+   */
+  _loadCache() {
+    if (!this.cache || !this.account) return Promise.resolve();
+    if (!this._cacheLoading) {
+      const t0 = Date.now();
+      this._cacheLoading = this._readCache()
+        .catch((e) => this.onError(e))
+        .then(() => {
+          this.timings.cache = { ms: Date.now() - t0, rows: this._cacheRows.size, fetchedSeq: this.fetchedSeq };
+        });
+    }
+    return this._cacheLoading;
+  }
+
+  /** Start reading the cache without waiting for it (it's read once). */
+  loadCache() {
+    return this._loadCache();
+  }
+
+  async _readCache() {
     let c = null;
     try {
       c = JSON.parse((await this.cache.getItem(this._cacheKey)) || 'null');
     } catch (e) {
       this.onError(e);
     }
-    if (!c || c.v !== 1 || c.circleId !== this.account.circleId || c.memberId !== this.account.memberId || !Array.isArray(c.rows)) return;
+    if (!c || (c.v !== 1 && c.v !== 2) || c.circleId !== this.account.circleId || c.memberId !== this.account.memberId || !Array.isArray(c.rows)) return;
+    // Members and the circle's name first: messages are filed under the agent, and names show at once.
+    if (c.state && !this.state) {
+      try {
+        this.state = c.state;
+        this._decodeMembers(c.state);
+        this._decodeCircle(c.state);
+        this.emit('members', this.memberList());
+        this.emit('circle', this.circle);
+      } catch (e) {
+        this.state = null;
+        this.onError(e);
+      }
+    }
     for (const [i, row] of c.rows.entries()) {
-      this._addMessage(row);
+      this._addMessage(row, { bulk: true });
       if (i % 200 === 199) await yieldToUi();
     }
-    // Only messages after these are fetched.
-    this.fetchedSeq = Math.max(this.fetchedSeq, Number(c.fetchedSeq) || 0);
+    this.messages.sort((a, b) => a.seq - b.seq);
+    // Only messages after these are fetched; older than backSeq, not yet.
+    if (!this.fetchedSeq) {
+      this.fetchedSeq = Number(c.fetchedSeq) || 0;
+      this.backSeq = c.v === 2 ? Math.max(0, Number(c.backSeq) || 0) : 0;
+    }
+    if (Array.isArray(c.locations) && !this.locations.size) {
+      this._rawLocations = c.locations;
+      for (const l of c.locations) this._decodeLocation(l.memberId, l.env, l.updatedAt);
+      this.emit('locations', this.locations);
+    }
     this.emit('messages', this.messages);
   }
 
-  _saveCacheSoon() {
+  /** Save after a while (a burst of messages is one save). An earlier time asked for wins. */
+  _saveCacheSoon(delay = 2000) {
     if (!this.cache) return;
+    this._cacheDirty = true;
+    const due = Date.now() + delay;
+    if (this._cacheTimer && this._cacheDue <= due) return;
     clearTimeout(this._cacheTimer);
+    this._cacheDue = due;
     this._cacheTimer = setTimeout(() => {
       this._cacheTimer = null;
       this._saveCache().catch(this.onError);
-    }, 2000);
+    }, delay);
   }
 
-  /** Kept as long as the circle keeps messages, and at most the newest 6000. */
-  async _saveCache() {
+  /** Save now if anything changed: the app is going to the background, where it can be closed any moment. */
+  async flushCache() {
+    clearTimeout(this._cacheTimer);
+    this._cacheTimer = null;
+    if (!this._cacheDirty || !this.cache || !this.account) return;
+    await this._saveCache();
+  }
+
+  /** One save at a time, in order. */
+  _saveCache() {
+    const run = this._saving.then(() => this._writeCache());
+    this._saving = run.catch(() => {});
+    return run;
+  }
+
+  /** Kept as long as the circle keeps messages, and at most the newest 500. */
+  async _writeCache() {
     if (!this.cache || !this.account) return;
+    const gen = this._generation;
+    await this._loadCache();
+    if (gen !== this._generation || !this.account) return;
+    this._cacheDirty = false;
     const days = this.state?.retentionDays ?? 90;
     const since = Date.now() - days * 86400_000;
     const rows = [...this._cacheRows.values()].filter((r) => !r.createdAt || r.createdAt >= since).sort((a, b) => a.seq - b.seq);
-    const kept = rows.slice(-6000);
+    const kept = rows.slice(-CACHE_MAX);
+    let { backSeq } = this;
     if (kept.length < this._cacheRows.size) this._cacheRows = new Map(kept.map((r) => [r.seq, r]));
-    await this.cache.setItem(this._cacheKey, JSON.stringify({ v: 1, circleId: this.account.circleId, memberId: this.account.memberId, fetchedSeq: this.fetchedSeq, rows: kept }));
+    // Messages cut off for being too many aren't fetched again.
+    if (kept.length < rows.length) {
+      backSeq = 0;
+    }
+    await this.cache.setItem(
+      this._cacheKey,
+      JSON.stringify({
+        v: 2,
+        circleId: this.account.circleId,
+        memberId: this.account.memberId,
+        fetchedSeq: this.fetchedSeq,
+        backSeq,
+        state: this.state,
+        locations: this._rawLocations,
+        rows: kept,
+      }),
+    );
   }
 
   async _post(kind, body, { silent = false, to = null, id = randomId(12), urgent = false } = {}) {
@@ -2038,6 +2365,66 @@ export class CircleClient {
     });
   }
 
+  // --- voice calls ---------------------------------------------------------
+
+  /**
+   * Send one call signal to a member of this circle, sealed with the pair's
+   * direct key: { callId, op: 'offer' | 'answer' | 'ice' | 'ringing' | 'hangup' |
+   * 'busy' | 'decline', ...}. The server relays it and forgets it. `ring` marks
+   * the first offer of a call, which also wakes the other phone with a push.
+   * Resolves { online, held, pushed }.
+   */
+  async sendCallSignal(to, body, { ring = false } = {}) {
+    const id = randomId(12);
+    const env = this._seal('call', body, this.account.epoch, { to, id });
+    return this.api.callSignal(to, id, env, { ring });
+  }
+
+  /**
+   * Leave a line in the direct chat with the person called: "Missed voice
+   * call" (they never answered) or "Voice call · 3:12". An ordinary sealed
+   * direct message, so it shows in any version of the app as text.
+   */
+  logCall(to, { missed = false, seconds = 0 } = {}) {
+    const mm = Math.floor(seconds / 60);
+    const text = missed ? '📞 Missed voice call' : `📞 Voice call · ${mm}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
+    return this._post('chat', { text, call: missed ? { state: 'missed' } : { state: 'ended', seconds: Math.round(seconds) } }, { to, silent: !missed });
+  }
+
+  /** The STUN (and, if the server has one, TURN) servers for a call: { iceServers }. */
+  callsConfig() {
+    return this.api.callsConfig();
+  }
+
+  /**
+   * Call signals that waited for this phone while it was asleep. Each is
+   * handled like a live one (a 'callSignal' event). Returns how many were new.
+   */
+  async collectCallSignals() {
+    const { signals } = await this.api.callsPending();
+    let n = 0;
+    for (const s of signals) if (this._onCallSignal(s)) n++;
+    return n;
+  }
+
+  /**
+   * Open a relayed call signal and tell the app ('callSignal': { from, id,
+   * ts, callId, op, ... }). Ignored: one that doesn't open (not from a
+   * member of this circle with that key), one already seen, and one signed
+   * too long ago (or too far ahead) to belong to a call going on now.
+   */
+  _onCallSignal(s) {
+    if (!this.feature('calls') || !s || typeof s.id !== 'string' || this._seenCalls.has(s.id)) return false;
+    const msg = this._open(s.env, s.from, ['call'], this.account.memberId, s.id);
+    if (!msg || msg === REPLAYED || typeof msg.body?.callId !== 'string') return false;
+    const age = Date.now() - msg.ts;
+    if (age > CALL_SIGNAL_MAX_AGE_MS || age < -CALL_SIGNAL_MAX_SKEW_MS) return false;
+    this._seenCalls.add(s.id);
+    if (this._seenCalls.size > 500) this._seenCalls.delete(this._seenCalls.values().next().value);
+    this.emit('callSignal', { ...msg.body, from: s.from, id: s.id, ts: msg.ts });
+    return true;
+  }
+
   // --- most visited places -------------------------------------------------
 
   /**
@@ -2132,14 +2519,19 @@ export class CircleClient {
   async start() {
     if (this._started) {
       this.connect();
-      return this.catchUp();
+      return this.catchUp().finally(() => this.backfillHistory().catch(() => {}));
     }
-    await this.refresh();
+    // What this phone already has shows at once, before the network answers.
     await this._loadCache();
+    const t0 = Date.now();
+    await this.refresh();
+    this.timings.refreshMs = Date.now() - t0;
     await Promise.all([this.fetchLocations(), this.fetchPlaces(), this.fetchRecords().catch(() => {})]);
     this.connect();
     await this.fetchMessages();
     this._started = true;
+    // The rest of the history, behind the screen.
+    this.backfillHistory().catch(() => {});
   }
 
   connect() {
@@ -2186,6 +2578,8 @@ export class CircleClient {
   }
 
   disconnect() {
+    // Reading history back pauses with the connection (the app went away).
+    this._backfillStop = true;
     if (this.connection) this.connection.close();
     this.connection = null;
     if (this.status !== 'offline') {
@@ -2238,7 +2632,7 @@ export class CircleClient {
       }
       case 'message': {
         const m = this._addMessage(e.message);
-        this._saveCacheSoon();
+        this._saveCacheSoon(1500);
         if (m) {
           this.emit('messages', this.messages);
           if (m.from !== this.account.memberId && m.kind !== 'reaction') this.emit('newMessage', m);
@@ -2282,6 +2676,9 @@ export class CircleClient {
         break;
       case 'chirp':
         this.emit('chirp');
+        break;
+      case 'call_signal':
+        this._onCallSignal(e);
         break;
       case 'plugin':
         // An admin saved a plugin's settings (Home Assistant: send it your position now).
@@ -2344,7 +2741,39 @@ function cleanMemberRecord(b) {
     lang: typeof b.lang === 'string' && /^[a-z]{2,3}$/.test(b.lang) ? b.lang : null,
     g: GENDERS.includes(b.g) ? b.g : null,
     photos: cleanPhotoMap(b.photos),
+    phone: cleanPhone(b.phone),
   };
+}
+
+/**
+ * A phone number as kept: "+" and 8 to 15 digits (E.164), or null. Spaces,
+ * hyphens, dots and brackets are dropped; a leading 00 means "+". A number
+ * without a country code is refused, never guessed.
+ */
+export function cleanPhone(p) {
+  if (typeof p !== 'string' || p.length > 40) return null;
+  const t = p.trim();
+  if (/[^\d\s()\-.+]/.test(t) || t.indexOf('+') > 0 || (t.match(/\+/g) ?? []).length > 1) return null;
+  let digits = t.replace(/\D/g, '');
+  if (!t.startsWith('+')) {
+    if (!digits.startsWith('00')) return null;
+    digits = digits.slice(2);
+  }
+  return /^[1-9]\d{7,14}$/.test(digits) ? `+${digits}` : null;
+}
+
+/** A WhatsApp call link ("https://call.whatsapp.com/video/…" or "/voice/…") as kept, or null. */
+export function cleanCallLink(u) {
+  if (typeof u !== 'string' || u.length > 300) return null;
+  let url;
+  try {
+    url = new URL(u.trim());
+  } catch {
+    return null;
+  }
+  const m = /^\/(video|voice)\/([A-Za-z0-9_-]{8,64})\/?$/.exec(url.pathname);
+  if (url.protocol !== 'https:' || url.hostname !== 'call.whatsapp.com' || url.port || url.username || url.password || !m) return null;
+  return `https://call.whatsapp.com/${m[1]}/${m[2]}`;
 }
 
 /** A photo reference: { id, key, at } of an encrypted file, or null. */
@@ -2369,6 +2798,17 @@ function cleanAlias(b) {
   const name = cleanName(b.name);
   if (!name) return null;
   return { caller: b.caller, member: b.member, name, rel: ALIAS_RELS.includes(b.rel) ? b.rel : null };
+}
+
+/** The hour (0–23) in a time zone, or null if it can't be worked out. */
+function localHour(tz, now) {
+  if (!tz) return null;
+  try {
+    const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: 'numeric', hourCycle: 'h23' }).format(new Date(now)));
+    return Number.isInteger(h) ? h % 24 : null;
+  } catch {
+    return null;
+  }
 }
 
 /** An IANA time zone name such as "Asia/Karachi", or null. */

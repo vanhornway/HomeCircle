@@ -11,6 +11,7 @@ import { ensureNotificationChannels, notifyNewMessages } from '../../lib/notify'
 import { shareNow, startBackgroundUpdates } from '../../lib/location';
 import { loadPages, settingsOf } from '../../companion/people';
 import { flushOutbox } from '../../companion/outbox';
+import { markUsed } from '../../companion/used';
 import { C } from '../../companion/theme';
 
 /**
@@ -34,6 +35,8 @@ export default function CompanionLayout() {
     if (!clients.length) return;
     let alive = true;
     const resume = async () => {
+      // She opened her phone's app: the family's inactivity check counts from now.
+      markUsed();
       await ensureNotificationChannels().catch(() => {});
       for (const c of clients) {
         if (!alive) return;
@@ -73,7 +76,11 @@ export default function CompanionLayout() {
     ]);
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') resume();
-      else if (state === 'background') clients.forEach((c) => c.disconnect());
+      else {
+        // Leaving the app: written down now, in case it's closed.
+        clients.forEach((c) => c.flushCache().catch(() => {}));
+        if (state === 'background') clients.forEach((c) => c.disconnect());
+      }
     });
     return () => {
       alive = false;

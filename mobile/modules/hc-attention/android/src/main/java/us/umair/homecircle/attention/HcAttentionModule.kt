@@ -49,6 +49,13 @@ class HcAttentionModule : Module() {
       filter != NotificationManager.INTERRUPTION_FILTER_ALL && filter != NotificationManager.INTERRUPTION_FILTER_UNKNOWN
     }
 
+    // Whether the person let this app through Do Not Disturb (system
+    // settings): then a notification channel set to bypass it rings anyway.
+    Function("hasDndAccess") {
+      val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+      nm.isNotificationPolicyAccessGranted
+    }
+
     // Blink the camera light. Runs off the main thread; false if there's no
     // light or another app is using the camera.
     AsyncFunction("blink") { times: Int, onMs: Int, offMs: Int ->

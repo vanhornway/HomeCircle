@@ -36,10 +36,16 @@ export interface Member {
   g?: Gender | null;
   /** Their own photo, if they added one (an encrypted file). */
   photo?: PhotoRef | null;
+  /** Their phone number ("+15551234567"), if they added one to their profile. */
+  phone?: string | null;
 }
 
 export type ChirpSound = 'robin' | 'wren' | 'finch' | 'chickadee' | 'cardinal' | 'bluebird' | 'canary' | 'sparrow' | 'lark' | 'dove';
 export const CHIRP_SOUNDS: ChirpSound[];
+/** "+" and 8–15 digits, from a number typed any way with a country code; null otherwise. */
+export function cleanPhone(p: unknown): string | null;
+/** A WhatsApp call link as kept (https://call.whatsapp.com/video/… or /voice/…), or null. */
+export function cleanCallLink(u: unknown): string | null;
 /** He or she, for languages whose verbs change with the person (Urdu). */
 export type Gender = 'm' | 'f';
 export const GENDERS: Gender[];
@@ -69,6 +75,8 @@ export interface MemberRecord {
   g: Gender | null;
   /** Photos an admin added for her tiles, by member id. */
   photos: Record<string, PhotoRef> | null;
+  /** Her phone number ("+15551234567"), when an admin saved one. */
+  phone: string | null;
   /** Who signed it (an admin) and when. */
   by: string;
   ts: number;
@@ -87,8 +95,15 @@ export interface FamilyName {
 /** Answers to a call-back request. Only 'now' closes it. */
 export type CallbackReply = 'now' | '5min' | 'morning' | 'evening';
 export const CALLBACK_REPLIES: CallbackReply[];
+/** Every answer a request can get: the four replies, and 'asleep', which a phone sends by itself at night or on Do Not Disturb. */
+export type CallbackAnswer = CallbackReply | 'asleep';
+export const CALLBACK_ANSWERS: CallbackAnswer[];
 /** How each answer reads in the chat ("I'm calling you now"). */
 export const CALLBACK_REPLY_TEXT: Record<CallbackReply, string>;
+
+/** What a call signal says. `callId` ties signals to one call. */
+export type CallSignalBody = { callId: string; op: 'offer' | 'answer' | 'ice' | 'ringing' | 'hangup' | 'busy' | 'decline'; [k: string]: unknown };
+export type CallSignal = CallSignalBody & { from: string; id: string; ts: number };
 
 /** A chirp waiting for this device. */
 export interface IncomingChirp {
@@ -136,6 +151,12 @@ export interface MemberLocation {
   app: string | null;
   /** How often that phone updates now (minutes), its slider stop, and whether charging or its battery budget changes it (0.18+). */
   cadence: { stop: number | 'custom'; moving: number; still: number; charging: boolean; limited: boolean } | null;
+  /** Do Not Disturb (or bedtime) was on when this was sent. */
+  dnd?: boolean;
+  /** Their time zone, e.g. "America/Chicago". */
+  tz?: string | null;
+  /** An elder's phone: when she last used it. */
+  used?: number | null;
   ts: number;
   receivedAt: number;
 }
@@ -238,6 +259,8 @@ export interface ServerInfo {
   recovery?: boolean;
   /** Chirps and most-visited places (0.9+). */
   chirps?: boolean;
+  /** Voice call signals are relayed here (0.22+). */
+  calls?: boolean;
   frequentPlaces?: boolean;
   push: boolean;
   tileUrl: string;
@@ -320,7 +343,7 @@ export interface CallbackState {
   /** Minutes between reminders on the family's phones; 0 = none. */
   remind: number;
   /** Each person's latest answer, oldest first. */
-  replies: { memberId: string; name: string; reply: CallbackReply; ts: number; seq: number }[];
+  replies: { memberId: string; name: string; reply: CallbackAnswer; ts: number; seq: number }[];
   /** The first "I'm calling you now": the request is closed. */
   takenBy: { memberId: string; name: string; ts: number } | null;
   open: boolean;
@@ -341,7 +364,7 @@ export class Api {
   baseUrl: string;
   token: string | null;
   info(): Promise<Omit<ServerInfo, 'server'>>;
-  putPush(token: string | null, platform: string): Promise<{ ok: true }>;
+  putPush(token: string | null, platform: string, opts?: { fallback?: boolean }): Promise<{ ok: true }>;
   listInvites(): Promise<{ invites: { id: string; createdBy: string; createdAt: number; expiresAt: number }[] }>;
   deleteInvite(id: string): Promise<{ ok: true }>;
   /** The weather plugin, for a grid cell (lat and lng rounded to 0.1°). */
@@ -436,7 +459,7 @@ export class CircleClient {
 
   account: Account | null;
   api: Api;
-  circle: { name: string };
+  circle: { name: string; agent?: { name: string; id?: string } | null; groupCallLink?: string | null };
   members: Map<string, Member>;
   locations: Map<string, MemberLocation>;
   /** Members who paused sharing with this circle: since when, and their optional reason. */
@@ -471,6 +494,8 @@ export class CircleClient {
   on(event: 'unrecognized', fn: () => void): () => void;
   /** Someone chirped this device: collect with collectChirps(). */
   on(event: 'chirp', fn: () => void): () => void;
+  /** A call signal from a member (opened, verified and fresh); see sendCallSignal(). */
+  on(event: 'callSignal', fn: (s: CallSignal) => void): () => void;
   on(event: 'frequent', fn: (f: Map<string, { places: FrequentPlace[]; ts: number }>) => void): () => void;
   on(event: 'signedOut', fn: (d: { reason: SignOutReason }) => void): () => void;
   on(event: 'circle' | 'removed', fn: (d?: any) => void): () => void;
@@ -514,6 +539,12 @@ export class CircleClient {
     /** How often this phone updates now, in minutes (shown under its name). */
     cadence?: { stop: number | 'custom'; moving: number; still: number; charging: boolean; limited: boolean };
     ts?: number;
+    /** Do Not Disturb (or bedtime) is on now. */
+    dnd?: boolean;
+    /** This phone's time zone. */
+    tz?: string | null;
+    /** An elder's phone: when she last used it. */
+    used?: number | null;
   }): Promise<void>;
   /** Remove this device's location from the circle (stop sharing with it). */
   clearLocation(): Promise<void>;
@@ -525,7 +556,24 @@ export class CircleClient {
     delivery?: Record<string, 'delivered' | 'pushed' | 'unreachable'>;
     cooldown: number;
   }>;
+  /** The messages this phone doesn't have yet, newest first (see backfillHistory for the older ones). */
   fetchMessages(): Promise<Message[]>;
+  /** Whether older history exists on the server that this phone hasn't fetched yet. */
+  readonly hasOlder: boolean;
+  /** Fetch one more page of older messages (the person scrolled up). Resolves to how many arrived. */
+  loadOlder(limit?: number): Promise<number>;
+  /** Read the rest of the history in behind the screen, a page at a time (starts by itself after start()). */
+  backfillHistory(): Promise<void>;
+  /** Read this phone's saved copy (messages, members, last locations) without waiting for the network; once. */
+  loadCache(): Promise<void>;
+  /** Save the phone's copy now if anything changed, e.g. as the app goes to the background. */
+  flushCache(): Promise<void>;
+  /** How long the pieces of opening took, for Diagnostics. */
+  timings: {
+    cache?: { ms: number; rows: number; fetchedSeq: number };
+    refreshMs?: number;
+    firstFetch?: { mode: 'tail' | 'forward' | 'gap'; count: number; ms: number };
+  };
   /** Group chat, or a direct message when `to` is set. */
   sendChat(text: string, opts?: { to?: string | null }): Promise<void>;
   /** Messages of the group (peer null) or of a direct chat. */
@@ -578,7 +626,11 @@ export class CircleClient {
   /** Ask for a call back: everyone (`to` null) or one member. Returns the request's id. */
   askCallback(opts?: { to?: string | null; tz?: string | null; awake?: boolean; remind?: number }): Promise<string>;
   /** Answer a call-back request; 'now' closes it. */
-  replyCallback(requestId: string, reply: CallbackReply): Promise<void>;
+  replyCallback(requestId: string, reply: CallbackAnswer): Promise<void>;
+  /** Whether a member is likely asleep: Do Not Disturb (in the last 12 hours) or night where they are. */
+  availability(memberId: string, now?: number): { asleep: boolean; dnd: boolean; night: boolean; tz: string | null };
+  /** Elders whose phone hasn't been used for longer than their admins set. */
+  inactiveElders(now?: number): { memberId: string; name: string; hours: number; used: number }[];
   /** Where a request stands, or null if it isn't one (or its sender left). */
   callbackState(requestId: string): CallbackState | null;
   /** Whether a request asks this member (default: you). */
@@ -615,6 +667,14 @@ export class CircleClient {
   photoBytes(ref: PhotoRef): Promise<Uint8Array>;
   /** Your own he/she in your profile (null clears it). */
   setGender(g: Gender | null): Promise<void>;
+  /** Your own phone number, sealed in your profile (empty clears it; throws without a country code). */
+  setPhone(phone: string | null): Promise<void>;
+  /** A member's phone number: their own, else an admin's, else null. */
+  phoneOf(memberId: string): string | null;
+  /** The circle's WhatsApp call link, or null. */
+  readonly groupCallLink: string | null;
+  /** Admins: save (empty removes) the circle's WhatsApp call link, sealed in the circle's record. */
+  setGroupCallLink(link: string | null): Promise<void>;
   /** An elder's phone, once joined: tell the circle, so an admin's phone saves her settings. */
   announceElder(opts?: { page?: 'care' | 'grandkids'; skin?: string }): Promise<void>;
   /** Elders who announced themselves and have no member record yet. */
@@ -661,6 +721,14 @@ export class CircleClient {
   /** Chirp one member, or everyone else (to = null). Three in a row, then 30 minutes off. */
   chirp(to?: string | null, opts?: { flash?: boolean }): Promise<{ sent: number; remaining: number; cooldownUntil: number | null }>;
   collectChirps(): Promise<IncomingChirp[]>;
+  /** Send a sealed call signal to a member; `ring` (the first offer) also pushes their phone. */
+  sendCallSignal(to: string, body: CallSignalBody, opts?: { ring?: boolean }): Promise<{ online: boolean; held: boolean; pushed: boolean }>;
+  /** Leave "Missed voice call" or "Voice call · 3:12" in the direct chat with someone. */
+  logCall(to: string, opts?: { missed?: boolean; seconds?: number }): Promise<unknown>;
+  /** STUN (and optional TURN) servers for a call. */
+  callsConfig(): Promise<{ iceServers: { urls: string | string[]; username?: string; credential?: string }[]; relayOnly?: boolean }>;
+  /** Handle call signals that waited for this phone; returns how many were new. */
+  collectCallSignals(): Promise<number>;
   /** memberId -> their shared most visited places. */
   frequent: Map<string, { places: FrequentPlace[]; ts: number }>;
   fetchFrequent(): Promise<Map<string, { places: FrequentPlace[]; ts: number }>>;
@@ -714,6 +782,7 @@ export type FeatureId =
   | 'groupChat'
   | 'directMessages'
   | 'polls'
+  | 'calls'
   | 'readReceipts'
   | 'photos'
   | 'chirps'
@@ -726,6 +795,7 @@ export type FeatureId =
   | 'weather'
   | 'air'
   | 'prayer'
+  | 'whatsapp'
   | 'homeAssistant';
 export type Features = Record<FeatureId, boolean>;
 export type FeatureInfo = { id: FeatureId; group: 'Location' | 'Chat' | 'Alerts' | 'Helper' | 'Plugins'; label: string; detail: string; on: boolean; needs?: FeatureId };

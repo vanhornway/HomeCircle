@@ -5,6 +5,7 @@ import { MemberAvatar } from '../../components/MemberAvatar';
 import { PhotoButtons } from '../../components/PhotoPicker';
 import { GroupBody, SettingsGroup, SettingsPage } from '../../components/SettingsKit';
 import { FamilyNameEditor, GenderChips } from '../../components/FamilyNames';
+import { MyPhoneGroup } from '../../components/PhoneSettings';
 import { errorText, useCircles } from '../../lib/circle';
 import { useCircle } from '../../lib/useCircle';
 import { useTheme } from '../../theme';
@@ -57,6 +58,7 @@ export default function ProfileSettings() {
           <GenderChips value={me?.g ?? null} onPick={(g) => client.setGender(g).catch((e) => Alert.alert('Couldn’t save', errorText(e)))} />
         </GroupBody>
       </SettingsGroup>
+      <MyPhoneGroup client={client} />
       {client.memberList().some((m) => !m.isMe) ? (
         <SettingsGroup title="What do they call you?" footer="What each person calls you: Nani to one grandchild, Dadi to another. They see that name everywhere the app names you to them.">
           {client

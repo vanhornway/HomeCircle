@@ -92,3 +92,28 @@ test('past 10 urgent messages a minute from one sender, the rest go as normal me
   await umair.replyCallback(umair.openCallbacks()[0].id, '5min');
   assert.deepEqual(calls.map((c) => c.urgent), [true]);
 });
+
+test('the message seq goes to the push, and a phone opts in to backup alerts with putPush', async () => {
+  const seen = [];
+  app.push.activity = (members, opts = {}) => seen.push({ members, seq: opts.seq });
+  const circleId = umair.circleId;
+  await ammi.api.putPush('ExponentPushToken[ammi]', 'android', { fallback: true });
+  await umair.api.putPush('ExponentPushToken[umair]', 'android');
+  await umair.sendChat('Are you up?');
+  const seq = seen.at(-1).seq;
+  assert.ok(seq > 0);
+  const ammiRow = seen.at(-1).members.find((m) => m.pushToken === 'ExponentPushToken[ammi]');
+  assert.equal(ammiRow.pushFallback, true);
+  // Not for iOS, and turning it off (or re-registering without it) clears it.
+  await ammi.api.putPush('ExponentPushToken[ammi]', 'ios', { fallback: true });
+  await umair.sendChat('Hello?');
+  assert.equal(seen.at(-1).members.find((m) => m.pushToken === 'ExponentPushToken[ammi]').pushFallback, false);
+  await ammi.api.putPush('ExponentPushToken[ammi]', 'android');
+  await umair.sendChat('Hello again');
+  assert.equal(seen.at(-1).members.find((m) => m.pushToken === 'ExponentPushToken[ammi]').pushFallback, false);
+  assert.ok(circleId);
+  // The server can tell what the phone has fetched.
+  await ammi.fetchMessages();
+  const me = app.store.member(circleId, ammi.account.memberId);
+  assert.ok(app.store.deliveredSeqOf(me.id) >= seq);
+});

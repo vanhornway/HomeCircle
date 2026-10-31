@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Alert, Text } from 'react-native';
 import type { Features } from '@homecircle/core';
+import { WhatsAppSetup } from '../../components/CallActions';
 import { FeaturePicker } from '../../components/FeaturePicker';
 import { PluginSetup } from '../../components/PluginSetup';
 import { PrayerSetup } from '../../components/PrayerSetup';
@@ -44,6 +45,8 @@ export default function FeatureSettings() {
         below={(id) =>
           id === 'prayer' && !pending && client.feature(id) ? (
             <PrayerSetup />
+          ) : admin && !pending && id === 'whatsapp' && client.feature(id) ? (
+            <WhatsAppSetup client={client} />
           ) : admin && !pending && client.feature(id) && (id === 'homeAssistant' || id === 'air') ? (
             <PluginSetup client={client} id={id} />
           ) : null

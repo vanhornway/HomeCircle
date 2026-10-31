@@ -42,6 +42,25 @@ export function loadConfig() {
     // A throwaway server for the swarm (scripts/swarm.mjs): it says so in /info,
     // its web page shows a banner, and the swarm refuses any server without it.
     loadTest: bool('LOAD_TEST', false),
+    // Voice calls: the STUN servers apps use to find a path between two phones.
+    // They see each phone's public address when a call starts, so a family
+    // can point this at its own (comma-separated stun: URLs).
+    callsStun: (process.env.CALLS_STUN || '').split(',').map((u) => u.trim()).filter((u) => /^stuns?:/.test(u)),
+    // Optional TURN relay for calls that can't connect directly (two phones on strict
+    // mobile networks): a coturn the family runs (docs/CALLS-PLAN.md). Phones get
+    // short-lived credentials made from this secret; off unless both are set.
+    callsTurnUrls: (process.env.CALLS_TURN_URLS || '').split(',').map((u) => u.trim()).filter((u) => /^turns?:/.test(u)),
+    callsTurnSecret: process.env.CALLS_TURN_SECRET || '',
+    callsTurnTtlHours: int('CALLS_TURN_TTL_HOURS', 6),
+    // Hosted relays with a free tier, for servers that can't run coturn (Render, Home
+    // Assistant): Cloudflare Realtime TURN (a TURN key's id and API token) or Metered
+    // (app name and API key). Credentials are fetched by this server, never by phones.
+    callsCloudflareKeyId: process.env.CALLS_CLOUDFLARE_TURN_KEY_ID || '',
+    callsCloudflareToken: process.env.CALLS_CLOUDFLARE_TURN_TOKEN || '',
+    callsMeteredApp: process.env.CALLS_METERED_APP || '',
+    callsMeteredKey: process.env.CALLS_METERED_KEY || '',
+    // Send all call media through that relay (phones never see each other's address).
+    callsRelayOnly: bool('CALLS_RELAY_ONLY', false),
     // Run each circle's agent (the optional AI helper) in this server.
     agent: bool('AGENT', false),
   };

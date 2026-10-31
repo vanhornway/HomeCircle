@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { Alert, Animated, Easing, Pressable, Text, TextInput, View } from 'react-native';
 import type { CircleClient, PollState } from '@homecircle/core';
 import { errorText } from '../lib/circle';
+import { useChatFont } from '../lib/chatZoom';
 import { useTheme } from '../theme';
 
 /** A poll in the chat: tap an option to vote; live bars, add, spin and close. */
 export function PollCard({ client, pollId }: { client: CircleClient; pollId: string }) {
   const t = useTheme();
+  const fs = useChatFont();
   const [now, setNow] = useState(() => Date.now());
   const s = client.pollState(pollId, now);
   const [adding, setAdding] = useState(false);
@@ -70,8 +72,8 @@ export function PollCard({ client, pollId }: { client: CircleClient; pollId: str
   return (
     <View style={{ alignSelf: 'stretch', marginVertical: 6, backgroundColor: t.surface, borderRadius: 18, borderWidth: 1, borderColor: t.line, padding: 14, gap: 10 }}>
       <View>
-        <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700' }}>📊 POLL · {s.creatorName.toUpperCase()}</Text>
-        <Text style={{ color: t.text, fontSize: 17, fontWeight: '700', marginTop: 2 }}>{s.question}</Text>
+        <Text style={{ color: t.muted, fontSize: fs(12), fontWeight: '700' }}>📊 POLL · {s.creatorName.toUpperCase()}</Text>
+        <Text style={{ color: t.text, fontSize: fs(17), fontWeight: '700', marginTop: 2 }}>{s.question}</Text>
       </View>
       {s.options.map((o) => (
         <OptionRow
@@ -85,7 +87,7 @@ export function PollCard({ client, pollId }: { client: CircleClient; pollId: str
       ))}
       {s.everyoneVoted && !s.closed ? <Confetti text="🎉 Everyone voted!" /> : null}
       {s.spin ? (
-        <Text style={{ color: t.text, fontSize: 14 }}>
+        <Text style={{ color: t.text, fontSize: fs(14) }}>
           🎡 {s.spin.by} spun the wheel: {s.spin.option.emoji} {s.spin.option.label}
         </Text>
       ) : null}
@@ -104,7 +106,7 @@ export function PollCard({ client, pollId }: { client: CircleClient; pollId: str
           <Chip label="Add" onPress={add} primary />
         </View>
       ) : null}
-      <Text style={{ color: t.muted, fontSize: 13 }}>{footer}</Text>
+      <Text style={{ color: t.muted, fontSize: fs(13) }}>{footer}</Text>
       {!s.closed || (s.closed && s.winners.length > 1) ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {!s.closed && s.allowAdd && !adding && s.options.length < 12 ? <Chip label="+ Add option" onPress={() => setAdding(true)} /> : null}
@@ -115,8 +117,8 @@ export function PollCard({ client, pollId }: { client: CircleClient; pollId: str
             onPress={spinIt}
             style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, paddingHorizontal: 12, borderRadius: 18, borderWidth: 1, borderColor: t.line, opacity: pressed || spinning ? 0.7 : 1 })}
           >
-            <Animated.Text style={{ fontSize: 16, transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '1080deg'] }) }] }}>🎡</Animated.Text>
-            <Text style={{ color: t.text, fontSize: 14, fontWeight: '600' }}>{spinning ? 'Spinning…' : 'Spin'}</Text>
+            <Animated.Text style={{ fontSize: fs(16), transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '1080deg'] }) }] }}>🎡</Animated.Text>
+            <Text style={{ color: t.text, fontSize: fs(14), fontWeight: '600' }}>{spinning ? 'Spinning…' : 'Spin'}</Text>
           </Pressable>
           {s.mine && !s.closed ? <Chip label="Close poll" onPress={close} /> : null}
         </View>
@@ -127,6 +129,7 @@ export function PollCard({ client, pollId }: { client: CircleClient; pollId: str
 
 function OptionRow({ option, share, winner, disabled, onPress }: { option: PollState['options'][number]; share: number; winner: boolean; disabled: boolean; onPress: () => void }) {
   const t = useTheme();
+  const fs = useChatFont();
   const [width] = useState(() => new Animated.Value(share));
   useEffect(() => {
     Animated.spring(width, { toValue: share, useNativeDriver: false, friction: 7 }).start();
@@ -152,17 +155,17 @@ function OptionRow({ option, share, winner, disabled, onPress }: { option: PollS
           }}
         />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
-          {winner ? <Text style={{ fontSize: 18 }}>🏆</Text> : null}
-          {option.emoji ? <Text style={{ fontSize: 18 }}>{option.emoji}</Text> : null}
-          <Text style={{ flex: 1, color: t.text, fontSize: 15, fontWeight: option.mine ? '700' : '500' }} numberOfLines={2}>
+          {winner ? <Text style={{ fontSize: fs(18) }}>🏆</Text> : null}
+          {option.emoji ? <Text style={{ fontSize: fs(18) }}>{option.emoji}</Text> : null}
+          <Text style={{ flex: 1, color: t.text, fontSize: fs(15), fontWeight: option.mine ? '700' : '500' }} numberOfLines={2}>
             {option.label}
           </Text>
           {option.mine ? <Text style={{ color: t.brand, fontWeight: '700' }}>✓</Text> : null}
-          <Text style={{ color: t.muted, fontSize: 14, fontWeight: '600', minWidth: 18, textAlign: 'right' }}>{option.votes}</Text>
+          <Text style={{ color: t.muted, fontSize: fs(14), fontWeight: '600', minWidth: 18, textAlign: 'right' }}>{option.votes}</Text>
         </View>
       </View>
       {option.voters.length ? (
-        <Text style={{ color: t.muted, fontSize: 12, marginTop: 2, marginLeft: 4 }} numberOfLines={1}>
+        <Text style={{ color: t.muted, fontSize: fs(12), marginTop: 2, marginLeft: 4 }} numberOfLines={1}>
           {option.voters.join(', ')}
         </Text>
       ) : null}
@@ -172,6 +175,7 @@ function OptionRow({ option, share, winner, disabled, onPress }: { option: PollS
 
 function Chip({ label, onPress, primary }: { label: string; onPress: () => void; primary?: boolean }) {
   const t = useTheme();
+  const fs = useChatFont();
   return (
     <Pressable
       accessibilityRole="button"
@@ -187,7 +191,7 @@ function Chip({ label, onPress, primary }: { label: string; onPress: () => void;
         opacity: pressed ? 0.7 : 1,
       })}
     >
-      <Text style={{ color: primary ? t.brandInk : t.text, fontSize: 14, fontWeight: '600' }}>{label}</Text>
+      <Text style={{ color: primary ? t.brandInk : t.text, fontSize: fs(14), fontWeight: '600' }}>{label}</Text>
     </Pressable>
   );
 }
@@ -197,6 +201,7 @@ const BURST = ['🎉', '✨', '🎊', '🥳', '✨', '🎉', '🎊', '✨'];
 /** "Everyone voted!" with a small burst of confetti when it appears. */
 function Confetti({ text }: { text: string }) {
   const t = useTheme();
+  const fs = useChatFont();
   const [go] = useState(() => new Animated.Value(0));
   useEffect(() => {
     Animated.timing(go, { toValue: 1, duration: 1200, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
@@ -222,7 +227,7 @@ function Confetti({ text }: { text: string }) {
           </Animated.Text>
         );
       })}
-      <Text style={{ color: t.brand, fontSize: 15, fontWeight: '700' }}>{text}</Text>
+      <Text style={{ color: t.brand, fontSize: fs(15), fontWeight: '700' }}>{text}</Text>
     </View>
   );
 }

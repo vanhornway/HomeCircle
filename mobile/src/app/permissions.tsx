@@ -3,6 +3,7 @@ import { AppState, Linking, Platform, Text, View } from 'react-native';
 import * as Location from 'expo-location';
 import { Button, Card, H1, P, Screen } from '../components/ui';
 import { notificationPermission, registerPush } from '../lib/push';
+import { batteryUnrestricted, requestBatteryExemption } from '../lib/health';
 import { startBackgroundUpdates, shareNow } from '../lib/location';
 import { enterApp } from '../lib/nav';
 import { useTheme } from '../theme';
@@ -14,13 +15,17 @@ export default function Permissions() {
   const [fg, setFg] = useState<Status>('undetermined');
   const [bg, setBg] = useState<Status>('undetermined');
   const [notif, setNotif] = useState<Status>('undetermined');
+  // Android only: null where it doesn't apply or can't be read.
+  const [battery, setBattery] = useState<boolean | null>(null);
 
   const refresh = async () => {
-    const [f, b, n] = await Promise.all([
+    const [f, b, n, bat] = await Promise.all([
       Location.getForegroundPermissionsAsync(),
       Location.getBackgroundPermissionsAsync(),
       notificationPermission(),
+      batteryUnrestricted(),
     ]);
+    setBattery(bat);
     setFg(f.status as Status);
     setBg(b.status as Status);
     setNotif(n);
@@ -66,7 +71,7 @@ export default function Permissions() {
   const alwaysLabel = Platform.OS === 'ios' ? 'Change to “Always”' : 'Allow all the time';
   return (
     <Screen>
-      <H1 style={{ marginTop: 12 }}>Two quick permissions</H1>
+      <H1 style={{ marginTop: 12 }}>{Platform.OS === 'android' && battery !== null ? 'Three quick permissions' : 'Two quick permissions'}</H1>
       <P muted style={{ marginTop: 8, marginBottom: 22 }}>
         HomeCircle only shares with your circle, encrypted. You can pause sharing any time in Settings.
       </P>
@@ -87,6 +92,18 @@ export default function Permissions() {
         },
         'Allow notifications',
       )}
+      {Platform.OS === 'android' && battery !== null
+        ? row(
+            'Keep running in the background',
+            'Choose “Allow” so Android lets HomeCircle wake up when your phone is locked. Otherwise message sounds can wait until you pick the phone up.',
+            battery ? 'granted' : 'undetermined',
+            async () => {
+              await requestBatteryExemption();
+              refresh();
+            },
+            'Allow',
+          )
+        : null}
       <View style={{ height: 8 }} />
       <Button title={fg === 'granted' ? 'Continue' : 'Skip for now'} variant={fg === 'granted' ? 'primary' : 'default'} onPress={finish} />
     </Screen>

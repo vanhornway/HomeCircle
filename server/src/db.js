@@ -175,6 +175,9 @@ function migrateToMultiCircle(db) {
   add('files', 'purpose', "TEXT NOT NULL DEFAULT 'agent'");
   // Delivered ticks (0.11): every message up to this seq has reached the member's phone.
   add('members', 'delivered_seq', 'INTEGER NOT NULL DEFAULT 0');
+  // Backup alerts (0.22): a member who opted in gets a generic visible push when
+  // the wake-up for a message hasn't been answered by a fetch (push.js).
+  add('members', 'push_fallback', 'INTEGER NOT NULL DEFAULT 0');
   // Which features a circle has (0.13): circles from before keep everything on.
   if (!cols('circles').includes('features')) {
     db.exec('ALTER TABLE circles ADD COLUMN features TEXT');
@@ -216,6 +219,7 @@ function memberRow(r) {
     profile: parse(r.profile),
     pushToken: r.push_token,
     pushPlatform: r.push_platform,
+    pushFallback: r.push_fallback === 1,
     joinedAt: r.joined_at,
     lastSeenAt: r.last_seen_at,
     removed: r.removed_at != null,
@@ -370,19 +374,23 @@ export class Store {
   setDelivered(id, seq) {
     return this.q('UPDATE members SET delivered_seq = ? WHERE id = ? AND delivered_seq < ?').run(seq, id, seq).changes > 0;
   }
+  /** The highest message seq this member's phone has fetched (what the delivered ticks show). */
+  deliveredSeqOf(id) {
+    return this.q('SELECT delivered_seq FROM members WHERE id = ?').get(id)?.delivered_seq ?? 0;
+  }
   touchMember(id, now) {
     this.q('UPDATE members SET last_seen_at = ? WHERE id = ?').run(now, id);
   }
   setProfile(id, profile) {
     this.q('UPDATE members SET profile = ? WHERE id = ?').run(JSON.stringify(profile), id);
   }
-  setPush(member, token, platform) {
+  setPush(member, token, platform, fallback = false) {
     // A push token belongs to one device, and that device has one member per
     // circle it's in. Clear it from anyone else in the same circle first.
     if (token) {
       this.q('UPDATE members SET push_token = NULL WHERE push_token = ? AND id != ? AND circle_id = ?').run(token, member.id, member.circleId);
     }
-    this.q('UPDATE members SET push_token = ?, push_platform = ? WHERE id = ?').run(token, platform, member.id);
+    this.q('UPDATE members SET push_token = ?, push_platform = ?, push_fallback = ? WHERE id = ?').run(token, platform, fallback && token ? 1 : 0, member.id);
   }
   clearPushToken(token) {
     this.q('UPDATE members SET push_token = NULL WHERE push_token = ?').run(token);
@@ -569,6 +577,13 @@ export class Store {
        ORDER BY seq LIMIT ?`,
     )
       .all(circleId, after, memberId, memberId, limit)
+      .map(messageRow);
+  }
+  /** The newest `limit` messages below `before` (or the newest of all), oldest first: for opening on the latest, then reading back. */
+  messagesBefore(circleId, memberId, before, limit, { directOnly = false } = {}) {
+    const sql = directOnly ? '(to_id = ? OR (from_id = ? AND to_id IS NOT NULL))' : '(to_id IS NULL OR to_id = ? OR from_id = ?)';
+    return this.q(`SELECT * FROM (SELECT * FROM messages WHERE circle_id = ? AND seq < ? AND ${sql} ORDER BY seq DESC LIMIT ?) ORDER BY seq`)
+      .all(circleId, before, memberId, memberId, limit)
       .map(messageRow);
   }
   messageExists(id) {

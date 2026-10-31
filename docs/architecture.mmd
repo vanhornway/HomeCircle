@@ -10,12 +10,16 @@ flowchart LR
     Teen["Teens skin (later)"]:::later
     Catalog["Phrase catalog + Urdu audio<br/>(on the phone, offline)"]
     Core["packages/core<br/>crypto · CircleClient · sealing"]
-    Native["Background location · geofences<br/>push · hc-attention (Android)"]
+    Native["Background location · geofences<br/>push · hc-attention · hc-calls (Android)"]
+    Calls["Voice calls (WebRTC)<br/>WhatsApp links"]
     Full --> Core
     Elder --> Core
     Elder --> Catalog
     Teen -.-> Core
     Core --> Native
+    Elder --> Calls
+    Full --> Calls
+    Calls --> Core
   end
 
   Web["Built-in web app<br/>server/public"]
@@ -27,6 +31,7 @@ flowchart LR
     DB[("SQLite<br/>ciphertext only")]
     Files["Encrypted files<br/>files.js"]
     Push["Push relay<br/>push.js"]
+    CallRelay["Call set-up relay<br/>calls.js · ice.js<br/>memory only, never stored"]
     Plugins["Plugins<br/>weather · air · prayer · Home Assistant"]
     Games["Games plugin (tab surface)"]:::planned
     Agent["AI helper (agent host)<br/>brain · memory · calendars · lists"]
@@ -35,6 +40,7 @@ flowchart LR
     API --> Files
     Hub --> DB
     API --> Push
+    API --> CallRelay
     API --> Plugins
     Plugins -.-> Games
   end
@@ -45,6 +51,7 @@ flowchart LR
     AI["AI provider<br/>(names masked)"]
     Ext["Plugin hosts<br/>weather, air, HA"]
     Tiles["Map tiles<br/>OpenStreetMap"]
+    Turn["Optional call relay<br/>Cloudflare · Metered · coturn"]
   end
 
   Core -- "HTTPS: sealed envelopes" --> API
@@ -55,6 +62,8 @@ flowchart LR
   Expo -- "wakes the phone" --> Native
   Agent --> AI
   Plugins --> Ext
+  CallRelay -- "short-lived credentials" --> Turn
+  Calls -. "encrypted voice, phone to phone" .-> Calls
   Full --> Tiles
 
   classDef planned stroke-dasharray: 6 4,stroke:#2F7D6D,fill:#E1EFEB;

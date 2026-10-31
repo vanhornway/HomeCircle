@@ -47,7 +47,7 @@ async function fakeLlm(cfg, { system, messages, schema }) {
       });
     }
     if (/\[image\]/.test(text) && /receipt/.test(sent)) {
-      return json({ title: 'Costco receipt', summary: 'A Costco trip.', receipt: { store: 'Costco', items: ['Milk', 'Paper towels', 'Eggs'] }, calendar: false, school: false, events: [], notes: [] });
+      return json({ title: 'Costco receipt', summary: 'A Costco trip.', receipt: { store: 'Costco', currency: 'USD', date: null, items: [{ name: 'Milk', price: 4.5 }, { name: 'Paper towels', price: 19.99 }, { name: 'Eggs', price: null }] }, calendar: false, school: false, events: [], notes: [] });
     }
     if (/\[image\]/.test(text)) {
       return json({
@@ -586,6 +586,7 @@ test('shopping lists: in chat and from the app; a receipt counts as bought and p
   // A receipt: Milk comes off the list; what's bought often goes first.
   await mom.sendFileToAgent(new Uint8Array([0xff, 0xd8, 9, 9, 9, 9]), { name: 'costco-receipt.jpg', mime: 'image/jpeg' }, { peer });
   const r = await until(mom, (c) => fromAgentDm(c, /^🧾 Costco receipt: 3 items: Milk, Paper towels, Eggs\./));
+  assert.match(r.body.text, /learn what they cost \(2 priced\)/);
   await mom.saveAgentFound(r.body.save.id, true, { peer });
   await until(mom, (c) => fromAgentDm(c, /Counted 3 items as bought at Costco, and took milk off the list/));
   const ask = await until(mom, (c) => fromAgentDm(c, /^Delete “costco-receipt\.jpg”/));
@@ -595,9 +596,19 @@ test('shopping lists: in chat and from the app; a receipt counts as bought and p
   // Eggs were bought twice (Done shopping and the receipt): first. Everything else from the receipt is offered back.
   assert.deepEqual(view.items.map((i) => i.name), ['Eggs', 'batteries']);
   assert.deepEqual(view.usual, [
-    { name: 'Milk', count: 1 },
-    { name: 'Paper towels', count: 1 },
+    { name: 'Milk', count: 1, price: { est: 4.5, low: 4.05, high: 4.95, n: 1 } },
+    { name: 'Paper towels', count: 1, price: { est: 19.99, low: 17.99, high: 21.99, n: 1 } },
   ]);
+  // Eggs have no price yet, so the list has none: no total, and it doesn't read as free.
+  assert.equal(view.total, undefined);
+  lists = await mom.agentRpc('itemAdd', { listId: costco.id, names: ['paper towels'] });
+  const priced = lists.find((l) => l.id === costco.id);
+  assert.deepEqual([priced.currency, priced.total], ['USD', { low: 17.99, high: 21.99, priced: 1, count: 3 }]);
+  // Two of them: twice the price.
+  const towels = priced.items.find((i) => i.name === 'paper towels');
+  lists = await mom.agentRpc('itemQty', { listId: costco.id, itemId: towels.id, qty: 2 });
+  assert.deepEqual(lists.find((l) => l.id === costco.id).total, { low: 35.98, high: 43.98, priced: 1, count: 3 });
+  await mom.agentRpc('itemRemove', { listId: costco.id, itemId: towels.id });
   await mom.askAgent("what's on the Costco list?");
   await until(mom, (c) => (lastFromAgent(c)?.body.text === '🛒 Costco:\n• Eggs\n• batteries' ? 1 : null));
 });
@@ -683,6 +694,16 @@ test('reminders: set in chat, sent to admins and whoever set it in the morning, 
   const [rem] = await dad.agentRpc('reminders');
   assert.deepEqual([rem.due, rem.repeat, rem.createdByName], ['2027-11-30', 'yearly', 'Dad']);
   assert.equal(mom.conversation(mom.agent.id).filter((m) => m.body?.reminder).length, 1);
+  // The cards close on every phone that got the reminder: the answer carries the reminder's id, and the others are told who did it.
+  const id = toMom.body.reminder.id;
+  const doneFor = (c) => [...c.conversation(c.agent.id)].reverse().find((m) => m.body?.reminderDoneId === id);
+  assert.match((await until(mom, doneFor)).body.text, /^✅ Car registration is done\. Next one:/);
+  assert.match((await until(dad, doneFor)).body.text, /^✅ \w+ marked Car registration done\. Next one: Nov 30, 2027\.$/);
+  assert.equal(mom.conversation(mom.agent.id).filter((m) => m.body?.reminderDoneId === id).length, 1);
+  // Done from the Reminders screen is told to everyone too, the person who tapped included.
+  await dad.agentRpc('reminderDone', { id: rem.id });
+  await until(mom, (c) => (c.conversation(c.agent.id).filter((m) => m.body?.reminderDoneId === id).length === 2 ? 1 : null));
+  await until(dad, (c) => (c.conversation(c.agent.id).filter((m) => m.body?.reminderDoneId === id).length === 2 ? 1 : null));
 });
 
 test('contacts, health, documents, trips and the home manual: details kept, reminders set, secrets never kept', async () => {

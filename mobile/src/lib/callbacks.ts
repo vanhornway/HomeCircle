@@ -5,10 +5,11 @@
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { AndroidImportance, AndroidNotificationVisibility, SchedulableTriggerInputTypes } from 'expo-notifications';
-import type { CallbackReply, CallbackState, CircleClient } from '@homecircle/core';
+import type { CallbackAnswer, CallbackReply, CallbackState, CircleClient } from '@homecircle/core';
 
 const PREFIX = 'callback:';
 export const CALLBACKS_CHANNEL = 'callbacks';
+const QUIET_CHANNEL = 'callbacks-quiet';
 
 /** The reply buttons, in order. */
 export const REPLY_LABELS: Record<CallbackReply, string> = {
@@ -19,7 +20,8 @@ export const REPLY_LABELS: Record<CallbackReply, string> = {
 };
 
 /** How a reply reads in the summary: "Sara: in 5 minutes". */
-export const REPLY_SHORT: Record<CallbackReply, string> = {
+export const REPLY_SHORT: Record<CallbackAnswer, string> = {
+  asleep: 'asleep',
   now: 'calling now',
   '5min': 'in 5 minutes',
   morning: 'in the morning',
@@ -53,19 +55,26 @@ export async function ensureCallbackChannel() {
     enableVibrate: true,
     lockscreenVisibility: AndroidNotificationVisibility.PRIVATE,
   });
+  await Notifications.setNotificationChannelAsync(QUIET_CHANNEL, {
+    name: 'Call-back requests while asleep',
+    description: 'Requests that arrive at night or on Do Not Disturb, kept without a sound',
+    importance: AndroidImportance.LOW,
+    sound: null,
+  });
 }
 
 /** Notify now about a request that asks you. */
-export async function notifyCallback(client: CircleClient, s: CallbackState, previews: boolean) {
+export async function notifyCallback(client: CircleClient, s: CallbackState, previews: boolean, { quiet = false } = {}) {
   await ensureCallbackChannel();
   await Notifications.scheduleNotificationAsync({
     content: {
       title: previews ? `📞 ${client.displayName(s.from)} wants a call back` : '📞 A call-back request',
       body: previews ? `${askedLine(client, s)} · their time ${timeIn(s.tz, s.ts)}. Open the chat to reply.` : 'Open HomeCircle to reply.',
-      sound: 'default',
+      sound: quiet ? undefined : 'default',
       data: { t: 'chat', circle: client.circleId ?? '', peer: '' },
     },
-    trigger: Platform.OS === 'android' ? { channelId: CALLBACKS_CHANNEL } : null,
+    // Asleep or on Do Not Disturb: saved quietly for later.
+    trigger: Platform.OS === 'android' ? { channelId: quiet ? QUIET_CHANNEL : CALLBACKS_CHANNEL } : null,
   });
 }
 

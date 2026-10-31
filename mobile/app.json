@@ -3,7 +3,7 @@
     "name": "HomeCircle",
     "slug": "homecircle",
     "scheme": "homecircle",
-    "version": "0.20.0",
+    "version": "0.22.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -11,7 +11,10 @@
       "supportsTablet": false,
       "bundleIdentifier": "us.umair.homecircle",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "LSApplicationQueriesSchemes": [
+          "whatsapp"
+        ]
       }
     },
     "android": {
@@ -24,6 +27,9 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
@@ -40,7 +46,8 @@
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_NOTIFICATION_POLICY"
       ]
     },
     "plugins": [
@@ -88,7 +95,7 @@
         "expo-camera",
         {
           "cameraPermission": "HomeCircle uses the camera to scan invite QR codes and, when you choose, to take a photo for your circle’s helper.",
-          "microphonePermission": false,
+          "microphonePermission": "HomeCircle uses the microphone only while you are on a voice call with someone in your circle.",
           "recordAudioAndroid": false
         }
       ],
@@ -98,7 +105,21 @@
         "expo-build-properties",
         {
           "android": {
-            "extraProguardRules": "# WorkManager (pulled in by expo-background-task) creates its Room database by reflection;\n# without these rules R8 strips it and the app crashes on launch.\n-keep class * extends androidx.room.RoomDatabase { <init>(); }\n-keep class androidx.work.impl.** { *; }\n"
+            "manifestQueries": {
+              "package": [
+                "com.whatsapp",
+                "com.whatsapp.w4b"
+              ],
+              "intent": [
+                {
+                  "action": "VIEW",
+                  "data": {
+                    "scheme": "whatsapp"
+                  }
+                }
+              ]
+            },
+            "extraProguardRules": "# WorkManager (pulled in by expo-background-task) creates its Room database by reflection;\n# without these rules R8 strips it and the app crashes on launch.\n-keep class * extends androidx.room.RoomDatabase { <init>(); }\n-keep class androidx.work.impl.** { *; }\n# WebRTC (react-native-webrtc): its native library calls these classes by name, so R8 must keep them; an optional AV1 decoder helper it mentions isn't bundled.\n-keep class org.webrtc.** { *; }\n-dontwarn org.webrtc.**\n"
           }
         }
       ],
@@ -107,10 +128,17 @@
         {
           "photosPermission": "HomeCircle lets you send a photo to your circle’s helper, only when you pick one.",
           "cameraPermission": "HomeCircle uses the camera to scan invite QR codes and, when you choose, to take a photo for your circle’s helper.",
-          "microphonePermission": false
+          "microphonePermission": "HomeCircle uses the microphone only while you are on a voice call with someone in your circle."
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "microphonePermission": "HomeCircle uses the microphone only while you are on a voice call with someone in your circle.",
+          "cameraPermission": "HomeCircle uses the camera to scan invite QR codes and, when you choose, to take a photo for your circle’s helper."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": false

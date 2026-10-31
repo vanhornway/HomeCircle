@@ -1,7 +1,7 @@
 // Shopping lists and reminders, as the helper keeps them.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_USUAL, addItems, createList, doneShopping, emptyLists, findList, itemKey, listText, parseListCommand, recipeWanted, recordBought, removeItems, shoppingName, viewList } from '../src/agent/lists.js';
+import { MAX_USUAL, addItems, cleanPrice, createList, doneShopping, emptyLists, findList, itemKey, listText, money, parseListCommand, priceEstimate, rangeText, recipeWanted, recordBought, removeItems, setQty, shoppingName, viewList } from '../src/agent/lists.js';
 import { addMonths, addReminder, canSeeReminder, cleanReminder, dueMessage, markDone, nextYear, reminderLine } from '../src/agent/reminders.js';
 
 test('lists: one per store; items once each; usual items first and suggested', () => {
@@ -108,4 +108,115 @@ test('reminders every few months move on that many months; private ones are only
   assert.deepEqual([canSeeReminder(refill, 'dad'), canSeeReminder(refill, 'mom'), canSeeReminder(r, 'mom')], [true, false, true]);
   // An edit keeps who it's for.
   assert.equal(cleanReminder({ ...refill, title: 'Refill the inhaler' }).only, 'dad');
+});
+
+const DAY = 86_400_000;
+const T0 = Date.parse('2026-09-01T12:00:00Z');
+const receipt = (s, list, day, buys, currency = 'USD') => recordBought(s, list, buys, T0 + day * DAY, { currency, at: T0 + day * DAY });
+
+test('prices: every receipt adds a sighting; a price that is off for one week barely moves the usual price', () => {
+  const s = emptyLists();
+  const costco = createList(s, 'Costco', 'mom', 1);
+  receipt(s, costco, 0, [{ name: 'Milk', price: 4.2 }, { name: 'Eggs', price: 7.5 }, 'paper towels']);
+  receipt(s, costco, 14, [{ name: 'milk', price: 4.3 }, { name: 'Eggs', price: 7.5 }]);
+  receipt(s, costco, 28, [{ name: 'Milk', price: 4.2 }]);
+  receipt(s, costco, 42, [{ name: 'Milk', price: 2.9 }]); // on sale that week
+  const milk = s.bought[costco.id].milk;
+  assert.deepEqual(milk.prices.map((o) => o.p), [4.2, 4.3, 4.2, 2.9]);
+  assert.equal(milk.count, 4);
+  addItems(s, costco, ['milk', 'eggs', 'paper towels', 'batteries'], 'mom', T0);
+  const v = viewList(s, costco);
+  const price = (n) => v.items.find((i) => i.name === n).price;
+  // Median, not the lowest: the sale moves it by a cent, not by a dollar.
+  assert.equal(price('milk').est, 4.2);
+  assert.deepEqual(price('milk'), { est: 4.2, low: 3.88, high: 4.41, n: 4 });
+  // Seen twice at the same price: a small margin either way. Never priced: no price at all.
+  assert.deepEqual(price('eggs'), { est: 7.5, low: 7.13, high: 7.88, n: 2 });
+  assert.deepEqual(Object.keys(v.items.find((i) => i.name === 'paper towels')), ['id', 'name', 'by', 'at', 'ticked', 'qty', 'usual']);
+  assert.equal(v.items.find((i) => i.name === 'batteries').price, undefined);
+  // Suggestions carry the price too, and only when there is one.
+  receipt(s, costco, 50, [{ name: 'Olive oil', price: 18.99 }, 'bananas']);
+  const u = viewList(s, costco).usual;
+  assert.deepEqual(u.find((x) => x.name === 'Olive oil').price, { est: 18.99, low: 17.09, high: 20.89, n: 1 });
+  assert.equal(u.find((x) => x.name === 'bananas').price, undefined);
+});
+
+test('prices: the same receipt scanned twice is one sighting; only the latest sightings count', () => {
+  const s = emptyLists();
+  const l = createList(s, 'Costco', 'mom', 1);
+  receipt(s, l, 0, [{ name: 'rice', price: 20 }]);
+  receipt(s, l, 0, [{ name: 'rice', price: 20 }]);
+  assert.equal(s.bought[l.id].rice.prices.length, 1);
+  assert.equal(s.bought[l.id].rice.count, 2);
+  // Prices go up over months: the old ones fall out of the estimate.
+  for (let i = 1; i <= 10; i++) receipt(s, l, i * 30, [{ name: 'rice', price: 30 }]);
+  assert.equal(s.bought[l.id].rice.prices.length, 11);
+  assert.equal(priceEstimate(s.bought[l.id].rice, 'USD').est, 30);
+  // Junk prices are ignored.
+  receipt(s, l, 400, [{ name: 'rice', price: -3 }, { name: 'rice', price: 'free' }, { name: 'rice', price: 0 }]);
+  assert.equal(s.bought[l.id].rice.prices.length, 11);
+  assert.equal(cleanPrice('$4.20'), 4.2);
+});
+
+test('prices: the list total is a range over the items still to get, with how many are priced', () => {
+  const s = emptyLists();
+  const l = createList(s, 'Costco', 'mom', 1);
+  receipt(s, l, 0, [{ name: 'milk', price: 4 }, { name: 'eggs', price: 8 }, { name: 'coffee', price: 20 }]);
+  receipt(s, l, 14, [{ name: 'milk', price: 5 }, { name: 'eggs', price: 8 }, { name: 'coffee', price: 24 }]);
+  addItems(s, l, ['milk', 'eggs', 'coffee', 'batteries'], 'mom', T0);
+  let v = viewList(s, l);
+  assert.equal(v.currency, 'USD');
+  // Low: 4.25 + 7.60 + 20.90; high: 4.75 + 8.40 + 23.10.
+  assert.deepEqual(v.total, { low: 32.75, high: 36.25, priced: 3, count: 4 });
+  assert.match(listText(s, l), /Estimated ~\$32 to \$37 \(3 of 4 items priced\)/);
+  assert.match(listText(s, l), /• milk · ~\$4\.50/);
+  assert.match(listText(s, l), /• batteries$/m);
+  // The cart estimate is the whole list: ticking doesn't change it, removing does; the unpriced one never reads as free.
+  l.items.find((i) => i.name === 'coffee').ticked = true;
+  assert.deepEqual(viewList(s, l).total, { low: 32.75, high: 36.25, priced: 3, count: 4 });
+  // Two of the milk: its price twice.
+  setQty(l.items.find((i) => i.name === 'milk'), 2);
+  v = viewList(s, l);
+  assert.equal(v.items.find((i) => i.name === 'milk').qty, 2);
+  assert.deepEqual([v.total.low, v.total.high], [37, 41], 'the milk is counted twice');
+  assert.match(listText(s, l), /• 2 × milk · ~\$9\.00/);
+  removeItems(l, ['milk', 'eggs', 'coffee']);
+  assert.equal(viewList(s, l).total, undefined);
+});
+
+test('quantity: 1 to 99, and 1 is the default', () => {
+  const item = {};
+  setQty(item, 3);
+  assert.equal(item.qty, 3);
+  setQty(item, 500);
+  assert.equal(item.qty, 99);
+  setQty(item, 0);
+  assert.equal(item.qty, undefined);
+  setQty(item, 'x');
+  assert.equal(item.qty, undefined);
+});
+
+test('prices: lists with no prices show none; currencies never mix', () => {
+  const s = emptyLists();
+  const desi = createList(s, 'Desi store', 'mom', 1);
+  addItems(s, desi, ['paneer', 'atta'], 'mom', 2);
+  recordBought(s, desi, ['paneer'], 3);
+  const plain = viewList(s, desi);
+  assert.deepEqual(Object.keys(plain), ['id', 'name', 'createdBy', 'items', 'usual']);
+  assert.equal(listText(s, desi), '🛒 Desi store:\n• paneer\n• atta');
+  // A store seen in dollars, then rupees (a trip): the latest currency is the list's; old dollar prices aren't added in.
+  const l = createList(s, 'Market', 'mom', 1);
+  receipt(s, l, 0, [{ name: 'tea', price: 6 }, { name: 'sugar', price: 3 }], 'USD');
+  receipt(s, l, 30, [{ name: 'tea', price: 1500 }], 'pkr');
+  addItems(s, l, ['tea', 'sugar'], 'mom', T0);
+  const v = viewList(s, l);
+  assert.equal(v.currency, 'PKR');
+  assert.deepEqual(v.items.map((i) => i.price?.est), [1500, undefined]);
+  assert.deepEqual([v.total.priced, v.total.count], [1, 2]);
+  // A receipt that doesn't say its currency is in the store's.
+  receipt(s, l, 40, [{ name: 'sugar', price: 300 }], '');
+  assert.equal(s.bought[l.id].sugar.prices.at(-1).c, 'PKR');
+  assert.equal(money(4.2, 'USD'), '$4.20');
+  assert.equal(money(4.2, ''), '4.20');
+  assert.equal(rangeText(62.6, 77.1, 'USD'), '~$62 to $78');
 });

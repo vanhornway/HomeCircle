@@ -14,10 +14,20 @@ import { previewText } from './polls';
 import { alertSos, ensureSosChannels, stopAlarm } from './sosAlarm';
 import { ensureCallbackChannel, notifyCallback, syncCallbackReminders } from './callbacks';
 import { loadSkin } from '../skins';
+import { isDoNotDisturbOn } from '../../modules/hc-attention/src/HcAttentionModule';
 import { companionAlerts } from '../companion/alerts';
+import { countText, planNotifications } from './notifyPlan';
+import { diag } from './diagnostics';
 
 const LAST_NOTIFIED_KEY = 'homecircle.lastNotifiedSeq';
 export const MESSAGES_CHANNEL = 'messages';
+/** Messages that arrived late: listed, without a sound or a pop-up. */
+export const QUIET_MESSAGES_CHANNEL = 'messages_quiet';
+/** Call-back requests, replies and SOS that reach a phone through the backup alert (server/src/push.js). */
+export const URGENT_CHANNEL = 'urgent';
+/** What the server's backup alert says (it knows nothing more): see clearBackupAlerts. */
+export const BACKUP_TITLE = 'HomeCircle';
+export const BACKUP_BODY = 'New message in your circle';
 
 // The conversation on screen right now (see lib/unread.ts for keys), so we
 // don't notify for what you're reading.
@@ -35,6 +45,22 @@ export async function ensureNotificationChannels() {
     importance: AndroidImportance.HIGH,
     sound: 'default',
     vibrationPattern: [0, 250, 150, 250],
+    enableVibrate: true,
+    lockscreenVisibility: AndroidNotificationVisibility.PRIVATE,
+  });
+  await Notifications.setNotificationChannelAsync(QUIET_MESSAGES_CHANNEL, {
+    name: 'Earlier messages',
+    description: 'Messages that reached this phone minutes after they were sent, kept without a sound',
+    importance: AndroidImportance.LOW,
+    sound: null,
+    lockscreenVisibility: AndroidNotificationVisibility.PRIVATE,
+  });
+  await Notifications.setNotificationChannelAsync(URGENT_CHANNEL, {
+    name: 'Urgent messages',
+    description: 'The backup alert for call-back requests, replies and SOS when the phone was asleep',
+    importance: AndroidImportance.HIGH,
+    sound: 'default',
+    vibrationPattern: [0, 400, 200, 400],
     enableVibrate: true,
     lockscreenVisibility: AndroidNotificationVisibility.PRIVATE,
   });
@@ -83,20 +109,48 @@ function describe(client: CircleClient, m: Message, previews: boolean, multi: bo
 }
 
 /**
+ * Take down the generic backup alert the server sends an Android phone that
+ * opted in, when the wake-up for a message went unanswered (Settings →
+ * Notifications). The system showed it with a sound; now that this phone has
+ * fetched, the real notification replaces it. Returns how many were removed.
+ */
+export async function clearBackupAlerts(): Promise<number> {
+  if (Platform.OS !== 'android') return 0;
+  try {
+    const shown = await Notifications.getPresentedNotificationsAsync();
+    const ids = shown
+      .filter((n) => n.request.content.title === BACKUP_TITLE && n.request.content.body === BACKUP_BODY)
+      .map((n) => n.request.identifier);
+    if (!ids.length) return 0;
+    await Promise.all(ids.map((id) => Notifications.dismissNotificationAsync(id)));
+    await diag('push:backup-cleared', { n: ids.length });
+    return ids.length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Show notifications for messages newer than the last one notified or seen
  * in this circle. Called for live messages while the app is open and from
- * the push task.
+ * the push task. One notification per conversation (a newer one replaces it);
+ * only the newest sounds, and messages minutes old are shown quietly
+ * (lib/notifyPlan.ts). Returns how many conversations got one, and how many of
+ * those were quiet.
  */
-export async function notifyNewMessages(client: CircleClient, messages: Message[]) {
+export async function notifyNewMessages(client: CircleClient, messages: Message[]): Promise<{ shown: number; quiet: number }> {
+  const none = { shown: 0, quiet: 0 };
   const me = client.account?.memberId;
-  if (!me) return;
+  if (!me) return none;
+  // This phone has fetched: a backup alert the system showed meanwhile is stale.
+  await clearBackupAlerts();
   const maxSeq = messages.reduce((n, m) => Math.max(n, m.seq), 0);
   const last = await lastNotified(client);
   if (last == null) {
     // First time for this circle on this phone: the existing history isn't news.
     await markSeen(client, maxSeq);
     await syncCallbackReminders(client).catch(() => {});
-    return;
+    return none;
   }
   const id = client.circleId!;
   // The Elderly Companion skin never shows message text: it plays the
@@ -104,7 +158,7 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
   if ((await loadSkin()) === 'elderly') {
     await companionAlerts(client, messages, last);
     await markSeen(client, maxSeq);
-    return;
+    return none;
   }
   // An SOS rings even if you're reading that chat; "safe now" stops it.
   const sosOf = (m: Message) => (client.feature('sos') && m.seq > last && m.from !== me && m.kind === 'chat' && !m.peer ? m.body?.sos?.state : null);
@@ -124,7 +178,11 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
   for (const m of messages) {
     if (!callbackAsk(m) || m.seq <= last || m.from === me) continue;
     const s = client.callbackState(m.id);
-    if (s?.open && client.callbackAsks(s) && conversationKey(id, null) !== reading) await notifyCallback(client, s, showPreviews).catch(() => {});
+    if (!s?.open || !client.callbackAsks(s)) continue;
+    // Night here, or Do Not Disturb on: no sound, and she's told we're asleep (PRD CUJ 6).
+    const asleep = iAmAsleep();
+    if (asleep && !s.replies.some((r) => r.memberId === me)) await client.replyCallback(s.id, 'asleep').catch(() => {});
+    if (conversationKey(id, null) !== reading) await notifyCallback(client, s, showPreviews, { quiet: asleep }).catch(() => {});
   }
   await syncCallbackReminders(client, showPreviews).catch(() => {});
   const fresh = messages.filter(
@@ -137,22 +195,26 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
       conversationKey(id, m.peer) !== reading,
   );
   await markSeen(client, maxSeq);
-  if (!fresh.length) return;
+  if (!fresh.length) return none;
 
   const multi = allClients().length > 1;
-  const shown = fresh.slice(-4);
-  for (const m of shown) {
-    const content = describe(client, m, showPreviews, multi);
-    if (ruleHit(m)) content.title = `🔔 ${content.title}`;
+  const groups = planNotifications(fresh, id, Date.now(), AppState.currentState === 'active');
+  for (const g of groups) {
+    const content = describe(client, g.latest, showPreviews, multi);
+    if (ruleHit(g.latest)) content.title = `🔔 ${content.title}`;
+    const count = countText(g.messages.length);
+    if (count) content.body = showPreviews ? `${count} · ${content.body}` : count;
     await Notifications.scheduleNotificationAsync({
-      content: { ...content, sound: 'default', data: { t: 'chat', circle: id, peer: m.peer ?? '' } },
-      trigger: Platform.OS === 'android' ? { channelId: MESSAGES_CHANNEL } : null,
+      identifier: g.identifier,
+      content: { ...content, ...(g.loud ? { sound: 'default' as const } : { sound: false }), data: { t: 'chat', circle: id, peer: g.peer ?? '' } },
+      trigger: Platform.OS === 'android' ? { channelId: g.loud ? MESSAGES_CHANNEL : QUIET_MESSAGES_CHANNEL } : null,
     });
   }
-  if (fresh.length > shown.length) {
-    await Notifications.scheduleNotificationAsync({
-      content: { title: multi ? client.circle.name : 'HomeCircle', body: `${fresh.length - shown.length} more new messages`, data: { t: 'chat', circle: id, peer: '' } },
-      trigger: Platform.OS === 'android' ? { channelId: MESSAGES_CHANNEL } : null,
-    });
-  }
+  return { shown: groups.length, quiet: groups.filter((g) => !g.loud).length };
+}
+
+/** Whether this phone's person is likely asleep: Do Not Disturb on, or 10 pm to 7 am here. */
+export function iAmAsleep(now = new Date()): boolean {
+  const h = now.getHours();
+  return isDoNotDisturbOn() || h >= 22 || h < 7;
 }

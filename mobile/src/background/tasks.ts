@@ -16,6 +16,34 @@ import { countFetch, countFixes, countWake, currentNet } from '../lib/energy';
 import { pushHint } from '@homecircle/core';
 import { loadSkin } from '../skins';
 import { flushOutbox as flushHerRequests } from '../companion/outbox';
+import { checkInactivityInBackground } from '../lib/inactivity';
+import { handleCallPush } from '../lib/calls';
+
+type Delivery = { lagS?: number; prio?: 'high' | 'normal'; sent?: 'high' | 'normal' };
+
+/**
+ * What Android recorded about how a push reached this app: seconds from the
+ * push service sending it to now (large when Android held it back while the
+ * phone was locked), and the priority it was sent with against the priority it
+ * arrived with (FCM lowers "high" to "normal" for apps whose high-priority
+ * pushes don't end in a notification the person sees; normal ones wait for
+ * the phone to wake). Empty when the payload doesn't say.
+ */
+export function deliveryOf(data: unknown, now: number): Delivery {
+  const root = (data ?? {}) as Record<string, unknown>;
+  const inner = (root.notification ?? {}) as Record<string, unknown>;
+  const at = [root.sentTime, inner.sentTime, inner.date].find((v) => typeof v === 'number' && Number.isFinite(v) && v > 0) as number | undefined;
+  const out: Delivery = {};
+  if (at !== undefined) {
+    const s = Math.round((now - (at < 1e11 ? at * 1000 : at)) / 1000);
+    if (s >= -60 && s < 7 * 86400) out.lagS = Math.max(0, s);
+  }
+  // RemoteMessage.PRIORITY_HIGH is 1, PRIORITY_NORMAL is 2.
+  const level = (v: unknown) => (v === 1 ? 'high' : v === 2 ? 'normal' : undefined);
+  out.prio = level(root.priority);
+  out.sent = level(root.originalPriority);
+  return out;
+}
 
 const log = (...a: unknown[]) => {
   if (__DEV__) console.log('[homecircle:bg]', ...a);
@@ -79,6 +107,8 @@ TaskManager.defineTask(HEARTBEAT_TASK, async () => {
     else await flushOutbox().catch(() => 0);
     // Her call-back requests that waited for the internet (Elderly Companion skin).
     if ((await loadSkin()) === 'elderly') await flushHerRequests().catch(() => 0);
+    // An elder in one of this phone's circles whose phone has been quiet too long.
+    else await checkInactivityInBackground(await loadedClients()).catch(() => {});
     // Still for 10 minutes: stop asking for location until the phone moves.
     await maybeEnterStillMode().catch(() => false);
     // A newer app? At most every 4 hours; says so once per version.
@@ -127,11 +157,17 @@ TaskManager.defineTask<{ eventType: Location.GeofencingEventType; region: Locati
 // { t: 'loc_req' } someone tapped "Locate"; { t: 'msg', c } there's a new
 // message to fetch, decrypt and show, in the circle whose pushHint is c (all
 // circles if none matches, or from an older server).
+//
+// Diagnostics: 'wake:push' says when the push reached the app and how long it
+// was in transit (lagS: FCM's send time to now; large when Android held it
+// back while the phone was locked), 'push:shown' when its notification was up.
 TaskManager.defineTask<Notifications.NotificationTaskPayload>(PUSH_TASK, async ({ data, error }) => {
   if (error) return;
+  const woke = Date.now();
   const raw = JSON.stringify(data ?? {});
   try {
-    diag('wake:push', { type: raw.includes('loc_req') ? 'locate' : raw.includes('rejoin') ? 'rejoin' : raw.includes('chirp') ? 'chirp' : 'message' });
+    const type = raw.includes('loc_req') ? 'locate' : raw.includes('rejoin') ? 'rejoin' : raw.includes('chirp') ? 'chirp' : 'message';
+    diag('wake:push', { type, ...deliveryOf(data, woke) });
     countWake('push');
     if (raw.includes('"chirp"') || raw.includes('\\"chirp\\"')) {
       await ensureNotificationChannels();
@@ -139,6 +175,9 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(PUSH_TASK, async (
     } else if (raw.includes('loc_req')) {
       diag('locate-request', { via: 'push' });
       await shareNow('requested');
+    } else if (/\\?"t\\?"\s*:\s*\\?"call/.test(raw)) {
+      // Someone is calling: fetch the sealed call that waited, which rings (lib/calls.ts).
+      await handleCallPush(await loadedClients());
     } else if (/\\?"t\\?"\s*:\s*\\?"msg/.test(raw)) {
       await ensureNotificationChannels();
       // One radio wake for the fetches that follow.
@@ -149,9 +188,13 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(PUSH_TASK, async (
       for (const client of only.length ? only : clients) {
         try {
           await client.fetchMessages();
-          await notifyNewMessages(client, client.messages);
+          const r = await notifyNewMessages(client, client.messages);
+          if (r.shown) diag('push:shown', { n: r.shown, quiet: r.quiet || undefined, tookMs: Date.now() - woke });
+          // This task can be ended as soon as it returns: keep what was fetched.
+          await client.flushCache();
         } catch (e) {
           log('fetch failed for a circle', e);
+          diag('push:fetch-failed', { tookMs: Date.now() - woke, msg: String((e as Error)?.message ?? e).slice(0, 80) });
         }
       }
     }

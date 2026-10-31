@@ -101,7 +101,9 @@ export class Api {
   join = (body) => this.req('POST', '/join', body);
   state = () => this.req('GET', '/state');
   putProfile = (profile) => this.req('PUT', '/members/me/profile', { profile });
-  putPush = (token, platform) => this.req('PUT', '/members/me/push', { token, platform });
+  // `fallback`: an Android phone asks for one generic visible alert when the silent
+  // wake-up for a message goes unanswered (the server checks the delivered tick).
+  putPush = (token, platform, { fallback = false } = {}) => this.req('PUT', '/members/me/push', { token, platform, fallback });
   removeMember = (id) => this.req('DELETE', `/members/${encodeURIComponent(id)}`);
   setRole = (id, role) => this.req('POST', `/members/${encodeURIComponent(id)}/role`, { role });
   createInvite = (body) => this.req('POST', '/invites', body);
@@ -114,6 +116,10 @@ export class Api {
   deleteLocation = () => this.req('DELETE', '/locations/me');
   requestLocations = (targets) => this.req('POST', '/locations/request', { targets });
   messages = (after = 0, limit = 200) => this.req('GET', `/messages?after=${after}&limit=${limit}`);
+  /** The newest `limit` messages (oldest first), for opening on the latest. */
+  messagesTail = (limit = 80) => this.req('GET', `/messages?tail=1&limit=${limit}`);
+  /** The newest `limit` messages below `before` (oldest first), for reading back. */
+  messagesBefore = (before, limit = 200) => this.req('GET', `/messages?before=${before}&limit=${limit}`);
   postMessage = (id, env, { silent = false, to = null, urgent = false } = {}) => this.req('POST', '/messages', { id, ...env, silent, ...(to ? { to } : {}), ...(urgent ? { urgent: true } : {}) });
   putRetention = (days) => this.req('PUT', '/circle/retention', { days });
   putFeatures = (features) => this.req('PUT', '/circle/features', { features });
@@ -146,6 +152,9 @@ export class Api {
   /** Your position, for your device in the circle's Home Assistant. */
   homeAssistantLocation = (body) => this.req('POST', '/plugins/homeAssistant/location', body);
   chirps = () => this.req('GET', '/chirps');
+  callSignal = (to, id, env, { ring = false } = {}) => this.req('POST', '/calls/signal', { to, id, ...env, ...(ring ? { ring: true } : {}) });
+  callsPending = () => this.req('GET', '/calls/pending');
+  callsConfig = () => this.req('GET', '/calls/config');
   // Recovery with the setup code (no account needed), and rejoin requests.
   recover = (setupToken) => this.req('POST', '/recover', { setupToken });
   recoverDelete = (setupToken, circleId) => this.req('POST', '/recover/delete', { setupToken, circleId });
