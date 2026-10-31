@@ -187,7 +187,7 @@ function ended(info: EndInfo) {
   endedTimer = setTimeout(() => publish({ ended: null }), quiet ? 0 : 3500);
 }
 
-export function endText(info: Pick<EndInfo, 'reason' | 'error'>): string {
+export function endText(info: Pick<EndInfo, 'reason' | 'error' | 'durationMs'>): string {
   switch (info.reason) {
     case 'declined':
       return 'They can’t talk right now';
@@ -196,7 +196,8 @@ export function endText(info: Pick<EndInfo, 'reason' | 'error'>): string {
     case 'no_answer':
       return 'No answer';
     case 'failed':
-      return 'The connection was lost';
+      // Never connected: the two phones' networks couldn't find a path (a relay would, see docs/CALLS-NOTES.md).
+      return info.durationMs > 0 ? 'The connection was lost' : 'Couldn’t connect. Try Wi-Fi on both phones.';
     case 'unreachable':
       return info.error || 'Couldn’t reach them';
     case 'no_microphone':

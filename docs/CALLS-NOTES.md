@@ -7,7 +7,7 @@ What was built on `claude/webrtc-calls-742644`, what could not be checked withou
 | Part | Files |
 |---|---|
 | Feature flag `calls` (off by default), `call` envelope kind | `packages/core/src/features.js`, `crypto.js` |
-| Relay: `POST /calls/signal`, `GET /calls/pending`, `GET /calls/config`; held in memory 45 s; ring push | `server/src/calls.js`, `routes.js`, `hub.js` (`onReady`), `push.js` (`call`), `index.js`, `config.js` |
+| Relay: `POST /calls/signal`, `GET /calls/pending`, `GET /calls/config`; held in memory 45 s; ring push; STUN and relay credentials | `server/src/calls.js`, `ice.js`, `routes.js`, `hub.js` (`onReady`), `push.js` (`call`), `index.js`, `config.js` |
 | Core: `sendCallSignal`, `collectCallSignals`, `callsConfig`, event `callSignal` (opens, verifies, drops stale or repeated) | `packages/core/src/client.js`, `api.js`, `index.d.ts` |
 | Engine (no React Native): ICE candidate queue, glare, busy, timeouts, mute, ICE restart, Opus tuning, DTLS fingerprints | `mobile/src/lib/callEngine.ts`, `callSdp.ts`, `callSas.ts` (+ tests) |
 | Real WebRTC and microphone | `mobile/src/lib/rtc.ts` |
@@ -17,7 +17,7 @@ What was built on `claude/webrtc-calls-742644`, what could not be checked withou
 | Background wake | `mobile/src/background/tasks.ts` (one branch for `{ t: 'call' }`) |
 | Build config | `mobile/app.json` (WebRTC plugin; microphone no longer blocked), `package.json` (react-native-webrtc 155.0.1, @config-plugins/react-native-webrtc 15.0.2) |
 
-Server knobs: `CALLS_STUN` (comma list, default Cloudflare then Google), `CALLS_TURN_URLS`, `CALLS_TURN_SECRET`, `CALLS_TURN_TTL_HOURS` (6), `CALLS_RELAY_ONLY`.
+Server knobs: `CALLS_STUN` (comma list, default Cloudflare then Google); a relay from one of `CALLS_CLOUDFLARE_TURN_KEY_ID` + `CALLS_CLOUDFLARE_TURN_TOKEN`, `CALLS_METERED_APP` + `CALLS_METERED_KEY`, or `CALLS_TURN_URLS` + `CALLS_TURN_SECRET` (own coturn); `CALLS_TURN_TTL_HOURS` (6), `CALLS_RELAY_ONLY`.
 
 ## Try it on two phones (once the APK is built)
 
@@ -50,9 +50,31 @@ The proper route is Jetpack Core-Telecom (`androidx.core:core-telecom`, `CallsMa
 - CallKit (`CXProvider`, `CXCallController`): answer and decline, mute and hold from the system UI, and the audio session handed over in `didActivate` (WebRTC's `RTCAudioSession`). `react-native-callkeep` or a small Swift module.
 - Background modes `voip` and `audio`, `NSMicrophoneUsageDescription` (the plugin already sets it), and a Mac build. About one to two weeks including a TestFlight round. `canCall()` returns false on iOS today.
 
-## Running coturn (optional, for pairs that cannot connect directly)
+## A relay for pairs that can't connect directly (when you can't run one)
 
-Needs a server with a public IP (a VPS or a home server with a forwarded port); not Render, not the Home Assistant add-on. `/etc/turnserver.conf`:
+Most pairs connect directly. Two phones that sit behind strict mobile-carrier networks, or on hotel or school Wi-Fi, may not, and then a relay (TURN) is the only way. A relay needs open UDP and TCP ports, which Render and the Home Assistant add-on cannot give. So the server fetches short-lived relay credentials from a hosted service with a free tier and hands them to phones in `GET /calls/config`. The service sees encrypted packets, sizes and timing, never the voice. Only phones in circles with Voice calls on get credentials; the API token stays on the server.
+
+Set one of these on the server (the same variables on Render; for the Home Assistant add-on they need adding to `config.yaml` options and the run script, which is a release step):
+
+```
+# Cloudflare Realtime TURN: create a TURN key in the Cloudflare dashboard (Realtime, TURN)
+CALLS_CLOUDFLARE_TURN_KEY_ID=<key id>
+CALLS_CLOUDFLARE_TURN_TOKEN=<API token of that key>
+
+# or Metered: app name (the part before .metered.live) and its API key
+CALLS_METERED_APP=<app name>
+CALLS_METERED_KEY=<API key>
+```
+
+Credentials last `CALLS_TURN_TTL_HOURS` (6) and are renewed in the background; one set is shared by the circle's members. If the service is down the server hands out STUN only and tries again on the next call, so a calls outage never breaks calls that connect directly. Without any of this, a pair that can't connect sees "Couldn't connect. Try Wi-Fi on both phones."
+
+Checked: the request shapes against Cloudflare's and Metered's documentation, and the server code with a stand-in for them (tests). Not checked: a real account, the free-tier limits and whether either needs a payment card on file (Cloudflare lists about 1,000 GB a month free; a voice call is about 45 MB an hour through a relay, so a family stays far under), or a real relayed call.
+
+`CALLS_RELAY_ONLY=1` sends every call through the relay so the phones never learn each other's address; it costs a little delay, and only makes sense with a relay set up.
+
+### Your own coturn (only if you ever have a server with a public IP)
+
+`/etc/turnserver.conf`:
 
 ```ini
 listening-port=3478
@@ -71,20 +93,9 @@ denied-peer-ip=172.16.0.0-172.31.255.255
 denied-peer-ip=192.168.0.0-192.168.255.255
 denied-peer-ip=127.0.0.0-127.255.255.255
 denied-peer-ip=169.254.0.0-169.254.255.255
-# optional TLS on 443 for networks that block UDP:
-# tls-listening-port=443
-# cert=/etc/letsencrypt/live/turn.example.org/fullchain.pem
-# pkey=/etc/letsencrypt/live/turn.example.org/privkey.pem
 ```
 
-Open UDP and TCP 3478 and UDP 49160 to 49200. In HomeCircle's server environment:
-
-```
-CALLS_TURN_URLS=turn:turn.example.org:3478?transport=udp,turn:turn.example.org:3478?transport=tcp
-CALLS_TURN_SECRET=<a long random string>
-```
-
-Phones fetch short-lived credentials (6 hours by default) from `GET /calls/config`. `CALLS_RELAY_ONLY=1` sends all media through the relay so the phones never learn each other's address (the relay then carries about 100 kbit/s per call, both ways). A relay sees encrypted packets, sizes and timing, not the voice.
+Open UDP and TCP 3478 and UDP 49160 to 49200, then set `CALLS_TURN_URLS=turn:turn.example.org:3478?transport=udp,turn:turn.example.org:3478?transport=tcp` and `CALLS_TURN_SECRET`.
 
 ## Open decisions
 

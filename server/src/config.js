@@ -52,6 +52,13 @@ export function loadConfig() {
     callsTurnUrls: (process.env.CALLS_TURN_URLS || '').split(',').map((u) => u.trim()).filter((u) => /^turns?:/.test(u)),
     callsTurnSecret: process.env.CALLS_TURN_SECRET || '',
     callsTurnTtlHours: int('CALLS_TURN_TTL_HOURS', 6),
+    // Hosted relays with a free tier, for servers that can't run coturn (Render, Home
+    // Assistant): Cloudflare Realtime TURN (a TURN key's id and API token) or Metered
+    // (app name and API key). Credentials are fetched by this server, never by phones.
+    callsCloudflareKeyId: process.env.CALLS_CLOUDFLARE_TURN_KEY_ID || '',
+    callsCloudflareToken: process.env.CALLS_CLOUDFLARE_TURN_TOKEN || '',
+    callsMeteredApp: process.env.CALLS_METERED_APP || '',
+    callsMeteredKey: process.env.CALLS_METERED_KEY || '',
     // Send all call media through that relay (phones never see each other's address).
     callsRelayOnly: bool('CALLS_RELAY_ONLY', false),
     // Run each circle's agent (the optional AI helper) in this server.

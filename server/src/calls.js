@@ -3,9 +3,6 @@
 // log; a signal for a phone with no open connection waits here, in memory,
 // for a short while (long enough to wake a sleeping phone) and is then gone.
 
-/** STUN servers apps use when the server doesn't say (CALLS_STUN overrides). */
-export const DEFAULT_STUN = ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'];
-
 export class CallRelay {
   constructor({ holdMs = 45_000, perMember = 64, total = 2000 } = {}) {
     this.holdMs = holdMs;

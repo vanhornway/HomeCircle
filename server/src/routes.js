@@ -3,7 +3,7 @@
 //
 // A server hosts any number of circles. A device's token identifies one member
 // of one circle, and every request only ever touches that circle's data.
-import { createHmac, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import {
   Router,
   fail,
@@ -20,7 +20,7 @@ import {
 import { isPushToken } from './push.js';
 import { MAX_FILE_BYTES } from './files.js';
 import { PLUGINS, mountPlugins } from './plugins/index.js';
-import { DEFAULT_STUN } from './calls.js';
+import { IceServers } from './ice.js';
 import { allFeatures, cleanFeatures, hasFeature, resolveFeatures } from '../../packages/core/src/features.js';
 
 const MAX_MEMBERS = 50;
@@ -61,6 +61,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   // so this leaves room for several in a minute; ringing is limited harder.
   const callSignalLimiter = new RateLimiter(config.callSignalsPerMinute ?? 90, 60_000);
   const callRingLimiter = new RateLimiter(config.callRingsPerMinute ?? 6, 60_000);
+  const ice = new IceServers(config, log);
   const callPairRingLimiter = new RateLimiter(config.callRingsPerPairPerMinute ?? 3, 60_000);
 
   // Guessing the setup code: a few dozen tries per hour from one address.
@@ -847,21 +848,9 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   });
 
   // The servers phones use to connect a call.
-  r.add('GET', '/calls/config', ({ me }) => {
+  r.add('GET', '/calls/config', async ({ me }) => {
     requireFeature(me, 'calls', 'Voice calls');
-    const stun = config.callsStun?.length ? config.callsStun : DEFAULT_STUN;
-    const iceServers = stun.map((urls) => ({ urls }));
-    const turn = config.callsTurnUrls?.length && config.callsTurnSecret;
-    if (turn) {
-      // coturn's "use-auth-secret": the username is when the credential expires,
-      // the password is an HMAC of it with the shared secret. It works for
-      // everyone in the circle for a few hours and for no one after.
-      const ttl = Math.max(1, config.callsTurnTtlHours ?? 6) * 3600;
-      const username = `${Math.floor(Date.now() / 1000) + ttl}:${sha256(me.id).slice(0, 8)}`;
-      const credential = createHmac('sha1', config.callsTurnSecret).update(username).digest('base64');
-      iceServers.push({ urls: config.callsTurnUrls, username, credential });
-    }
-    return { iceServers, ...(turn && config.callsRelayOnly ? { relayOnly: true } : {}) };
+    return ice.forMember(me.id);
   });
 
   // --- the circle's agent ------------------------------------------------

@@ -351,3 +351,60 @@ test('the caller leaves "missed" and "how long" lines in the direct chat', async
   assert.equal(m.body.text, '📞 Voice call · 3:12');
   assert.equal(m.body.call.seconds, 192);
 });
+
+// A hosted relay (for servers that can't run coturn): this server fetches the credentials.
+async function withRelay(extra, run) {
+  const d = mkdtempSync(join(tmpdir(), 'homecircle-calls-hosted-'));
+  const requests = [];
+  const answers = extra.answers;
+  const fetchImpl = async (u, init) => {
+    requests.push({ url: String(u), init });
+    const a = answers.shift();
+    return { ok: a.status === undefined, status: a.status ?? 200, json: async () => a.body };
+  };
+  const a2 = createApp({ ...baseConfig(d), callsStun: ['stun:stun.example.org:3478'], fetchImpl, ...extra.config });
+  await new Promise((r) => a2.server.listen(0, '127.0.0.1', r));
+  const c = client();
+  try {
+    await c.createCircle({ serverUrl: `http://127.0.0.1:${a2.server.address().port}`, setupToken: SETUP, name: 'A', circleName: 'Hosted', features: { ...defaultFeatures(), calls: true } });
+    await run(c, requests);
+  } finally {
+    await a2.close();
+    rmSync(d, { recursive: true, force: true });
+  }
+}
+
+test('Cloudflare TURN: the server fetches short-lived credentials once and shares them; its STUN is replaced by ours', async () => {
+  const cf = { iceServers: [{ urls: ['stun:stun.cloudflare.com:3478'] }, { urls: ['turn:turn.cloudflare.com:3478?transport=udp', 'turns:turn.cloudflare.com:443?transport=tcp'], username: 'u1', credential: 'p1' }] };
+  await withRelay({ config: { callsCloudflareKeyId: 'key-1', callsCloudflareToken: 'tok-1', callsTurnTtlHours: 6 }, answers: [{ body: cf }] }, async (c, requests) => {
+    const cfg = await c.callsConfig();
+    assert.deepEqual(cfg.iceServers, [{ urls: 'stun:stun.example.org:3478' }, { urls: cf.iceServers[1].urls, username: 'u1', credential: 'p1' }]);
+    assert.equal(requests[0].url, 'https://rtc.live.cloudflare.com/v1/turn/keys/key-1/credentials/generate-ice-servers');
+    assert.equal(requests[0].init.method, 'POST');
+    assert.equal(requests[0].init.headers.Authorization, 'Bearer tok-1');
+    assert.equal(JSON.parse(requests[0].init.body).ttl, 6 * 3600);
+    await c.callsConfig();
+    assert.equal(requests.length, 1, 'cached, not asked again');
+    // The API token never reaches a phone.
+    assert.ok(!JSON.stringify(cfg).includes('tok-1'));
+  });
+});
+
+test('Metered TURN works the same way', async () => {
+  const body = [{ urls: 'stun:a.relay.metered.ca:80' }, { urls: 'turn:a.relay.metered.ca:443', username: 'mu', credential: 'mp' }, { urls: 'turn:a.relay.metered.ca:443?transport=tcp', username: 'mu', credential: 'mp' }];
+  await withRelay({ config: { callsMeteredApp: 'family', callsMeteredKey: 'k+1' }, answers: [{ body }] }, async (c, requests) => {
+    const cfg = await c.callsConfig();
+    assert.equal(requests[0].url, 'https://family.metered.live/api/v1/turn/credentials?apiKey=k%2B1');
+    assert.equal(cfg.iceServers.length, 3);
+    assert.deepEqual(cfg.iceServers[1], { urls: ['turn:a.relay.metered.ca:443'], username: 'mu', credential: 'mp' });
+  });
+});
+
+test('a hosted relay that is down leaves STUN only, and is asked again next time', async () => {
+  const ok = { iceServers: [{ urls: ['turn:t.example:3478'], username: 'u', credential: 'p' }] };
+  await withRelay({ config: { callsCloudflareKeyId: 'k', callsCloudflareToken: 't' }, answers: [{ status: 503 }, { body: ok }] }, async (c, requests) => {
+    assert.deepEqual((await c.callsConfig()).iceServers, [{ urls: 'stun:stun.example.org:3478' }]);
+    assert.equal((await c.callsConfig()).iceServers.length, 2);
+    assert.equal(requests.length, 2);
+  });
+});
