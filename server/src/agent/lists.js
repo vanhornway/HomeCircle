@@ -3,7 +3,10 @@
 // ticks and removes items. "Done shopping" clears what was ticked and counts
 // it as bought; receipts count too. Everything ever bought at a store is
 // offered back to pick from, most often bought first, and what's bought
-// most goes to the top of the list.
+// most goes to the top of the list. Receipts also leave what each thing cost
+// (every sighting, with its date), so items and the whole list can show an
+// estimated price: a usual price (the median, so a one-off sale doesn't move
+// it) and a low to high range.
 import { randomBytes } from 'node:crypto';
 
 const MAX_LISTS = 30;
@@ -12,6 +15,12 @@ const MAX_ITEMS = 200;
 // bought, longest ago, are forgotten past that).
 export const MAX_USUAL = 300;
 const MAX_KNOWN = 500;
+// Price sightings kept per item, and how many of the latest are used.
+const MAX_SEEN = 12;
+const RECENT_SEEN = 8;
+// How far above and below a price the real one might be, at least: a price seen once, or seen a few times.
+const SINGLE_MARGIN = 0.1;
+const MIN_MARGIN = 0.05;
 const id = () => randomBytes(6).toString('base64url');
 
 /** "Eggs ", "egg", "EGGS" → "egg"; "berries" → "berry". For matching only. */
@@ -73,21 +82,98 @@ export function removeItems(list, names) {
   return gone;
 }
 
-/** Count items as bought from a list (Done shopping, or a receipt). */
-export function recordBought(state, list, names, now) {
+const DAY = 86_400_000;
+const dayOf = (ms) => Math.floor(ms / DAY);
+
+/** A price off a receipt: a number above zero (rounded to cents), else null. */
+export function cleanPrice(p) {
+  const n = typeof p === 'string' ? Number(p.replace(/[^\d.]/g, '')) : p;
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 && n < 100_000 ? Math.round(n * 100) / 100 : null;
+}
+
+/** "usd", " CAD." → "USD"; anything that isn't a three-letter code → ''. */
+export const cleanCurrency = (c) => (/^[A-Za-z]{3}$/.test(String(c ?? '').trim().replace(/\.$/, '')) ? String(c).trim().replace(/\.$/, '').toUpperCase() : '');
+
+/**
+ * Count items as bought from a list (Done shopping, or a receipt). An entry is
+ * a name, or { name, price } with what one cost on a receipt; `currency` is the
+ * receipt's and `at` its date (default: now). Every price seen is kept.
+ */
+export function recordBought(state, list, entries, now, { currency = '', at = now } = {}) {
   const h = (state.bought[list.id] ??= {});
-  for (const raw of names) {
+  const cur = cleanCurrency(currency) || listCurrency(state, list);
+  for (const entry of entries) {
+    const raw = typeof entry === 'string' ? entry : entry?.name;
     const key = itemKey(raw);
     if (!key) continue;
     const e = (h[key] ??= { name: cleanName(raw), count: 0, last: 0 });
     e.count += 1;
     e.last = now;
+    const price = cleanPrice(entry?.price);
+    if (price === null) continue;
+    // The same receipt scanned twice isn't two sightings.
+    const seen = (e.prices ??= []);
+    if (seen.some((o) => dayOf(o.at) === dayOf(at) && o.p === price && o.c === cur)) continue;
+    seen.push({ at, p: price, c: cur });
+    seen.sort((a, b) => a.at - b.at);
+    if (seen.length > MAX_SEEN) seen.splice(0, seen.length - MAX_SEEN);
   }
   const keys = Object.keys(h);
   if (keys.length > MAX_KNOWN) {
     keys.sort((a, b) => h[a].count - h[b].count || h[a].last - h[b].last);
     for (const k of keys.slice(0, keys.length - MAX_KNOWN)) delete h[k];
   }
+}
+
+/** The currency a store's receipts were last in ('' when never seen with prices). */
+export function listCurrency(state, list) {
+  let best = null;
+  for (const e of Object.values(state.bought?.[list.id] ?? {})) for (const o of e.prices ?? []) if (!best || o.at >= best.at) best = o;
+  return best?.c ?? '';
+}
+
+/** Value at fraction q (0 to 1) of sorted numbers, between neighbours. */
+function quantile(sorted, q) {
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+const cents = (n) => Math.round(n * 100) / 100;
+
+/**
+ * What one of these usually costs, from the latest sightings in the list's
+ * currency: { est, low, high, n }. est is the median (a sale price seen once
+ * or twice doesn't move it); low and high are the lower and upper quartile,
+ * at least 5% either side. A single sighting is that price give or take 10%. Null if never seen priced.
+ */
+export function priceEstimate(entry, currency) {
+  const seen = (entry?.prices ?? []).filter((o) => o.c === currency).slice(-RECENT_SEEN);
+  if (!seen.length) return null;
+  const v = seen.map((o) => o.p).sort((a, b) => a - b);
+  const est = quantile(v, 0.5);
+  if (v.length === 1) return { est: cents(est), low: cents(est * (1 - SINGLE_MARGIN)), high: cents(est * (1 + SINGLE_MARGIN)), n: 1 };
+  return { est: cents(est), low: cents(Math.min(est * (1 - MIN_MARGIN), quantile(v, 0.25))), high: cents(Math.max(est * (1 + MIN_MARGIN), quantile(v, 0.75))), n: v.length };
+}
+
+/** "$4.20", "CA$4.20"; with no currency known, just "4.20". */
+export function money(amount, currency, { whole = false } = {}) {
+  const digits = whole ? 0 : 2;
+  try {
+    return currency
+      ? new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(amount)
+      : amount.toFixed(digits);
+  } catch {
+    return `${currency} ${amount.toFixed(digits)}`.trim();
+  }
+}
+
+/** "about $63 to $78": the low end rounded down and the high end up, to whole units. */
+export function rangeText(low, high, currency) {
+  const a = Math.floor(low);
+  const b = Math.ceil(high);
+  return a === b ? `about ${money(a, currency, { whole: true })}` : `about ${money(a, currency, { whole: true })} to ${money(b, currency, { whole: true })}`;
 }
 
 /** Done shopping: ticked items leave the list and count as bought. Returns how many. */
@@ -103,29 +189,57 @@ const usualCount = (state, list, name) => state.bought[list.id]?.[itemKey(name)]
 /**
  * A list to show: unticked first, the usual ones at the top, and what's been
  * bought there before that isn't on it (most often first; `minCount` 2 for
- * only what's bought again and again).
+ * only what's bought again and again). Items and suggestions with a price
+ * history carry `price` ({ est, low, high, n }); when anything is priced,
+ * `currency` and `total` say what the items still to get should cost
+ * ({ low, high, priced, count }, from the items priced in that currency).
+ * Nothing is added for a list with no prices.
  */
 export function viewList(state, list, { suggest = MAX_USUAL, minCount = 1 } = {}) {
+  const currency = listCurrency(state, list);
+  const known = state.bought[list.id] ?? {};
+  const priced = (name) => {
+    const price = priceEstimate(known[itemKey(name)], currency);
+    return price ? { price } : {};
+  };
   const items = [...list.items]
-    .map((i) => ({ ...i, usual: usualCount(state, list, i.name) }))
+    .map((i) => ({ ...i, usual: usualCount(state, list, i.name), ...priced(i.name) }))
     .sort((a, b) => Number(a.ticked) - Number(b.ticked) || b.usual - a.usual || a.at - b.at);
   const on = new Set(list.items.map((i) => itemKey(i.name)));
-  const usual = Object.entries(state.bought[list.id] ?? {})
+  const usual = Object.entries(known)
     .filter(([k, e]) => !on.has(k) && e.count >= minCount)
     .sort((a, b) => b[1].count - a[1].count || b[1].last - a[1].last)
     .slice(0, suggest)
-    .map(([, e]) => ({ name: e.name, count: e.count }));
-  return { id: list.id, name: list.name, createdBy: list.createdBy, items, usual };
+    .map(([, e]) => ({ name: e.name, count: e.count, ...priced(e.name) }));
+  const view = { id: list.id, name: list.name, createdBy: list.createdBy, items, usual };
+  const total = listTotal(items);
+  if (total) Object.assign(view, { currency, total });
+  return view;
+}
+
+/** What the unticked items with a price should cost: { low, high, priced, count }, or null if none is priced. */
+export function listTotal(items) {
+  const open = items.filter((i) => !i.ticked);
+  const priced = open.filter((i) => i.price);
+  if (!priced.length) return null;
+  return {
+    low: cents(priced.reduce((sum, i) => sum + i.price.low, 0)),
+    high: cents(priced.reduce((sum, i) => sum + i.price.high, 0)),
+    priced: priced.length,
+    count: open.length,
+  };
 }
 
 /** For chat: "Costco: milk, eggs (2 ticked)". */
 export function listText(state, list) {
   const v = viewList(state, list, { suggest: 5, minCount: 2 });
   const open = v.items.filter((i) => !i.ticked);
-  const lines = [`🛒 ${v.name}${open.length ? ':' : ' is empty.'}`, ...open.map((i) => `• ${i.name}`)];
+  const about = (p) => (p ? ` · about ${money(p.est, v.currency)}` : '');
+  const lines = [`🛒 ${v.name}${open.length ? ':' : ' is empty.'}`, ...open.map((i) => `• ${i.name}${about(i.price)}`)];
   const ticked = v.items.length - open.length;
   if (ticked) lines.push(`(${ticked} ticked off)`);
-  if (v.usual.length) lines.push(`Usually also: ${v.usual.map((u) => u.name).join(', ')}`);
+  if (v.total) lines.push(`Estimated ${rangeText(v.total.low, v.total.high, v.currency)} (${v.total.priced} of ${v.total.count} item${v.total.count === 1 ? '' : 's'} priced)`);
+  if (v.usual.length) lines.push(`Usually also: ${v.usual.map((u) => `${u.name}${about(u.price)}`).join(', ')}`);
   return lines.join('\n');
 }
 
