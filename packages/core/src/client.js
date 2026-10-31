@@ -1631,7 +1631,12 @@ export class CircleClient {
    */
   callbacksAwaitingMe() {
     const me = this.account?.memberId;
-    return this.openCallbacks().filter((s) => s.remind > 0 && this.callbackAsks(s, me) && !s.replies.some((r) => r.memberId === me));
+    const asks = this.openCallbacks().filter((s) => s.remind > 0 && this.callbackAsks(s, me) && !s.replies.some((r) => r.memberId === me));
+    // She may ask again: only the newest open request from each person is
+    // reminded about, so asking twice doesn't double the reminders.
+    const newest = new Map();
+    for (const s of asks) if (!newest.has(s.from)) newest.set(s.from, s);
+    return [...newest.values()];
   }
 
   // --- records: member settings and family names --------------------------

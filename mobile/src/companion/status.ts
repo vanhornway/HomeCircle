@@ -7,16 +7,20 @@ import type { Line } from './lines';
 /** The phrase each reply plays. */
 export const REPLY_PHRASE: Record<CallbackAnswer, string> = { now: 'reply.calling_now', '5min': 'reply.five_min', morning: 'reply.morning', evening: 'reply.evening', asleep: 'asleep.one' };
 
-// After someone says "I'm calling you now", the page shows it this long.
-const TAKEN_SHOWN_MS = 30 * 60_000;
+// The banner at the top (and the answers on the tiles) show the latest thing
+// that happened to her request, this long. After that the page goes back to
+// normal and she can ask again, so she's never unsure when it was done.
+export const SHOWN_MS = 2 * 60_000;
 
-/** Her latest request in this circle while it's open, or just after someone took it. */
+/** When the latest thing happened to a request: her asking, or the newest answer. */
+export const lastActivity = (s: CallbackState) => Math.max(s.ts, ...s.replies.map((r) => r.ts));
+
+/** Her latest request in this circle, for the two minutes after it was sent or answered. */
 export function currentRequest(client: CircleClient, now = Date.now()): CallbackState | null {
   const me = client.account?.memberId;
   const last = [...client.messages].reverse().find((m) => m.from === me && !m.peer && m.body?.callback?.state === 'ask');
   const s = last ? client.callbackState(last.id) : null;
-  if (!s) return null;
-  return s.open || (s.takenBy && now - s.takenBy.ts < TAKEN_SHOWN_MS) ? s : null;
+  return s && now - lastActivity(s) < SHOWN_MS ? s : null;
 }
 
 /** What the banner says (and she hears) about a request. */

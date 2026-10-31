@@ -7,7 +7,7 @@ import type { CallbackAnswer, CircleClient, Member } from '@homecircle/core';
 import { allClients, errorText, useCircles } from '../../lib/circle';
 import { startMySos, useMySos } from '../../lib/sos';
 import { inSleepHours, myTimeZone, pageOf, settingsOf, tileName, tilePeople } from '../../companion/people';
-import { currentRequest, statusLine, tileReplies } from '../../companion/status';
+import { SHOWN_MS, currentRequest, lastActivity, statusLine, tileReplies } from '../../companion/status';
 import { askOrQueue } from '../../companion/outbox';
 import { usePhotoUri } from '../../lib/photos';
 import { markUsed } from '../../companion/used';
@@ -21,7 +21,7 @@ function useClientsTick(clients: CircleClient[]) {
   const [, setTick] = useState(0);
   useEffect(() => {
     const offs = clients.flatMap((c) => ['messages', 'members', 'status', 'records'].map((e) => c.on(e, () => setTick((n) => n + 1))));
-    // "Calling now" fades after a while without any new message: check each minute.
+    // Her banner expires on its own timer; this just keeps times fresh (night and day, sleep hours).
     const timer = setInterval(() => setTick((n) => n + 1), 60_000);
     return () => {
       offs.forEach((off) => off());
@@ -59,6 +59,14 @@ export default function CompanionHome() {
 function CirclePage({ client, index, count, current }: { client: CircleClient; index: number; count: number; current: number }) {
   const { care, ringEveryone: ringOn, remindEvery } = settingsOf(client);
   const request = currentRequest(client);
+  // Blank the banner and the answers on the tiles the moment the two minutes are up.
+  const [, expire] = useState(0);
+  const expiresAt = request ? lastActivity(request) + SHOWN_MS : 0;
+  useEffect(() => {
+    if (!expiresAt) return;
+    const timer = setTimeout(() => expire((n) => n + 1), Math.max(0, expiresAt - Date.now()) + 50);
+    return () => clearTimeout(timer);
+  }, [expiresAt]);
   const replies = tileReplies(request);
   const people = tilePeople(client);
   const [error, setError] = useState<string | null>(null);
@@ -77,22 +85,7 @@ function CirclePage({ client, index, count, current }: { client: CircleClient; i
 
   return (
     <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 24, gap: 14 }}>
-      <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <View
-          accessibilityLabel={care ? 'Care circle' : 'Grandkids circle'}
-          style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: care ? C.care : C.kids, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-            {care ? (
-              <Path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21.2l8.8-8.8a5.5 5.5 0 0 0 0-7.8z" stroke={C.red} strokeWidth={2.2} strokeLinejoin="round" />
-            ) : (
-              <>
-                <Circle cx={12} cy={12} r={9} stroke={C.amber} strokeWidth={2.2} />
-                <Path d="M8.5 14.5c1 1.3 2.2 2 3.5 2s2.5-.7 3.5-2M9 9.5h.01M15 9.5h.01" stroke={C.amber} strokeWidth={2.4} strokeLinecap="round" />
-              </>
-            )}
-          </Svg>
-        </View>
+      <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
         <Dots count={count} current={current} />
       </View>
 

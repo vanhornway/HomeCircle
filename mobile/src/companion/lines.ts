@@ -10,6 +10,7 @@
 import * as Speech from 'expo-speech';
 import catalog from '../../assets/phrases/phrases.json';
 import placeholderList from '../../assets/phrases/placeholders.json';
+import { diag } from '../lib/diagnostics';
 import { playSequence, stopSequence } from '../../modules/hc-attention/src/HcAttentionModule';
 
 export type Gender = 'm' | 'f';
@@ -44,38 +45,71 @@ export function text(line: Line): string {
 
 const placeholders = new Set(placeholderList as string[]);
 
-// The phone's voice for each language, looked up once: a voice id, or null if it has none.
-const voices = new Map<string, Promise<string | null>>();
-function voiceFor(lang: string): Promise<string | null> {
-  if (!voices.has(lang)) {
-    voices.set(
-      lang,
-      Speech.getAvailableVoicesAsync()
-        .then((all) => all.find((v) => v.language.toLowerCase().startsWith(lang))?.identifier ?? null)
-        .catch(() => null),
-    );
-  }
-  return voices.get(lang)!;
+// The phone's voice for each language. A voice that was found is kept; "no voice" is
+// asked again after a minute, because Android's speech engine is often not ready the
+// first time the app asks (and a "none" kept for good would silence her for good).
+const voices = new Map<string, { id: string | null; at: number }>();
+const NO_VOICE_RETRY_MS = 60_000;
+
+async function voiceFor(lang: string): Promise<string | null> {
+  const hit = voices.get(lang);
+  if (hit && (hit.id || Date.now() - hit.at < NO_VOICE_RETRY_MS)) return hit.id;
+  const id = await Speech.getAvailableVoicesAsync()
+    // ISO 639-1 ("ur-PK") or 639-2 ("urd-PAK"): engines differ.
+    .then((all) => all.find((v) => /^(ur|urd)([-_]|$)/i.test(v.language))?.identifier ?? null)
+    .catch(() => null);
+  voices.set(lang, { id, at: Date.now() });
+  return id;
 }
 
 /** Whether this phone can speak her language aloud (for the admin's setup check). */
 export const canSpeak = (lang = language) => voiceFor(lang).then((v) => !!v);
 
-/** Say lines one after the other. */
+// How long the phone's voice has to start before the tones play instead.
+const START_WITHIN_MS = 2500;
+
+/** Say lines one after the other. Whatever goes wrong, she still hears the recordings (tones for now). */
 export function say(...lines: Line[]): boolean {
   const clips = lines.flatMap((l) => (form(l)?.parts ?? []).map((p) => p.clip).filter((c): c is string => !!c));
-  if (!clips.some((c) => placeholders.has(c))) return playSequence(clips);
-  // Not recorded yet: the phone's voice says it, or the tones play if it has no voice for her language.
+  if (!clips.some((c) => placeholders.has(c))) {
+    diag('say', { how: 'clips', n: clips.length });
+    return playSequence(clips);
+  }
+  // Not recorded yet: the phone's voice says it; the tones play if it has no voice for her
+  // language, can't start, or reports an error (the speech engine can drop out after the
+  // app has been in the background for a while).
   const lang = language;
-  voiceFor(lang).then((voice) => {
-    if (!voice) {
-      playSequence(clips);
-      return;
-    }
-    stopSequence();
+  let done = false;
+  const fallback = (why: string) => {
+    if (done) return;
+    done = true;
+    diag('say:fallback', { why });
     Speech.stop();
-    for (const l of lines) Speech.speak(text(l), { language: lang, voice, rate: 0.9 });
-  });
+    playSequence(clips);
+  };
+  voiceFor(lang)
+    .then((voice) => {
+      if (!voice) return fallback('no-voice');
+      stopSequence();
+      Speech.stop();
+      const watchdog = setTimeout(() => fallback('no-start'), START_WITHIN_MS);
+      lines.forEach((l, i) =>
+        Speech.speak(text(l), {
+          voice,
+          rate: 0.9,
+          onStart: () => {
+            if (i !== 0) return;
+            clearTimeout(watchdog);
+            diag('say', { how: 'voice' }).catch(() => {});
+          },
+          onError: () => {
+            clearTimeout(watchdog);
+            fallback('error');
+          },
+        }),
+      );
+    })
+    .catch(() => fallback('exception'));
   return true;
 }
 

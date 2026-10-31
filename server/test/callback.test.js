@@ -232,3 +232,18 @@ test('an elder whose phone hasn’t been used for longer than her admins set sho
   await umair.setMemberRecord(id(ammi), { inactiveHours: 48 });
   assert.deepEqual(umair.inactiveElders(used + 31 * 3600_000), []);
 });
+
+test('asking again: only her newest open request is reminded about, the older one stays open', async () => {
+  const first = await ammi.askCallback({ tz: 'Asia/Karachi', remind: 10 });
+  const second = await ammi.askCallback({ tz: 'Asia/Karachi', remind: 10 });
+  await sync();
+  assert.deepEqual(umair.callbacksAwaitingMe().map((x) => x.id), [second]);
+  assert.equal(umair.callbackState(first).open, true, 'the older request is still open');
+  // Answering the newest brings the older one's reminder back (it still asks).
+  await umair.replyCallback(second, '5min');
+  await sync();
+  assert.deepEqual(umair.callbacksAwaitingMe().map((x) => x.id), [first]);
+  await umair.replyCallback(first, 'now');
+  await hamza.replyCallback(second, 'now');
+  await sync();
+});
