@@ -75,6 +75,9 @@ function cleanAgentCard(c) {
 
 // What _open returns for an envelope signed under another id (a replay).
 const REPLAYED = Symbol('replayed');
+// A call signal signed longer ago than this, or further ahead (clocks differ), isn't part of a call now.
+const CALL_SIGNAL_MAX_AGE_MS = 90_000;
+const CALL_SIGNAL_MAX_SKEW_MS = 120_000;
 
 /** Let the screen draw and taps through (a macrotask), then carry on. */
 const yieldToUi = () => new Promise((r) => setTimeout(r, 0));
@@ -142,6 +145,7 @@ export class CircleClient {
     // Opened envelopes, so the same location, place or profile isn't
     // decrypted and checked again on every refresh: "from|to|id|ct" -> msg.
     this._opened = new Map();
+    this._seenCalls = new Set(); // ids of call signals already handled
     // Messages as opened, kept on this phone between launches (opts.cache):
     // a cold start then only opens what's new. seq -> row.
     this._cacheRows = new Map();
@@ -2085,6 +2089,55 @@ export class CircleClient {
     });
   }
 
+  // --- voice calls ---------------------------------------------------------
+
+  /**
+   * Send one call signal to a member of this circle, sealed with the pair's
+   * direct key: { callId, op: 'offer' | 'answer' | 'ice' | 'ringing' | 'hangup' |
+   * 'busy' | 'decline', ...}. The server relays it and forgets it. `ring` marks
+   * the first offer of a call, which also wakes the other phone with a push.
+   * Resolves { online, held, pushed }.
+   */
+  async sendCallSignal(to, body, { ring = false } = {}) {
+    const id = randomId(12);
+    const env = this._seal('call', body, this.account.epoch, { to, id });
+    return this.api.callSignal(to, id, env, { ring });
+  }
+
+  /** The STUN (and, if the server has one, TURN) servers for a call: { iceServers }. */
+  callsConfig() {
+    return this.api.callsConfig();
+  }
+
+  /**
+   * Call signals that waited for this phone while it was asleep. Each is
+   * handled like a live one (a 'callSignal' event). Returns how many were new.
+   */
+  async collectCallSignals() {
+    const { signals } = await this.api.callsPending();
+    let n = 0;
+    for (const s of signals) if (this._onCallSignal(s)) n++;
+    return n;
+  }
+
+  /**
+   * Open a relayed call signal and tell the app ('callSignal': { from, id,
+   * ts, callId, op, ... }). Ignored: one that doesn't open (not from a
+   * member of this circle with that key), one already seen, and one signed
+   * too long ago (or too far ahead) to belong to a call going on now.
+   */
+  _onCallSignal(s) {
+    if (!this.feature('calls') || !s || typeof s.id !== 'string' || this._seenCalls.has(s.id)) return false;
+    const msg = this._open(s.env, s.from, ['call'], this.account.memberId, s.id);
+    if (!msg || msg === REPLAYED || typeof msg.body?.callId !== 'string') return false;
+    const age = Date.now() - msg.ts;
+    if (age > CALL_SIGNAL_MAX_AGE_MS || age < -CALL_SIGNAL_MAX_SKEW_MS) return false;
+    this._seenCalls.add(s.id);
+    if (this._seenCalls.size > 500) this._seenCalls.delete(this._seenCalls.values().next().value);
+    this.emit('callSignal', { ...msg.body, from: s.from, id: s.id, ts: msg.ts });
+    return true;
+  }
+
   // --- most visited places -------------------------------------------------
 
   /**
@@ -2329,6 +2382,9 @@ export class CircleClient {
         break;
       case 'chirp':
         this.emit('chirp');
+        break;
+      case 'call_signal':
+        this._onCallSignal(e);
         break;
       case 'plugin':
         // An admin saved a plugin's settings (Home Assistant: send it your position now).

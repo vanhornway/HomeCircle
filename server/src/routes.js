@@ -20,6 +20,7 @@ import {
 import { isPushToken } from './push.js';
 import { MAX_FILE_BYTES } from './files.js';
 import { PLUGINS, mountPlugins } from './plugins/index.js';
+import { DEFAULT_STUN } from './calls.js';
 import { allFeatures, cleanFeatures, hasFeature, resolveFeatures } from '../../packages/core/src/features.js';
 
 const MAX_MEMBERS = 50;
@@ -47,7 +48,7 @@ const isAdmin = (m) => m.role === 'owner' || m.role === 'admin';
 
 const requireAdmin = (m) => isAdmin(m) || fail(403, 'forbidden', 'Only circle admins can do that');
 
-export function buildRoutes({ config, store, hub, push, log, agentHost = null, files = null }) {
+export function buildRoutes({ config, store, hub, push, log, agentHost = null, files = null, calls = null }) {
   const r = new Router();
   const publicLimiter = new RateLimiter(20, 60_000);
   const requestLimiter = new RateLimiter(1, config.locationRequestCooldown * 1000);
@@ -56,6 +57,11 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   const urgentLimiter = new RateLimiter(config.urgentPerMinute ?? 10, 60_000);
   // A few Locates per person per hour at most, so nobody's battery is drained.
   const hourlyLocateLimiter = new RateLimiter(6, 3600_000);
+  // Call signals (offer, answer, candidates, hang-up): a call is a few dozen,
+  // so this leaves room for several in a minute; ringing is limited harder.
+  const callSignalLimiter = new RateLimiter(config.callSignalsPerMinute ?? 90, 60_000);
+  const callRingLimiter = new RateLimiter(config.callRingsPerMinute ?? 6, 60_000);
+  const callPairRingLimiter = new RateLimiter(config.callRingsPerPairPerMinute ?? 3, 60_000);
 
   // Guessing the setup code: a few dozen tries per hour from one address.
   const setupCodeLimiter = new RateLimiter(30, 3600_000);
@@ -145,6 +151,8 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       frequentPlaces: true,
       // Urgent messages skip push coalescing (0.20+).
       urgent: true,
+      // Voice calls: sealed signals relayed and never stored (0.22+).
+      calls: !!calls,
       // Sealed member and alias records (0.21+).
       records: true,
       // Members' encrypted photos (0.21+).
@@ -800,6 +808,50 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
 
   // Collect waiting chirps: { id, from, flash, at }. Collecting removes them.
   r.add('GET', '/chirps', ({ me }) => ({ chirps: store.takeChirps(me.id) }));
+
+  // --- voice calls -----------------------------------------------------------
+  // Signals for a call between two members (docs/CALLS-PLAN.md): sealed
+  // envelopes the server relays and forgets. Never written to the database or
+  // the logs. A signal for a phone that isn't connected waits in memory for
+  // 45 s; `ring` (the first offer of a call) also pushes the phone.
+
+  r.add('POST', '/calls/signal', ({ me, body }) => {
+    if (!calls) fail(404, 'not_found', 'Unknown endpoint');
+    requireFeature(me, 'calls', 'Voice calls');
+    const id = vId(body.id, 'id');
+    const env = vEnvelope({ epoch: body.epoch, nonce: body.nonce, ct: body.ct }, 'signal', 16 * 1024);
+    const to = store.member(me.circleId, vId(body.to, 'to'));
+    if (!to || to.removed || to.kind === 'agent' || to.id === me.id) fail(404, 'not_found', 'No such member in this circle');
+    const ring = body.ring === true;
+    let wait = callSignalLimiter.take(me.id);
+    if (!wait && ring) wait = callPairRingLimiter.take(`${me.id}>${to.id}`) || callRingLimiter.take(me.id);
+    if (wait) fail(429, 'rate_limited', 'Too many call attempts, try again shortly', { retryAfter: wait });
+    const signal = { from: me.id, id, env };
+    const online = hub.isOnline(to.id);
+    let held = false;
+    if (online) hub.send(to.id, { type: 'call_signal', ...signal, at: Date.now() });
+    else held = calls.hold(to.id, signal);
+    // A ring also pushes a phone that looks connected: its socket may be dead
+    // without the server knowing yet, and a push to a phone that's already
+    // ringing changes nothing.
+    const pushed = ring && !!to.pushToken;
+    if (pushed) push.call([to]);
+    return { online, held, pushed };
+  });
+
+  // What waited for this phone while it was asleep. Collecting removes it.
+  r.add('GET', '/calls/pending', ({ me }) => {
+    if (!calls) fail(404, 'not_found', 'Unknown endpoint');
+    requireFeature(me, 'calls', 'Voice calls');
+    return { signals: calls.take(me.id).map((s) => ({ from: s.from, id: s.id, env: s.env, at: s.at })) };
+  });
+
+  // The servers phones use to connect a call.
+  r.add('GET', '/calls/config', ({ me }) => {
+    requireFeature(me, 'calls', 'Voice calls');
+    const stun = config.callsStun?.length ? config.callsStun : DEFAULT_STUN;
+    return { iceServers: stun.map((urls) => ({ urls })) };
+  });
 
   // --- the circle's agent ------------------------------------------------
   // The agent host's public key, for sealing the agent invite to it; and the

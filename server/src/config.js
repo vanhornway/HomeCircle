@@ -42,6 +42,10 @@ export function loadConfig() {
     // A throwaway server for the swarm (scripts/swarm.mjs): it says so in /info,
     // its web page shows a banner, and the swarm refuses any server without it.
     loadTest: bool('LOAD_TEST', false),
+    // Voice calls: the STUN servers apps use to find a path between two phones.
+    // They see each phone's public address when a call starts, so a family
+    // can point this at its own (comma-separated stun: URLs).
+    callsStun: (process.env.CALLS_STUN || '').split(',').map((u) => u.trim()).filter((u) => /^stuns?:/.test(u)),
     // Run each circle's agent (the optional AI helper) in this server.
     agent: bool('AGENT', false),
   };
