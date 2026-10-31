@@ -86,7 +86,7 @@ const FIRST_PAGE = 80;
 const FORWARD_PAGE = 500;
 const OLDER_PAGE = 100;
 // The most messages kept on the phone between launches.
-const CACHE_MAX = 6000;
+const CACHE_MAX = 1000;
 
 export class CircleClient {
   /**
@@ -2121,7 +2121,7 @@ export class CircleClient {
     return run;
   }
 
-  /** Kept as long as the circle keeps messages, and at most the newest 6000. */
+  /** Kept as long as the circle keeps messages, and at most the newest 1000. */
   async _writeCache() {
     if (!this.cache || !this.account) return;
     const gen = this._generation;
