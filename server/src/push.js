@@ -190,6 +190,22 @@ export class Push {
     );
   }
 
+  /**
+   * Someone is calling: wake the phone so it fetches the (sealed) call and
+   * rings. Content-free like every push: no name, no call id. Android gets a
+   * data push; other platforms a generic alert. Never coalesced.
+   */
+  call(members) {
+    return this._send(
+      members.map((m) => {
+        const c = circleHint(m.id);
+        return m.pushPlatform === 'android'
+          ? { to: m.pushToken, data: { t: 'call', c }, priority: 'high', ttl: 45 }
+          : { to: m.pushToken, title: 'HomeCircle', body: 'Incoming call', sound: 'default', priority: 'high', ttl: 45, data: { t: 'call', c } };
+      }),
+    );
+  }
+
   /** Someone used the setup code to ask to rejoin. No name: just open the app. */
   rejoinRequest(members) {
     return this._send(

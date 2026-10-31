@@ -17,6 +17,7 @@ import { pushHint } from '@homecircle/core';
 import { loadSkin } from '../skins';
 import { flushOutbox as flushHerRequests } from '../companion/outbox';
 import { checkInactivityInBackground } from '../lib/inactivity';
+import { handleCallPush } from '../lib/calls';
 
 type Delivery = { lagS?: number; prio?: 'high' | 'normal'; sent?: 'high' | 'normal' };
 
@@ -174,6 +175,9 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(PUSH_TASK, async (
     } else if (raw.includes('loc_req')) {
       diag('locate-request', { via: 'push' });
       await shareNow('requested');
+    } else if (/\\?"t\\?"\s*:\s*\\?"call/.test(raw)) {
+      // Someone is calling: fetch the sealed call that waited, which rings (lib/calls.ts).
+      await handleCallPush(await loadedClients());
     } else if (/\\?"t\\?"\s*:\s*\\?"msg/.test(raw)) {
       await ensureNotificationChannels();
       // One radio wake for the fetches that follow.

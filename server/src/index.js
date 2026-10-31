@@ -9,6 +9,7 @@ import { buildRoutes } from './routes.js';
 import { createStatic } from './static.js';
 import { AgentHost } from './agent/host.js';
 import { createFiles } from './files.js';
+import { CallRelay } from './calls.js';
 import { HttpError, sendJson, readJson, readRaw, sha256, clientIp, RateLimiter } from './http.js';
 
 // Logs never include IPs, tokens or payloads.
@@ -37,7 +38,12 @@ export function createApp(config) {
   }
   const store = openDb(config.dataDir);
   ensureSetupToken(config, store);
-  const hub = new Hub({ store, log, authTimeoutMs: config.wsAuthTimeoutMs, maxSocketsPerIp: config.maxSocketsPerIp, ipOf: (req) => clientIp(req, config.trustProxy) });
+  const calls = new CallRelay();
+  // A phone that just connected (a push woke it) gets the call signals that waited for it.
+  const onReady = (id) => {
+    for (const s of calls.take(id)) hub.send(id, { type: 'call_signal', from: s.from, id: s.id, env: s.env, at: s.at });
+  };
+  const hub = new Hub({ store, log, onReady, authTimeoutMs: config.wsAuthTimeoutMs, maxSocketsPerIp: config.maxSocketsPerIp, ipOf: (req) => clientIp(req, config.trustProxy) });
   const requestLimiter = new RateLimiter(config.requestsPerMinute, 60_000);
   const writeLimiter = new RateLimiter(config.writesPerMinute, 60_000);
   // The helper answers in the group once per member, and big answers in parts.
@@ -45,7 +51,7 @@ export function createApp(config) {
   const push = new Push(config, store, log);
   const agentHost = config.agent ? new AgentHost({ dataDir: config.dataDir, log, brainOptions: config.agentBrainOptions }) : null;
   const files = createFiles({ dataDir: config.dataDir, store });
-  const router = buildRoutes({ config, store, hub, push, log, agentHost, files });
+  const router = buildRoutes({ config, store, hub, push, log, agentHost, files, calls });
   const serveStatic = config.webClient ? createStatic(config) : null;
 
   const server = createServer(async (req, res) => {
@@ -122,6 +128,7 @@ export function createApp(config) {
     // minutes is dropped. Limits are kept until their 30 minutes are over.
     store.pruneChirps(now - 10 * 60_000, now - 30 * 60_000);
     files.prune(now);
+    calls.sweep(now);
   };
   prune();
   const pruneTimer = setInterval(prune, 3600_000);

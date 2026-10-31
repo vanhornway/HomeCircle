@@ -152,6 +152,9 @@ export class Api {
   /** Your position, for your device in the circle's Home Assistant. */
   homeAssistantLocation = (body) => this.req('POST', '/plugins/homeAssistant/location', body);
   chirps = () => this.req('GET', '/chirps');
+  callSignal = (to, id, env, { ring = false } = {}) => this.req('POST', '/calls/signal', { to, id, ...env, ...(ring ? { ring: true } : {}) });
+  callsPending = () => this.req('GET', '/calls/pending');
+  callsConfig = () => this.req('GET', '/calls/config');
   // Recovery with the setup code (no account needed), and rejoin requests.
   recover = (setupToken) => this.req('POST', '/recover', { setupToken });
   recoverDelete = (setupToken, circleId) => this.req('POST', '/recover/delete', { setupToken, circleId });

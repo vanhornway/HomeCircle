@@ -101,6 +101,10 @@ export const CALLBACK_ANSWERS: CallbackAnswer[];
 /** How each answer reads in the chat ("I'm calling you now"). */
 export const CALLBACK_REPLY_TEXT: Record<CallbackReply, string>;
 
+/** What a call signal says. `callId` ties signals to one call. */
+export type CallSignalBody = { callId: string; op: 'offer' | 'answer' | 'ice' | 'ringing' | 'hangup' | 'busy' | 'decline'; [k: string]: unknown };
+export type CallSignal = CallSignalBody & { from: string; id: string; ts: number };
+
 /** A chirp waiting for this device. */
 export interface IncomingChirp {
   id: string;
@@ -255,6 +259,8 @@ export interface ServerInfo {
   recovery?: boolean;
   /** Chirps and most-visited places (0.9+). */
   chirps?: boolean;
+  /** Voice call signals are relayed here (0.22+). */
+  calls?: boolean;
   frequentPlaces?: boolean;
   push: boolean;
   tileUrl: string;
@@ -488,6 +494,8 @@ export class CircleClient {
   on(event: 'unrecognized', fn: () => void): () => void;
   /** Someone chirped this device: collect with collectChirps(). */
   on(event: 'chirp', fn: () => void): () => void;
+  /** A call signal from a member (opened, verified and fresh); see sendCallSignal(). */
+  on(event: 'callSignal', fn: (s: CallSignal) => void): () => void;
   on(event: 'frequent', fn: (f: Map<string, { places: FrequentPlace[]; ts: number }>) => void): () => void;
   on(event: 'signedOut', fn: (d: { reason: SignOutReason }) => void): () => void;
   on(event: 'circle' | 'removed', fn: (d?: any) => void): () => void;
@@ -713,6 +721,14 @@ export class CircleClient {
   /** Chirp one member, or everyone else (to = null). Three in a row, then 30 minutes off. */
   chirp(to?: string | null, opts?: { flash?: boolean }): Promise<{ sent: number; remaining: number; cooldownUntil: number | null }>;
   collectChirps(): Promise<IncomingChirp[]>;
+  /** Send a sealed call signal to a member; `ring` (the first offer) also pushes their phone. */
+  sendCallSignal(to: string, body: CallSignalBody, opts?: { ring?: boolean }): Promise<{ online: boolean; held: boolean; pushed: boolean }>;
+  /** Leave "Missed voice call" or "Voice call · 3:12" in the direct chat with someone. */
+  logCall(to: string, opts?: { missed?: boolean; seconds?: number }): Promise<unknown>;
+  /** STUN (and optional TURN) servers for a call. */
+  callsConfig(): Promise<{ iceServers: { urls: string | string[]; username?: string; credential?: string }[]; relayOnly?: boolean }>;
+  /** Handle call signals that waited for this phone; returns how many were new. */
+  collectCallSignals(): Promise<number>;
   /** memberId -> their shared most visited places. */
   frequent: Map<string, { places: FrequentPlace[]; ts: number }>;
   fetchFrequent(): Promise<Map<string, { places: FrequentPlace[]; ts: number }>>;
@@ -766,6 +782,7 @@ export type FeatureId =
   | 'groupChat'
   | 'directMessages'
   | 'polls'
+  | 'calls'
   | 'readReceipts'
   | 'photos'
   | 'chirps'

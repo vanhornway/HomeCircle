@@ -1,0 +1,345 @@
+// Voice calls on this phone: connects the call engine (lib/callEngine.ts) to
+// the circles' clients, the microphone and WebRTC (lib/rtc.ts), Android's call
+// audio, service and ringing (modules/hc-calls) and the call screen
+// (components/CallHost.tsx). One call at a time, in any circle. See
+// docs/CALLS-PLAN.md.
+import { useSyncExternalStore } from 'react';
+import { AppState, Platform } from 'react-native';
+import * as Network from 'expo-network';
+import { randomId, type CircleClient, type CallSignal } from '@homecircle/core';
+import { VoiceCallEngine, type CallSnapshot, type EndInfo, type IceServer } from './callEngine';
+import { FALLBACK_STUN, createPeerConnection, ensureBluetooth, getLocalAudio, rtcAvailable } from './rtc';
+import { allClients, clientForCircle } from './circle';
+import { sasWords } from './callSas';
+import { diag } from './diagnostics';
+import {
+  cancelIncomingCall,
+  consumeLaunchAction,
+  getAudioRoutes,
+  onCallAction,
+  onRoutesChanged,
+  setAudioRoute,
+  setCallAudio,
+  showIncomingCall,
+  showMissedCall,
+  showOverLockScreen,
+  startCallService,
+  startRinging,
+  stopCallService,
+  stopRinging,
+  type AudioRoute,
+  type LaunchAction,
+  type Routes,
+} from '../../modules/hc-calls/src/HcCallsModule';
+
+/** What the call screen shows. */
+export interface CallUi {
+  snap: CallSnapshot;
+  circleId: string | null;
+  /** How the last call ended, for a few seconds. */
+  ended: (EndInfo & { text: string }) | null;
+  routes: Routes;
+  /** Four words both people can compare, once the call is connected. */
+  words: string[] | null;
+}
+
+const IDLE_ROUTES: Routes = { available: ['earpiece', 'speaker'], current: 'earpiece' };
+let ui: CallUi = { snap: { phase: 'idle', callId: null, peerId: null, incoming: false, remoteRinging: false, muted: false, startedAt: null }, circleId: null, ended: null, routes: IDLE_ROUTES, words: null };
+const subs = new Set<() => void>();
+const publish = (patch: Partial<CallUi>) => {
+  ui = { ...ui, ...patch };
+  subs.forEach((fn) => fn());
+};
+
+/** The circle the current call is in. */
+let active: CircleClient | null = null;
+// A press on the incoming-call notification that arrived before the call did (a cold start).
+let pendingAction: { action: LaunchAction['action']; callId: string; at: number } | null = null;
+let endedTimer: ReturnType<typeof setTimeout> | null = null;
+let stopNetwork: (() => void) | null = null;
+let stopRoutes: (() => void) | null = null;
+
+// The server asked for the relay only (CALLS_RELAY_ONLY), for the call being set up.
+let relayOnly = false;
+
+const iceServers = async (): Promise<IceServer[]> => {
+  try {
+    const cfg = await active!.callsConfig();
+    relayOnly = !!cfg.relayOnly;
+    return cfg.iceServers?.length ? cfg.iceServers : FALLBACK_STUN;
+  } catch {
+    relayOnly = false;
+    return FALLBACK_STUN; // an older server, or no answer: the public ones
+  }
+};
+
+const engine = new VoiceCallEngine({
+  get selfId() {
+    return active?.account?.memberId ?? '';
+  },
+  send: (to, body, opts) => active!.sendCallSignal(to, body as never, opts),
+  createPeerConnection: (servers) => createPeerConnection(servers, { relayOnly }),
+  getLocalAudio,
+  iceServers,
+  newId: () => randomId(12),
+  onEnded: (info) => ended(info),
+  log: (...a) => {
+    if (__DEV__) console.log('[homecircle:call]', ...a);
+  },
+});
+
+let lastPhase = engine.snapshot.phase;
+engine.subscribe((snap) => {
+  const prev = lastPhase;
+  lastPhase = snap.phase;
+  publish({ snap, circleId: active?.circleId ?? ui.circleId });
+  if (snap.phase === 'active' && !ui.words) {
+    const fp = engine.fingerprints;
+    if (fp) publish({ words: sasWords(fp.local, fp.remote) });
+  }
+  if (prev !== snap.phase) applyPhase(prev, snap);
+});
+
+/** What the phone does at each step of a call: ring, audio mode, the service that keeps it alive. */
+function applyPhase(prev: CallSnapshot['phase'], snap: CallSnapshot) {
+  const { phase } = snap;
+  if (phase === 'incoming') {
+    if (endedTimer) clearTimeout(endedTimer);
+    publish({ ended: null });
+    const name = nameOf(active, snap.peerId);
+    diag('call:incoming', { circle: !!active });
+    showOverLockScreen(true);
+    if (AppState.currentState === 'active') startRinging();
+    else showIncomingCall(snap.callId!, name, active?.circleId ?? '', snap.peerId!);
+    // The notification's Answer button was pressed before the offer was opened.
+    if (pendingAction && pendingAction.callId === snap.callId && Date.now() - pendingAction.at < 30_000) {
+      const a = pendingAction.action;
+      pendingAction = null;
+      if (a === 'answer') void answerCall();
+      if (a === 'decline') void declineCall();
+    }
+    return;
+  }
+  if (phase === 'outgoing') {
+    if (endedTimer) clearTimeout(endedTimer);
+    publish({ ended: null });
+    beginAudio(snap);
+    return;
+  }
+  if (phase === 'connecting' && prev === 'incoming') {
+    stopRinging();
+    cancelIncomingCall();
+    beginAudio(snap);
+    return;
+  }
+  if (phase === 'idle') {
+    stopRinging();
+    cancelIncomingCall();
+    stopCallService();
+    setCallAudio(false);
+    showOverLockScreen(false);
+    stopNetwork?.();
+    stopNetwork = null;
+    stopRoutes?.();
+    stopRoutes = null;
+    publish({ routes: IDLE_ROUTES, words: null });
+  }
+}
+
+/** The microphone is about to be used: call audio mode, the service that keeps it going, route changes, network changes. */
+function beginAudio(snap: CallSnapshot) {
+  setCallAudio(true);
+  startCallService('HomeCircle call', `With ${nameOf(active, snap.peerId)}. Tap to return to the call.`);
+  publish({ routes: getAudioRoutes() });
+  stopRoutes?.();
+  stopRoutes = onRoutesChanged((routes) => {
+    publish({ routes });
+    // The headset went away: back to the earpiece, not a silent route.
+    if (ui.routes.current === 'bluetooth' && !routes.available.includes('bluetooth')) setAudioRoute('earpiece');
+    // A Bluetooth headset connected during the call: use it.
+    if (routes.available.includes('bluetooth') && routes.current !== 'bluetooth' && !ui.routes.available.includes('bluetooth')) setAudioRoute('bluetooth');
+  });
+  ensureBluetooth().catch(() => {});
+  // Wi-Fi to mobile data (or back): ICE restarts on the new network at once.
+  let last: string | null = null;
+  const sub = Network.addNetworkStateListener((state) => {
+    const key = `${state.type}|${state.isConnected}`;
+    if (last !== null && key !== last && state.isConnected) engine.networkChanged();
+    last = key;
+  });
+  stopNetwork?.();
+  stopNetwork = () => sub.remove();
+}
+
+function ended(info: EndInfo) {
+  diag('call:end', { reason: info.reason, incoming: info.incoming, sec: Math.round(info.durationMs / 1000) });
+  if (info.reason === 'missed' && active) showMissedCall(nameOf(active, info.peerId));
+  const text = endText(info);
+  // The caller leaves a line in the chat: missed (the push tells them), or how long it lasted (no push).
+  if (active && !info.incoming && active.feature('directMessages') && (info.reason === 'no_answer' || info.durationMs > 0)) {
+    active.logCall(info.peerId, { missed: info.reason === 'no_answer', seconds: info.durationMs / 1000 }).catch(() => {});
+  }
+  active = null;
+  publish({ ended: { ...info, text } });
+  if (endedTimer) clearTimeout(endedTimer);
+  // Ending it yourself, or saying no, needs no "call ended" screen.
+  const quiet = info.reason === 'missed' || info.reason === 'hangup' || (info.reason === 'declined' && info.incoming);
+  endedTimer = setTimeout(() => publish({ ended: null }), quiet ? 0 : 3500);
+}
+
+export function endText(info: Pick<EndInfo, 'reason' | 'error' | 'durationMs'>): string {
+  switch (info.reason) {
+    case 'declined':
+      return 'They can’t talk right now';
+    case 'busy':
+      return 'They’re on another call';
+    case 'no_answer':
+      return 'No answer';
+    case 'failed':
+      // Never connected: the two phones' networks couldn't find a path (a relay would, see docs/CALLS-NOTES.md).
+      return info.durationMs > 0 ? 'The connection was lost' : 'Couldn’t connect. Try Wi-Fi on both phones.';
+    case 'unreachable':
+      return info.error || 'Couldn’t reach them';
+    case 'no_microphone':
+      return info.error || 'HomeCircle needs the microphone to make calls';
+    case 'hangup':
+    case 'remote_hangup':
+      return 'Call ended';
+    default:
+      return '';
+  }
+}
+
+function nameOf(client: CircleClient | null, id: string | null): string {
+  if (!client || !id) return 'Someone';
+  return client.members.get(id)?.name || client.account?.known[id]?.name || 'Someone';
+}
+
+// --- what the app does --------------------------------------------------------
+
+const attached = new WeakSet<CircleClient>();
+
+/** Listen for call signals in this circle. Safe to call again. */
+export function attachCalls(client: CircleClient) {
+  if (attached.has(client)) return;
+  attached.add(client);
+  client.on('callSignal', (s: CallSignal) => onSignal(client, s));
+}
+
+function onSignal(client: CircleClient, s: CallSignal) {
+  const busy = engine.snapshot.phase !== 'idle';
+  if (busy && active !== client) {
+    // On a call in another circle: the other phone is told, nothing else happens.
+    if (s.op === 'offer') client.sendCallSignal(s.from, { callId: s.callId, op: 'busy' }).catch(() => {});
+    return;
+  }
+  if (!busy) {
+    if (s.op !== 'offer') return;
+    if (!rtcAvailable()) {
+      client.sendCallSignal(s.from, { callId: s.callId, op: 'decline', reason: 'unsupported' }).catch(() => {});
+      return;
+    }
+    active = client;
+  }
+  void engine.handleSignal(s as never);
+}
+
+/** Whether you can call this person from the person sheet: calls on, a real person, not an elder. */
+export function canCall(client: CircleClient, memberId: string): boolean {
+  if (Platform.OS !== 'android') return false; // iOS needs CallKit first (docs/CALLS-PLAN.md)
+  const m = client.members.get(memberId);
+  if (!client.feature('calls') || !m || m.isMe || m.removed || m.kind === 'agent') return false;
+  if (client.memberRecord(memberId)?.skin === 'elderly') return false;
+  return !!client.account?.known[memberId];
+}
+
+/** Call a person. Throws a readable message if it can't start. */
+export async function startCall(client: CircleClient, peerId: string): Promise<void> {
+  if (!rtcAvailable()) throw new Error('Calls need the latest version of the app.');
+  const snap = engine.snapshot;
+  // Calling the person who is calling you: that is answering.
+  if (snap.phase === 'incoming' && snap.peerId === peerId && active === client) return answerCall();
+  if (snap.phase !== 'idle') throw new Error('You’re already on a call.');
+  attachCalls(client);
+  active = client;
+  publish({ circleId: client.circleId });
+  diag('call:start', {});
+  // A call that can't start ends with its reason on the call screen (see ended()).
+  await engine.start(peerId).catch(() => {});
+}
+
+export async function answerCall() {
+  await engine.accept();
+}
+export async function declineCall() {
+  await engine.decline();
+}
+export async function hangUp() {
+  await engine.hangup();
+}
+export function setMuted(muted: boolean) {
+  engine.setMuted(muted);
+}
+export function chooseRoute(route: AudioRoute) {
+  if (setAudioRoute(route)) publish({ routes: { ...getAudioRoutes(), current: route } });
+}
+
+/** Handle the answer / decline button of the incoming-call notification. */
+export function handleLaunchAction(a: LaunchAction | null) {
+  if (!a || (a.action !== 'answer' && a.action !== 'decline')) return;
+  const snap = engine.snapshot;
+  if (snap.phase === 'incoming' && (!a.callId || a.callId === snap.callId)) {
+    if (a.action === 'answer') void answerCall();
+    else void declineCall();
+  } else if (snap.phase === 'idle') {
+    // The phone is still opening: the call arrives in a moment.
+    pendingAction = { action: a.action, callId: a.callId, at: Date.now() };
+  }
+}
+
+/**
+ * The app opened or came forward: pick up a button pressed on the incoming
+ * call notification, and collect any call that waited for this phone while it
+ * was asleep. Returns what to undo.
+ */
+export function startCallHost(): () => void {
+  pickUpCalls();
+  return onCallAction((a) => handleLaunchAction(a));
+}
+
+/** Listen in every circle, handle a notification button pressed while the app was closed, collect what waited. */
+export function pickUpCalls() {
+  for (const c of allClients()) attachCalls(c);
+  handleLaunchAction(consumeLaunchAction());
+  collectWaiting().catch(() => {});
+}
+
+async function collectWaiting() {
+  for (const c of allClients()) if (c.account && c.feature('calls')) await c.collectCallSignals().catch(() => 0);
+}
+
+/**
+ * A call push woke the app (in the background, maybe a cold start): fetch the
+ * sealed signals that waited, which makes the engine ring.
+ */
+export async function handleCallPush(clients: CircleClient[]) {
+  for (const c of clients) attachCalls(c);
+  diag('call:push', {});
+  await Promise.all(clients.filter((c) => c.account).map((c) => c.collectCallSignals().catch(() => 0)));
+}
+
+export function circleOf(ui0: CallUi): CircleClient | undefined {
+  return clientForCircle(ui0.circleId);
+}
+
+// --- for the call screen ----------------------------------------------------------
+
+export function useCall(): CallUi {
+  return useSyncExternalStore(
+    (cb) => {
+      subs.add(cb);
+      return () => subs.delete(cb);
+    },
+    () => ui,
+  );
+}
