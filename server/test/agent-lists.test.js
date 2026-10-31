@@ -168,8 +168,8 @@ test('prices: the list total is a range over the items still to get, with how ma
   assert.equal(v.currency, 'USD');
   // Low: 4.25 + 7.60 + 20.90; high: 4.75 + 8.40 + 23.10.
   assert.deepEqual(v.total, { low: 32.75, high: 36.25, priced: 3, count: 4 });
-  assert.match(listText(s, l), /Estimated about \$32 to \$37 \(3 of 4 items priced\)/);
-  assert.match(listText(s, l), /• milk · about \$4\.50/);
+  assert.match(listText(s, l), /Estimated ~\$32 to \$37 \(3 of 4 items priced\)/);
+  assert.match(listText(s, l), /• milk · ~\$4\.50/);
   assert.match(listText(s, l), /• batteries$/m);
   // The cart estimate is the whole list: ticking doesn't change it, removing does; the unpriced one never reads as free.
   l.items.find((i) => i.name === 'coffee').ticked = true;
@@ -179,7 +179,7 @@ test('prices: the list total is a range over the items still to get, with how ma
   v = viewList(s, l);
   assert.equal(v.items.find((i) => i.name === 'milk').qty, 2);
   assert.deepEqual([v.total.low, v.total.high], [37, 41], 'the milk is counted twice');
-  assert.match(listText(s, l), /• 2 × milk · about \$9\.00/);
+  assert.match(listText(s, l), /• 2 × milk · ~\$9\.00/);
   removeItems(l, ['milk', 'eggs', 'coffee']);
   assert.equal(viewList(s, l).total, undefined);
 });
@@ -218,5 +218,5 @@ test('prices: lists with no prices show none; currencies never mix', () => {
   assert.equal(s.bought[l.id].sugar.prices.at(-1).c, 'PKR');
   assert.equal(money(4.2, 'USD'), '$4.20');
   assert.equal(money(4.2, ''), '4.20');
-  assert.equal(rangeText(62.6, 77.1, 'USD'), 'about $62 to $78');
+  assert.equal(rangeText(62.6, 77.1, 'USD'), '~$62 to $78');
 });

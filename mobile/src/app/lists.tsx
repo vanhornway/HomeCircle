@@ -31,11 +31,11 @@ function money(amount: number, currency = '', whole = false) {
     return `${currency} ${amount.toFixed(digits)}`.trim();
   }
 }
-/** "About $63 to $78": the low end rounded down and the high end up. */
+/** "~ $63 to $78": the low end rounded down and the high end up. */
 function rangeText(low: number, high: number, currency = '') {
   const a = Math.floor(low);
   const b = Math.ceil(high);
-  return a === b ? `About ${money(a, currency, true)}` : `About ${money(a, currency, true)} to ${money(b, currency, true)}`;
+  return a === b ? `~${money(a, currency, true)}` : `~${money(a, currency, true)} to ${money(b, currency, true)}`;
 }
 
 /**
@@ -256,7 +256,7 @@ export default function ShoppingLists() {
                     <Text style={{ flex: 1, color: item.ticked ? t.muted : t.text, fontSize: 17, textDecorationLine: item.ticked ? 'line-through' : 'none' }}>
                       {item.qty > 1 ? `${item.qty} × ` : ''}
                       {item.name}
-                      {item.price ? <Text style={{ color: t.muted, fontSize: 14, textDecorationLine: 'none' }}> · about {money(item.price.est * item.qty, list.currency)}</Text> : null}
+                      {item.price ? <Text style={{ color: t.muted, fontSize: 14, textDecorationLine: 'none' }}> · ~{money(item.price.est * item.qty, list.currency)}</Text> : null}
                     </Text>
                     {item.usual >= 2 && !item.ticked ? <Text style={{ color: t.muted, fontSize: 12 }}>usual</Text> : null}
                   </Pressable>

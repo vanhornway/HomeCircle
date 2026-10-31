@@ -176,11 +176,11 @@ export function money(amount, currency, { whole = false } = {}) {
   }
 }
 
-/** "about $63 to $78": the low end rounded down and the high end up, to whole units. */
+/** "~ $63 to $78": the low end rounded down and the high end up, to whole units. */
 export function rangeText(low, high, currency) {
   const a = Math.floor(low);
   const b = Math.ceil(high);
-  return a === b ? `about ${money(a, currency, { whole: true })}` : `about ${money(a, currency, { whole: true })} to ${money(b, currency, { whole: true })}`;
+  return a === b ? `~${money(a, currency, { whole: true })}` : `~${money(a, currency, { whole: true })} to ${money(b, currency, { whole: true })}`;
 }
 
 /** Done shopping: ticked items leave the list and count as bought. Returns how many. */
@@ -237,7 +237,7 @@ export function listTotal(items) {
 export function listText(state, list) {
   const v = viewList(state, list, { suggest: 5, minCount: 2 });
   const open = v.items.filter((i) => !i.ticked);
-  const about = (p, qty = 1) => (p ? ` · about ${money(p.est * qty, v.currency)}` : '');
+  const about = (p, qty = 1) => (p ? ` · ~${money(p.est * qty, v.currency)}` : '');
   const lines = [`🛒 ${v.name}${open.length ? ':' : ' is empty.'}`, ...open.map((i) => `• ${i.qty > 1 ? `${i.qty} × ` : ''}${i.name}${about(i.price, i.qty)}`)];
   const ticked = v.items.length - open.length;
   if (ticked) lines.push(`(${ticked} ticked off)`);
