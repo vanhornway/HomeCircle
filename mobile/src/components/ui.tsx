@@ -241,8 +241,23 @@ const ICONS: Record<string, string> = {
   bell: 'M6 16.5V11a6 6 0 1 1 12 0v5.5l1.5 1.5h-15L6 16.5Zm4 3.5a2 2 0 0 0 4 0',
   checkin: 'M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Zm-3-11.5 2 2 4-4',
   phone: 'M5 4h3.5l1.5 4-2 1.5a11 11 0 0 0 6.5 6.5l1.5-2 4 1.5V19a1.5 1.5 0 0 1-1.5 1.5A15.5 15.5 0 0 1 3.5 5.5 1.5 1.5 0 0 1 5 4Z',
+  info: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-10v6m0-9.5h.01',
+  users: 'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm-6.5 9a6.5 6.5 0 0 1 13 0M16 4.2a3.5 3.5 0 0 1 0 6.6M18 14.5a6.5 6.5 0 0 1 3.5 5.5',
+  user: 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7.5 9.5a7.5 7.5 0 0 1 15 0',
+  grid: 'M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z',
+  home: 'M4 11 12 4l8 7v9h-5v-6H9v6H4v-9Z',
+  sparkle: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Zm7 12 .8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z',
+  checkcircle: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm-4-9 3 3 5-6',
+  pulse: 'M3 12h4l2.5-6 4 12 2.5-6H21',
+  textsize: 'M3 19 8 6l5 13M4.8 15h6.4M15 19l2.8-7 2.8 7m-4.8-2h4',
+  server: 'M4 4h16v6H4V4Zm0 10h16v6H4v-6Zm3-7h.01M7 17h.01',
+  heart: 'M12 20s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.4-7 10-7 10Z',
+  clipboard: 'M9 4h6v3H9V4ZM7 5.5H5v15h14v-15h-2M9 12h6m-6 4h4',
   bird: 'M3.5 15.5c4.5.5 7-2 8-5.5.8-2.8 2.7-4.5 5.3-4.5l3.7 1.3-3.2 1.2v1.5c0 5-3.8 8.5-8.8 8.5H6l-2.5-2.5ZM16.5 7.6h.01M11 20.5l1.5-3',
 };
+
+/** Whether `name` is one of the line icons (settings rows still pass an emoji now and then). */
+export const hasIcon = (name: string) => name in ICONS || name === 'birds';
 
 /** A round icon-only button with a 44pt touch target. */
 export function IconButton({

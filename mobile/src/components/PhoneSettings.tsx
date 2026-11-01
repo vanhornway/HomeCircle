@@ -36,7 +36,7 @@ function PhoneEditor({ saved, label, onSave }: { saved: string | null; label: st
         value={value}
         onChangeText={setDraft}
         maxLength={30}
-        placeholder="+1 555 123 4567"
+        placeholder="Country code first, like +92"
         placeholderTextColor={t.muted}
         keyboardType="phone-pad"
         autoComplete="tel"
@@ -53,7 +53,12 @@ export function MyPhoneGroup({ client }: { client: CircleClient }) {
   const me = client.me;
   if (!client.feature('whatsapp')) return null;
   return (
-    <SettingsGroup title="Phone number" footer="Optional. Shown only to people in this circle, end-to-end encrypted like everything else. It lets them tap “Call on WhatsApp”. Start with the country code, such as +1 or +92.">
+    <SettingsGroup
+      title="Phone number"
+      footer="Optional. Lets people in this circle tap “Call on WhatsApp”."
+      how="Only people in this circle see your number, end-to-end encrypted like everything else. Start with the country code, such as +1 or +92."
+      howTitle="Who sees my number"
+    >
       <GroupBody>
         <PhoneEditor saved={me?.phone ?? null} label="Your phone number" onSave={(p) => client.setPhone(p)} />
       </GroupBody>
@@ -69,11 +74,9 @@ export function MemberPhoneGroup({ client, memberId, admin }: { client: CircleCl
   const t = useTheme();
   const m = client.members.get(memberId);
   const own = m?.phone ?? null;
-  const footer = client.feature('whatsapp')
-    ? 'For Call → Call on WhatsApp. Encrypted, so only the circle can read it. Start with the country code, such as +1 or +92.'
-    : 'For Call → Call on WhatsApp, once an admin turns on WhatsApp links in Features. Encrypted, so only the circle can read it. Start with the country code, such as +1 or +92.';
+  const footer = client.feature('whatsapp') ? 'For Call → Call on WhatsApp.' : 'For Call → Call on WhatsApp, once an admin turns on WhatsApp links in Features.';
   return (
-    <SettingsGroup title="Phone number" footer={footer}>
+    <SettingsGroup title="Phone number" footer={footer} how="Encrypted, so only the circle can read it. Start with the country code, such as +1 or +92." howTitle="Who sees this number">
       <GroupBody>
         {admin ? (
           <PhoneEditor saved={client.memberRecord(memberId)?.phone ?? null} label={m ? `${m.name}’s phone number` : 'Phone number'} onSave={(p) => client.setMemberRecord(memberId, { phone: p || null })} />

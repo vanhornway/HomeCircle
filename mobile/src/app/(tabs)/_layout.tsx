@@ -12,6 +12,7 @@ import { allClients, clientForCircle, errorText, getClient, startupDiag, useCirc
 import { mark, takeStartup } from '../../lib/startup';
 import { getServerState, isUnreachable, RECONNECT_GRACE_MS, setRetryHandler, setServerState } from '../../lib/connection';
 import { registerPush } from '../../lib/push';
+import { askNotificationsOnce } from '../../lib/firstRun';
 import { clearBackupAlerts, ensureNotificationChannels, markSeen, notifyNewMessages } from '../../lib/notify';
 import { useJoinGroupCallFromNotification } from '../../lib/groupCalls';
 import { ensureReadBase, unreadInCircle } from '../../lib/unread';
@@ -317,7 +318,7 @@ function useOpenChatFromNotification() {
   }, [response, nav]);
 }
 
-/** The full app's tabs. A phone in a locked skin (Elderly Companion) never gets here. */
+/** The full app's tabs. A phone in a locked skin (the elder screens) never gets here. */
 export default function TabsLayout() {
   const skin = useSkin();
   if (SKINS[skin].locked) return <Redirect href={SKINS[skin].root} />;
@@ -337,6 +338,10 @@ function FullTabs() {
   useOpenChatFromNotification();
   useJoinGroupCallFromNotification();
   useEffect(() => mark('tabs'), []);
+  // The first message that arrives is the moment to ask to be told about them.
+  useEffect(() => {
+    if (unread > 0) askNotificationsOnce();
+  }, [unread > 0]);
   // A newer app? Checked at most every 4 hours, on opening and coming back.
   useEffect(() => {
     checkForUpdate().catch(() => {});
@@ -366,6 +371,7 @@ function FullTabs() {
       <Tabs.Screen name="index" options={{ title: 'Map', tabBarIcon: ({ color }) => <Icon name="map" color={color} size={28} /> }} />
       <Tabs.Screen
         name="chat"
+        listeners={{ tabPress: () => void askNotificationsOnce() }}
         options={{ title: 'Chats', tabBarBadge: unread ? (unread > 9 ? '9+' : unread) : undefined, tabBarIcon: ({ color }) => <Icon name="chat" color={color} size={28} /> }}
       />
       <Tabs.Screen name="places" options={{ href: places ? undefined : null, title: 'Places', tabBarIcon: ({ color }) => <Icon name="place" color={color} size={28} /> }} />

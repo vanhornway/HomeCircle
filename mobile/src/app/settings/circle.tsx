@@ -100,7 +100,14 @@ export default function CircleSettings() {
       </SettingsGroup>
 
       {client.isAdmin ? (
-        <SettingsGroup title="People" footer="Each person’s profile and phone number. The profile is what their HomeCircle app shows: the full app, or the simple Elderly Companion screens (care circle or grandkids). Their phone switches automatically, and you can change it back and forth as often as you like. The phone number is for Call → Call on WhatsApp.">
+        <SettingsGroup
+          title="Profiles"
+          footer="What each person’s app shows, and their phone number."
+          how={[
+            'The profile is what their HomeCircle app shows: the full app, or the simple elder screens (care circle or grandkids). Their phone switches automatically, and you can change it back and forth as often as you like.',
+            'The phone number is for Call → Call on WhatsApp.',
+          ]}
+        >
           {client
             .memberList()
             .filter((m) => !m.isMe && m.kind !== 'agent')
@@ -111,26 +118,27 @@ export default function CircleSettings() {
               return (
                 <SettingsRow
                   key={m.id}
-                  icon={p === 'full' ? '📱' : '👵'}
+                  icon={p === 'full' ? 'phone' : 'heart'}
                   title={m.name}
                   detail={`${profileLabel(p)}${phone ? ` · ${phone}` : ' · no phone number'}${skinStatus(rec, client.locations.get(m.id), m.name).state === 'waiting' ? ' · waiting for their phone…' : ''}`}
                   href={{ pathname: '/elder', params: { member: m.id } }}
                 />
               );
             })}
-          <SettingsRow icon="➕" title="Mark someone as an elder" detail="Someone already here, or someone new with an invite" href="/mark-elder" />
+          <SettingsRow icon="plus" title="Mark someone as an elder" detail="Someone already here, or someone new with an invite" href="/mark-elder" />
         </SettingsGroup>
       ) : null}
 
       {client.isAdmin && client.feature('circleHealth') ? (
         <SettingsGroup>
-          <SettingsRow icon="📋" title="Circle health" detail="How each member’s phone is set up; nudge them to fix problems" href="/circle-health" />
+          <SettingsRow icon="clipboard" title="Circle health" detail="How each member’s phone is set up" href="/circle-health" />
         </SettingsGroup>
       ) : null}
 
       <SettingsGroup
         title="Delete messages after"
-        footer={`${client.isAdmin ? 'Applies to the group chat and direct messages in this circle.' : 'Set by the circle’s admins.'} Older messages are deleted from the server. Nothing is kept longer than a year.`}
+        footer={client.isAdmin ? 'Older messages are deleted from the server.' : 'Set by the circle’s admins.'}
+        how="Applies to the group chat and direct messages in this circle. Older messages are deleted from the server, and nothing is kept longer than a year."
       >
         <GroupBody>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>

@@ -21,7 +21,7 @@ const clock = (hhmm: string) => {
 };
 
 /**
- * One elder's settings for this circle (design 13): her skin, her page, and
+ * One elder's settings for this circle (design 13): her screens, her page, and
  * her setup. Admins change them; her phone picks them up by itself.
  */
 export default function ElderSettings() {
@@ -70,7 +70,11 @@ export default function ElderSettings() {
     <SettingsPage title={m.name}>
       {/* The circle's owner always has the full app. */}
       {m.role !== 'owner' ? (
-        <SettingsGroup title="Profile" footer="What their HomeCircle app shows. Their phone switches by itself, even if the app is closed, and you can change it as often as you like. Location sharing and everything else keeps working underneath.">
+        <SettingsGroup
+          title="Profile"
+          footer="What their HomeCircle app shows."
+          how="Their phone switches by itself, even if the app is closed, and you can change it as often as you like. Location sharing and everything else keeps working underneath."
+        >
           <GroupBody>
             <Chips options={PROFILES.map((p) => ({ value: p.id, label: p.label }))} value={profile} onPick={(id) => choose(id as Profile)} />
             <Text style={{ color: t.muted, fontSize: 13 }}>{PROFILES.find((p) => p.id === profile)!.detail}</Text>
@@ -83,7 +87,7 @@ export default function ElderSettings() {
 
       {elder ? (
         <>
-      <SettingsGroup title={`${m.name}’s tiles for this circle`} footer="Admins of each circle choose these for their own circle. Asking one person to call always stays available.">
+      <SettingsGroup title={`${m.name}’s tiles for this circle`} footer="Asking one person to call always stays available." how="Admins of each circle choose these for their own circle.">
         <ToggleRow
           title="Ring everyone"
           detail={(rec?.ringEveryone ?? care) ? 'On · one button asks the whole circle to call her' : 'Off · she asks one person at a time'}
@@ -98,10 +102,10 @@ export default function ElderSettings() {
           onChange={(v) => save({ games: v })}
           disabled={!admin || busy}
         />
-        <SettingsRow icon="🧩" title="People on her tiles" detail="Order and the names she knows them by" href={{ pathname: '/elder-tiles', params: { member } }} />
+        <SettingsRow icon="users" title="People on her tiles" detail="Order and the names she knows them by" href={{ pathname: '/elder-tiles', params: { member } }} />
       </SettingsGroup>
 
-      <SettingsGroup title={`${m.name}’s setup`} footer="Changes download to her app automatically. She never sees a settings screen.">
+      <SettingsGroup title={`${m.name}’s setup`} footer="She never sees a settings screen." how="Changes download to her app automatically.">
         <GroupBody>
           <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Sleep hours, her time</Text>
           <Text style={{ color: t.muted, fontSize: 13 }}>Nothing sounds on her phone then. She can always ask for a call or send an SOS.</Text>

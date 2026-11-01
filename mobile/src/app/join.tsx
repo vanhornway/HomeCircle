@@ -3,9 +3,11 @@ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { CircleClient, type InvitePreview } from '@homecircle/core';
-import { Button, ErrorText, Field, H1, LockNote, P, Screen } from '../components/ui';
+import { Button, ErrorText, Field, H1, P, Screen } from '../components/ui';
 import { addCircle, allClients, clientForCircle, draftClient, errorText } from '../lib/circle';
 import { enterApp } from '../lib/nav';
+import { finishJoining } from '../lib/firstRun';
+import { HowThisWorks } from '../components/HowThisWorks';
 import { updateSettings } from '../lib/storage';
 import { currentSkin, isSkin, setSkin } from '../skins';
 import { setPage } from '../companion/people';
@@ -76,7 +78,7 @@ export default function Join() {
       if (first) {
         const info = await CircleClient.serverInfo(client.serverUrl!).catch(() => null);
         if (info) await updateSettings({ tileUrl: info.tileUrl, tileAttribution: info.tileAttribution });
-        enterApp('/permissions');
+        await finishJoining({ elder: !!elder });
       } else {
         enterApp();
       }
@@ -118,9 +120,16 @@ export default function Join() {
             time. If I pause sharing, they’ll see that I paused.
           </Text>
         </Pressable>
+        {!allClients().length ? (
+          <P muted style={{ marginBottom: 16 }}>
+            {preview.companion
+              ? 'Next, this phone asks for location and notifications, so the family can see where they are and ring them.'
+              : 'Next, your phone asks to use your location. That’s how your family sees you on the map.'}
+          </P>
+        ) : null}
         <Button title="Join circle" variant="primary" loading={busy} disabled={(!name.trim() && !preview.companion) || !agreed} onPress={join} />
         <ErrorText>{error}</ErrorText>
-        <LockNote>Your keys are created on this phone. Only people in this circle can see your location or messages.</LockNote>
+        <HowThisWorks style={{ marginTop: 14 }}>Your keys are created on this phone. Only people in this circle can see your location or messages.</HowThisWorks>
       </Screen>
     );
   }

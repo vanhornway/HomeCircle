@@ -13,7 +13,7 @@ export type SkinId = 'full' | 'elderly';
 
 export const SKINS: Record<SkinId, { label: string; detail: string; root: Href; locked: boolean }> = {
   full: { label: 'Full app', detail: 'HomeCircle as everyone else has it', root: '/(tabs)', locked: false },
-  elderly: { label: 'Elderly Companion', detail: 'Big photo tiles, Ring everyone, SOS and games', root: '/companion', locked: true },
+  elderly: { label: 'Elder screens', detail: 'Big photo tiles, Ring everyone, SOS and games', root: '/companion', locked: true },
 };
 
 export const isSkin = (id: unknown): id is SkinId => typeof id === 'string' && id in SKINS;

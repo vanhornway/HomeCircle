@@ -48,7 +48,7 @@ export default function SetupCheck() {
   return (
     <Screen>
       <P muted style={{ marginTop: 8, marginBottom: 14 }}>
-        Each item helps your circle see where you are, even when your phone is locked or in your pocket.
+        Fix what’s marked so your circle sees you even when your phone is locked.
       </P>
       {items && !issues.length ? (
         <Card style={{ backgroundColor: t.brandSoft, borderColor: t.brand, marginBottom: 12 }}>

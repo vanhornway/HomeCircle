@@ -3,7 +3,8 @@ import { Text, View } from 'react-native';
 import { defaultFeatures } from '@homecircle/core';
 import { router, useLocalSearchParams } from 'expo-router';
 import { FeatureChooser } from '../components/FeaturePicker';
-import { Button, ErrorText, Field, LockNote, P, Screen } from '../components/ui';
+import { Button, ErrorText, Field, P, Screen } from '../components/ui';
+import { HowThisWorks } from '../components/HowThisWorks';
 import { addCircle, draftClient, errorText, getClient, useCircles } from '../lib/circle';
 import { useTheme } from '../theme';
 
@@ -57,7 +58,7 @@ export default function NewCircle() {
   return (
     <Screen>
       <P muted style={{ marginTop: 8, marginBottom: 20 }}>
-        A circle is a separate group with its own map, chat, places and encryption key. People in one circle can’t see anything in another, even on the same server.
+        A circle is a separate group with its own map, chat and places.
       </P>
       <Field label="Circle name" value={circleName} onChangeText={setCircleName} placeholder="e.g. Parents & siblings" autoFocus />
       <Field label="Your name in this circle" value={name} onChangeText={setName} placeholder="What they call you" autoComplete="given-name" />
@@ -67,7 +68,12 @@ export default function NewCircle() {
       </View>
       <Button title="Create circle" variant="primary" loading={busy} disabled={!circleName.trim() || !name.trim()} onPress={submit} />
       <ErrorText>{error}</ErrorText>
-      <LockNote>You’ll own the new circle and can invite people to it next. Your other circles stay exactly as they are.</LockNote>
+      <HowThisWorks style={{ marginTop: 14 }}>
+        {[
+          'Each circle has its own encryption key. People in one circle can’t see anything in another, even on the same server.',
+          'You’ll own the new circle and can invite people to it next. Your other circles stay exactly as they are.',
+        ]}
+      </HowThisWorks>
     </Screen>
   );
 }

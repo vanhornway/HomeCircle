@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Text } from 'react-native';
 import { router } from 'expo-router';
-import { Button, Card, ErrorText, Field, LockNote, P, Screen } from '../components/ui';
+import { Button, Card, ErrorText, Field, P, Screen } from '../components/ui';
+import { HowThisWorks } from '../components/HowThisWorks';
 import { allClients, errorText, getClient } from '../lib/circle';
 import { retryServer, setServerState, useServerState } from '../lib/connection';
 import { useTheme } from '../theme';
@@ -64,7 +65,7 @@ export default function ServerScreen() {
         </Text>
       </Card>
       <P muted style={{ marginBottom: 16 }}>
-        Use this if your server moved to a new address, such as a new domain or a new Render URL. The new address must be the same server, with this circle already on it. Your other circles on the same server move with it.
+        Use this if your server moved to a new address.
       </P>
       <Field
         label="Server address"
@@ -83,7 +84,12 @@ export default function ServerScreen() {
       <Button title="Save address" variant="primary" loading={busy === 'save'} disabled={!address.trim() || !!busy} onPress={save} style={{ marginTop: 10 }} />
       {result ? <Text style={{ color: t.text, marginTop: 12, fontSize: 15 }}>{result}</Text> : null}
       <ErrorText>{error}</ErrorText>
-      <LockNote>Your keys stay on this phone. HomeCircle only switches if the new address hosts your circle, so it can’t be pointed at someone else’s server.</LockNote>
+      <HowThisWorks style={{ marginTop: 14 }}>
+        {[
+          'The new address must be the same server, with this circle already on it, such as after moving to a new domain. Your other circles on the same server move with it.',
+          'Your keys stay on this phone. HomeCircle only switches if the new address hosts your circle, so it can’t be pointed at someone else’s server.',
+        ]}
+      </HowThisWorks>
     </Screen>
   );
 }

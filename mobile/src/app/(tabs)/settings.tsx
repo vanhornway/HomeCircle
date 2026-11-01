@@ -1,11 +1,15 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Avatar, H1, Screen } from '../../components/ui';
 import { MemberAvatar } from '../../components/MemberAvatar';
 import { ServerBanner } from '../../components/ServerBanner';
 import { RejoinBanner } from '../../components/RejoinBanner';
-import { SettingsGroup, SettingsRow } from '../../components/SettingsKit';
+import { Chips } from '../../components/FamilyNames';
+import { GroupBody, SettingsGroup, SettingsRow } from '../../components/SettingsKit';
+import { setChatScale, useChatScale } from '../../lib/chatZoom';
+import { CHAT_SCALE_STEPS, percentLabel } from '../../lib/chatZoomCore';
+import { needsAttention, setupChecklist } from '../../lib/health';
 import { FEATURES } from '@homecircle/core';
 import { CHIRP_NAMES } from '../../lib/chirp';
 import { useCircles } from '../../lib/circle';
@@ -33,6 +37,16 @@ export default function SettingsTab() {
   const newer = useNewerVersion();
   const build = buildNumber();
   const [checked, setChecked] = useState<'checking' | 'latest' | null>(null);
+  const zoom = useChatScale();
+  // How many things on this phone keep it from sharing reliably (Setup check fixes them).
+  const [toFix, setToFix] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      setupChecklist()
+        .then((items) => setToFix(needsAttention(items).length))
+        .catch(() => {});
+    }, []),
+  );
 
   return (
     <Screen>
@@ -60,22 +74,22 @@ export default function SettingsTab() {
       </Pressable>
 
       <SettingsGroup title="Circle">
-        <SettingsRow icon="👥" title={circle} detail={`${people === 1 ? '1 person' : `${people} people`}${client.isAdmin ? ' · invite, history, members' : ' · people, history, leave'}`} href="/settings/circle" />
+        <SettingsRow icon="users" title={circle} detail={`${people === 1 ? '1 person' : `${people} people`}${client.isAdmin ? ' · invite, history, members' : ' · people, history, leave'}`} href="/settings/circle" />
         <SettingsRow
-          icon="🧩"
+          icon="grid"
           title="Features"
           detail={`${FEATURES.filter((f) => f.id in client.features && client.feature(f.id)).length} of ${FEATURES.filter((f) => f.id in client.features).length} on${client.isAdmin ? ' · choose what this circle has' : ''}`}
           href="/settings/features"
         />
-        <SettingsRow icon="🏡" title="Your circles" detail={clients.length > 1 ? `${plural(clients.length, 'circle')} · switch, and how much each sees` : 'How much your circle sees, or join another'} href="/settings/circles" />
+        <SettingsRow icon="home" title="Your circles" detail={clients.length > 1 ? `${plural(clients.length, 'circle')} · switch, and how much each sees` : 'How much your circle sees, or join another'} href="/settings/circles" />
       </SettingsGroup>
 
       <SettingsGroup title="You">
-        <SettingsRow icon="📍" title="Location sharing" detail={settings.sharing ? `On · ${locationProfileOf(settings) === 'custom' ? 'Custom' : STOP_NAMES[locationProfileOf(settings) as Stop]} · place alerts` : 'Paused · place alerts, most visited'} href="/settings/location" />
-        <SettingsRow icon="🔔" title="Notifications" detail={settings.showPreviews ? 'Showing message text' : 'Hiding message text'} href="/settings/notifications" />
+        <SettingsRow icon="locate" title="Location sharing" detail={settings.sharing ? `On · ${locationProfileOf(settings) === 'custom' ? 'Custom' : STOP_NAMES[locationProfileOf(settings) as Stop]} · place alerts` : 'Paused · place alerts, most visited'} href="/settings/location" />
+        <SettingsRow icon="bell" title="Notifications" detail={settings.showPreviews ? 'Showing message text' : 'Hiding message text'} href="/settings/notifications" />
         {clients.some((c) => c.feature('chirps') || c.feature('sos')) ? (
           <SettingsRow
-            icon="🐦"
+            icon="bird"
             title="Chirps & SOS"
             detail={`${myChirp ? `Your chirp: ${CHIRP_NAMES[myChirp]}` : 'Pick your chirp'} · SOS ${settings.sosThroughDnd ? 'rings through Do Not Disturb' : 'follows Do Not Disturb'}`}
             href="/settings/chirps"
@@ -83,10 +97,26 @@ export default function SettingsTab() {
         ) : null}
       </SettingsGroup>
 
+      <SettingsGroup
+        title="Display"
+        footer="Bigger text in chats and the cards in them."
+        how={['Call-backs and reminders get bigger too. You can also pinch the messages in any chat with two fingers.', 'This adds to your phone’s own text size setting.']}
+        howTitle="About text size"
+      >
+        <GroupBody>
+          <Chips
+            label="Chat text size"
+            options={CHAT_SCALE_STEPS.map((v) => ({ value: String(v), label: v === 1 ? 'Normal' : percentLabel(v) }))}
+            value={CHAT_SCALE_STEPS.some((v) => v === zoom) ? String(zoom) : null}
+            onPick={(v) => setChatScale(Number(v))}
+          />
+        </GroupBody>
+      </SettingsGroup>
+
       {client.feature('agent') ? (
         <SettingsGroup title="Helper">
           <SettingsRow
-            icon="🤖"
+            icon="sparkle"
             title={agent?.name ?? invited?.name ?? 'Circle agent'}
             detail={agent ? 'Memory, calendars, AI provider and budget' : invited ? 'Invited, waiting for it to join' : client.isAdmin ? 'Add an optional helper that remembers for your circle' : 'Not added to this circle'}
             href="/settings/agent"
@@ -95,9 +125,15 @@ export default function SettingsTab() {
       ) : null}
 
       <SettingsGroup title="This phone">
-        <SettingsRow icon="📱" title="This phone" detail="Setup check, diagnostics, server address" href="/settings/phone" />
         <SettingsRow
-          icon="ℹ️"
+          icon="phone"
+          title="This phone"
+          detail={toFix ? `${toFix} to fix · setup check, diagnostics, server address` : 'Setup check, diagnostics, server address'}
+          badge={toFix ? String(toFix) : null}
+          href="/settings/phone"
+        />
+        <SettingsRow
+          icon="info"
           title={`HomeCircle ${APP_VERSION}${build ? ` · build ${build}` : ''}`}
           detail={newer ? `${newer} is out. Tap to download` : checked === 'checking' ? 'Checking…' : checked === 'latest' ? 'You have the latest version' : 'Tap to check for a new version'}
           onPress={() => {
