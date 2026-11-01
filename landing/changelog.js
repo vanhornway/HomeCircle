@@ -1,6 +1,19 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.23.0',
+    date: '2026-11-01',
+    title: 'Everything you had, easier to use',
+    items: [
+      'New tabs: Map, Chats, Lists and Settings. Shopping lists, reminders and Birdie’s memory live together in Lists.',
+      'The map opens on the family near you. Anyone far away shows as a chip at the edge; tap it to go there.',
+      'Tap someone for three big buttons: Call, Message and Directions. Everything else is one tap below.',
+      'Call from any direct chat. Ask Birdie by tapping + or starting your message with its name.',
+      'Reminders open to edit, with a calendar to pick the date. Your shopping list comes first.',
+      'Shorter screens, bigger and clearer text, and SOS stays red in dark mode.',
+    ],
+  },
+  {
     version: '0.22.4',
     date: '2026-11-01',
     title: 'Call anyone, your way',

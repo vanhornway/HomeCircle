@@ -2,6 +2,38 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.23.0
+
+A redesign that keeps every feature and makes each one easier to find and use.
+
+- Tabs are now Map, Chats, Lists and Settings. Lists holds shopping lists,
+  reminders and the helper's memory. Places open from the button on the map,
+  and tapping a place's name on the map edits it.
+- The map opens on the family near you. Anyone far away shows as a chip at the
+  edge ("Nani · Lahore"); tap it to go there. Place names sit under their
+  place and never cover a pin or another name.
+- A person's sheet has three main buttons, Call, Message and Directions, with
+  Locate, Check in, Alert me and Chirp below. The People list shows a setting
+  that slows someone's updates as a tag ("Location limited", "Battery saver").
+- Chats: Call in every direct chat; finished group calls are one line; the
+  helper is marked as a helper; one + button holds photos, polls and Ask the
+  helper.
+- The helper: ask it from + or by starting a message with its name; no more
+  "/name" commands (they still work). "Remembered" replies are one line with
+  Undo. Its settings split into what everyone uses and a Set up page for
+  admins. Dream is now "Tidy up memory".
+- Lists: the shopping list comes first, with your usual items in one row.
+  Reminders open to edit, with a calendar to pick the date. Places open to
+  edit, and a new place starts where you are.
+- First run starts with "Join my family" and asks for each permission when it
+  is needed. Long explanations moved behind "How this works" links.
+- One look everywhere: the same header, confirmations as bottom sheets, a
+  floating + to add things, line icons in Settings. Larger, higher-contrast
+  text, labels for screen readers, and SOS stays red in dark mode.
+- The elder's "Ring everyone" tile now says it in her language.
+- Needs the HomeCircle app 0.23.0. The server change is small: the wording of
+  the helper's reply after tidying its memory.
+
 ## 0.22.4
 
 - Elders can be called. Their phone listens for calls in the Elderly
