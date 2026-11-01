@@ -838,15 +838,15 @@ export class Brain {
   // get a note. Admins start it; one Undo takes the whole dream back.
 
   async _dream(msg) {
-    if (!this.agent.isAdmin(msg.from)) throw new BrainError('Only circle admins can start a dream.');
-    if (!this._provider()) throw new BrainError(`Dreaming needs the AI: an admin can add a provider in the ${this.name} settings.`);
+    if (!this.agent.isAdmin(msg.from)) throw new BrainError('Only circle admins can tidy up memory.');
+    if (!this._provider()) throw new BrainError(`Tidying up needs the AI: an admin can add a provider in Set up ${this.name}.`);
     // Shared notes only (never anyone's private ones); calendars and files keep their data as is.
     const notes = this.memory
       .list({ by: msg.from })
       .filter((n) => n.scope === 'circle' && n.type !== 'source')
       .sort((a, b) => a.title.localeCompare(b.title));
-    if (notes.length < 2) return this.reply(msg, '💤 Nothing to sort yet: there’s hardly anything in memory.');
-    await this.reply(msg, `💤 Dreaming over ${notes.length} notes… I’ll say when I’m done.`);
+    if (notes.length < 2) return this.reply(msg, '🧹 Nothing to tidy yet: there’s hardly anything in memory.');
+    await this.reply(msg, `🧹 Tidying up ${notes.length} notes… I’ll say when I’m done.`);
     const s = this._swapper(msg.from);
     const by = msg.from;
     const now = this.now().getTime();
@@ -914,9 +914,9 @@ export class Brain {
       counts.merged && `${counts.merged} duplicate${counts.merged === 1 ? '' : 's'} merged`,
       counts.added && `${counts.added} new ${counts.added === 1 ? 'note' : 'notes'} for people and places`,
     ].filter(Boolean);
-    if (!done.length) return this.reply(msg, '💤 Dream done: everything was already in order.');
+    if (!done.length) return this.reply(msg, '🧹 Memory tidied: everything was already in order.');
     this.memory.setSetting(`last:${by}`, [...touched]);
-    await this.reply(msg, `💤 Dream done: ${done.join(', ')}. Every change is in each note’s history in Memory.`, { undo: [...touched] });
+    await this.reply(msg, `🧹 Memory tidied: ${done.join(', ')}. Every change is in each note’s history in Memory.`, { undo: [...touched] });
   }
 
   _dreamPrompt() {

@@ -117,8 +117,8 @@ export default function SettingsTab() {
         <SettingsGroup title="Helper">
           <SettingsRow
             icon="sparkle"
-            title={agent?.name ?? invited?.name ?? 'Circle agent'}
-            detail={agent ? 'Memory, calendars, AI provider and budget' : invited ? 'Invited, waiting for it to join' : client.isAdmin ? 'Add an optional helper that remembers for your circle' : 'Not added to this circle'}
+            title={agent?.name ?? invited?.name ?? 'Helper'}
+            detail={agent ? 'What it remembers, private chat' : invited ? 'Invited, waiting for it to join' : client.isAdmin ? 'Add an optional helper that remembers for your circle' : 'Not added to this circle'}
             href="/settings/agent"
           />
         </SettingsGroup>

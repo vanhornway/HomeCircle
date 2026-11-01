@@ -449,13 +449,13 @@ test('a dream (admins only) sorts, merges and adds, and one Undo takes it all ba
     await mom.agentRpc('add', { note });
   const before = (await mom.agentRpc('list')).map((n) => `${n.type}:${n.title}`).sort();
   await dad.askAgent('dream');
-  await until(dad, (c) => (/Only circle admins can start a dream/.test(lastFromAgent(c)?.body.text) ? 1 : null));
+  await until(dad, (c) => (/Only circle admins can tidy up memory/.test(lastFromAgent(c)?.body.text) ? 1 : null));
 
   // Written as in the app, in the chat with the agent: the name and slash are dropped.
   await mom.askAgent('/Jarvis/dream', { peer: mom.agent.id });
   const fromAgentDm = (c) => [...c.conversation(c.agent.id)].reverse().find((m) => m.from === c.agent.id);
-  const done = await until(mom, (c) => (/Dream done/.test(fromAgentDm(c)?.body.text) ? fromAgentDm(c) : null));
-  assert.equal(done.body.text, '💤 Dream done: 2 tagged, 1 sorted or tidied, 1 duplicate merged, 1 new note for people and places. Every change is in each note’s history in Memory.');
+  const done = await until(mom, (c) => (/Memory tidied/.test(fromAgentDm(c)?.body.text) ? fromAgentDm(c) : null));
+  assert.equal(done.body.text, '🧹 Memory tidied: 2 tagged, 1 sorted or tidied, 1 duplicate merged, 1 new note for people and places. Every change is in each note’s history in Memory.');
   const after = await mom.agentRpc('list');
   // Tags make it findable by words that aren't in it.
   assert.deepEqual(after.find((n) => n.title.startsWith('Tahoe')).tags, ['travel', 'vacation', 'spring break']);
