@@ -112,6 +112,34 @@ export function WhatsAppCallButton({ client, memberId, label = 'Call on WhatsApp
 }
 
 /**
+ * Call, in a direct chat's header: opens the same choice as the person sheet
+ * (in HomeCircle or on WhatsApp). Nothing for the helper or someone who left.
+ */
+export function CallButton({ client, memberId }: { client: CircleClient; memberId: string }) {
+  const t = useTheme();
+  const skin = useSkin();
+  const [sheet, setSheet] = useState(false);
+  const m = client.members.get(memberId);
+  if (!(client.feature('calls') || client.feature('whatsapp')) || skin === 'elderly' || !m || m.isMe || m.removed || m.kind === 'agent') return null;
+  return (
+    <>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Call ${client.displayName(memberId)}`}
+        accessibilityHint="In HomeCircle or on WhatsApp"
+        onPress={() => setSheet(true)}
+        hitSlop={4}
+        style={({ pressed }) => ({ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, borderRadius: 22, borderWidth: 1, borderColor: t.line, backgroundColor: pressed ? t.surface2 : t.surface })}
+      >
+        <Icon name="phone" color={t.brand} size={20} />
+        <Text style={{ color: t.brand, fontSize: 14, fontWeight: '700' }}>Call</Text>
+      </Pressable>
+      <CallChoiceSheet client={client} memberId={memberId} visible={sheet} onClose={() => setSheet(false)} onCalled={() => setSheet(false)} />
+    </>
+  );
+}
+
+/**
  * Group call, in a group chat's header. With the circle's WhatsApp call link
  * saved, one tap opens WhatsApp's call lobby. Without one (or on a long press)
  * a sheet lets an admin paste it.

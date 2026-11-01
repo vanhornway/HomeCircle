@@ -40,6 +40,8 @@ export function CreatePoll({ client, peer, visible, onClose, onCreated }: { clie
   const [now] = useState(() => new Date());
   const ends = deadlines(now);
   const ideas = placeIdeas(client).filter((p) => !options.some((o) => o.label.trim().toLowerCase() === p.label.toLowerCase()));
+  // Place ideas only help a question about where (or before there's a question).
+  const aboutWhere = !question.trim() || /\bwhere\b/i.test(question);
   const filled = options.filter((o) => o.label.trim());
 
   const reset = () => {
@@ -173,7 +175,7 @@ export function CreatePoll({ client, peer, visible, onClose, onCreated }: { clie
                 <Text style={{ color: t.brand, fontSize: 16, fontWeight: '600' }}>+ Add option</Text>
               </Pressable>
             ) : null}
-            {ideas.length ? (
+            {aboutWhere && ideas.length ? (
               <>
                 <Text style={label}>IDEAS FROM YOUR PLACES</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
