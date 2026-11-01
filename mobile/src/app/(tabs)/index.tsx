@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, AppState, FlatList, Pressable, Text, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { needsAttention, setupChecklist } from '../../lib/health';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Place } from '@homecircle/core';
-import { FamilyMap, type MapMember } from '../../map/FamilyMap';
-import { IconButton, Tag } from '../../components/ui';
+import { FamilyMap, type MapInset, type MapMember, type MapView } from '../../map/FamilyMap';
+import { Icon, IconButton, Tag } from '../../components/ui';
 import { MemberAvatar } from '../../components/MemberAvatar';
 import { ServerBanner } from '../../components/ServerBanner';
 import { CircleSwitcher } from '../../components/CircleSwitcher';
@@ -19,13 +19,20 @@ import { Drawer, useDrawer } from '../../components/Drawer';
 import { useServerState } from '../../lib/connection';
 import { initials, useCircle } from '../../lib/useCircle';
 import { chirpWithChoice } from '../../lib/chirp';
-import { cadenceLine, canLocate, everyoneCoolingDown, isAsking, memberState, locatePerson, locateState, lowBattery, refreshEveryone, statusLine, useLocateVersion } from '../../lib/people';
+import { canLocate, everyoneCoolingDown, isAsking, memberState, locatePerson, locateState, lowBattery, refreshEveryone, statusLine, useLocateVersion } from '../../lib/people';
 import { DEFAULT_SETTINGS, getSettings } from '../../lib/storage';
+import { edgeChips, groups, openingFrame } from '../../lib/mapFrame';
+import { usePlaceNames } from '../../lib/weather';
 import { useTheme } from '../../theme';
 
 const STALE_MS = 2 * 3600_000;
 // The People drawer: just its handle and header when closed.
 const DRAWER_CLOSED = 78;
+// The SOS button and the room around it, kept clear of pins and chips.
+const SOS_ROOM = 64 + 16 + 8;
+// A chip for people out of view: its box (it hugs the edge it's on).
+const CHIP_W = 168;
+const CHIP_H = 36;
 
 export default function MapTab() {
   const t = useTheme();
@@ -33,7 +40,13 @@ export default function MapTab() {
   const server = useServerState();
   const [tiles, setTiles] = useState(DEFAULT_SETTINGS);
   const [focus, setFocus] = useState<{ lat: number; lng: number; key: number } | null>(null);
+  const [fitTo, setFitTo] = useState<{ points: { lat: number; lng: number }[]; key: number } | null>(null);
   const [sheet, setSheet] = useState<string | null>(null);
+  // What covers the map: the bar on top, and the person sheet (0 when closed).
+  const [topH, setTopH] = useState(0);
+  const [sheetH, setSheetH] = useState(0);
+  // Where the map is, for the chips at its edge.
+  const [mapView, setMapView] = useState<MapView | null>(null);
   // The person last tapped on the map or in People: the weather tile shows where they are.
   const [selected, setSelected] = useState<string | null>(null);
   // Clock for "5 min ago" labels and Locate progress.
@@ -41,7 +54,8 @@ export default function MapTab() {
   useLocateVersion();
   // People pull up from the bottom; pushed down, the map has the whole screen.
   const { height: screenH } = useWindowDimensions();
-  const drawer = useDrawer(DRAWER_CLOSED, Math.round(screenH * 0.42));
+  const drawerOpenH = Math.round(screenH * 0.42);
+  const drawer = useDrawer(DRAWER_CLOSED, drawerOpenH);
 
   // The circle's name and the plugin tile share the top row only when both fit
   // whole; a long name, or the big tile, puts the tile on its own line below.
@@ -99,11 +113,80 @@ export default function MapTab() {
   const placesKey = JSON.stringify(placesRaw);
   const places = useMemo(() => JSON.parse(placesKey) as Place[], [placesKey]);
 
+  // The map opens on the people near you, not on everyone (Nani abroad would
+  // squash your whole town into one blob); with sharing off, on the places.
+  const meId = client.account?.memberId ?? null;
+  const frame = useMemo(() => {
+    // (Only with sharing off: else it waits for people, as it fits just once.)
+    if (!sharing) return openingFrame(places, null).frame;
+    return openingFrame(
+      mapMembers.map((m) => ({ id: m.id, lat: m.lat, lng: m.lng, ts: client.locations.get(m.id)?.ts })),
+      meId,
+    ).frame;
+    // Locations are read for their age only, to break ties.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharing, mapMembers, places, meId]);
+  const mapGroups = useMemo(() => groups(mapMembers), [mapMembers]);
+
+  // Fits and fly-tos keep clear of the top bar, the drawer or the person sheet, and the SOS button.
+  const sos = client.feature('sos');
+  const drawerH = drawer.open ? drawerOpenH : DRAWER_CLOSED;
+  // Before the sheet has been measured: what it took last time, or about that.
+  const [sheetLast, setSheetLast] = useState(() => Math.round(screenH * 0.42));
+  const onSheetHeight = useCallback((h: number) => {
+    setSheetH(h);
+    if (h) setSheetLast(h);
+  }, []);
+  const coveredBelow = sheet ? Math.max(sheetH || sheetLast, drawerH) : drawerH;
+  const inset: MapInset = useMemo(
+    () => ({ top: topH, right: 0, left: 0, bottom: coveredBelow + (sheet || !sos ? 0 : SOS_ROOM) }),
+    [topH, coveredBelow, sheet, sos],
+  );
+
   const everyoneCooling = everyoneCoolingDown(client, now);
+  // A person tapped: fly them to the middle of the map above the sheet.
+  const lastFocus = useRef<{ id: string; at: number; bottom: number } | null>(null);
   const focusOn = (id: string) => {
     setSelected(id);
     const loc = client.locations.get(id);
+    lastFocus.current = { id, at: Date.now(), bottom: Math.max(sheetH || sheetLast, drawerH) };
     if (loc) setFocus((f) => ({ lat: loc.lat, lng: loc.lng, key: (f?.key ?? 0) + 1 }));
+  };
+  // The sheet came out a different height than guessed: center them again, if that was just now.
+  useEffect(() => {
+    const f = lastFocus.current;
+    if (!sheet || !sheetH || !f || f.id !== sheet || Date.now() - f.at > 1500 || Math.abs(coveredBelow - f.bottom) < 24) return;
+    f.bottom = coveredBelow;
+    const loc = client.locations.get(f.id);
+    if (loc) setFocus((cur) => ({ lat: loc.lat, lng: loc.lng, key: (cur?.key ?? 0) + 1 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coveredBelow]);
+
+  // People out of view: a chip at the edge of the map, pointing their way.
+  const chips = useMemo(() => {
+    if (!mapView || !mapView.w || !mapView.h) return [];
+    const visible = { left: 0, top: topH, right: mapView.w, bottom: mapView.h - coveredBelow };
+    if (visible.bottom - visible.top < CHIP_H * 3) return [];
+    const area = { left: 8, top: topH + 8, right: mapView.w - 8, bottom: mapView.h - inset.bottom - 8 };
+    const placed = mapGroups.map((g) => g.flatMap((m) => (mapView.pts[m.id] ? [{ id: m.id, x: mapView.pts[m.id][0], y: mapView.pts[m.id][1] }] : [])));
+    return edgeChips(placed, visible, area, CHIP_W, CHIP_H);
+  }, [mapView, mapGroups, topH, coveredBelow, inset.bottom]);
+  const chipWhere = usePlaceNames(
+    client,
+    chips.map((c) => client.locations.get(c.ids[0])),
+  );
+  const chipLabel = (ids: string[], where: string | null) => {
+    const name = ids[0] === meId ? 'You' : client.displayName(ids[0]);
+    const who = ids.length > 1 ? `${name} +${ids.length - 1}` : name;
+    return where ? `${who} · ${where}` : who;
+  };
+  const flyToChip = (ids: string[]) => {
+    if (ids.length === 1) setSelected(ids[0]);
+    const points = ids.flatMap((id) => {
+      const loc = client.locations.get(id);
+      return loc ? [{ lat: loc.lat, lng: loc.lng }] : [];
+    });
+    if (points.length) setFitTo((f) => ({ points, key: (f?.key ?? 0) + 1 }));
   };
 
   // Below the row, it clears "Fix setup" (which hangs under the circle's name).
@@ -122,14 +205,70 @@ export default function MapTab() {
           attribution={tiles.tileAttribution}
           members={mapMembers}
           places={places}
+          frame={frame}
+          inset={inset}
           focus={focus}
+          fitTo={fitTo}
           dark={t.dark}
           onMemberPress={(id) => {
             focusOn(id);
             setSheet(id);
           }}
+          onPlacePress={(id) => router.push({ pathname: '/add-place', params: { circle: client.circleId!, id } })}
+          onView={setMapView}
         />
-        <SafeAreaView edges={['top']} style={{ position: 'absolute', left: 12, right: 12, top: 0 }} pointerEvents="box-none">
+        {chips.map((c, i) => (
+          <View
+            key={c.ids.join(',')}
+            pointerEvents="box-none"
+            style={{
+              position: 'absolute',
+              left: c.left,
+              top: c.top,
+              width: CHIP_W,
+              height: CHIP_H,
+              justifyContent: 'center',
+              alignItems: c.side === 'left' ? 'flex-start' : c.side === 'right' ? 'flex-end' : 'center',
+            }}
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${chipLabel(c.ids, chipWhere[i])}, off the map`}
+              accessibilityHint="Shows them on the map"
+              onPress={() => flyToChip(c.ids)}
+              hitSlop={6}
+              style={({ pressed }) => ({
+                maxWidth: CHIP_W,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                paddingLeft: 8,
+                paddingRight: 12,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: pressed ? t.surface2 : t.surface,
+                shadowColor: '#000',
+                shadowOpacity: 0.15,
+                shadowRadius: 6,
+                elevation: 4,
+              })}
+            >
+              {/* The arrow icon points up and right; turn it their way. */}
+              <View style={{ transform: [{ rotate: `${Math.round(c.angle + 45)}deg` }] }}>
+                <Icon name="navigate" color={t.brand} size={16} />
+              </View>
+              <Text style={{ color: t.text, fontSize: 13, fontWeight: '600', flexShrink: 1 }} numberOfLines={1}>
+                {chipLabel(c.ids, chipWhere[i])}
+              </Text>
+            </Pressable>
+          </View>
+        ))}
+        <SafeAreaView
+          edges={['top']}
+          onLayout={(e) => setTopH(Math.round(e.nativeEvent.layout.y + e.nativeEvent.layout.height))}
+          style={{ position: 'absolute', left: 12, right: 12, top: 0 }}
+          pointerEvents="box-none"
+        >
           <View onLayout={measure('row')} style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }} pointerEvents="box-none">
             <View
               onLayout={measure('pill')}
@@ -171,7 +310,7 @@ export default function MapTab() {
         </SafeAreaView>
       </View>
       {/* The button follows the circle on screen, just above the drawer; an SOS goes to every circle on this phone that has it on. */}
-      {client.feature('sos') ? (
+      {sos ? (
         <Animated.View pointerEvents="box-none" style={{ position: 'absolute', right: 16, bottom: Animated.add(drawer.motion.height, 16) }}>
           <SosButton />
         </Animated.View>
@@ -227,7 +366,7 @@ export default function MapTab() {
                   setSheet(m.id);
                 }}
                 accessibilityRole="button"
-                accessibilityHint="Shows directions, Locate, check in and message"
+                accessibilityHint="Call, message, directions and more"
                 style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 14, backgroundColor: pressed ? t.surface2 : 'transparent' })}
               >
                 <MemberAvatar client={client} member={m} />
@@ -240,14 +379,9 @@ export default function MapTab() {
                     {lowBattery(loc) ? <Tag label="Low battery" warn /> : null}
                     {m.keyChanged ? <Tag label="Keys changed" warn /> : !m.verified ? <Tag label="Unverified" warn /> : null}
                   </View>
-                  <Text style={{ color: t.muted, fontSize: 14, marginTop: 2, lineHeight: 19 }} numberOfLines={2}>
+                  <Text style={{ color: t.muted, fontSize: 14, marginTop: 2, lineHeight: 19 }} numberOfLines={1}>
                     {statusLine(client, m, now)}
                   </Text>
-                  {cadenceLine(loc) ? (
-                    <Text style={{ color: t.muted, fontSize: 12, marginTop: 1 }} numberOfLines={1}>
-                      {cadenceLine(loc)}
-                    </Text>
-                  ) : null}
                 </View>
                 {!m.isMe && client.feature('locate') ? (
                   <IconButton
@@ -268,6 +402,7 @@ export default function MapTab() {
         client={client}
         memberId={sheet}
         onClose={() => setSheet(null)}
+        onHeight={onSheetHeight}
         onShowSpot={(p) => {
           setSheet(null);
           setFocus((f) => ({ lat: p.lat, lng: p.lng, key: (f?.key ?? 0) + 1 }));

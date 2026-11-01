@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Alert, BackHandler, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
 import type { CircleClient } from '@homecircle/core';
@@ -10,8 +10,7 @@ import { chirpWithChoice } from '../lib/chirp';
 import { KIND_EMOJI } from '../lib/visits';
 import { spotName, type Anchor } from '../lib/visitsCore';
 import { MemberAvatar } from './MemberAvatar';
-import { canLocate, locatePerson, locateState, openDirections, statusLine, useLocateVersion } from '../lib/people';
-import { timeAgo } from '../lib/useCircle';
+import { cadenceLine, canLocate, locatePerson, locateState, openDirections, statusLine, useLocateVersion } from '../lib/people';
 import { useTheme } from '../theme';
 
 /**
@@ -25,12 +24,15 @@ export function PersonSheet({
   memberId,
   onClose,
   onShowSpot,
+  onHeight,
 }: {
   client: CircleClient;
   memberId: string | null;
   onClose: () => void;
   /** A most visited place tapped: show it on the map. */
   onShowSpot?: (p: { lat: number; lng: number }) => void;
+  /** How much of the screen the sheet covers (0 when it's closed), so the map can keep clear of it. */
+  onHeight?: (h: number) => void;
 }) {
   const t = useTheme();
   useLocateVersion();
@@ -45,6 +47,9 @@ export function PersonSheet({
 
   const showing = !!m && !alerting;
   useEffect(() => {
+    if (!showing) onHeight?.(0);
+  }, [showing, onHeight]);
+  useEffect(() => {
     if (!showing) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       onClose();
@@ -58,32 +63,45 @@ export function PersonSheet({
     fn();
   };
 
-  const tile = (icon: string, label: string, sub: string | null, onPress: () => void, disabled = false) => (
+  // The main three: big round buttons in a row.
+  const primary = (icon: string, label: string, onPress: () => void, disabled = false, hint?: string) => (
+    <Pressable
+      key={label}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={hint}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => ({ flex: 1, alignItems: 'center', gap: 6, opacity: disabled ? 0.4 : pressed ? 0.7 : 1 })}
+    >
+      <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: t.brand, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name={icon} color="#fff" size={26} />
+      </View>
+      <Text style={{ color: t.text, fontSize: 14, fontWeight: '700' }}>{label}</Text>
+    </Pressable>
+  );
+
+  // Everything else: a row each, with a line on what it does or where it stands.
+  const row = (icon: string, label: string, sub: string | null, onPress: () => void, disabled = false) => (
     <Pressable
       key={label}
       accessibilityRole="button"
       accessibilityLabel={sub ? `${label}. ${sub}` : label}
+      accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => ({
-        width: '48%',
-        minHeight: 76,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: t.line,
-        backgroundColor: pressed ? t.surface2 : t.bg,
-        padding: 12,
-        gap: 4,
-        opacity: disabled ? 0.45 : 1,
-      })}
+      style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 56, paddingVertical: 8, paddingHorizontal: 4, borderRadius: 12, backgroundColor: pressed ? t.surface2 : 'transparent', opacity: disabled ? 0.45 : 1 })}
     >
-      <Icon name={icon} color={t.brand} size={24} />
-      <Text style={{ color: t.text, fontSize: 16, fontWeight: '700' }}>{label}</Text>
-      {sub ? (
-        <Text style={{ color: t.muted, fontSize: 12 }} numberOfLines={1}>
-          {sub}
-        </Text>
-      ) : null}
+      <Icon name={icon} color={t.brand} size={22} />
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>{label}</Text>
+        {sub ? (
+          <Text style={{ color: t.muted, fontSize: 13, marginTop: 1 }} numberOfLines={1}>
+            {sub}
+          </Text>
+        ) : null}
+      </View>
     </Pressable>
   );
 
@@ -107,7 +125,7 @@ export function PersonSheet({
       <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}>
         <View pointerEvents="box-none" style={{ flex: 1, justifyContent: 'flex-end' }}>
           {showing && m ? (
-            <View style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderBottomWidth: 0, borderColor: t.line, elevation: 12, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10 }}>
+            <View onLayout={(e) => onHeight?.(Math.round(e.nativeEvent.layout.height))} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, borderWidth: 1, borderBottomWidth: 0, borderColor: t.line, elevation: 12, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10 }}>
               <ScrollView style={{ maxHeight: height * 0.5 }} contentContainerStyle={{ padding: 18, paddingBottom: 22, gap: 14 }} keyboardShouldPersistTaps="handled">
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   <MemberAvatar client={client} member={m} size={52} />
@@ -115,6 +133,7 @@ export function PersonSheet({
                     <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>{client.displayName(m.id)}</Text>
                     {client.displayName(m.id) !== m.name ? <Text style={{ color: t.muted, fontSize: 13 }}>{m.name}</Text> : null}
                     <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>{statusLine(client, m)}</Text>
+                    {m.isMe && cadenceLine(loc) ? <Text style={{ color: t.muted, fontSize: 13, marginTop: 2 }}>{sentence(cadenceLine(loc)!)}</Text> : null}
                   </View>
                   <Pressable accessibilityRole="button" accessibilityLabel="Close" hitSlop={8} onPress={onClose} style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: t.surface2 }}>
                     <Text style={{ color: t.muted, fontSize: 20, lineHeight: 22 }}>✕</Text>
@@ -123,43 +142,45 @@ export function PersonSheet({
                 {m.isMe ? (
                   <Text style={{ color: t.muted, fontSize: 14 }}>This is you. Change how you share, and your most visited places, in Settings.</Text>
                 ) : (
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 }}>
+                  <>
                     {/* Only what this circle has on. */}
-                    {client.feature('locationSharing') &&
-                      tile(
-                        'navigate',
-                        'Directions',
-                        loc ? `Location from ${timeAgo(loc.ts)}` : paused ? 'Sharing is paused' : 'No location yet',
-                        () => loc && openDirections(m.name, loc, () => locatePerson(client, m.id)),
-                        !loc,
-                      )}
-                    {client.feature('locate') &&
-                      tile(
-                        'locate',
-                        'Locate',
-                        state === 'sent'
-                          ? 'Sent · waiting for their phone…'
-                          : state === 'delivered'
-                            ? 'Delivered · locating…'
-                            : state === 'updated'
-                              ? 'Updated just now'
-                              : state === 'no-reply'
-                                ? 'No reply yet · try again'
-                                : state === 'cooldown'
-                                  ? 'Asked recently'
-                                  : 'Get a fresh location',
-                        () => locatePerson(client, m.id),
-                        !!paused || !canLocate(state),
-                      )}
-                    {client.feature('checkIns') && tile('checkin', checking ? 'Sending…' : 'Check in', 'Ask “where are you?”', askCheckIn, checking)}
-                    {client.feature('directMessages') &&
-                      tile('chat', 'Message', 'Only you two can read it', go(() => router.push({ pathname: '/conversation', params: { circle: client.circleId!, peer: m.id } })))}
-                    {(client.feature('calls') || client.feature('whatsapp')) &&
-                      m.kind !== 'agent' &&
-                      tile('phone', 'Call', 'In HomeCircle or on WhatsApp', () => setChoosingCall(true))}
-                    {client.feature('placeAlerts') && tile('bell', 'Alert me', 'When they arrive or leave', () => setAlerting(true))}
-                    {client.feature('chirps') && tile('bird', 'Chirp', 'A sound they’ll know is you', go(() => chirpWithChoice(client, m.id)))}
-                  </View>
+                    {(() => {
+                      const main: ReactNode[] = [];
+                      if ((client.feature('calls') || client.feature('whatsapp')) && m.kind !== 'agent') main.push(primary('phone', 'Call', () => setChoosingCall(true), false, 'In HomeCircle or on WhatsApp'));
+                      if (client.feature('directMessages'))
+                        main.push(primary('chat', 'Message', go(() => router.push({ pathname: '/conversation', params: { circle: client.circleId!, peer: m.id } })), false, 'Only you two can read it'));
+                      if (client.feature('locationSharing'))
+                        main.push(
+                          primary('navigate', 'Directions', () => loc && openDirections(m.name, loc, () => locatePerson(client, m.id)), !loc, loc ? undefined : paused ? 'Sharing is paused' : 'No location yet'),
+                        );
+                      return main.length ? <View style={{ flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 4 }}>{main}</View> : null;
+                    })()}
+                    <View>
+                      {client.feature('locate') &&
+                        row(
+                          'locate',
+                          'Locate now',
+                          paused
+                            ? 'Sharing is paused'
+                            : state === 'sent'
+                              ? 'Sent · waiting for their phone…'
+                              : state === 'delivered'
+                                ? 'Delivered · locating…'
+                                : state === 'updated'
+                                  ? 'Updated just now'
+                                  : state === 'no-reply'
+                                    ? 'No reply yet · try again'
+                                    : state === 'cooldown'
+                                      ? 'Asked recently'
+                                      : 'Get a fresh location',
+                          () => locatePerson(client, m.id),
+                          !!paused || !canLocate(state),
+                        )}
+                      {client.feature('checkIns') && row('checkin', checking ? 'Sending…' : 'Ask to check in', 'Ask “where are you?”', askCheckIn, checking)}
+                      {client.feature('placeAlerts') && row('bell', 'Alert me when they arrive or leave', 'At a place you pick', () => setAlerting(true))}
+                      {client.feature('chirps') && row('bird', 'Chirp', 'A sound they’ll know is you', go(() => chirpWithChoice(client, m.id)))}
+                    </View>
+                  </>
                 )}
                 {!m.isMe && client.feature('frequentPlaces') && client.frequent.get(m.id)?.places.length ? (
                   <View style={{ gap: 8 }}>
@@ -224,3 +245,6 @@ export function PersonSheet({
     </>
   );
 }
+
+/** "updates about…" → "Updates about…". */
+const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
