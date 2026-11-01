@@ -47,10 +47,11 @@ function rangeText(low: number, high: number, currency = '') {
  * for the whole cart, shown at the bottom (regular prices, marked as an
  * estimate; tap + on an item for more than one).
  */
-// What's bought before, shown before "Show all".
-const FIRST_USUAL = 24;
+// What's bought before, in the row before "More".
+const FIRST_USUAL = 12;
 
-export default function ShoppingLists() {
+/** The lists themselves; the Lists tab shows them under its own title. */
+export function ShoppingBody() {
   const t = useTheme();
   const client = useCircle(['circle']);
   const name = client.agent?.name ?? 'The helper';
@@ -101,7 +102,50 @@ export default function ShoppingLists() {
   };
   const search = adding.trim().toLowerCase();
   const matching = list ? (search ? list.usual.filter((u) => u.name.toLowerCase().includes(search)) : list.usual) : [];
-  const shownUsual = allUsual || search ? matching : matching.slice(0, FIRST_USUAL);
+  const shownUsual = search ? matching : matching.slice(0, FIRST_USUAL);
+  const moreChip = (label: string) => (
+    <Pressable
+      key="more"
+      accessibilityRole="button"
+      onPress={() => setAllUsual((v) => !v)}
+      style={{ minHeight: 34, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: t.brand }}
+    >
+      <Text style={{ color: t.brand, fontWeight: '600' }}>{label}</Text>
+    </Pressable>
+  );
+  const usualChip = (u: List['usual'][number]) =>
+    list ? (
+      <Pressable
+        key={u.name}
+        accessibilityRole="button"
+        accessibilityLabel={u.price ? `Add ${u.name}, about ${money(u.price.est, list.currency)}` : `Add ${u.name}`}
+        onPress={() => add(u.name, { fromBox: false })}
+        style={{ minHeight: 34, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, backgroundColor: t.surface2 }}
+      >
+        <Text style={{ color: t.text }}>
+          + {u.name}
+          {u.price ? <Text style={{ color: t.muted, fontSize: 13 }}> · ~{money(u.price.est, list.currency)}</Text> : null}
+        </Text>
+      </Pressable>
+    ) : null;
+
+  const usualBlock =
+    matching.length ? (
+      <View style={{ gap: 4 }}>
+        <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700' }}>{search ? 'MATCHES' : 'YOU USUALLY GET'}</Text>
+        {allUsual && !search ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {matching.map(usualChip)}
+            {moreChip('Fewer')}
+          </View>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 6, alignItems: 'center' }}>
+            {shownUsual.map(usualChip)}
+            {!search && matching.length > FIRST_USUAL ? moreChip(`More · ${matching.length - FIRST_USUAL}`) : null}
+          </ScrollView>
+        )}
+      </View>
+    ) : null;
 
   const listMenu = (l: List) =>
     Alert.alert(l.name, undefined, [
@@ -120,7 +164,6 @@ export default function ShoppingLists() {
   const input = { flex: 1, minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: t.line, paddingHorizontal: 14, fontSize: 16, color: t.text, backgroundColor: t.surface } as const;
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
-      <Stack.Screen options={{ headerShown: true, title: 'Shopping lists' }} />
       {!lists ? (
         error ? (
           <View style={{ padding: 16, gap: 10 }}>
@@ -212,36 +255,10 @@ export default function ShoppingLists() {
                     />
                     <Button small variant="primary" title="Add" loading={busy} disabled={!adding.trim()} onPress={() => add(adding)} />
                   </View>
-                  {matching.length ? (
-                    <View style={{ gap: 6 }}>
-                      <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700' }}>
-                        YOU USUALLY GET{list.usual.length > FIRST_USUAL ? ` · ${search ? `${matching.length} OF ` : ''}${list.usual.length}` : ''}
-                      </Text>
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                        {shownUsual.map((u) => (
-                          <Pressable
-                            key={u.name}
-                            accessibilityRole="button"
-                            accessibilityLabel={u.price ? `Add ${u.name}, about ${money(u.price.est, list.currency)}` : `Add ${u.name}`}
-                            onPress={() => add(u.name, { fromBox: false })}
-                            style={{ minHeight: 34, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, backgroundColor: t.surface2 }}
-                          >
-                            <Text style={{ color: t.text }}>
-                              + {u.name}
-                              {u.price ? <Text style={{ color: t.muted, fontSize: 13 }}> · ~{money(u.price.est, list.currency)}</Text> : null}
-                            </Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                      {!search && matching.length > FIRST_USUAL ? (
-                        <Pressable accessibilityRole="button" onPress={() => setAllUsual((v) => !v)} style={{ minHeight: 40, justifyContent: 'center' }}>
-                          <Text style={{ color: t.brand, fontWeight: '600' }}>{allUsual ? 'Show fewer' : `Show all ${matching.length}`}</Text>
-                        </Pressable>
-                      ) : null}
-                    </View>
-                  ) : null}
+                  {search ? usualBlock : null}
                 </View>
               }
+              ListFooterComponent={search ? undefined : <View style={{ marginTop: 14 }}>{usualBlock}</View>}
               ListEmptyComponent={<Text style={{ color: t.muted, textAlign: 'center', marginTop: 16 }}>Nothing on {list.name} yet.</Text>}
               renderItem={({ item }) => (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, paddingHorizontal: 12, borderRadius: 12, backgroundColor: t.surface }}>
@@ -316,5 +333,14 @@ export default function ShoppingLists() {
         </>
       )}
     </View>
+  );
+}
+
+export default function ShoppingLists() {
+  return (
+    <>
+      <Stack.Screen options={{ headerShown: true, title: 'Shopping lists' }} />
+      <ShoppingBody />
+    </>
   );
 }

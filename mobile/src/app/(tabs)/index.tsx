@@ -17,7 +17,7 @@ import { RejoinBanner } from '../../components/RejoinBanner';
 import { PersonSheet } from '../../components/PersonSheet';
 import { Drawer, useDrawer } from '../../components/Drawer';
 import { useServerState } from '../../lib/connection';
-import { initials, useCircle } from '../../lib/useCircle';
+import { initials, useAllCircles, useCircle } from '../../lib/useCircle';
 import { chirpWithChoice } from '../../lib/chirp';
 import { canLocate, everyoneCoolingDown, isAsking, memberState, locatePerson, locateState, lowBattery, refreshEveryone, statusLine, useLocateVersion } from '../../lib/people';
 import { DEFAULT_SETTINGS, getSettings } from '../../lib/storage';
@@ -37,6 +37,9 @@ const CHIP_H = 36;
 export default function MapTab() {
   const t = useTheme();
   const client = useCircle();
+  // Places only while a circle on this phone shares locations.
+  const circles = useAllCircles(['circle']);
+  const anySharing = !circles.length || circles.some((c) => c.feature('locationSharing'));
   const server = useServerState();
   const [tiles, setTiles] = useState(DEFAULT_SETTINGS);
   const [focus, setFocus] = useState<{ lat: number; lng: number; key: number } | null>(null);
@@ -322,6 +325,11 @@ export default function MapTab() {
             <Text style={{ flex: 1, color: t.text, fontSize: 20, fontWeight: '700' }}>
               People{members.length > 1 ? <Text style={{ color: t.muted, fontWeight: '600' }}> · {members.length}</Text> : null}
             </Text>
+            {anySharing ? (
+              <View style={{ marginRight: 8 }}>
+                <IconButton icon="place" label="Places" onPress={() => router.push('/places')} />
+              </View>
+            ) : null}
             {client.feature('chirps') ? (
               <View style={{ marginRight: 8 }}>
                 <IconButton icon="birds" label="Chirp everyone" disabled={members.length < 2} onPress={() => chirpWithChoice(client, null)} />

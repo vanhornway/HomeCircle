@@ -1,14 +1,13 @@
 import { useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { Pressable, Text, View } from 'react-native';
+import { router, Stack } from 'expo-router';
 import type { CircleClient, Member, Place } from '@homecircle/core';
-import { Avatar, Button, Card, Checkbox, H1, Icon, P, Screen, SectionTitle } from '../../components/ui';
-import { AlertRuleSheet } from '../../components/AlertRuleSheet';
-import { updateSettings, useSettings } from '../../lib/storage';
-import { useAllCircles } from '../../lib/useCircle';
-import { errorText } from '../../lib/circle';
-import { formatFeet } from '../../lib/units';
-import { useTheme } from '../../theme';
+import { Avatar, Button, Card, Checkbox, Icon, P, Screen, SectionTitle } from '../components/ui';
+import { AlertRuleSheet } from '../components/AlertRuleSheet';
+import { updateSettings, useSettings } from '../lib/storage';
+import { useAllCircles } from '../lib/useCircle';
+import { formatFeet } from '../lib/units';
+import { useTheme } from '../theme';
 
 type Shared = { key: string; place: Place; copies: { client: CircleClient; place: Place }[] };
 
@@ -44,30 +43,13 @@ export default function Places() {
   };
   const removeRule = (id: string) => updateSettings({ alertRules: settings.alertRules.filter((r) => r.id !== id) });
 
-  const remove = (s: Shared) =>
-    Alert.alert(
-      `Delete ${s.place.name}?`,
-      s.copies.length > 1
-        ? `Arrival alerts for this place stop for everyone in ${s.copies.map((c) => c.client.circle.name).join(' and ')}.`
-        : 'Arrival alerts for this place stop for everyone in the circle.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () =>
-            Promise.all(s.copies.map((c) => c.client.deletePlace(c.place.id))).catch((e) => Alert.alert('Couldn’t delete', errorText(e))),
-        },
-      ],
-    );
-
   // Name, spot and radius, for every circle that has the place.
   const edit = (s: Shared) => router.push({ pathname: '/add-place', params: { circle: s.copies[0].client.circleId!, id: s.copies[0].place.id } });
 
   return (
     <Screen>
-      <H1 style={{ marginTop: 4 }}>Places</H1>
-      <P muted style={{ marginTop: 6, marginBottom: 18 }}>
+      <Stack.Screen options={{ headerShown: true, title: 'Places' }} />
+      <P muted style={{ marginBottom: 18 }}>
         {alerts
           ? 'When someone arrives at or leaves a place, their circle’s group chat gets a message. Each phone detects this itself; the server never learns where your places are.'
           : 'Places your circle shares on the map. The server never learns where they are.'}
@@ -83,8 +65,10 @@ export default function Places() {
           return (
             <Pressable
               key={s.key}
-              onLongPress={() => edit(s)}
-              accessibilityHint="Long-press to change its name, spot or radius"
+              onPress={() => edit(s)}
+              accessibilityRole="button"
+              accessibilityLabel={`${s.place.name}, ${details.join(', ')}`}
+              accessibilityHint="Opens it to change its name, spot or radius"
               style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
             >
             <Card style={{ gap: 6 }}>
@@ -101,10 +85,7 @@ export default function Places() {
                   ) : null}
                   <Text style={{ color: t.muted, fontSize: 14 }}>{details.join(' · ')}</Text>
                 </View>
-                <View style={{ gap: 6 }}>
-                  <Button small title="Edit" accessibilityLabel={`Edit ${s.place.name}`} onPress={() => edit(s)} />
-                  <Button small variant="danger" title="Delete" accessibilityLabel={`Delete ${s.place.name}`} onPress={() => remove(s)} />
-                </View>
+                <Text style={{ color: t.muted, fontSize: 26 }}>›</Text>
               </View>
               {here.length ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 60 }}>

@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Stack, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Tag } from '../components/ui';
@@ -21,7 +21,7 @@ const whenText = (r: Reminder) => {
  * circle's helper: every admin, and whoever added one, hears 30, 7 and 1
  * days before, on the day, and every few days after until it's done.
  */
-export default function Reminders() {
+export function RemindersBody() {
   const t = useTheme();
   const client = useCircle(['circle']);
   const [list, setList] = useState<Reminder[] | null>(null);
@@ -52,7 +52,6 @@ export default function Reminders() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
-      <Stack.Screen options={{ headerShown: true, title: 'Reminders' }} />
       {error ? <Text style={{ color: t.danger, padding: 16, paddingBottom: 0 }}>{error}</Text> : null}
       {!list ? (
         <ActivityIndicator style={{ marginTop: 32 }} color={t.brand} />
@@ -106,15 +105,15 @@ function ReminderSheet({ reminder, onClose, run }: { reminder: Reminder | null; 
   const t = useTheme();
   const [title, setTitle] = useState(reminder?.title ?? '');
   const [date, setDate] = useState(reminder?.due ?? '');
-  const [yearly, setYearly] = useState(reminder ? reminder.repeat === 'yearly' : true);
+  const [repeat, setRepeat] = useState<Reminder['repeat']>(reminder ? reminder.repeat : 'yearly');
+  const [months, setMonths] = useState(reminder?.months ?? 6);
   const [note, setNote] = useState(reminder?.note ?? '');
   const [busy, setBusy] = useState(false);
   const due = parseDueDate(date);
   const save = async () => {
     if (!due) return;
     setBusy(true);
-    // One that repeats every few months (set up by the helper) keeps doing so unless switched to yearly.
-    const fields = { title: title.trim(), due, repeat: yearly ? 'yearly' : reminder?.repeat === 'months' ? 'months' : 'none', note: note.trim() };
+    const fields = { title: title.trim(), due, repeat, ...(repeat === 'months' ? { months } : {}), note: note.trim() };
     const ok = await run(reminder ? 'reminderUpdate' : 'reminderAdd', reminder ? { id: reminder.id, ...fields } : fields);
     setBusy(false);
     if (ok) onClose();
@@ -138,14 +137,44 @@ function ReminderSheet({ reminder, onClose, run }: { reminder: Reminder | null; 
         </View>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
           <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
+            {reminder ? (
+              <Text style={{ color: !reminder.done && daysUntil(reminder.due) < 0 ? t.danger : t.muted, fontSize: 14 }}>
+                {whenText(reminder)} · Added by {reminder.createdByName}
+              </Text>
+            ) : null}
             <TextInput value={title} onChangeText={setTitle} placeholder="What, like Car registration" placeholderTextColor={t.muted} maxLength={80} style={[input, { fontWeight: '700' }]} />
             <TextInput value={date} onChangeText={setDate} placeholder="When it’s due: Nov 30, or 11/30/2027" placeholderTextColor={t.muted} autoCapitalize="none" style={input} />
             <Text style={{ color: date && !due ? t.danger : t.brand, fontSize: 14 }}>{date ? (due ? prettyDate(due) : 'That isn’t a date I know. Try “Nov 30”.') : ' '}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 48 }}>
-              <Text style={{ flex: 1, color: t.text, fontSize: 16 }}>Every year</Text>
-              <Switch accessibilityLabel="Every year" value={yearly} onValueChange={setYearly} trackColor={{ true: t.brand }} />
+            <Text style={{ color: t.text, fontSize: 15, fontWeight: '700' }}>Repeat</Text>
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+              {(
+                [
+                  ['none', 'Never'],
+                  ['yearly', 'Every year'],
+                  ['months', 'Every few months'],
+                ] as const
+              ).map(([id, label]) => {
+                const on = repeat === id;
+                return (
+                  <Pressable
+                    key={id}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
+                    onPress={() => setRepeat(id)}
+                    style={{ minHeight: 44, paddingHorizontal: 16, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: on ? t.brand : t.line, backgroundColor: on ? t.brandSoft : 'transparent' }}
+                  >
+                    <Text style={{ color: on ? t.brand : t.text, fontWeight: '600', fontSize: 16 }}>{label}</Text>
+                  </Pressable>
+                );
+              })}
             </View>
-            {reminder?.repeat === 'months' && !yearly ? <Text style={{ color: t.muted, fontSize: 14 }}>Repeats {repeatLabel(reminder)}.</Text> : null}
+            {repeat === 'months' ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 48 }}>
+                <Text style={{ flex: 1, color: t.text, fontSize: 16 }}>{months === 1 ? 'Every month' : `Every ${months} months`}</Text>
+                <Button small title="−" accessibilityLabel="One month fewer" disabled={months <= 1} onPress={() => setMonths((m) => Math.max(1, m - 1))} />
+                <Button small title="+" accessibilityLabel="One month more" disabled={months >= 60} onPress={() => setMonths((m) => Math.min(60, m + 1))} />
+              </View>
+            ) : null}
             <TextInput value={note} onChangeText={setNote} placeholder="A note, like where to renew (optional)" placeholderTextColor={t.muted} multiline style={[input, { minHeight: 80, textAlignVertical: 'top' }]} />
             <Button variant="primary" title="Save" loading={busy} disabled={!title.trim() || !due} onPress={save} />
             {reminder ? <Button variant="danger" title="Delete" onPress={remove} /> : null}
@@ -153,5 +182,14 @@ function ReminderSheet({ reminder, onClose, run }: { reminder: Reminder | null; 
         </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
+  );
+}
+
+export default function Reminders() {
+  return (
+    <>
+      <Stack.Screen options={{ headerShown: true, title: 'Reminders' }} />
+      <RemindersBody />
+    </>
   );
 }

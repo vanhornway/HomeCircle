@@ -25,6 +25,7 @@ import { applyMyChirp, collectAndPlay, playChirps } from '../../lib/chirp';
 import { phoneHealth } from '../../lib/health';
 import { updateSettings, useSettings } from '../../lib/storage';
 import { Icon } from '../../components/ui';
+import { helperHasLists } from '../../lib/helperLists';
 import { useTheme } from '../../theme';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -332,8 +333,8 @@ function FullTabs() {
   useSettings(); // place alerts on/off changes what counts as unread
   const all = useAllCircles(['messages', 'circle']);
   const unread = all.reduce((n, c) => n + unreadInCircle(c), 0);
-  // Places only while a circle on this phone shares locations.
-  const places = !all.length || all.some((c) => c.feature('locationSharing'));
+  // Lists only while a circle on this phone has a helper with lists, reminders or memory on.
+  const lists = !all.length || all.some(helperHasLists);
   useCircleLifecycle(clients.map((c) => c.accountKey).join('|'));
   useOpenChatFromNotification();
   useJoinGroupCallFromNotification();
@@ -374,7 +375,7 @@ function FullTabs() {
         listeners={{ tabPress: () => void askNotificationsOnce() }}
         options={{ title: 'Chats', tabBarBadge: unread ? (unread > 9 ? '9+' : unread) : undefined, tabBarIcon: ({ color }) => <Icon name="chat" color={color} size={28} /> }}
       />
-      <Tabs.Screen name="places" options={{ href: places ? undefined : null, title: 'Places', tabBarIcon: ({ color }) => <Icon name="place" color={color} size={28} /> }} />
+      <Tabs.Screen name="lists-tab" options={{ href: lists ? undefined : null, title: 'Lists', tabBarIcon: ({ color }) => <Icon name="lists" color={color} size={28} /> }} />
       <Tabs.Screen name="settings" options={{ title: 'Settings', tabBarIcon: ({ color }) => <Icon name="settings" color={color} size={28} /> }} />
     </Tabs>
   );
