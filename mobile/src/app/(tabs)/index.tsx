@@ -5,7 +5,7 @@ import { needsAttention, setupChecklist } from '../../lib/health';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Place } from '@homecircle/core';
 import { FamilyMap, type MapInset, type MapMember, type MapView } from '../../map/FamilyMap';
-import { Icon, IconButton, Tag } from '../../components/ui';
+import { EmptyState, Icon, IconButton, Tag } from '../../components/ui';
 import { MemberAvatar } from '../../components/MemberAvatar';
 import { ServerBanner } from '../../components/ServerBanner';
 import { CircleSwitcher } from '../../components/CircleSwitcher';
@@ -360,7 +360,7 @@ export default function MapTab() {
           }
           ListFooterComponent={
             members.length === 1 ? (
-              <Text style={{ color: t.muted, padding: 8, lineHeight: 20 }}>It’s just you so far. Invite your family from Settings.</Text>
+              <EmptyState icon="users" text="It’s just you so far." action="Invite someone" onAction={() => router.push('/invite')} />
             ) : undefined
           }
           renderItem={({ item: m }) => {

@@ -2,7 +2,8 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Stack, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Tag } from '../components/ui';
+import { ADD_BUTTON_SPACE, AddButton, Button, EmptyState, ErrorText, Tag } from '../components/ui';
+import { HowThisWorks } from '../components/HowThisWorks';
 import { errorText } from '../lib/circle';
 import { daysUntil, parseDueDate, prettyDate } from '../lib/dueDate';
 import { useCircle } from '../lib/useCircle';
@@ -53,20 +54,27 @@ export function RemindersBody() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
-      {error ? <Text style={{ color: t.danger, padding: 16, paddingBottom: 0 }}>{error}</Text> : null}
+      {error ? (
+        <View style={{ paddingHorizontal: 16 }}>
+          <ErrorText onRetry={() => run('reminders')}>{error}</ErrorText>
+        </View>
+      ) : null}
       {!list ? (
         <ActivityIndicator style={{ marginTop: 32 }} color={t.brand} />
       ) : (
         <FlatList
           data={list}
           keyExtractor={(r) => r.id}
-          contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: 110 }}
+          contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: ADD_BUTTON_SPACE }}
           ListHeaderComponent={
-            <Text style={{ color: t.muted, fontSize: 14, lineHeight: 20, marginBottom: 6 }}>
-              Things that come once a year or so, like a car registration. Every admin, and whoever added it, is reminded 30, 7 and 1 days before, on the day, and every few days after until someone marks it done.
-            </Text>
+            <View style={{ marginBottom: 6 }}>
+              <Text style={{ color: t.muted, fontSize: 15, lineHeight: 21 }}>Things that come once a year, like a car registration.</Text>
+              <HowThisWorks title="How reminders work">
+                Things that come once a year or so, like a car registration. Every admin, and whoever added it, is reminded 30, 7 and 1 days before, on the day, and every few days after until someone marks it done.
+              </HowThisWorks>
+            </View>
           }
-          ListEmptyComponent={<Text style={{ color: t.muted, textAlign: 'center', marginTop: 24 }}>No reminders yet.</Text>}
+          ListEmptyComponent={<EmptyState icon="bell" text="No reminders yet." action="Add a reminder" onAction={() => setEditing('new')} />}
           renderItem={({ item: r }) => {
             const late = !r.done && daysUntil(r.due) < 0;
             return (
@@ -92,9 +100,7 @@ export function RemindersBody() {
           }}
         />
       )}
-      <View style={{ position: 'absolute', right: 16, bottom: 28 }}>
-        <Button variant="primary" title="+ Reminder" onPress={() => setEditing('new')} />
-      </View>
+      <AddButton label="Reminder" hint="Add a reminder" onPress={() => setEditing('new')} />
       {editing ? <ReminderSheet reminder={editing === 'new' ? null : editing} onClose={() => setEditing(null)} run={run} /> : null}
     </View>
   );

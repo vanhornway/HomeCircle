@@ -4,7 +4,8 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Stack, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Tag } from '../components/ui';
+import { ADD_BUTTON_SPACE, AddButton, Button, EmptyState, ErrorText, Tag } from '../components/ui';
+import { HowThisWorks } from '../components/HowThisWorks';
 import { errorText } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
@@ -146,11 +147,11 @@ export function MemoryBody() {
             );
           })}
         </ScrollView>
+        {client.isAdmin ? <Button small variant="ghost" title="Tidy up memory" onPress={dream} style={{ alignSelf: 'flex-start' }} /> : null}
       </View>
       {error ? (
-        <View style={{ padding: 16, gap: 10 }}>
-          <Text style={{ color: t.danger }}>{error}</Text>
-          <Button small title="Try again" onPress={load} />
+        <View style={{ paddingHorizontal: 16 }}>
+          <ErrorText onRetry={load}>{error}</ErrorText>
         </View>
       ) : !notes ? (
         <ActivityIndicator style={{ marginTop: 32 }} color={t.brand} />
@@ -166,14 +167,24 @@ export function MemoryBody() {
           }
           keyExtractor={(n) => n.id}
           stickySectionHeadersEnabled={false}
-          contentContainerStyle={{ padding: 16, paddingTop: 6, gap: 8, paddingBottom: 100 }}
+          contentContainerStyle={{ padding: 16, paddingTop: 6, gap: 8, paddingBottom: ADD_BUTTON_SPACE }}
           renderSectionHeader={({ section }) =>
             section.title ? <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700', letterSpacing: 0.5, marginTop: 10, textTransform: 'uppercase' }}>{section.title}</Text> : null
           }
           ListEmptyComponent={
-            <Text style={{ color: t.muted, fontSize: 15, lineHeight: 21, textAlign: 'center', marginTop: 24 }}>
-              {query ? 'Nothing matches.' : `Nothing yet. Tell ${name} something (“${name}, our dentist is Dr. Lee”), long-press a message and tap Remember, or send it a calendar link or PDF.`}
-            </Text>
+            <View style={{ alignItems: 'center' }}>
+              <EmptyState
+                icon="clipboard"
+                text={query ? 'Nothing matches.' : `Nothing yet. Tell ${name} something and it remembers.`}
+                action={query ? undefined : 'Add a note'}
+                onAction={() => setAdding(true)}
+              />
+              {query ? null : (
+                <HowThisWorks title="Ways to add to memory">
+                  {`Tell ${name} something (“${name}, our dentist is Dr. Lee”), long-press a message and tap Remember, or send it a calendar link or PDF.`}
+                </HowThisWorks>
+              )}
+            </View>
           }
           renderItem={({ item: n }) => (
             <Pressable
@@ -202,10 +213,7 @@ export function MemoryBody() {
           )}
         />
       )}
-      <View style={{ position: 'absolute', right: 16, bottom: 24, flexDirection: 'row', gap: 10 }}>
-        {client.isAdmin ? <Button title="🧹 Tidy up memory" onPress={dream} /> : null}
-        <Button variant="primary" title="+ Note" onPress={() => setAdding(true)} />
-      </View>
+      <AddButton label="Note" hint="Add a note" onPress={() => setAdding(true)} />
       {open ? <NoteSheet id={open} onClose={closeNote} onChanged={load} /> : null}
       {adding ? <NoteSheet id={null} onClose={closeNew} onChanged={load} /> : null}
     </View>

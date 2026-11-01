@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { Stack, useFocusEffect } from 'expo-router';
-import { Button } from '../components/ui';
+import { Button, EmptyState, ErrorText } from '../components/ui';
 import { errorText } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
@@ -167,9 +167,8 @@ export function ShoppingBody() {
     <View style={{ flex: 1, backgroundColor: t.bg }}>
       {!lists ? (
         error ? (
-          <View style={{ padding: 16, gap: 10 }}>
-            <Text style={{ color: t.danger }}>{error}</Text>
-            <Button small title="Try again" onPress={() => run('lists')} />
+          <View style={{ paddingHorizontal: 16 }}>
+            <ErrorText onRetry={() => run('lists')}>{error}</ErrorText>
           </View>
         ) : (
           <ActivityIndicator style={{ marginTop: 32 }} color={t.brand} />
@@ -223,11 +222,13 @@ export function ShoppingBody() {
               />
             </View>
           ) : null}
-          {error ? <Text style={{ color: t.danger, paddingHorizontal: 16 }}>{error}</Text> : null}
+          {error ? (
+            <View style={{ paddingHorizontal: 16 }}>
+              <ErrorText>{error}</ErrorText>
+            </View>
+          ) : null}
           {!list ? (
-            <Text style={{ color: t.muted, fontSize: 15, lineHeight: 21, textAlign: 'center', margin: 24 }}>
-              No lists yet. Make one for each store you go to. You can also tell {name}: “/{name} add milk to the Costco list”, or send it a receipt.
-            </Text>
+            <EmptyState icon="lists" text={`No lists yet. Make one for each store you go to, or ask ${name} to.`} action="New list" onAction={newList} />
           ) : (
             <FlatList
               data={list.items}
@@ -260,7 +261,7 @@ export function ShoppingBody() {
                 </View>
               }
               ListFooterComponent={search ? undefined : <View style={{ marginTop: 14 }}>{usualBlock}</View>}
-              ListEmptyComponent={<Text style={{ color: t.muted, textAlign: 'center', marginTop: 16 }}>Nothing on {list.name} yet.</Text>}
+              ListEmptyComponent={<EmptyState icon="lists" text={`Nothing on ${list.name} yet. Add the first thing above.`} />}
               renderItem={({ item }) => (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, paddingHorizontal: 12, borderRadius: 12, backgroundColor: t.surface }}>
                   <Pressable

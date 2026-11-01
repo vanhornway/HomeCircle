@@ -3,7 +3,7 @@ import { FlatList, Modal, Pressable, ScrollView, Text, View } from 'react-native
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CircleClient, Message } from '@homecircle/core';
-import { Avatar, Button } from '../../components/ui';
+import { ADD_BUTTON_SPACE, AddButton, Avatar, Button, EmptyState } from '../../components/ui';
 import { HelperAvatar } from '../../components/HelperAvatar';
 import { ServerBanner } from '../../components/ServerBanner';
 import { initials, useAllCircles } from '../../lib/useCircle';
@@ -101,14 +101,14 @@ export default function Chats() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }} edges={['top']}>
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 6 }}>
-        <Text style={{ flex: 1, color: t.text, fontSize: 30, fontWeight: '800' }}>Chats</Text>
-        <Button title="New message" variant="primary" small onPress={() => setPicking(true)} />
+        <Text accessibilityRole="header" style={{ flex: 1, color: t.text, fontSize: 30, fontWeight: '800' }}>Chats</Text>
       </View>
       <ServerBanner style={{ marginHorizontal: 16, marginBottom: 6 }} />
       <FlatList
         data={rows}
         keyExtractor={(r) => r.key}
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={{ paddingBottom: ADD_BUTTON_SPACE }}
+        ListEmptyComponent={<EmptyState icon="chat" text="No chats yet." action="New message" onAction={() => setPicking(true)} />}
         renderItem={({ item: r }) => (
           <Pressable
             onPress={() => open(r.client, r.peer)}
@@ -161,8 +161,10 @@ export default function Chats() {
         ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: t.line, marginLeft: 82 }} />}
       />
 
+      <AddButton label="Message" hint="New message" onPress={() => setPicking(true)} />
+
       <Modal visible={picking} animationType="slide" transparent onRequestClose={() => setPicking(false)}>
-        <Pressable onPress={() => setPicking(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}>
+        <Pressable onPress={() => setPicking(false)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
           <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '80%' }}>
             <SafeAreaView edges={['bottom']}>
               <View style={{ flexDirection: 'row', alignItems: 'center', padding: 18, paddingBottom: 8 }}>
