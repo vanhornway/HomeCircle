@@ -172,7 +172,7 @@ function ProviderSettings({ s, onSaved }: { s: AgentSettings; onSaved: () => voi
                 accessibilityRole="radio"
                 accessibilityState={{ selected: on }}
                 onPress={() => pickProvider(id)}
-                style={{ minHeight: 40, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: on ? t.brand : t.line, backgroundColor: on ? t.brandSoft : 'transparent' }}
+                style={{ minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: on ? t.brand : t.line, backgroundColor: on ? t.brandSoft : 'transparent' }}
               >
                 <Text style={{ color: on ? t.brand : t.text, fontWeight: '600', fontSize: 14 }}>{p.name}</Text>
               </Pressable>
@@ -205,17 +205,17 @@ function ProviderSettings({ s, onSaved }: { s: AgentSettings; onSaved: () => voi
           </View>
         ) : (
           <>
-            {provider === 'other' ? <TextInput value={baseUrl} onChangeText={setBaseUrl} autoCapitalize="none" placeholder="Address, e.g. http://192.168.1.20:11434/v1" placeholderTextColor={t.muted} style={input} /> : null}
-            <TextInput value={model} onChangeText={setModel} autoCapitalize="none" placeholder="Model name" placeholderTextColor={t.muted} style={input} />
+            {provider === 'other' ? <TextInput accessibilityLabel="Address, e.g. http://192.168.1.20:11434/v1" value={baseUrl} onChangeText={setBaseUrl} autoCapitalize="none" placeholder="Address, e.g. http://192.168.1.20:11434/v1" placeholderTextColor={t.muted} style={input} /> : null}
+            <TextInput accessibilityLabel="Model name" value={model} onChangeText={setModel} autoCapitalize="none" placeholder="Model name" placeholderTextColor={t.muted} style={input} />
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TextInput value={inUsd} onChangeText={setIn} keyboardType="decimal-pad" placeholder="$ in / M tokens" placeholderTextColor={t.muted} style={[input, { flex: 1 }]} />
-              <TextInput value={outUsd} onChangeText={setOut} keyboardType="decimal-pad" placeholder="$ out / M tokens" placeholderTextColor={t.muted} style={[input, { flex: 1 }]} />
+              <TextInput accessibilityLabel="$ in / M tokens" value={inUsd} onChangeText={setIn} keyboardType="decimal-pad" placeholder="$ in / M tokens" placeholderTextColor={t.muted} style={[input, { flex: 1 }]} />
+              <TextInput accessibilityLabel="$ out / M tokens" value={outUsd} onChangeText={setOut} keyboardType="decimal-pad" placeholder="$ out / M tokens" placeholderTextColor={t.muted} style={[input, { flex: 1 }]} />
             </View>
             <Text style={{ color: t.muted, fontSize: 14 }}>The model’s price per million tokens, from the provider’s pricing page (0 for a model on your own machine). It’s how spending is counted.</Text>
           </>
         )}
 
-        <TextInput
+        <TextInput accessibilityLabel={keySaved ? 'API key saved (paste a new one to change it)' : provider === 'other' ? 'API key (if it needs one)' : 'Paste your API key'}
           value={key}
           onChangeText={setKey}
           autoCapitalize="none"

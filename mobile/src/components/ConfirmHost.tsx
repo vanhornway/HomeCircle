@@ -24,7 +24,7 @@ export function ConfirmHost() {
   const press = (b: SheetButton) => closeSheet(b);
   return (
     <Modal key={req.id} visible transparent animationType="slide" onRequestClose={() => closeSheet()}>
-      <Pressable accessibilityLabel="Close" onPress={() => closeSheet()} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => closeSheet()} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
         <Pressable onPress={() => {}} accessible={false} style={{ backgroundColor: t.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%' }}>
           <SafeAreaView edges={['bottom']}>
             <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 16 }}>

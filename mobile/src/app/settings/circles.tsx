@@ -111,11 +111,11 @@ export default function CirclesSettings() {
       </SettingsGroup>
 
       <Modal visible={!!pausing} transparent animationType="fade" onRequestClose={() => setPausing(null)}>
-        <Pressable onPress={() => setPausing(null)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'center', padding: 24 }}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderRadius: 20, padding: 18, gap: 12 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setPausing(null)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'center', padding: 24 }}>
+          <Pressable accessible={false} onPress={() => {}} style={{ backgroundColor: t.surface, borderRadius: 20, padding: 18, gap: 12 }}>
             <Text style={{ color: t.text, fontSize: 18, fontWeight: '700' }}>Pause sharing with {pausing?.circle.name}?</Text>
             <Text style={{ color: t.muted, fontSize: 14, lineHeight: 20 }}>They’ll see “Paused” instead of where you are, and Locate won’t reach you. Add a reason if you like.</Text>
-            <TextInput
+            <TextInput accessibilityLabel="e.g. At the doctor (optional)"
               value={reason}
               onChangeText={setReason}
               placeholder="e.g. At the doctor (optional)"

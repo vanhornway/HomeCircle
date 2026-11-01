@@ -63,8 +63,8 @@ export function AlertRuleSheet({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
-        <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '85%' }}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
+        <Pressable accessible={false} onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '85%' }}>
           <SafeAreaView edges={['bottom']}>
             <ScrollView contentContainerStyle={{ padding: 18 }}>
               <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>Notify me when…</Text>
@@ -73,9 +73,9 @@ export function AlertRuleSheet({
                   <Text style={label}>CIRCLE</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     {clients.map((c) => (
-                      <Pressable
+                      <Pressable accessibilityRole="button"
                         key={c.accountKey}
-                        style={chip(c === client)}
+                        accessibilityState={{ selected: c === client }} style={chip(c === client)}
                         onPress={() => {
                           setClient(c);
                           setMember(undefined);
@@ -91,7 +91,7 @@ export function AlertRuleSheet({
               <Text style={label}>PERSON</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {people.map((m) => (
-                  <Pressable key={m.id} style={chip(m.id === member)} onPress={() => setMember(m.id)}>
+                  <Pressable accessibilityRole="button" key={m.id} accessibilityState={{ selected: m.id === member }} style={chip(m.id === member)} onPress={() => setMember(m.id)}>
                     <Text style={chipText(m.id === member)}>{m.name}</Text>
                   </Pressable>
                 ))}
@@ -100,7 +100,7 @@ export function AlertRuleSheet({
               <Text style={label}>WHEN THEY</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {WHEN.map((w) => (
-                  <Pressable key={w.on} style={chip(w.on === on)} onPress={() => setOn(w.on)}>
+                  <Pressable accessibilityRole="button" key={w.on} accessibilityState={{ selected: w.on === on }} style={chip(w.on === on)} onPress={() => setOn(w.on)}>
                     <Text style={chipText(w.on === on)}>{w.label}</Text>
                   </Pressable>
                 ))}
@@ -108,7 +108,7 @@ export function AlertRuleSheet({
               <Text style={label}>PLACE</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {places.map((p) => (
-                  <Pressable key={p.id} style={chip(p.id === place)} onPress={() => setPlace(p.id)}>
+                  <Pressable accessibilityRole="button" key={p.id} accessibilityState={{ selected: p.id === place }} style={chip(p.id === place)} onPress={() => setPlace(p.id)}>
                     <Text style={chipText(p.id === place)}>{p.name}</Text>
                   </Pressable>
                 ))}

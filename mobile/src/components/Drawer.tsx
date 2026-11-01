@@ -96,6 +96,7 @@ export function Drawer({ drawer, header, children }: { drawer: ReturnType<typeof
       >
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel="People"
           accessibilityState={{ expanded: drawer.open }}
           accessibilityHint={drawer.open ? 'Closes the list, to see more of the map' : 'Opens the list'}
           onPress={drawer.toggle}

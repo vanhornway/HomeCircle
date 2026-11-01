@@ -149,8 +149,8 @@ function ReminderSheet({ reminder, onClose, run }: { reminder: Reminder | null; 
                 {whenText(reminder)} · Added by {reminder.createdByName}
               </Text>
             ) : null}
-            <TextInput value={title} onChangeText={setTitle} placeholder="What, like Car registration" placeholderTextColor={t.muted} maxLength={80} style={[input, { fontWeight: '700' }]} />
-            <TextInput value={date} onChangeText={setDate} placeholder="When it’s due: Nov 30, or 11/30/2027" placeholderTextColor={t.muted} autoCapitalize="none" style={input} />
+            <TextInput accessibilityLabel="What, like Car registration" value={title} onChangeText={setTitle} placeholder="What, like Car registration" placeholderTextColor={t.muted} maxLength={80} style={[input, { fontWeight: '700' }]} />
+            <TextInput accessibilityLabel="When it’s due: Nov 30, or 11/30/2027" value={date} onChangeText={setDate} placeholder="When it’s due: Nov 30, or 11/30/2027" placeholderTextColor={t.muted} autoCapitalize="none" style={input} />
             <Text style={{ color: date && !due ? t.danger : t.brand, fontSize: 14 }}>{date ? (due ? prettyDate(due) : 'That isn’t a date I know. Try “Nov 30”.') : ' '}</Text>
             <Text style={{ color: t.text, fontSize: 15, fontWeight: '700' }}>Repeat</Text>
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
@@ -182,7 +182,7 @@ function ReminderSheet({ reminder, onClose, run }: { reminder: Reminder | null; 
                 <Button small title="+" accessibilityLabel="One month more" disabled={months >= 60} onPress={() => setMonths((m) => Math.min(60, m + 1))} />
               </View>
             ) : null}
-            <TextInput value={note} onChangeText={setNote} placeholder="A note, like where to renew (optional)" placeholderTextColor={t.muted} multiline style={[input, { minHeight: 80, textAlignVertical: 'top' }]} />
+            <TextInput accessibilityLabel="A note, like where to renew (optional)" value={note} onChangeText={setNote} placeholder="A note, like where to renew (optional)" placeholderTextColor={t.muted} multiline style={[input, { minHeight: 80, textAlignVertical: 'top' }]} />
             <Button variant="primary" title="Save" loading={busy} disabled={!title.trim() || !due} onPress={save} />
             {reminder ? <Button variant="danger" title="Delete" onPress={remove} /> : null}
           </ScrollView>

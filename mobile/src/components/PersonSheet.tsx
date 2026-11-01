@@ -199,7 +199,7 @@ export function PersonSheet({
                           accessibilityRole="button"
                           accessibilityHint="Shows it on the map"
                           onPress={() => onShowSpot?.(p)}
-                          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, opacity: pressed ? 0.6 : 1, minHeight: 32 })}
+                          style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, opacity: pressed ? 0.6 : 1, minHeight: 44 })}
                         >
                           <Text style={{ fontSize: 18 }}>{KIND_EMOJI[p.kind]}</Text>
                           <Text style={{ flex: 1, color: t.text, fontSize: 15 }} numberOfLines={1}>

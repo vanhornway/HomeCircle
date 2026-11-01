@@ -230,7 +230,7 @@ export default function AddPlace() {
       <ScrollView style={{ backgroundColor: t.surface }} contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
         <Text style={{ color: t.text, fontSize: 15, fontWeight: '700' }}>Address</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TextInput
+          <TextInput accessibilityLabel="123 Main St, San Jose"
             value={query}
             onChangeText={setQuery}
             placeholder="123 Main St, San Jose"
@@ -248,7 +248,7 @@ export default function AddPlace() {
         </Text>
 
         <Text style={{ color: t.text, fontSize: 15, fontWeight: '700', marginTop: 4 }}>Name</Text>
-        <TextInput value={name} onChangeText={setName} placeholder="Home, School, Work…" placeholderTextColor={t.muted} maxLength={40} style={input} />
+        <TextInput accessibilityLabel="Home, School, Work…" value={name} onChangeText={setName} placeholder="Home, School, Work…" placeholderTextColor={t.muted} maxLength={40} style={input} />
 
         <Text style={{ color: t.text, fontSize: 15, fontWeight: '700', marginTop: 4 }}>Radius</Text>
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
@@ -269,7 +269,7 @@ export default function AddPlace() {
           ))}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <TextInput
+          <TextInput accessibilityLabel="Other"
             value={customFeet}
             onChangeText={(v) => setCustomFeet(v.replace(/[^0-9]/g, ''))}
             placeholder="Other"
@@ -298,7 +298,7 @@ export default function AddPlace() {
                 {everywhere ? 'Everyone in each of your circles gets alerts for it, in that circle’s chat.' : `Only ${getClient().circle.name}.`}
               </Text>
             </View>
-            <Switch value={everywhere} onValueChange={setEverywhere} trackColor={{ true: t.brand }} />
+            <Switch accessibilityLabel="Add to all my circles" value={everywhere} onValueChange={setEverywhere} trackColor={{ true: t.brand }} />
           </View>
         ) : null}
 

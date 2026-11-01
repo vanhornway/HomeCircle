@@ -164,8 +164,8 @@ export default function Chats() {
       <AddButton label="Message" hint="New message" onPress={() => setPicking(true)} />
 
       <Modal visible={picking} animationType="slide" transparent onRequestClose={() => setPicking(false)}>
-        <Pressable onPress={() => setPicking(false)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '80%' }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setPicking(false)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
+          <Pressable accessible={false} onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '80%' }}>
             <SafeAreaView edges={['bottom']}>
               <View style={{ flexDirection: 'row', alignItems: 'center', padding: 18, paddingBottom: 8 }}>
                 <Text style={{ flex: 1, color: t.text, fontSize: 20, fontWeight: '700' }}>New message</Text>

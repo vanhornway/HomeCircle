@@ -109,7 +109,7 @@ export function ShoppingBody() {
       key="more"
       accessibilityRole="button"
       onPress={() => setAllUsual((v) => !v)}
-      style={{ minHeight: 34, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: t.brand }}
+      style={{ minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: t.brand }}
     >
       <Text style={{ color: t.brand, fontWeight: '600' }}>{label}</Text>
     </Pressable>
@@ -121,7 +121,7 @@ export function ShoppingBody() {
         accessibilityRole="button"
         accessibilityLabel={u.price ? `Add ${u.name}, about ${money(u.price.est, list.currency)}` : `Add ${u.name}`}
         onPress={() => add(u.name, { fromBox: false })}
-        style={{ minHeight: 34, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, backgroundColor: t.surface2 }}
+        style={{ minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, backgroundColor: t.surface2 }}
       >
         <Text style={{ color: t.text }}>
           + {u.name}
@@ -187,7 +187,7 @@ export function ShoppingBody() {
                   accessibilityHint="Long-press to delete"
                   onPress={() => setCurrent(l.id)}
                   onLongPress={() => listMenu(l)}
-                  style={{ minHeight: 40, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: on ? t.brand : t.line, backgroundColor: on ? t.brandSoft : t.surface }}
+                  style={{ minHeight: 44, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: on ? t.brand : t.line, backgroundColor: on ? t.brandSoft : t.surface }}
                 >
                   <Text style={{ color: on ? t.brand : t.text, fontWeight: '600' }}>
                     {l.name}
@@ -199,14 +199,14 @@ export function ShoppingBody() {
             <Pressable
               accessibilityRole="button"
               onPress={newList}
-              style={{ minHeight: 40, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderStyle: 'dashed', borderColor: t.line }}
+              style={{ minHeight: 44, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderStyle: 'dashed', borderColor: t.line }}
             >
               <Text style={{ color: t.brand, fontWeight: '600' }}>+ New list</Text>
             </Pressable>
           </ScrollView>
           {naming ? (
             <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 8 }}>
-              <TextInput value={newName} onChangeText={setNewName} placeholder="Store, like Costco" placeholderTextColor={t.muted} autoFocus style={input} />
+              <TextInput accessibilityLabel="Store, like Costco" value={newName} onChangeText={setNewName} placeholder="Store, like Costco" placeholderTextColor={t.muted} autoFocus style={input} />
               <Button
                 small
                 variant="primary"
@@ -246,7 +246,7 @@ export function ShoppingBody() {
               ListHeaderComponent={
                 <View style={{ gap: 10, marginBottom: 8 }}>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TextInput
+                    <TextInput accessibilityLabel={`Add to ${list.name}, or search what you get`}
                       value={adding}
                       onChangeText={setAdding}
                       placeholder={`Add to ${list.name}, or search what you get`}

@@ -138,7 +138,7 @@ export function MemoryBody() {
                 accessibilityRole="radio"
                 accessibilityState={{ selected: on }}
                 onPress={() => setType(x.id)}
-                style={{ minHeight: 38, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: on ? t.brand : t.line, backgroundColor: on ? t.brandSoft : t.surface }}
+                style={{ minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: on ? t.brand : t.line, backgroundColor: on ? t.brandSoft : t.surface }}
               >
                 <Text style={{ color: on ? t.brand : t.text, fontWeight: '600' }}>
                   {x.icon} {x.label}
@@ -335,9 +335,9 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
                   A calendar {detail.note.data?.count ?? 0} events long, for {(detail.note.data?.for ?? []).join(', ')}. Its address stays private; ask “/agent list calendars” to see what it reads.
                 </Text>
               ) : null}
-              <TextInput value={title} onChangeText={setTitle} placeholder="Title" placeholderTextColor={t.muted} maxLength={120} style={[input, { fontWeight: '700' }]} />
+              <TextInput accessibilityLabel="Title" value={title} onChangeText={setTitle} placeholder="Title" placeholderTextColor={t.muted} maxLength={120} style={[input, { fontWeight: '700' }]} />
               {detail && when(detail.note) ? <Text style={{ color: t.brand, fontSize: 14 }}>{when(detail.note)}</Text> : null}
-              <TextInput
+              <TextInput accessibilityLabel="What to remember. Link people and places with [[Name]]."
                 value={body}
                 onChangeText={setBody}
                 placeholder="What to remember. Link people and places with [[Name]]."

@@ -44,7 +44,7 @@ export default function ListsTab() {
                     accessibilityRole="tab"
                     accessibilityState={{ selected: on }}
                     onPress={() => setPicked(id)}
-                    style={{ flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: on ? t.surface : 'transparent' }}
+                    style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: on ? t.surface : 'transparent' }}
                   >
                     <Text style={{ color: on ? t.brand : t.muted, fontSize: 15, fontWeight: '700' }}>{label}</Text>
                   </Pressable>

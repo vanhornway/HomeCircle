@@ -39,7 +39,7 @@ export default function ElderTiles() {
     client.setMemberRecord(member, { tiles: ids }).catch((e) => showSheet('Couldn’t save', errorText(e)));
   };
   const arrow = (label: string, on: boolean, onPress: () => void) => (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={!on} onPress={onPress} style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: t.surface2, opacity: on ? 1 : 0.3 }}>
+    <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={!on} onPress={onPress} style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: t.surface2, opacity: on ? 1 : 0.3 }}>
       <Text style={{ color: t.text, fontSize: 18 }}>{label === 'Move up' ? '↑' : '↓'}</Text>
     </Pressable>
   );

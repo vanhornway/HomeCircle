@@ -50,9 +50,9 @@ export function RejoinBanner({ style }: { style?: StyleProp<ViewStyle> }) {
       </Pressable>
 
       <Modal visible={!!open} transparent animationType="fade" onRequestClose={() => setOpen(null)}>
-        <Pressable onPress={() => setOpen(null)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'center', paddingHorizontal: 16 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setOpen(null)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'center', paddingHorizontal: 16 }}>
           {open ? (
-            <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderRadius: 20, padding: 20, gap: 12 }}>
+            <Pressable accessible={false} onPress={() => {}} style={{ backgroundColor: t.surface, borderRadius: 20, padding: 20, gap: 12 }}>
               <Text style={{ color: t.text, fontSize: 18, fontWeight: '700' }}>{open.name} wants to rejoin as the owner</Text>
               <Text style={{ color: t.muted, fontSize: 14, lineHeight: 20 }}>
                 They used this server’s setup code, which only the person who set up the server should have. Letting them in shows them everything in {client.circle.name}.

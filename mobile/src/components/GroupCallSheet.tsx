@@ -64,8 +64,8 @@ export function GroupCallSheet({ client, visible, onClose }: { client: CircleCli
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
-      <Pressable onPress={close} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
-        <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={close} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
+        <Pressable accessible={false} onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
           <SafeAreaView edges={['bottom']} style={{ padding: 18, gap: 14 }}>
             <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>Group call</Text>
             {link && !editing ? (

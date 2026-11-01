@@ -94,7 +94,7 @@ export function PollCard({ client, pollId }: { client: CircleClient; pollId: str
       ) : null}
       {adding ? (
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-          <TextInput
+          <TextInput accessibilityLabel="Another option"
             value={label}
             onChangeText={setLabel}
             autoFocus
@@ -116,7 +116,7 @@ export function PollCard({ client, pollId }: { client: CircleClient; pollId: str
             accessibilityLabel="Spin the wheel"
             disabled={spinning}
             onPress={spinIt}
-            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, paddingHorizontal: 12, borderRadius: 18, borderWidth: 1, borderColor: t.line, opacity: pressed || spinning ? 0.7 : 1 })}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 12, borderRadius: 18, borderWidth: 1, borderColor: t.line, opacity: pressed || spinning ? 0.7 : 1 })}
           >
             <Animated.Text style={{ fontSize: fs(16), transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '1080deg'] }) }] }}>🎡</Animated.Text>
             <Text style={{ color: t.text, fontSize: fs(14), fontWeight: '600' }}>{spinning ? 'Spinning…' : 'Spin'}</Text>
@@ -182,7 +182,7 @@ function Chip({ label, onPress, primary }: { label: string; onPress: () => void;
       accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => ({
-        minHeight: 36,
+        minHeight: 44,
         paddingHorizontal: 12,
         borderRadius: 18,
         borderWidth: 1,

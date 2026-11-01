@@ -54,7 +54,7 @@ export function FamilyNameEditor({ client, callerId, memberId, chips = FAMILY_NA
     <View style={{ gap: 10 }}>
       {chips.length ? <Chips options={chips.map((c) => ({ value: c, label: c }))} value={chips.includes(saved) ? saved : null} onPick={(c) => save(c === saved ? '' : c)} /> : null}
       <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-        <TextInput
+        <TextInput accessibilityLabel={placeholder}
           value={value}
           onChangeText={setDraft}
           maxLength={40}

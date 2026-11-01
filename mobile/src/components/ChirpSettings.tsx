@@ -80,6 +80,7 @@ export function ChirpSettings({ clients, settings, onChange }: { clients: Circle
             </Text>
           </View>
           <Switch
+            accessibilityLabel="Play chirps"
             value={settings?.chirpSound ?? true}
             onValueChange={(v) => updateSettings({ chirpSound: v }).then(onChange)}
             trackColor={{ true: t.brand }}
@@ -122,6 +123,7 @@ export function ChirpSettings({ clients, settings, onChange }: { clients: Circle
             </Text>
           </View>
           <Switch
+            accessibilityLabel="Ring through Do Not Disturb"
             value={settings?.sosThroughDnd ?? false}
             onValueChange={(v) => updateSettings({ sosThroughDnd: v }).then(onChange)}
             trackColor={{ true: t.danger }}

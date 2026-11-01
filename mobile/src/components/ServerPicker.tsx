@@ -49,8 +49,8 @@ export function ServerPicker({ groups, value, onChange }: { groups: ServerGroup[
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable onPress={() => setOpen(false)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'center', paddingHorizontal: 16 }}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderRadius: 20, padding: 8 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setOpen(false)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'center', paddingHorizontal: 16 }}>
+          <Pressable accessible={false} onPress={() => {}} style={{ backgroundColor: t.surface, borderRadius: 20, padding: 8 }}>
             <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700', marginHorizontal: 12, marginTop: 8, marginBottom: 4 }}>YOUR SERVERS</Text>
             {groups.map((g) => {
               const on = g.url === value;

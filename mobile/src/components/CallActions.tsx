@@ -43,8 +43,8 @@ export function CallChoiceSheet({ client, memberId, visible, onClose, onCalled }
   const why = (text: string) => <Text style={{ color: t.muted, fontSize: 14, textAlign: 'center' }}>{text}</Text>;
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
-        <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
+        <Pressable accessible={false} onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
           <SafeAreaView edges={['bottom']} style={{ padding: 18, gap: 12 }}>
             <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>Call {name}</Text>
             <Button

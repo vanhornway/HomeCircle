@@ -43,6 +43,7 @@ export function FrequentSettings({ clients, settings, onChange }: { clients: Cir
             </Text>
           </View>
           <Switch
+            accessibilityLabel="Share my most visited places"
             value={sharing}
             onValueChange={(v) =>
               updateSettings({ shareFrequent: v })
@@ -99,10 +100,10 @@ export function FrequentSettings({ clients, settings, onChange }: { clients: Cir
       </Card>
 
       <Modal visible={!!renaming} transparent animationType="fade" onRequestClose={() => setRenaming(null)}>
-        <Pressable onPress={() => setRenaming(null)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'center', paddingHorizontal: 16 }}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderRadius: 20, padding: 20, gap: 12 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setRenaming(null)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'center', paddingHorizontal: 16 }}>
+          <Pressable accessible={false} onPress={() => {}} style={{ backgroundColor: t.surface, borderRadius: 20, padding: 20, gap: 12 }}>
             <Text style={{ color: t.text, fontSize: 18, fontWeight: '700' }}>Name this place</Text>
-            <TextInput
+            <TextInput accessibilityLabel="Name this place"
               value={name}
               onChangeText={setName}
               autoFocus

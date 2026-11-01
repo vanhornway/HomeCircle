@@ -112,13 +112,13 @@ export function CreatePoll({ client, peer, visible, onClose, onCreated }: { clie
           <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }} keyboardShouldPersistTaps="handled">
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
               {POLL_TEMPLATES.map((tpl) => (
-                <Pressable key={tpl.question} onPress={() => applyTemplate(tpl)} style={chip(question === tpl.question)}>
+                <Pressable accessibilityRole="button" key={tpl.question} onPress={() => applyTemplate(tpl)} accessibilityState={{ selected: question === tpl.question }} style={chip(question === tpl.question)}>
                   <Text style={{ color: t.text, fontSize: 14 }}>{tpl.question}</Text>
                 </Pressable>
               ))}
             </ScrollView>
             <Text style={label}>QUESTION</Text>
-            <TextInput
+            <TextInput accessibilityLabel="Ask anything"
               value={question}
               onChangeText={setQuestion}
               placeholder="Ask anything"
@@ -130,14 +130,14 @@ export function CreatePoll({ client, peer, visible, onClose, onCreated }: { clie
             {options.map((o, i) => (
               <View key={i}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Pressable
+                  <Pressable accessibilityRole="button"
                     accessibilityLabel={o.emoji ? `Emoji ${o.emoji}, tap to change` : 'Pick an emoji'}
                     onPress={() => setEmojiFor(emojiFor === i ? null : i)}
                     style={{ width: 48, height: 48, borderRadius: 14, borderWidth: 1, borderColor: emojiFor === i ? t.brand : t.line, backgroundColor: t.surface, alignItems: 'center', justifyContent: 'center' }}
                   >
                     <Text style={{ fontSize: o.emoji ? 22 : 16, color: t.muted }}>{o.emoji || '☺︎'}</Text>
                   </Pressable>
-                  <TextInput
+                  <TextInput accessibilityLabel={`Option ${i + 1}`}
                     value={o.label}
                     onChangeText={(v) => setOption(i, { label: v })}
                     placeholder={`Option ${i + 1}`}
@@ -146,7 +146,7 @@ export function CreatePoll({ client, peer, visible, onClose, onCreated }: { clie
                     style={{ flex: 1, backgroundColor: t.surface, borderRadius: 14, borderWidth: 1, borderColor: t.line, paddingHorizontal: 14, minHeight: 48, fontSize: 16, color: t.text }}
                   />
                   {options.length > 2 ? (
-                    <Pressable accessibilityLabel={`Remove option ${i + 1}`} onPress={() => setOptions((prev) => prev.filter((_, j) => j !== i))} hitSlop={6} style={{ width: 36, height: 48, alignItems: 'center', justifyContent: 'center' }}>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Remove option ${i + 1}`} onPress={() => setOptions((prev) => prev.filter((_, j) => j !== i))} hitSlop={6} style={{ width: 36, height: 48, alignItems: 'center', justifyContent: 'center' }}>
                       <Text style={{ color: t.muted, fontSize: 22 }}>×</Text>
                     </Pressable>
                   ) : null}
@@ -154,7 +154,7 @@ export function CreatePoll({ client, peer, visible, onClose, onCreated }: { clie
                 {emojiFor === i ? (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 6, backgroundColor: t.surface, borderRadius: 14, padding: 6 }}>
                     {['', ...OPTION_EMOJI].map((e) => (
-                      <Pressable
+                      <Pressable accessibilityRole="button"
                         key={e || 'none'}
                         accessibilityLabel={e ? `Use ${e}` : 'No emoji'}
                         onPress={() => {
@@ -171,7 +171,7 @@ export function CreatePoll({ client, peer, visible, onClose, onCreated }: { clie
               </View>
             ))}
             {options.length < 8 ? (
-              <Pressable onPress={() => setOptions((prev) => [...prev, { label: '', emoji: '' }])} style={{ minHeight: 44, justifyContent: 'center' }}>
+              <Pressable accessibilityRole="button" onPress={() => setOptions((prev) => [...prev, { label: '', emoji: '' }])} style={{ minHeight: 44, justifyContent: 'center' }}>
                 <Text style={{ color: t.brand, fontSize: 16, fontWeight: '600' }}>+ Add option</Text>
               </Pressable>
             ) : null}
@@ -180,7 +180,7 @@ export function CreatePoll({ client, peer, visible, onClose, onCreated }: { clie
                 <Text style={label}>IDEAS FROM YOUR PLACES</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {ideas.map((p) => (
-                    <Pressable key={p.label} onPress={() => addIdea(p)} style={chip(false)}>
+                    <Pressable accessibilityRole="button" key={p.label} onPress={() => addIdea(p)} style={chip(false)}>
                       <Text style={{ color: t.text, fontSize: 14 }}>
                         {p.emoji} {p.label}
                       </Text>
@@ -192,7 +192,7 @@ export function CreatePoll({ client, peer, visible, onClose, onCreated }: { clie
             <Text style={label}>CLOSES</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {ends.map((d, i) => (
-                <Pressable key={d.label} onPress={() => setDeadline(i)} accessibilityState={{ selected: deadline === i }} style={chip(deadline === i)}>
+                <Pressable accessibilityRole="button" key={d.label} onPress={() => setDeadline(i)} accessibilityState={{ selected: deadline === i }} style={chip(deadline === i)}>
                   <Text style={{ color: t.text, fontSize: 14 }}>{d.label}</Text>
                 </Pressable>
               ))}
@@ -213,7 +213,7 @@ function Toggle({ title, value, onChange }: { title: string; value: boolean; onC
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 48 }}>
       <Text style={{ flex: 1, color: t.text, fontSize: 16 }}>{title}</Text>
-      <Switch value={value} onValueChange={onChange} trackColor={{ true: t.brand, false: t.line }} />
+      <Switch accessibilityLabel={title} value={value} onValueChange={onChange} trackColor={{ true: t.brand, false: t.line }} />
     </View>
   );
 }

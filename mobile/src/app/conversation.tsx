@@ -353,7 +353,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             }}
           />
         ) : bubbleText || !reply?.kept ? (
-          <Pressable
+          <Pressable accessibilityRole="button"
             onLongPress={longPress}
             delayLongPress={300}
             accessibilityHint="Long-press to react"
@@ -427,7 +427,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
         {reactions.length ? (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4, justifyContent: mine ? 'flex-end' : 'flex-start' }}>
             {reactions.map((r) => (
-              <Pressable
+              <Pressable accessibilityRole="button"
                 key={r.emoji}
                 onPress={() => react(m.id, r.emoji)}
                 hitSlop={6}
@@ -549,7 +549,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingLeft: 14, paddingRight: 6, minHeight: 44, borderRadius: 22, backgroundColor: t.surface, borderWidth: 1, borderColor: t.line, elevation: 4 }}>
                 <Text style={{ color: t.text, fontSize: 15, fontWeight: '700' }}>Text size {percentLabel(zoom)}</Text>
                 {zoom !== 1 ? (
-                  <Pressable accessibilityRole="button" accessibilityLabel="Reset text size" onPress={() => setChatScale(1)} style={{ minHeight: 36, paddingHorizontal: 12, borderRadius: 18, justifyContent: 'center', backgroundColor: t.brandSoft }}>
+                  <Pressable accessibilityRole="button" accessibilityLabel="Reset text size" onPress={() => setChatScale(1)} style={{ minHeight: 44, paddingHorizontal: 12, borderRadius: 18, justifyContent: 'center', backgroundColor: t.brandSoft }}>
                     <Text style={{ color: t.brand, fontSize: 15, fontWeight: '700' }}>Reset</Text>
                   </Pressable>
                 ) : null}
@@ -627,7 +627,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
                   <Text style={{ color: t.brand, fontSize: 30, lineHeight: 34, fontWeight: '500' }}>{menuOpen ? '×' : '+'}</Text>
                 </Pressable>
               ) : null}
-              <TextInput
+              <TextInput accessibilityLabel={withAgent ? `Ask ${title} anything` : asking && agent ? `Ask ${agent.name}…` : peer ? `Message ${title}` : 'Message your circle'}
                 ref={input}
                 value={text}
                 onChangeText={setText}
@@ -638,7 +638,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
                 maxLength={20000}
                 style={{ flex: 1, minHeight: 48, maxHeight: 130, backgroundColor: t.bg, borderRadius: 24, paddingHorizontal: 16, paddingTop: 13, paddingBottom: 13, fontSize: 17, color: t.text }}
               />
-              <Pressable
+              <Pressable accessibilityRole="button"
                 accessibilityLabel="Send"
                 onPress={send}
                 disabled={!text.trim()}
@@ -677,7 +677,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
         }}
       />
       <Modal visible={!!reactingTo} transparent animationType="fade" onRequestClose={() => setReactingTo(null)}>
-        <Pressable onPress={() => setReactingTo(null)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setReactingTo(null)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
           {reactingTo ? (
             <View style={{ backgroundColor: t.surface, borderRadius: 20, padding: 16, alignItems: 'center', gap: 12, maxWidth: 380 }}>
               {(() => {
@@ -739,7 +739,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
                 {QUICK_REACTIONS.map((e) => {
                   const mine = client.reactionsFor(reactingTo.id).some((r) => r.emoji === e && r.mine);
                   return (
-                    <Pressable
+                    <Pressable accessibilityRole="button"
                       key={e}
                       accessibilityLabel={mine ? `Remove ${e}` : `React ${e}`}
                       onPress={() => react(reactingTo.id, e)}
@@ -817,12 +817,12 @@ function KeptChip({
   const t = useTheme();
   const what = kept.titles.join(' · ');
   return (
-    <Pressable
+    <Pressable accessibilityRole="button"
       onLongPress={onLongPress}
       delayLongPress={300}
       accessibilityLabel={`${kept.verb}: ${what}${undone ? '. Undone' : ''}`}
       accessibilityHint="Long-press to react"
-      style={[{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 40, paddingLeft: 12, paddingRight: undoable ? 4 : 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: t.line, backgroundColor: t.surface }, style]}
+      style={[{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingLeft: 12, paddingRight: undoable ? 4 : 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: t.line, backgroundColor: t.surface }, style]}
     >
       <Text style={{ fontSize: fs(14) }}>📌</Text>
       <Text style={{ flexShrink: 1, color: undone ? t.muted : t.text, fontSize: fs(15), textDecorationLine: undone ? 'line-through' : 'none' }} numberOfLines={3}>
@@ -838,7 +838,7 @@ function KeptChip({
             accessibilityLabel={`Undo. Forget ${what}`}
             hitSlop={6}
             onPress={onUndo}
-            style={({ pressed }) => ({ minHeight: 32, paddingHorizontal: 12, borderRadius: 16, justifyContent: 'center', backgroundColor: pressed ? t.surface2 : t.brandSoft })}
+            style={({ pressed }) => ({ minHeight: 44, paddingHorizontal: 12, borderRadius: 16, justifyContent: 'center', backgroundColor: pressed ? t.surface2 : t.brandSoft })}
           >
             <Text style={{ color: t.brand, fontSize: fs(14), fontWeight: '700' }}>Undo</Text>
           </Pressable>
@@ -853,7 +853,7 @@ function UndoLink({ undone, onPress, fs }: { undone: boolean; onPress: () => voi
   const t = useTheme();
   if (undone) return <Text style={{ color: t.muted, fontSize: fs(14), marginTop: 4 }}>Undone</Text>;
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel="Undo" hitSlop={8} onPress={onPress} style={{ alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center', marginTop: 2 }}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Undo" hitSlop={8} onPress={onPress} style={{ alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', marginTop: 2 }}>
       <Text style={{ color: t.brand, fontSize: fs(14), fontWeight: '700' }}>Undo</Text>
     </Pressable>
   );
@@ -878,7 +878,7 @@ function ReplyNotes({ reply, fs }: { reply: HelperReply; fs: (n: number) => numb
           accessibilityState={{ expanded: open === i }}
           accessibilityLabel={`${n.short}. ${open === i ? n.full : 'Tap for why'}`}
           onPress={() => setOpen(open === i ? null : i)}
-          hitSlop={6}
+          hitSlop={8}
           style={{ minHeight: 28, justifyContent: 'center' }}
         >
           <Text style={line}>
