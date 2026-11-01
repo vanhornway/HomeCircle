@@ -69,7 +69,7 @@ const day = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString(undefine
 const when = (n: Note) => (n.start ? (n.end && n.end !== n.start ? `${day(n.start)} – ${day(n.end)}` : day(n.start)) : null);
 
 /** What the circle's agent remembers: search, browse by kind, open, edit, delete, undo. */
-export default function AgentMemory() {
+export function MemoryBody() {
   const t = useTheme();
   const client = useCircle(['circle']);
   const name = client.agent?.name ?? 'The agent';
@@ -117,7 +117,6 @@ export default function AgentMemory() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
-      <Stack.Screen options={{ headerShown: true, title: `What ${name} remembers` }} />
       <View style={{ padding: 16, paddingBottom: 6, gap: 10 }}>
         <TextInput
           value={query}
@@ -401,5 +400,15 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
         </Modal>
       ) : null}
     </Modal>
+  );
+}
+
+export default function AgentMemory() {
+  const name = useCircle(['circle']).agent?.name ?? 'The agent';
+  return (
+    <>
+      <Stack.Screen options={{ headerShown: true, title: `What ${name} remembers` }} />
+      <MemoryBody />
+    </>
   );
 }

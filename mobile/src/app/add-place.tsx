@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Keyboard, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Keyboard, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as Location from 'expo-location';
 import { randomId, type CircleClient, type Place } from '@homecircle/core';
@@ -33,6 +33,12 @@ function placeToEdit(circleId: string | undefined, id: string | undefined): { pl
   return { place, copies };
 }
 
+/** A map zoom at which a circle of this radius fits the map, with room around it. */
+function zoomFor(lat: number, meters: number) {
+  const z = Math.log2((156543 * Math.cos((lat * Math.PI) / 180) * 170) / (2 * Math.max(meters, 1)));
+  return Math.max(12, Math.min(18, Math.floor(z)));
+}
+
 /** A radius in feet: one of the chips when it's close to one, else the custom field.
  *  Older places can be under today's minimum: those start at the smallest chip. */
 function radiusFields(meters: number) {
@@ -41,7 +47,7 @@ function radiusFields(meters: number) {
   return chip ? { feet: chip, custom: '' } : { feet: 500, custom: String(ft) };
 }
 
-/** Add a place, or edit one (opened with ?circle=…&id=…, from a long press in Places). */
+/** Add a place, or edit one (opened with ?circle=…&id=…, by tapping it in Places). */
 export default function AddPlace() {
   const t = useTheme();
   const params = useLocalSearchParams<{ circle?: string; id?: string }>();
@@ -58,29 +64,88 @@ export default function AddPlace() {
   const [feet, setFeet] = useState(editing ? radiusFields(editing.place.radius).feet : 500);
   const [customFeet, setCustomFeet] = useState(editing ? radiusFields(editing.place.radius).custom : '');
   const [everywhere, setEverywhere] = useState(true);
-  const [busy, setBusy] = useState<'find' | 'save' | null>(null);
+  const [busy, setBusy] = useState<'find' | 'save' | 'here' | 'delete' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getSettings().then(setTiles);
     if (editing) return;
-    // Start on the user's own position if we have it (no new GPS fix needed).
+    // Open on the phone's own position, not the world: the last one it knows, else a fresh fix.
+    let alive = true;
+    const show = (l: Location.LocationObject | null) => {
+      if (l && alive) setFocus({ lat: l.coords.latitude, lng: l.coords.longitude, zoom: 16, key: Date.now() });
+    };
     Location.getLastKnownPositionAsync()
-      .then((l) => {
-        if (!l) return;
-        const p = { lat: l.coords.latitude, lng: l.coords.longitude };
-        setFocus({ ...p, zoom: 16, key: Date.now() });
+      .then(async (l) => {
+        if (l) return show(l);
+        const { granted } = await Location.getForegroundPermissionsAsync();
+        if (granted) show(await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
       })
       .catch(() => {});
+    return () => {
+      alive = false;
+    };
   }, [editing]);
 
-  const place = async (p: { lat: number; lng: number }, label?: string | null) => {
+  const radiusFeet = customFeet ? Number(customFeet) : feet;
+  const radiusOk = Number.isFinite(radiusFeet) && radiusFeet >= MIN_FT && radiusFeet <= MAX_FT;
+
+  const place = async (p: { lat: number; lng: number }, label?: string | null, radiusM = feetToMeters(radiusOk ? radiusFeet : feet)) => {
     setPoint(p);
-    setFocus({ ...p, zoom: 17, key: Date.now() });
+    setFocus({ ...p, zoom: zoomFor(p.lat, radiusM), key: Date.now() });
     if (label !== undefined) return setAddress(label);
     // Show which address a tapped point is, when the phone can tell.
     const found = await Location.reverseGeocodeAsync({ latitude: p.lat, longitude: p.lng }).catch(() => []);
     setAddress(formatAddress(found[0]));
+  };
+
+  // Drops the pin where the phone is now.
+  const here = async () => {
+    setBusy('here');
+    setError(null);
+    try {
+      const { granted } = await Location.requestForegroundPermissionsAsync();
+      if (!granted) throw new Error('Allow location for HomeCircle in your phone’s settings, or tap the map.');
+      const l = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      await place({ lat: l.coords.latitude, lng: l.coords.longitude });
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Show the whole circle again after the radius changes.
+  const fit = (feetNow: number) => {
+    if (point && feetNow >= MIN_FT && feetNow <= MAX_FT) setFocus({ ...point, zoom: zoomFor(point.lat, feetToMeters(feetNow)), key: Date.now() });
+  };
+
+  const remove = () => {
+    if (!editing) return;
+    const copies = editing.copies;
+    Alert.alert(
+      `Delete ${editing.place.name}?`,
+      copies.length > 1
+        ? `Arrival alerts for this place stop for everyone in ${copies.map((c) => c.client.circle.name).join(' and ')}.`
+        : 'Arrival alerts for this place stop for everyone in the circle.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setBusy('delete');
+            try {
+              await Promise.all(copies.map((c) => c.client.deletePlace(c.place.id)));
+              router.back();
+            } catch (e) {
+              setError(errorText(e));
+              setBusy(null);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const find = async () => {
@@ -101,9 +166,6 @@ export default function AddPlace() {
       setBusy(null);
     }
   };
-
-  const radiusFeet = customFeet ? Number(customFeet) : feet;
-  const radiusOk = Number.isFinite(radiusFeet) && radiusFeet >= MIN_FT && radiusFeet <= MAX_FT;
 
   const save = async () => {
     if (!point || !radiusOk) return;
@@ -179,6 +241,7 @@ export default function AddPlace() {
           />
           <Button title="Find" loading={busy === 'find'} disabled={!query.trim()} onPress={find} />
         </View>
+        <Button title="Use where I am" loading={busy === 'here'} onPress={here} />
         <Text style={{ color: point ? t.text : t.muted, fontSize: 15 }}>
           {point ? `📍 ${address || 'Pinned on the map'}` : 'Or tap the map to drop the place.'}
         </Text>
@@ -196,6 +259,7 @@ export default function AddPlace() {
               onPress={() => {
                 setFeet(ft);
                 setCustomFeet('');
+                fit(ft);
               }}
               style={chip(!customFeet && ft === feet)}
             >
@@ -211,6 +275,7 @@ export default function AddPlace() {
             placeholderTextColor={t.muted}
             keyboardType="number-pad"
             maxLength={5}
+            onEndEditing={() => customFeet && fit(Number(customFeet))}
             style={[input, { width: 120 }]}
           />
           <Text style={{ color: t.muted, fontSize: 16 }}>feet</Text>
@@ -237,6 +302,7 @@ export default function AddPlace() {
         ) : null}
 
         <Button title={editing ? 'Save changes' : 'Save place'} variant="primary" loading={busy === 'save'} disabled={!point || !name.trim() || !radiusOk} onPress={save} style={{ marginTop: 6 }} />
+        {editing ? <Button title="Delete place" variant="danger" loading={busy === 'delete'} onPress={remove} /> : null}
         <ErrorText>{error}</ErrorText>
         <Text style={{ color: t.muted, fontSize: 13 }}>
           The address is looked up by your phone’s map service. Places are stored end-to-end encrypted, so your HomeCircle server never learns where they are.
