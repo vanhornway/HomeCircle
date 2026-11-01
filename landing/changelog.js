@@ -8,6 +8,7 @@ window.HOMECIRCLE_CHANGELOG = [
       'Start group call: tap Group call in the group chat and WhatsApp opens in your circle’s call, while everyone in the circle gets a notification. One tap on it and they’re in the call too.',
       'The chat shows who’s on the call, with a Join button, and a line for each person who joins.',
       'Elders hear in Urdu that the family call has started and who is waiting, and join with one touch.',
+      'Elder phones now speak their buttons and the most common replies in a recorded Urdu voice; more phrases follow.',
     ],
   },
   {

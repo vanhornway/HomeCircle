@@ -13,6 +13,9 @@ See the full list of changes on <https://homecircle.umair.us/#changelog>.
   server sees only sealed messages.
 - Elder phones hear "The family call has started. {name} is waiting for you."
   in Urdu, and one touch on the notification joins.
+- Elder phones: the first 11 Urdu phrases are real recordings (her buttons,
+  "your message was sent", "calling you now"); the rest still use the phone's
+  own voice or tones until they're recorded.
 - Needs the HomeCircle app 0.22.2; no server change.
 
 ## 0.22.1
