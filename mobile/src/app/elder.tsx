@@ -4,7 +4,7 @@ import { useLocalSearchParams } from 'expo-router';
 import type { MemberRecord } from '@homecircle/core';
 import { GroupBody, SettingsGroup, SettingsPage, SettingsRow, ToggleRow } from '../components/SettingsKit';
 import { Chips, GenderChips } from '../components/FamilyNames';
-import { ElderPhoneGroup } from '../components/PhoneSettings';
+import { MemberPhoneGroup } from '../components/PhoneSettings';
 import { errorText } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
 import { PROFILES, profileOf, profilePatch, skinStatus, type Profile } from '../skins/profile';
@@ -68,13 +68,18 @@ export default function ElderSettings() {
 
   return (
     <SettingsPage title={m.name}>
-      <SettingsGroup title="Profile" footer="What their HomeCircle app shows. Their phone switches by itself, even if the app is closed, and you can change it as often as you like. Location sharing and everything else keeps working underneath.">
-        <GroupBody>
-          <Chips options={PROFILES.map((p) => ({ value: p.id, label: p.label }))} value={profile} onPick={(id) => choose(id as Profile)} />
-          <Text style={{ color: t.muted, fontSize: 13 }}>{PROFILES.find((p) => p.id === profile)!.detail}</Text>
-          {status.text ? <Text style={{ color: status.state === 'updated' ? t.brand : t.muted, fontSize: 13, fontWeight: status.state === 'updated' ? '700' : '400' }}>{status.text}</Text> : null}
-        </GroupBody>
-      </SettingsGroup>
+      {/* The circle's owner always has the full app. */}
+      {m.role !== 'owner' ? (
+        <SettingsGroup title="Profile" footer="What their HomeCircle app shows. Their phone switches by itself, even if the app is closed, and you can change it as often as you like. Location sharing and everything else keeps working underneath.">
+          <GroupBody>
+            <Chips options={PROFILES.map((p) => ({ value: p.id, label: p.label }))} value={profile} onPick={(id) => choose(id as Profile)} />
+            <Text style={{ color: t.muted, fontSize: 13 }}>{PROFILES.find((p) => p.id === profile)!.detail}</Text>
+            {status.text ? <Text style={{ color: status.state === 'updated' ? t.brand : t.muted, fontSize: 13, fontWeight: status.state === 'updated' ? '700' : '400' }}>{status.text}</Text> : null}
+          </GroupBody>
+        </SettingsGroup>
+      ) : null}
+
+      <MemberPhoneGroup client={client} memberId={member} admin={admin} />
 
       {elder ? (
         <>
@@ -126,8 +131,6 @@ export default function ElderSettings() {
           <GenderChips value={rec?.g ?? m.g ?? null} onPick={(g) => save({ g })} />
         </GroupBody>
       </SettingsGroup>
-
-      <ElderPhoneGroup client={client} memberId={member} admin={admin} />
 
         </>
       ) : null}

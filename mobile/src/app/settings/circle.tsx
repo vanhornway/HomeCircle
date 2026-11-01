@@ -100,19 +100,20 @@ export default function CircleSettings() {
       </SettingsGroup>
 
       {client.isAdmin ? (
-        <SettingsGroup title="Elderly Companion" footer="Choose what each person’s HomeCircle app shows: the full app, or the simple Elderly Companion screens (care circle or grandkids). Their phone switches automatically, and you can change it back and forth as often as you like. Location sharing and everything else keeps working underneath.">
+        <SettingsGroup title="People" footer="Each person’s profile and phone number. The profile is what their HomeCircle app shows: the full app, or the simple Elderly Companion screens (care circle or grandkids). Their phone switches automatically, and you can change it back and forth as often as you like. The phone number is for Call → Call on WhatsApp.">
           {client
             .memberList()
-            .filter((m) => !m.isMe && m.role !== 'owner')
+            .filter((m) => !m.isMe && m.kind !== 'agent')
             .map((m) => {
               const rec = client.memberRecord(m.id);
               const p = profileOf(rec);
+              const phone = client.phoneOf(m.id);
               return (
                 <SettingsRow
                   key={m.id}
                   icon={p === 'full' ? '📱' : '👵'}
                   title={m.name}
-                  detail={`${profileLabel(p)}${skinStatus(rec, client.locations.get(m.id), m.name).state === 'waiting' ? ' · waiting for their phone…' : ''}`}
+                  detail={`${profileLabel(p)}${phone ? ` · ${phone}` : ' · no phone number'}${skinStatus(rec, client.locations.get(m.id), m.name).state === 'waiting' ? ' · waiting for their phone…' : ''}`}
                   href={{ pathname: '/elder', params: { member: m.id } }}
                 />
               );

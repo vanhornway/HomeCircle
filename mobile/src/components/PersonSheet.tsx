@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import type { CircleClient } from '@homecircle/core';
 import { Icon } from './ui';
 import { AlertRuleSheet } from './AlertRuleSheet';
-import { WhatsAppTile } from './CallActions';
+import { CallChoiceSheet } from './CallActions';
 import { errorText } from '../lib/circle';
 import { chirpWithChoice } from '../lib/chirp';
 import { KIND_EMOJI } from '../lib/visits';
@@ -12,7 +12,6 @@ import { spotName, type Anchor } from '../lib/visitsCore';
 import { MemberAvatar } from './MemberAvatar';
 import { canLocate, locatePerson, locateState, openDirections, statusLine, useLocateVersion } from '../lib/people';
 import { timeAgo } from '../lib/useCircle';
-import { canCall, startCall } from '../lib/calls';
 import { useTheme } from '../theme';
 
 /**
@@ -36,6 +35,7 @@ export function PersonSheet({
   const t = useTheme();
   useLocateVersion();
   const [alerting, setAlerting] = useState(false);
+  const [choosingCall, setChoosingCall] = useState(false);
   const [checking, setChecking] = useState(false);
   const { height } = useWindowDimensions();
   const m = memberId ? client.members.get(memberId) : null;
@@ -154,12 +154,9 @@ export function PersonSheet({
                     {client.feature('checkIns') && tile('checkin', checking ? 'Sending…' : 'Check in', 'Ask “where are you?”', askCheckIn, checking)}
                     {client.feature('directMessages') &&
                       tile('chat', 'Message', 'Only you two can read it', go(() => router.push({ pathname: '/conversation', params: { circle: client.circleId!, peer: m.id } })))}
-                    {canCall(client, m.id) &&
-                      tile('phone', 'Call', 'Voice, only you two', () => {
-                        onClose();
-                        startCall(client, m.id).catch((e) => Alert.alert('Couldn’t call', errorText(e)));
-                      })}
-                    <WhatsAppTile client={client} memberId={m.id} onDone={onClose} />
+                    {(client.feature('calls') || client.feature('whatsapp')) &&
+                      m.kind !== 'agent' &&
+                      tile('phone', 'Call', 'In HomeCircle or on WhatsApp', () => setChoosingCall(true))}
                     {client.feature('placeAlerts') && tile('bell', 'Alert me', 'When they arrive or leave', () => setAlerting(true))}
                     {client.feature('chirps') && tile('bird', 'Chirp', 'A sound they’ll know is you', go(() => chirpWithChoice(client, m.id)))}
                   </View>
@@ -199,6 +196,18 @@ export function PersonSheet({
           ) : null}
         </View>
       </View>
+      {m ? (
+        <CallChoiceSheet
+          client={client}
+          memberId={m.id}
+          visible={choosingCall}
+          onClose={() => setChoosingCall(false)}
+          onCalled={() => {
+            setChoosingCall(false);
+            onClose();
+          }}
+        />
+      ) : null}
       {m ? (
         <AlertRuleSheet
           key={`${client.circleId}:${m.id}`}

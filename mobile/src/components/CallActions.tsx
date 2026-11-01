@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Pressable, Text } from 'react-native';
+import { Alert, Modal, Pressable, Text } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CircleClient } from '@homecircle/core';
-import { Icon } from './ui';
+import { Button, Icon } from './ui';
 import { GroupCallSheet } from './GroupCallSheet';
+import { canCall, startCall } from '../lib/calls';
+import { errorText } from '../lib/circle';
 import { openChat, openGroupCallLink, showOutcome } from '../lib/whatsapp';
 import { useSkin } from '../skins';
 import { useTheme } from '../theme';
@@ -27,27 +30,51 @@ function usePhone(client: CircleClient, memberId: string): string | null {
 
 const call = (phone: string) => openChat(phone).then(showOutcome);
 
-/** "Call on WhatsApp" as a tile in a person's sheet (same look as its other tiles). Nothing when they have no number. */
-export function WhatsAppTile({ client, memberId, onDone }: { client: CircleClient; memberId: string; onDone?: () => void }) {
+/**
+ * Call → two buttons: in HomeCircle (voice, phone to phone) or on WhatsApp
+ * (their number). A button that can't be used says why instead.
+ */
+export function CallChoiceSheet({ client, memberId, visible, onClose, onCalled }: { client: CircleClient; memberId: string; visible: boolean; onClose: () => void; onCalled: () => void }) {
   const t = useTheme();
   const phone = usePhone(client, memberId);
-  if (!phone) return null;
+  const inApp = canCall(client, memberId);
+  const name = client.displayName(memberId);
+  const why = (text: string) => <Text style={{ color: t.muted, fontSize: 13, textAlign: 'center' }}>{text}</Text>;
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="Call on WhatsApp. Opens their chat, one tap from calling"
-      onPress={() => {
-        onDone?.();
-        void call(phone);
-      }}
-      style={({ pressed }) => ({ width: '48%', minHeight: 76, borderRadius: 16, borderWidth: 1, borderColor: t.line, backgroundColor: pressed ? t.surface2 : t.bg, padding: 12, gap: 4 })}
-    >
-      <Icon name="phone" color={t.brand} size={24} />
-      <Text style={{ color: t.text, fontSize: 16, fontWeight: '700' }}>Call on WhatsApp</Text>
-      <Text style={{ color: t.muted, fontSize: 12 }} numberOfLines={1}>
-        Opens their chat
-      </Text>
-    </Pressable>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' }}>
+        <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
+          <SafeAreaView edges={['bottom']} style={{ padding: 18, gap: 12 }}>
+            <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>Call {name}</Text>
+            <Button
+              variant="primary"
+              title="Call in HomeCircle"
+              disabled={!inApp}
+              onPress={() => {
+                onCalled();
+                startCall(client, memberId).catch((e) => Alert.alert('Couldn’t call', errorText(e)));
+              }}
+            />
+            {inApp ? why('Voice, phone to phone, only you two') : why(client.feature('calls') ? 'Not on this phone yet (Android only for now).' : 'Voice calls are off for this circle. An admin turns them on in Settings → Features.')}
+            <Button
+              title="Call on WhatsApp"
+              disabled={!phone}
+              onPress={() => {
+                onCalled();
+                void call(phone!);
+              }}
+            />
+            {phone
+              ? why(`Opens WhatsApp with ${phone}`)
+              : why(
+                  client.feature('whatsapp')
+                    ? `No phone number for ${name} yet. Add it in Settings → your circle → People → ${name}.`
+                    : 'WhatsApp links are off for this circle. An admin turns them on in Settings → Features.',
+                )}
+          </SafeAreaView>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 

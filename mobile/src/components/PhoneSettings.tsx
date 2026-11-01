@@ -61,21 +61,26 @@ export function MyPhoneGroup({ client }: { client: CircleClient }) {
   );
 }
 
-/** An elder's phone number, for admins: sealed in her member record. It's used when she hasn't added one herself. */
-export function ElderPhoneGroup({ client, memberId, admin }: { client: CircleClient; memberId: string; admin: boolean }) {
+/**
+ * Anyone's phone number, for admins: sealed in their member record (used when
+ * they haven't added one to their own profile). Call → Call on WhatsApp uses it.
+ */
+export function MemberPhoneGroup({ client, memberId, admin }: { client: CircleClient; memberId: string; admin: boolean }) {
   const t = useTheme();
   const m = client.members.get(memberId);
   const own = m?.phone ?? null;
-  if (!client.feature('whatsapp')) return null;
+  const footer = client.feature('whatsapp')
+    ? 'For Call → Call on WhatsApp. Encrypted, so only the circle can read it. Start with the country code, such as +1 or +92.'
+    : 'For Call → Call on WhatsApp, once an admin turns on WhatsApp links in Features. Encrypted, so only the circle can read it. Start with the country code, such as +1 or +92.';
   return (
-    <SettingsGroup title="Phone number" footer="For “Call on WhatsApp” in the family’s app, never on her phone. Encrypted, so only the circle can read it. Start with the country code, such as +92.">
+    <SettingsGroup title="Phone number" footer={footer}>
       <GroupBody>
         {admin ? (
-          <PhoneEditor saved={client.memberRecord(memberId)?.phone ?? null} label="Her phone number" onSave={(p) => client.setMemberRecord(memberId, { phone: p || null })} />
+          <PhoneEditor saved={client.memberRecord(memberId)?.phone ?? null} label={m ? `${m.name}’s phone number` : 'Phone number'} onSave={(p) => client.setMemberRecord(memberId, { phone: p || null })} />
         ) : (
           <Text style={{ color: t.text, fontSize: 16 }}>{client.phoneOf(memberId) ?? 'None saved'}</Text>
         )}
-        {own ? <Text style={{ color: t.muted, fontSize: 13 }}>She added her own number ({own}), which the family’s app uses instead.</Text> : null}
+        {own ? <Text style={{ color: t.muted, fontSize: 13 }}>They added their own number ({own}), which is used instead.</Text> : null}
       </GroupBody>
     </SettingsGroup>
   );
