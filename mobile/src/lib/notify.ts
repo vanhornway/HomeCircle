@@ -13,6 +13,7 @@ import { conversationKey } from './unread';
 import { previewText } from './polls';
 import { alertSos, ensureSosChannels, stopAlarm } from './sosAlarm';
 import { ensureCallbackChannel, notifyCallback, syncCallbackReminders } from './callbacks';
+import { ensureGroupCallChannel, notifyGroupCall } from './groupCalls';
 import { loadSkin } from '../skins';
 import { isDoNotDisturbOn } from '../../modules/hc-attention/src/HcAttentionModule';
 import { companionAlerts } from '../companion/alerts';
@@ -67,6 +68,7 @@ export async function ensureNotificationChannels() {
   await ensureChirpChannels();
   await ensureSosChannels();
   await ensureCallbackChannel();
+  await ensureGroupCallChannel();
 }
 
 // Message sequence numbers are per server, so each circle keeps its own mark.
@@ -185,12 +187,20 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
     if (conversationKey(id, null) !== reading) await notifyCallback(client, s, showPreviews, { quiet: asleep }).catch(() => {});
   }
   await syncCallbackReminders(client, showPreviews).catch(() => {});
+  // The group call: its own notification, one tap to join; joins are only lines in the chat.
+  const groupCall = (m: Message) => m.kind === 'chat' && !m.peer && !!m.body?.groupCall;
+  for (const m of messages) {
+    if (m.seq <= last || m.from === me || !groupCall(m) || m.body.groupCall.state !== 'start') continue;
+    const s = client.groupCallState(m.id);
+    if (s?.open && !s.joined.includes(me) && conversationKey(id, null) !== reading) await notifyGroupCall(client, s, { previews: showPreviews }).catch(() => {});
+  }
   const fresh = messages.filter(
     (m) =>
       m.seq > last &&
       m.from !== me &&
       sosOf(m) !== 'start' &&
       !callbackAsk(m) &&
+      !groupCall(m) &&
       (m.kind === 'chat' || ruleHit(m) || (m.kind === 'event' && showPlaceAlerts && notifyAllPlaceAlerts)) &&
       conversationKey(id, m.peer) !== reading,
   );

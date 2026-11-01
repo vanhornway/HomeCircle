@@ -719,6 +719,23 @@
      ]
     }
    }
+  },
+  "groupcall.started": {
+   "en": "{name} started a family call. Touch to join.",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "{name} نے فیملی کال شروع کی ہے۔ شامل ہونے کے لیے چھوئیں۔",
+     "parts": [
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_groupcall_started_1"
+      }
+     ]
+    }
+   }
   }
  }
 }

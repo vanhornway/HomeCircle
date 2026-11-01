@@ -9,6 +9,7 @@ import { shareNow } from '../lib/location';
 import { ServerBanner } from '../components/ServerBanner';
 import { PollCard } from '../components/PollCard';
 import { CallbackCard } from '../components/CallbackCard';
+import { GroupCallCard } from '../components/GroupCallCard';
 import { ReminderCard } from '../components/ReminderCard';
 import { GroupCallButton, WhatsAppCallButton } from '../components/CallActions';
 import { MemberAvatar } from '../components/MemberAvatar';
@@ -259,6 +260,9 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     // Call-back requests from the Elderly Companion app, and the replies (a line each).
     if (!peer && m.body?.callback?.state === 'ask') return <CallbackCard client={client} m={m} onReply={() => setReactingTo(m)} />;
     if (!peer && m.body?.callback?.state === 'reply') return <Text style={pill}>{String(m.body.text ?? '').replace(/^📞\s*/, '')}</Text>;
+    // The WhatsApp group call: a card with Join; who joined, a line each.
+    if (!peer && m.body?.groupCall?.state === 'start') return <GroupCallCard client={client} m={m} />;
+    if (!peer && m.body?.groupCall?.state === 'join') return <Text style={pill}>{String(m.body.text ?? '').replace(/^📞\s*/, '')}</Text>;
     const mine = m.from === me;
     if (m.body?.poll) {
       return (

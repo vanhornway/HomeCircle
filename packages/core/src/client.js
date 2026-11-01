@@ -53,6 +53,8 @@ export const CALLBACK_REPLY_TEXT = {
 const MAX_MEMBERS_ASKED = 50;
 /** Every answer a request can get: the four buttons, and 'asleep', which a phone sends by itself. */
 export const CALLBACK_ANSWERS = [...CALLBACK_REPLIES, 'asleep'];
+/** A group call is on this long after it started or someone last joined. */
+export const GROUP_CALL_OPEN_MS = 30 * 60_000;
 
 const AGENT_NAME = /^[\p{L}\p{N}][\p{L}\p{N} _-]{0,23}$/u;
 /** An agent's name: what people call it (/Name), so letters, digits, space, _ and - only. */
@@ -1895,6 +1897,60 @@ export class CircleClient {
   /** The circle's WhatsApp call link, or null. */
   get groupCallLink() {
     return this.circle?.groupCallLink || null;
+  }
+
+  // --- group calls ---------------------------------------------------------
+  // Anyone starts the circle's WhatsApp group call: a group chat message with
+  // `body.groupCall` { state: 'start' }, sent urgent so every phone wakes and
+  // shows "join" (the link itself stays in the circle record). Joining adds a
+  // quiet { state: 'join', of } line. A call counts as on for 30 minutes after
+  // it started or someone last joined.
+
+  /** Start the group call (or join the one that's on). Returns its id. */
+  async startGroupCall() {
+    if (!this.groupCallLink) throw new Error('This circle has no WhatsApp group call link yet. An admin adds it in the group chat’s Group call.');
+    const on = this.activeGroupCall();
+    if (on) {
+      await this.joinGroupCall(on.id);
+      return on.id;
+    }
+    const id = randomId(12);
+    await this._post('chat', { text: `📞 ${this.myName} started a WhatsApp group call. Tap to join.`, groupCall: { state: 'start' } }, { id, urgent: true });
+    return id;
+  }
+
+  /** Say you joined a group call (once per call). */
+  async joinGroupCall(callId) {
+    const s = this.groupCallState(callId);
+    const me = this.account?.memberId;
+    if (!s || s.joined.includes(me)) return;
+    await this._post('chat', { text: `📞 ${this.myName} joined the group call.`, groupCall: { state: 'join', of: callId } });
+  }
+
+  /** A group call: { id, from, ts, joined (member ids, the starter first), last, open }. */
+  groupCallState(callId, now = Date.now()) {
+    const start = this.messages.find((m) => m.id === callId && m.kind === 'chat' && !m.peer && m.body?.groupCall?.state === 'start');
+    if (!start) return null;
+    const joined = [start.from];
+    let last = start.ts;
+    for (const m of this.messages) {
+      if (m.kind !== 'chat' || m.peer || m.seq <= start.seq || m.body?.groupCall?.state !== 'join' || m.body.groupCall.of !== callId) continue;
+      if (!joined.includes(m.from)) joined.push(m.from);
+      last = Math.max(last, m.ts);
+    }
+    return { id: callId, from: start.from, ts: start.ts, joined, last, open: now - last < GROUP_CALL_OPEN_MS };
+  }
+
+  /** The group call that's on now (the newest), or null. */
+  activeGroupCall(now = Date.now()) {
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const m = this.messages[i];
+      if (m.kind === 'chat' && !m.peer && m.body?.groupCall?.state === 'start') {
+        const s = this.groupCallState(m.id, now);
+        if (s?.open) return s;
+      }
+    }
+    return null;
   }
 
   /** Admins: save (or, empty, remove) the circle's WhatsApp group call link, sealed in the circle's record. */

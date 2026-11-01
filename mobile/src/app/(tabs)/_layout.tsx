@@ -13,6 +13,7 @@ import { mark, takeStartup } from '../../lib/startup';
 import { getServerState, isUnreachable, RECONNECT_GRACE_MS, setRetryHandler, setServerState } from '../../lib/connection';
 import { registerPush } from '../../lib/push';
 import { clearBackupAlerts, ensureNotificationChannels, markSeen, notifyNewMessages } from '../../lib/notify';
+import { useJoinGroupCallFromNotification } from '../../lib/groupCalls';
 import { ensureReadBase, unreadInCircle } from '../../lib/unread';
 import { useAllCircles } from '../../lib/useCircle';
 import { shareNow, startBackgroundUpdates, syncGeofences } from '../../lib/location';
@@ -334,6 +335,7 @@ function FullTabs() {
   const places = !all.length || all.some((c) => c.feature('locationSharing'));
   useCircleLifecycle(clients.map((c) => c.accountKey).join('|'));
   useOpenChatFromNotification();
+  useJoinGroupCallFromNotification();
   useEffect(() => mark('tabs'), []);
   // A newer app? Checked at most every 4 hours, on opening and coming back.
   useEffect(() => {

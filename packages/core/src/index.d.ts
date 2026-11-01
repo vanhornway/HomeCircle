@@ -330,6 +330,20 @@ export interface CompanionInvite {
   skin?: string;
 }
 
+/** A WhatsApp group call someone started in the circle. */
+export interface GroupCallState {
+  id: string;
+  /** Who started it. */
+  from: string;
+  ts: number;
+  /** Who said they joined, the starter first. */
+  joined: string[];
+  /** When it started or someone last joined. */
+  last: number;
+  /** Still on: under 30 minutes since `last`. */
+  open: boolean;
+}
+
 /** Where a call-back request from the Elderly Companion app stands. */
 export interface CallbackState {
   id: string;
@@ -682,6 +696,13 @@ export class CircleClient {
   readonly groupCallLink: string | null;
   /** Admins: save (empty removes) the circle's WhatsApp call link, sealed in the circle's record. */
   setGroupCallLink(link: string | null): Promise<void>;
+  /** Start the circle's group call (everyone is told), or join the one that's on. Returns its id. */
+  startGroupCall(): Promise<string>;
+  /** Say you joined a group call (once per call). */
+  joinGroupCall(callId: string): Promise<void>;
+  groupCallState(callId: string, now?: number): GroupCallState | null;
+  /** The group call that's on now, or null. */
+  activeGroupCall(now?: number): GroupCallState | null;
   /** An elder's phone, once joined: tell the circle, so an admin's phone saves her settings. */
   announceElder(opts?: { page?: 'care' | 'grandkids'; skin?: string }): Promise<void>;
   /** Elders who announced themselves and have no member record yet. */

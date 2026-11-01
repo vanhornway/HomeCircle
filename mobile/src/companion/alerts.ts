@@ -9,6 +9,7 @@ import { alertSos, stopAlarm } from '../lib/sosAlarm';
 import { replyLine } from './status';
 import { genderOf, inSleepHours, tileName } from './people';
 import { allClients } from '../lib/circle';
+import { notifyGroupCall } from '../lib/groupCalls';
 import { say, text, type Gender, type Line } from './lines';
 
 const CHANNEL = 'companion-replies';
@@ -36,6 +37,16 @@ export async function companionAlerts(client: CircleClient, messages: Message[],
     const sos = client.feature('sos') ? m.body?.sos?.state : null;
     if (sos === 'start') await alertSos(client, m).catch(() => {});
     if (sos === 'safe') stopAlarm();
+    // The family's group call: she hears who started it, and one touch on the notification joins.
+    if (m.body?.groupCall?.state === 'start' && !asleep) {
+      const s = client.groupCallState(m.id);
+      if (s?.open) {
+        const line: Line = { key: 'groupcall.started', name: tileName(client, s.from) };
+        say(line);
+        await notifyGroupCall(client, s, { title: `📞 ${text(line)}`, body: '' }).catch(() => {});
+      }
+      continue;
+    }
     const r = m.body?.callback;
     if (r?.state !== 'reply') continue;
     const s = client.callbackState(r.of);

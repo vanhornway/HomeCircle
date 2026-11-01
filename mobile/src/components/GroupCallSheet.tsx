@@ -6,7 +6,7 @@ import type { CircleClient } from '@homecircle/core';
 import { Button } from './ui';
 import { errorText } from '../lib/circle';
 import { inAppCalls } from '../lib/inAppCalls';
-import { openGroupCallLink, showOutcome } from '../lib/whatsapp';
+import { joinGroupCall } from '../lib/groupCalls';
 import { callLinkFrom } from '../lib/whatsappCore';
 import { useTheme } from '../theme';
 
@@ -25,6 +25,7 @@ export function GroupCallSheet({ client, visible, onClose }: { client: CircleCli
   const [changing, setChanging] = useState(false);
   const editing = admin && (!link || changing);
   const inApp = inAppCalls();
+  const on = client.activeGroupCall();
 
   const close = () => {
     setDraft('');
@@ -69,13 +70,17 @@ export function GroupCallSheet({ client, visible, onClose }: { client: CircleCli
             <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>Group call</Text>
             {link && !editing ? (
               <>
-                <Text style={{ color: t.muted, fontSize: 14, lineHeight: 20 }}>Opens {client.circle.name}’s call in WhatsApp. Everyone with the link can join from there.</Text>
+                <Text style={{ color: t.muted, fontSize: 14, lineHeight: 20 }}>
+                  {on
+                    ? `${client.displayName(on.from)} started it. On it: ${on.joined.map((id) => client.displayName(id)).join(', ')}.`
+                    : `Opens ${client.circle.name}’s call in WhatsApp, and tells everyone in the circle so they can join with one tap.`}
+                </Text>
                 <Button
                   variant="primary"
-                  title="Join the group call"
+                  title={on ? 'Join the call' : 'Start group call'}
                   onPress={() => {
                     close();
-                    void openGroupCallLink(link).then(showOutcome);
+                    void joinGroupCall(client, on?.id ?? null);
                   }}
                 />
                 {admin ? (

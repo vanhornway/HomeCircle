@@ -11,6 +11,7 @@ import { ensureNotificationChannels, notifyNewMessages } from '../../lib/notify'
 import { shareNow, startBackgroundUpdates } from '../../lib/location';
 import { loadPages, settingsOf } from '../../companion/people';
 import { flushOutbox } from '../../companion/outbox';
+import { useJoinGroupCallFromNotification } from '../../lib/groupCalls';
 import { markUsed } from '../../companion/used';
 import { C } from '../../companion/theme';
 
@@ -25,6 +26,8 @@ export default function CompanionLayout() {
   const skin = useSkin();
   const [pagesReady, setPagesReady] = useState(false);
   const { version } = useCircles();
+  // "Family call started": one touch on the notification and WhatsApp opens in the call.
+  useJoinGroupCallFromNotification();
 
   useEffect(() => {
     loadPages().finally(() => setPagesReady(true));
