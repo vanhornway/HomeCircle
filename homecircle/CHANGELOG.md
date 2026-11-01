@@ -2,6 +2,19 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.22.3
+
+- Fixed: a voice call answered from the lock screen, or with HomeCircle
+  closed or in the background, could stay on "Connecting" and never connect.
+  The answering phone now waits until HomeCircle is on screen before opening
+  the microphone, the caller sends its connection details again once the call
+  is answered (details sent while the other phone was asleep could be lost),
+  and an answered call that hasn't connected within 6 seconds sets up its
+  connection again (up to 3 times). A call can no longer stay on
+  "Connecting": it connects or ends with a reason within 30 seconds.
+- Diagnostics show each step of a call (call:answer, call:ice).
+- Needs the HomeCircle app 0.22.3 on both phones; no server change.
+
 ## 0.22.2
 
 - WhatsApp group call: Start group call (the Group call button in the group

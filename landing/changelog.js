@@ -1,6 +1,15 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.22.3',
+    date: '2026-11-01',
+    title: 'Calls connect from the lock screen',
+    items: [
+      'Fixed: a call answered from the lock screen, or while HomeCircle was closed or in the background, could stay on “Connecting”. It now connects, on Wi-Fi or mobile data.',
+      'A call that can’t connect ends within 30 seconds with the reason, instead of waiting forever.',
+    ],
+  },
+  {
     version: '0.22.2',
     date: '2026-10-31',
     title: 'Group calls everyone can join with one tap',
