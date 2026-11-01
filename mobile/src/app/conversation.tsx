@@ -16,6 +16,7 @@ import { HelperAvatar } from '../components/HelperAvatar';
 import { MemberAvatar } from '../components/MemberAvatar';
 import { REPLY_LABELS, syncCallbackReminders, timeIn } from '../lib/callbacks';
 import { CreatePoll } from '../components/CreatePoll';
+import { askedText, helperQuestion, isHelperStatusLine, parseHelperReply, type HelperReply } from '../lib/helperChat';
 import { LinkedText } from '../components/LinkedText';
 import { pickDocument, pickPhoto } from '../lib/upload';
 import { clientForCircle, errorText, useCircles } from '../lib/circle';
@@ -82,8 +83,10 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   const pinch = usePinchZoom();
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  // The circle's agent: asked with "/Name …", the + menu, or in its own chat.
+  // The circle's agent: asked from the + menu, by starting with its name ("Chirya, …"), or in its own chat.
   const agent = client.feature('agent') ? client.agent : null;
+  // Its name for questions asked earlier (it may have been renamed or removed since).
+  const helperName = client.agent?.name ?? client.agentInvited?.name ?? '';
   const withAgent = !!agent && peer === agent.id;
   const [asking, setAsking] = useState(false);
   const [pollOpen, setPollOpen] = useState(false);
@@ -140,7 +143,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     setText('');
     setError(null);
     try {
-      const question = agent && !peer ? agentQuestion(value, agent.name) : null;
+      const question = agent && !peer ? helperQuestion(value, agent.name) : null;
       if (withAgent) await client.askAgent(value, { peer });
       else if (agent && !peer && (asking || question != null)) {
         await client.askAgent(question ?? value);
@@ -227,6 +230,24 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
       : `Direct message · ${client.circle.name} · end-to-end encrypted`
     : `Group · ${plural(client.memberList().length, 'member')} · end-to-end encrypted`;
 
+  // A question to the helper shows as the person's own words, without the "/Name" it carries.
+  const shownText = (m: Message) => {
+    const raw = String(m.body?.text ?? '');
+    return m.body?.agentAsk && !m.peer ? askedText(raw, helperName) : raw;
+  };
+  const undo = (m: Message) => {
+    const key = `undo:${m.id}`;
+    setSavedLists((s) => new Set(s).add(key));
+    client.undoAgent(m.body!.undo, { peer }).catch((e) => {
+      setSavedLists((s) => {
+        const next = new Set(s);
+        next.delete(key);
+        return next;
+      });
+      setError(errorText(e));
+    });
+  };
+
   const eventLabel = (m: Message) =>
     `${client.members.get(m.from)?.name || 'Former member'} ${m.body?.action === 'left' ? 'left' : 'arrived at'} ${m.body?.placeName || 'a place'} · ${clock(typeof m.body?.at === 'number' ? m.body.at : m.ts)}`;
   const pill = { alignSelf: 'center', color: t.muted, backgroundColor: t.surface2, fontSize: fs(14), paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, overflow: 'hidden', marginVertical: 4 } as const;
@@ -287,6 +308,9 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     // The WhatsApp group call: a card with Join while it's on, then one line. Joins show on the card, not as lines.
     if (!peer && m.body?.groupCall?.state === 'start') return <GroupCallCard client={client} m={m} />;
     if (!peer && m.body?.groupCall?.state === 'join') return null;
+    const fromHelper = who?.kind === 'agent';
+    // "↩️ Undone." from the helper: a line, like alerts.
+    if (fromHelper && isHelperStatusLine(String(m.body?.text ?? ''))) return <Text style={pill}>{m.body!.text}</Text>;
     const mine = m.from === me;
     if (m.body?.poll) {
       return (
@@ -298,13 +322,23 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     }
     const big = isEmojiOnly(m.body?.text);
     const reactions = client.reactionsFor(m.id);
+    // The helper's replies: what it kept is a chip with Undo in it; privacy notes are one short line each.
+    const reply: HelperReply | null = fromHelper && typeof m.body?.text === 'string' ? parseHelperReply(m.body.text) : null;
+    const toHelper = !!m.body?.agentAsk && !peer;
+    const bubbleText = reply ? reply.text : shownText(m);
+    const undoable = fromHelper && Array.isArray(m.body?.undo) && m.body.undo.length > 0;
+    const undone = savedLists.has(`undo:${m.id}`);
+    const longPress = () => {
+      Keyboard.dismiss();
+      setReactingTo(m);
+    };
     // A reminder from the helper: the same highlighted card as a call-back request.
     const reminderId = who?.kind === 'agent' && typeof m.body?.reminder?.id === 'string' ? (m.body.reminder.id as string) : null;
     return (
       <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', alignItems: mine ? 'flex-end' : 'flex-start', maxWidth: '82%', marginVertical: 3, ...(reminderId ? { width: '84%', maxWidth: undefined, alignItems: 'stretch' } : null) }}>
         {!mine && !peer ? (
           <Text style={{ color: who?.kind === 'agent' ? t.brand : who?.color || t.muted, fontSize: fs(13), fontWeight: '700', marginLeft: 4, marginBottom: 2 }}>
-            {who?.kind === 'agent' ? `🤖 ${name}` : name}
+            {who?.kind === 'agent' ? `🐦 ${name}` : name}
           </Text>
         ) : null}
         {reminderId ? (
@@ -317,12 +351,9 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
               client.doneAgentReminder(reminderId, { peer }).catch((e) => setError(errorText(e)));
             }}
           />
-        ) : (
+        ) : bubbleText || !reply?.kept ? (
           <Pressable
-            onLongPress={() => {
-              Keyboard.dismiss();
-              setReactingTo(m);
-            }}
+            onLongPress={longPress}
             delayLongPress={300}
             accessibilityHint="Long-press to react"
             style={({ pressed }) => ({
@@ -333,16 +364,21 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
               opacity: pressed ? 0.75 : 1,
             })}
           >
+            {toHelper ? (
+              <Text style={{ color: mine ? t.brandInk : t.brand, opacity: mine ? 0.8 : 1, fontSize: fs(12), fontWeight: '700', marginBottom: 2 }}>To {helperName || 'the helper'}</Text>
+            ) : null}
             {big ? (
               <Text style={{ fontSize: fs(44), lineHeight: fs(54) }}>{m.body?.text}</Text>
             ) : (
-              <LinkedText text={String(m.body?.text ?? '')} style={{ color: mine ? t.brandInk : t.text, fontSize: fs(17), lineHeight: fs(23) }} linkColor={mine ? t.brandInk : t.brand} />
+              <LinkedText text={bubbleText} style={{ color: mine ? t.brandInk : t.text, fontSize: fs(17), lineHeight: fs(23) }} linkColor={mine ? t.brandInk : t.brand} />
             )}
+            {undoable && !reply?.kept ? <UndoLink undone={undone} onPress={() => undo(m)} fs={fs} /> : null}
           </Pressable>
-        )}
-        {who?.kind === 'agent' && Array.isArray(m.body?.undo) && m.body.undo.length ? (
-          <Button small title="Undo" onPress={() => client.undoAgent(m.body!.undo, { peer }).catch((e) => setError(errorText(e)))} style={{ marginTop: 6 }} />
         ) : null}
+        {reply?.kept ? (
+          <KeptChip kept={reply.kept} undoable={undoable} undone={undone} onUndo={() => undo(m)} onLongPress={longPress} fs={fs} style={bubbleText ? { marginTop: 6 } : null} />
+        ) : null}
+        {reply && (reply.extra.length || reply.notes.length) ? <ReplyNotes reply={reply} fs={fs} /> : null}
         {who?.kind === 'agent' && m.body?.save?.by === me && typeof m.body.save.id === 'string' && !savedLists.has(m.body.save.id) ? (
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
             {[true, false].map((ok) => (
@@ -567,8 +603,20 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             </Text>
           </SafeAreaView>
         ) : (
-          <SafeAreaView edges={['bottom']} style={{ backgroundColor: t.surface }}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 10, borderTopWidth: 1, borderTopColor: t.line }}>
+          <SafeAreaView edges={['bottom']} style={{ backgroundColor: t.surface, borderTopWidth: 1, borderTopColor: t.line }}>
+            {agent && !peer && (asking || helperQuestion(text, agent.name) != null) ? (
+              // Who this goes to: the helper (from the + menu, or a message that starts with its name).
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 10, marginTop: 8, paddingLeft: 6, paddingRight: asking ? 0 : 12, minHeight: 36, borderRadius: 18, backgroundColor: t.brandSoft, alignSelf: 'flex-start' }}>
+                <HelperAvatar size={26} />
+                <Text style={{ color: t.brand, fontSize: 15, fontWeight: '700' }}>To {agent.name}</Text>
+                {asking ? (
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Stop asking ${agent.name}`} hitSlop={8} onPress={() => setAsking(false)} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: t.brand, fontSize: 20, lineHeight: 22 }}>×</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 10 }}>
               {hasMenu ? (
                 <Pressable
                   accessibilityRole="button"
@@ -604,15 +652,19 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
                 <Icon name="send" color={t.brandInk} size={22} />
               </Pressable>
             </View>
-            {agent && !peer && /^\/\S*$/.test(text) && `/${agent.name}`.toLowerCase().startsWith(text.toLowerCase()) ? (
+            {agent && !peer && !asking && /^@\S*$/.test(text) && `@${agent.name}`.toLowerCase().startsWith(text.toLowerCase()) ? (
+              // "@" and the start of its name: ask it instead.
               <Pressable
                 accessibilityRole="button"
-                onPress={() => setText(`/${agent.name} `)}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 10, marginBottom: 8, padding: 10, borderRadius: 12, backgroundColor: t.brandSoft }}
+                onPress={() => {
+                  setText('');
+                  setAsking(true);
+                  input.current?.focus();
+                }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 10, marginBottom: 8, minHeight: 48, paddingHorizontal: 10, borderRadius: 12, backgroundColor: t.brandSoft }}
               >
-                <Text style={{ fontSize: 18 }}>🤖</Text>
-                <Text style={{ color: t.brand, fontSize: 16, fontWeight: '700' }}>/{agent.name}</Text>
-                <Text style={{ color: t.muted, fontSize: 13 }}>ask the circle’s helper</Text>
+                <HelperAvatar size={28} />
+                <Text style={{ color: t.brand, fontSize: 16, fontWeight: '700' }}>Ask {agent.name}</Text>
               </Pressable>
             ) : null}
           </SafeAreaView>
@@ -638,7 +690,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
                 if (!s) {
                   return (
                     <Text style={{ color: t.muted, fontSize: 15 }} numberOfLines={2}>
-                      React to “{reactingTo.body?.text}”
+                      React to “{shownText(reactingTo)}”
                     </Text>
                   );
                 }
@@ -749,15 +801,100 @@ function chatRows(messages: Message[]): ChatRow[] {
   return rows;
 }
 
-/** "/Jarvis when…" or "/agent when…" → "when…" (the question for the agent), else null. */
-function agentQuestion(text: string, name: string): string | null {
-  const t = text.trim();
-  const lower = t.toLowerCase();
-  // "/Chirya when…", and commands written "/Chirya/dream".
-  for (const tag of [`/${name.toLowerCase()} `, `/${name.toLowerCase()}/`, '/agent ', '/agent/']) {
-    if (lower.startsWith(tag)) return t.slice(tag.length).trim() || null;
-  }
-  return null;
+/** "Remembered: Dr. Lee", with Undo in it (and "Undone" once tapped). */
+function KeptChip({
+  kept,
+  undoable,
+  undone,
+  onUndo,
+  onLongPress,
+  fs,
+  style,
+}: {
+  kept: NonNullable<HelperReply['kept']>;
+  undoable: boolean;
+  undone: boolean;
+  onUndo: () => void;
+  onLongPress: () => void;
+  fs: (n: number) => number;
+  style?: object | null;
+}) {
+  const t = useTheme();
+  const what = kept.titles.join(' · ');
+  return (
+    <Pressable
+      onLongPress={onLongPress}
+      delayLongPress={300}
+      accessibilityLabel={`${kept.verb}: ${what}${undone ? '. Undone' : ''}`}
+      accessibilityHint="Long-press to react"
+      style={[{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 40, paddingLeft: 12, paddingRight: undoable ? 4 : 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: t.line, backgroundColor: t.surface }, style]}
+    >
+      <Text style={{ fontSize: fs(14) }}>📌</Text>
+      <Text style={{ flexShrink: 1, color: undone ? t.muted : t.text, fontSize: fs(15), textDecorationLine: undone ? 'line-through' : 'none' }} numberOfLines={3}>
+        <Text style={{ color: t.muted }}>{kept.verb}: </Text>
+        <Text style={{ fontWeight: '600' }}>{what}</Text>
+      </Text>
+      {undoable ? (
+        undone ? (
+          <Text style={{ color: t.muted, fontSize: fs(13), paddingHorizontal: 8 }}>Undone</Text>
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Undo. Forget ${what}`}
+            hitSlop={6}
+            onPress={onUndo}
+            style={({ pressed }) => ({ minHeight: 32, paddingHorizontal: 12, borderRadius: 16, justifyContent: 'center', backgroundColor: pressed ? t.surface2 : t.brandSoft })}
+          >
+            <Text style={{ color: t.brand, fontSize: fs(14), fontWeight: '700' }}>Undo</Text>
+          </Pressable>
+        )
+      ) : null}
+    </Pressable>
+  );
+}
+
+/** Undo at the foot of a helper's answer that changed its memory. */
+function UndoLink({ undone, onPress, fs }: { undone: boolean; onPress: () => void; fs: (n: number) => number }) {
+  const t = useTheme();
+  if (undone) return <Text style={{ color: t.muted, fontSize: fs(13), marginTop: 4 }}>Undone</Text>;
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel="Undo" hitSlop={8} onPress={onPress} style={{ alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center', marginTop: 2 }}>
+      <Text style={{ color: t.brand, fontSize: fs(14), fontWeight: '700' }}>Undo</Text>
+    </Pressable>
+  );
+}
+
+/** Under a helper's reply: reminders it set up, and privacy notes as one short line each (tap for why). */
+function ReplyNotes({ reply, fs }: { reply: HelperReply; fs: (n: number) => number }) {
+  const t = useTheme();
+  const [open, setOpen] = useState<number | null>(null);
+  const line = { color: t.muted, fontSize: fs(13), lineHeight: fs(18) } as const;
+  return (
+    <View style={{ gap: 2, marginTop: 4, marginHorizontal: 6 }}>
+      {reply.extra.map((x) => (
+        <Text key={x} style={line}>
+          {x}
+        </Text>
+      ))}
+      {reply.notes.map((n, i) => (
+        <Pressable
+          key={n.short}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open === i }}
+          accessibilityLabel={`${n.short}. ${open === i ? n.full : 'Tap for why'}`}
+          onPress={() => setOpen(open === i ? null : i)}
+          hitSlop={6}
+          style={{ minHeight: 28, justifyContent: 'center' }}
+        >
+          <Text style={line}>
+            🔒 {n.short}
+            {open === i ? '' : '  ›'}
+          </Text>
+          {open === i ? <Text style={[line, { marginTop: 2 }]}>{n.full}</Text> : null}
+        </Pressable>
+      ))}
+    </View>
+  );
 }
 
 /** ✓ sent, ✓✓ delivered, and ✓✓ in colour when read (if you share read receipts). */

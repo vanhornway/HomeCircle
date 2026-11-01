@@ -93,19 +93,19 @@ export function MemoryBody() {
   }, [client, query, type]);
   useFocusEffect(load);
 
-  // Same as "/Name dream" in a chat: it answers in your chat with it.
+  // "Tidy up memory" (the helper's "dream" command): it answers in your chat with it.
   const dream = () =>
     Alert.alert(
-      'Dream?',
-      `${name} goes through everything the circle shares and sorts it: each note into its kind (people, places, events…), clearer titles, links between them, duplicates merged. It uses the AI budget, and one Undo takes it back.`,
+      'Tidy up memory?',
+      `${name} sorts everything the circle shares: clearer titles, each note in its kind, links between them, duplicates merged. It uses the AI budget, and one Undo takes it back.`,
       [
         { text: 'Not now', style: 'cancel' },
         {
-          text: 'Dream',
+          text: 'Tidy up',
           onPress: () =>
             client
               .askAgent('dream', { peer: client.agent?.id ?? null })
-              .then(() => Alert.alert('Dreaming…', `${name} will message you when it’s done.`))
+              .then(() => Alert.alert('Tidying up…', `${name} will message you when it’s done.`))
               .catch((e) => setError(errorText(e))),
         },
       ],
@@ -171,7 +171,7 @@ export function MemoryBody() {
           }
           ListEmptyComponent={
             <Text style={{ color: t.muted, fontSize: 15, lineHeight: 21, textAlign: 'center', marginTop: 24 }}>
-              {query ? 'Nothing matches.' : `Nothing yet. Tell ${name} something (“/${name} our dentist is Dr. Lee”), long-press a message and tap Remember, or send it a calendar link or PDF.`}
+              {query ? 'Nothing matches.' : `Nothing yet. Tell ${name} something (“${name}, our dentist is Dr. Lee”), long-press a message and tap Remember, or send it a calendar link or PDF.`}
             </Text>
           }
           renderItem={({ item: n }) => (
@@ -202,7 +202,7 @@ export function MemoryBody() {
         />
       )}
       <View style={{ position: 'absolute', right: 16, bottom: 24, flexDirection: 'row', gap: 10 }}>
-        {client.isAdmin ? <Button title="💤 Dream" onPress={dream} /> : null}
+        {client.isAdmin ? <Button title="🧹 Tidy up memory" onPress={dream} /> : null}
         <Button variant="primary" title="+ Note" onPress={() => setAdding(true)} />
       </View>
       {open ? <NoteSheet id={open} onClose={closeNote} onChanged={load} /> : null}

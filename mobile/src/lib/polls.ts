@@ -1,10 +1,12 @@
 // Helpers for polls in the app: previews, templates and option ideas.
 import type { CircleClient, Message } from '@homecircle/core';
 import { KIND_EMOJI } from './visits';
+import { askedText } from './helperChat';
 
-/** A message as one line for notifications and the chat list ("📊 Question" for a poll). */
+/** A message as one line for notifications and the chat list ("📊 Question" for a poll, "🐦 question" for one to the helper). */
 export function previewText(m: Message): string {
   if (m.body?.poll?.question) return `📊 ${m.body.poll.question}`;
+  if (m.body?.agentAsk && typeof m.body.text === 'string') return `🐦 ${askedText(m.body.text, '')}`;
   return String(m.body?.text ?? '');
 }
 
