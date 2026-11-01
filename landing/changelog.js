@@ -1,6 +1,16 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.22.2',
+    date: '2026-10-31',
+    title: 'Group calls everyone can join with one tap',
+    items: [
+      'Start group call: tap Group call in the group chat and WhatsApp opens in your circle’s call, while everyone in the circle gets a notification. One tap on it and they’re in the call too.',
+      'The chat shows who’s on the call, with a Join button, and a line for each person who joins.',
+      'Elders hear in Urdu that the family call has started and who is waiting, and join with one touch.',
+    ],
+  },
+  {
     version: '0.22.1',
     date: '2026-10-31',
     title: 'Calls and profile switching fixed',

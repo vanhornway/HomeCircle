@@ -2,6 +2,19 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.22.2
+
+- WhatsApp group call: Start group call (the Group call button in the group
+  chat) opens WhatsApp in the circle's call and sends an urgent sealed message,
+  so every phone shows "started the group call · tap to join". The
+  notification opens WhatsApp straight into the call, and each join adds a line
+  to the chat. Starting while a call is on joins it. A call reads as over 30
+  minutes after the last join. The link stays sealed in the circle record; the
+  server sees only sealed messages.
+- Elder phones hear "The family call has started. {name} is waiting for you."
+  in Urdu, and one touch on the notification joins.
+- Needs the HomeCircle app 0.22.2; no server change.
+
 ## 0.22.1
 
 - Fixed: tapping Call closed the app. The app now asks for the microphone
