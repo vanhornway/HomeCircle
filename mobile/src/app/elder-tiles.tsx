@@ -46,7 +46,7 @@ export default function ElderTiles() {
 
   return (
     <SettingsPage title="People on her tiles">
-      <Text style={{ color: t.muted, fontSize: 13, lineHeight: 18, marginTop: 12, marginHorizontal: 4 }}>
+      <Text style={{ color: t.muted, fontSize: 14, lineHeight: 18, marginTop: 12, marginHorizontal: 4 }}>
         {her.name}’s page shows these people in this order. Each tile shows the person’s own photo (coming soon), or else the name below in large Urdu letters.
       </Text>
       {people.map((p, i) => (
@@ -56,29 +56,29 @@ export default function ElderTiles() {
               <TilePreview client={client} herId={member} member={p} />
               <View style={{ flex: 1 }}>
                 <Text style={{ color: t.text, fontSize: 16, fontWeight: '700' }}>{p.name}</Text>
-                <Text style={{ color: t.muted, fontSize: 13 }}>Tile {i + 1}</Text>
+                <Text style={{ color: t.muted, fontSize: 14 }}>Tile {i + 1}</Text>
               </View>
               {client.isAdmin ? arrow('Move up', i > 0, () => move(p.id, -1)) : null}
               {client.isAdmin ? arrow('Move down', i < people.length - 1, () => move(p.id, 1)) : null}
             </View>
             <Text style={{ color: t.text, fontSize: 14, fontWeight: '600' }}>Photo on her tile</Text>
             {p.photo ? (
-              <Text style={{ color: t.muted, fontSize: 13 }}>Their own photo, from their app.</Text>
+              <Text style={{ color: t.muted, fontSize: 14 }}>Their own photo, from their app.</Text>
             ) : client.isAdmin && client.feature('photos') ? (
               <>
-                <Text style={{ color: t.muted, fontSize: 13 }}>
+                <Text style={{ color: t.muted, fontSize: 14 }}>
                   {client.memberRecord(member)?.photos?.[p.id] ? 'Chosen by an admin. If they add their own photo, it replaces this one.' : 'No photo yet. Pick a close, bright photo of their face that she’ll recognize.'}
                 </Text>
                 <PhotoButtons has={!!client.memberRecord(member)?.photos?.[p.id]} onPhoto={(bytes) => client.setTilePhoto(member, p.id, bytes)} />
               </>
             ) : (
-              <Text style={{ color: t.muted, fontSize: 13 }}>No photo yet.</Text>
+              <Text style={{ color: t.muted, fontSize: 14 }}>No photo yet.</Text>
             )}
             <Text style={{ color: t.text, fontSize: 14, fontWeight: '600' }}>What {her.name} calls them, in Urdu</Text>
             <FamilyNameEditor client={client} callerId={member} memberId={p.id} chips={[]} placeholder="e.g. عمیر" />
             <Text style={{ color: t.text, fontSize: 14, fontWeight: '600' }}>He or she</Text>
             {p.g ? (
-              <Text style={{ color: t.muted, fontSize: 13 }}>{p.g === 'f' ? 'She' : 'He'}, set in their own profile.</Text>
+              <Text style={{ color: t.muted, fontSize: 14 }}>{p.g === 'f' ? 'She' : 'He'}, set in their own profile.</Text>
             ) : (
               <GenderChips value={client.memberRecord(p.id)?.g ?? null} onPick={(g) => client.setMemberRecord(p.id, { g }).catch((e) => showSheet('Couldn’t save', errorText(e)))} />
             )}

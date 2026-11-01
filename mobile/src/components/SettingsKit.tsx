@@ -26,7 +26,7 @@ export function SettingsGroup({ title, children, footer, how, howTitle }: { titl
   const rows = React.Children.toArray(children).filter(Boolean);
   return (
     <View style={{ marginTop: 22 }}>
-      {title ? <Text style={{ fontSize: 13, fontWeight: '600', color: t.muted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, marginLeft: 4 }}>{title}</Text> : null}
+      {title ? <Text style={{ fontSize: 14, fontWeight: '600', color: t.muted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, marginLeft: 4 }}>{title}</Text> : null}
       <View style={{ backgroundColor: t.surface, borderRadius: 16, borderWidth: 1, borderColor: t.line, overflow: 'hidden' }}>
         {rows.map((row, i) => (
           <View key={i} style={i ? { borderTopWidth: 1, borderTopColor: t.line } : null}>
@@ -34,7 +34,7 @@ export function SettingsGroup({ title, children, footer, how, howTitle }: { titl
           </View>
         ))}
       </View>
-      {footer ? <Text style={{ color: t.muted, fontSize: 13, lineHeight: 18, marginTop: 8, marginHorizontal: 4 }}>{footer}</Text> : null}
+      {footer ? <Text style={{ color: t.muted, fontSize: 14, lineHeight: 18, marginTop: 8, marginHorizontal: 4 }}>{footer}</Text> : null}
       {how ? <HowThisWorks title={howTitle}>{how}</HowThisWorks> : null}
     </View>
   );
@@ -58,13 +58,13 @@ export function SettingsRow({ icon, title, detail, href, onPress, badge }: { ico
           {title}
         </Text>
         {detail ? (
-          <Text style={{ color: t.muted, fontSize: 13, marginTop: 1 }} numberOfLines={2}>
+          <Text style={{ color: t.muted, fontSize: 14, marginTop: 1 }} numberOfLines={2}>
             {detail}
           </Text>
         ) : null}
       </View>
       {badge ? (
-        <Text style={{ color: t.brandInk, backgroundColor: t.danger, fontSize: 12, fontWeight: '700', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, overflow: 'hidden' }}>{badge}</Text>
+        <Text style={{ color: t.brandInk, backgroundColor: t.danger, fontSize: 14, fontWeight: '700', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 999, overflow: 'hidden' }}>{badge}</Text>
       ) : null}
       <Text style={{ color: t.muted, fontSize: 22, marginLeft: 2 }}>›</Text>
     </Pressable>
@@ -92,7 +92,7 @@ export function ToggleRow({
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, paddingHorizontal: 14, paddingVertical: 10, opacity: disabled ? 0.6 : 1 }}>
       <View style={{ flex: 1 }}>
         <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>{title}</Text>
-        {detail ? <Text style={{ color: t.muted, fontSize: 13, marginTop: 2, lineHeight: 18 }}>{detail}</Text> : null}
+        {detail ? <Text style={{ color: t.muted, fontSize: 14, marginTop: 2, lineHeight: 18 }}>{detail}</Text> : null}
       </View>
       <Switch accessibilityLabel={title} value={value} onValueChange={onChange} disabled={disabled} trackColor={{ true: danger ? t.danger : t.brand }} />
     </View>

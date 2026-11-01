@@ -169,7 +169,7 @@ export function MemoryBody() {
           stickySectionHeadersEnabled={false}
           contentContainerStyle={{ padding: 16, paddingTop: 6, gap: 8, paddingBottom: ADD_BUTTON_SPACE }}
           renderSectionHeader={({ section }) =>
-            section.title ? <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700', letterSpacing: 0.5, marginTop: 10, textTransform: 'uppercase' }}>{section.title}</Text> : null
+            section.title ? <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700', letterSpacing: 0.5, marginTop: 10, textTransform: 'uppercase' }}>{section.title}</Text> : null
           }
           ListEmptyComponent={
             <View style={{ alignItems: 'center' }}>
@@ -202,7 +202,7 @@ export function MemoryBody() {
                   {n.data?.role ? <Tag label={n.data.role} /> : null}
                   {n.data?.file ? <Tag label="📎 file" /> : null}
                 </View>
-                {when(n) ? <Text style={{ color: t.brand, fontSize: 13 }}>{when(n)}</Text> : null}
+                {when(n) ? <Text style={{ color: t.brand, fontSize: 14 }}>{when(n)}</Text> : null}
                 <Text style={{ color: t.muted, fontSize: 14 }} numberOfLines={2}>
                   {n.type === 'source'
                     ? `${n.data?.format === 'pdf' ? `PDF · ${n.data?.count ?? 0} dates` : `${n.data?.count ?? 0} events`} · checked every 6 hours`
@@ -359,7 +359,7 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
                   <Text style={{ color: t.text, fontSize: 15, fontWeight: '600' }} numberOfLines={1}>
                     📎 {file.name}
                   </Text>
-                  <Text style={{ color: t.muted, fontSize: 13 }}>Kept on the server, encrypted · {file.size > 1e6 ? `${(file.size / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(file.size / 1e3))} KB`}</Text>
+                  <Text style={{ color: t.muted, fontSize: 14 }}>Kept on the server, encrypted · {file.size > 1e6 ? `${(file.size / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(file.size / 1e3))} KB`}</Text>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <Button small variant="primary" title="Open" loading={opening} onPress={openFile} style={{ flex: 1 }} />
                     <Button small title="Delete file" onPress={deleteFile} style={{ flex: 1 }} />
@@ -376,7 +376,7 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
 
               {detail?.linked.length ? (
                 <View style={{ gap: 6, marginTop: 8 }}>
-                  <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700' }}>LINKED</Text>
+                  <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700' }}>LINKED</Text>
                   {detail.linked.map((l) => (
                     <Text key={l.id} style={{ color: t.text, fontSize: 15 }}>
                       {icon(l.type)} {l.title}
@@ -386,7 +386,7 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
               ) : null}
               {detail?.history.length ? (
                 <View style={{ gap: 4, marginTop: 8 }}>
-                  <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700' }}>HISTORY</Text>
+                  <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700' }}>HISTORY</Text>
                   {detail.history.map((h, i) => (
                     <Text key={i} style={{ color: t.muted, fontSize: 14 }}>
                       {h.change[0].toUpperCase()}

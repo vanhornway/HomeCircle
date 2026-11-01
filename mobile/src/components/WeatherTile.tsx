@@ -165,7 +165,7 @@ export function WeatherFace({ client, loc, title, big, z }: { client: CircleClie
                   justifyContent: 'space-between',
                 }}
               >
-                <Text style={{ color: t.muted, fontSize: 10 }}>Weather: Open-Meteo</Text>
+                <Text style={{ color: t.muted, fontSize: 14 }}>Weather: Open-Meteo</Text>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={f ? 'Show °C' : 'Show °F'}
@@ -178,7 +178,7 @@ export function WeatherFace({ client, loc, title, big, z }: { client: CircleClie
                     backgroundColor: t.surface2,
                   }}
                 >
-                  <Text style={{ color: t.text, fontSize: 11, fontWeight: '600' }}>{f ? '°F · use °C' : '°C · use °F'}</Text>
+                  <Text style={{ color: t.text, fontSize: 14, fontWeight: '600' }}>{f ? '°F · use °C' : '°C · use °F'}</Text>
                 </Pressable>
               </View>
             </>

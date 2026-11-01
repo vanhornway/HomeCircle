@@ -78,8 +78,8 @@ export default function ElderSettings() {
         >
           <GroupBody>
             <Chips options={PROFILES.map((p) => ({ value: p.id, label: p.label }))} value={profile} onPick={(id) => choose(id as Profile)} />
-            <Text style={{ color: t.muted, fontSize: 13 }}>{PROFILES.find((p) => p.id === profile)!.detail}</Text>
-            {status.text ? <Text style={{ color: status.state === 'updated' ? t.brand : t.muted, fontSize: 13, fontWeight: status.state === 'updated' ? '700' : '400' }}>{status.text}</Text> : null}
+            <Text style={{ color: t.muted, fontSize: 14 }}>{PROFILES.find((p) => p.id === profile)!.detail}</Text>
+            {status.text ? <Text style={{ color: status.state === 'updated' ? t.brand : t.muted, fontSize: 14, fontWeight: status.state === 'updated' ? '700' : '400' }}>{status.text}</Text> : null}
           </GroupBody>
         </SettingsGroup>
       ) : null}
@@ -109,37 +109,37 @@ export default function ElderSettings() {
       <SettingsGroup title={`${m.name}’s setup`} footer="She never sees a settings screen." how="Changes download to her app automatically.">
         <GroupBody>
           <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Sleep hours, her time</Text>
-          <Text style={{ color: t.muted, fontSize: 13 }}>Nothing sounds on her phone then. She can always ask for a call or send an SOS.</Text>
+          <Text style={{ color: t.muted, fontSize: 14 }}>Nothing sounds on her phone then. She can always ask for a call or send an SOS.</Text>
           <Chips options={[{ value: '', label: 'None' }, ...SLEEP_FROM.map((v) => ({ value: v, label: `From ${clock(v)}` }))]} value={rec?.sleep?.from ?? ''} onPick={(v) => save({ sleep: v ? { from: v, to: rec?.sleep?.to ?? '07:00' } : null })} />
           {rec?.sleep ? <Chips options={SLEEP_TO.map((v) => ({ value: v, label: `To ${clock(v)}` }))} value={rec.sleep.to} onPick={(v) => save({ sleep: { from: rec.sleep!.from, to: v } })} /> : null}
         </GroupBody>
         {care ? (
           <GroupBody>
             <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Reminders</Text>
-            <Text style={{ color: t.muted, fontSize: 13 }}>Until an adult says “I’m calling you now”, with no time limit. Grandkids circles get one notification.</Text>
+            <Text style={{ color: t.muted, fontSize: 14 }}>Until an adult says “I’m calling you now”, with no time limit. Grandkids circles get one notification.</Text>
             <Chips options={REMIND.map((n) => ({ value: String(n), label: `Every ${n} min` }))} value={String(rec?.remindEvery ?? 10)} onPick={(v) => save({ remindEvery: Number(v) })} />
           </GroupBody>
         ) : null}
         <GroupBody>
           <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Check in if inactive</Text>
-          <Text style={{ color: t.muted, fontSize: 13 }}>The family is told quietly when her phone hasn’t been used for this long (coming soon).</Text>
+          <Text style={{ color: t.muted, fontSize: 14 }}>The family is told quietly when her phone hasn’t been used for this long (coming soon).</Text>
           <Chips options={INACTIVE.map((n) => ({ value: String(n), label: `${n} hours` }))} value={String(rec?.inactiveHours ?? 24)} onPick={(v) => save({ inactiveHours: Number(v) })} />
         </GroupBody>
         <GroupBody>
           <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Her language</Text>
           <Chips options={[{ value: 'ur', label: 'اردو Urdu' }]} value={rec?.lang ?? 'ur'} onPick={(v) => save({ lang: v })} />
-          <Text style={{ color: t.muted, fontSize: 13 }}>What she hears and the few words she sees. More languages come as their recordings are made.</Text>
+          <Text style={{ color: t.muted, fontSize: 14 }}>What she hears and the few words she sees. More languages come as their recordings are made.</Text>
         </GroupBody>
         <GroupBody>
           <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>She or he</Text>
-          <Text style={{ color: t.muted, fontSize: 13 }}>Urdu verbs change with the person: “آپ جیت گئیں” for her, “آپ جیت گئے” for him.</Text>
+          <Text style={{ color: t.muted, fontSize: 14 }}>Urdu verbs change with the person: “آپ جیت گئیں” for her, “آپ جیت گئے” for him.</Text>
           <GenderChips value={rec?.g ?? m.g ?? null} onPick={(g) => save({ g })} />
         </GroupBody>
       </SettingsGroup>
 
         </>
       ) : null}
-      {!admin ? <Text style={{ color: t.muted, fontSize: 13, marginTop: 16 }}>Only the circle’s admins can change these.</Text> : null}
+      {!admin ? <Text style={{ color: t.muted, fontSize: 14, marginTop: 16 }}>Only the circle’s admins can change these.</Text> : null}
     </SettingsPage>
   );
 }

@@ -26,7 +26,7 @@ export default function AgentSettingsPage() {
   return (
     <SettingsPage title={name ?? 'Helper'}>
       {agent ? <AgentReady name={agent.name} /> : invited ? <Waiting name={invited.name} /> : client.isAdmin ? <AddAgent /> : <NotAdded />}
-      <Text style={{ color: t.muted, fontSize: 13, lineHeight: 18, marginTop: 24, marginHorizontal: 4 }}>
+      <Text style={{ color: t.muted, fontSize: 14, lineHeight: 18, marginTop: 24, marginHorizontal: 4 }}>
         It can’t read your chats. It only sees what someone sends it.
       </Text>
       <HowThisWorks title={`What ${name ?? 'the helper'} can see`}>
@@ -106,7 +106,7 @@ function AddAgent() {
               style={{ color: t.text, fontSize: 17, minHeight: 48, borderBottomWidth: 1, borderBottomColor: t.line }}
             />
             <Button variant="primary" title={host ? 'Add to the circle' : 'Checking your server…'} disabled={!host || !name.trim()} loading={busy} onPress={add} />
-            <Text style={{ color: t.muted, fontSize: 13 }}>Everyone in the circle is told when it’s added.</Text>
+            <Text style={{ color: t.muted, fontSize: 14 }}>Everyone in the circle is told when it’s added.</Text>
           </GroupBody>
         </SettingsGroup>
       )}

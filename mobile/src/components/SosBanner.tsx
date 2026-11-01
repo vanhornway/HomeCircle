@@ -18,8 +18,8 @@ export function SosBanner({ style }: { style?: StyleProp<ViewStyle> }) {
   if (!mine && !theirs.length) return null;
   const row = (key: string, title: string, detail: string, onPress: () => void) => (
     <Pressable key={key} accessibilityRole="button" onPress={onPress} style={{ backgroundColor: t.danger, borderRadius: 14, padding: 12 }}>
-      <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>{title}</Text>
-      <Text style={{ color: '#fff', fontSize: 13 }}>{detail}</Text>
+      <Text style={{ color: t.dangerInk, fontWeight: '800', fontSize: 15 }}>{title}</Text>
+      <Text style={{ color: t.dangerInk, fontSize: 14 }}>{detail}</Text>
     </Pressable>
   );
   return (

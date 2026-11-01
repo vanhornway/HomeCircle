@@ -154,10 +154,10 @@ export function AirFace({ client, loc, title, big, z }: { client: CircleClient; 
                   dot: band(h.aqi).bg,
                 }))}
               />
-              <Text style={{ color: t.muted, fontSize: 11, textAlign: 'center' }}>
+              <Text style={{ color: t.muted, fontSize: 14, textAlign: 'center' }}>
                 PM2.5 {data.aqi.pm25 ?? '–'} · PM10 {data.aqi.pm10 ?? '–'} · Ozone {data.aqi.ozone ?? '–'} µg/m³
               </Text>
-              <Text style={{ marginTop: 'auto', color: t.muted, fontSize: 10 }} numberOfLines={2}>
+              <Text style={{ marginTop: 'auto', color: t.muted, fontSize: 14 }} numberOfLines={2}>
                 Air: Open-Meteo · {data.pollen ? `Pollen: ${data.pollen.source}` : client.isAdmin ? 'Pollen here: add a Google key in Features' : 'No pollen data here'}
               </Text>
             </>

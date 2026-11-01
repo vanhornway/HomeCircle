@@ -36,7 +36,7 @@ export function ServerBanner({ style }: { style?: object }) {
       <View accessibilityRole="alert" style={box}>
         <View>
           <Text style={{ color: t.warnText, fontWeight: '700', fontSize: 15 }}>Your server doesn’t recognize this phone</Text>
-          <Text style={{ color: t.warnText, fontSize: 13, marginTop: 2 }}>
+          <Text style={{ color: t.warnText, fontSize: 14, marginTop: 2 }}>
             In {name}. You may have been removed, or the circle deleted. If the server lost its data, its keys on this phone are still here, so
             don’t remove it until you’re sure.
           </Text>
@@ -91,12 +91,12 @@ export function ServerBanner({ style }: { style?: object }) {
     <View accessibilityRole="alert" style={box}>
       <View>
         <Text style={{ color: t.warnText, fontWeight: '700', fontSize: 15 }}>Can’t reach your server</Text>
-        <Text style={{ color: t.warnText, fontSize: 13, marginTop: 2 }} numberOfLines={2}>
+        <Text style={{ color: t.warnText, fontSize: 14, marginTop: 2 }} numberOfLines={2}>
           {address}
           {server.retrying ? ' · retrying…' : ''}
         </Text>
         {server.error ? (
-          <Text style={{ color: t.warnText, fontSize: 12, marginTop: 2, opacity: 0.8 }} numberOfLines={2}>
+          <Text style={{ color: t.warnText, fontSize: 14, marginTop: 2, opacity: 0.8 }} numberOfLines={2}>
             {server.error}
           </Text>
         ) : null}

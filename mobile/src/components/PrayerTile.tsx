@@ -130,16 +130,16 @@ export function PrayerFace({ client, loc, title, big, z }: { client: CircleClien
                       }}
                     >
                       <View style={{ width: 8, height: 8, borderRadius: 4, marginRight: 8, backgroundColor: SKY[p.id].bg }} />
-                      <Text style={{ width: 62, color: isNow ? NOW.ink : t.text, fontSize: 13, fontWeight: isNow || isNext ? '800' : '600' }}>{p.name}</Text>
-                      <Text style={{ flex: 1, color: isNow ? NOW.ink : t.text, fontSize: 13, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
+                      <Text style={{ width: 62, color: isNow ? NOW.ink : t.text, fontSize: 14, fontWeight: isNow || isNext ? '800' : '600' }}>{p.name}</Text>
+                      <Text style={{ flex: 1, color: isNow ? NOW.ink : t.text, fontSize: 14, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
                         {clockAt(start, today.offset)} – {clockAt(end, today.offset)}
                       </Text>
-                      {isNext ? <Text style={{ color: t.muted, fontSize: 10 }}>next</Text> : null}
+                      {isNext ? <Text style={{ color: t.muted, fontSize: 14 }}>next</Text> : null}
                     </View>
                   );
                 })}
               </View>
-              <Text style={{ marginTop: 'auto', color: t.muted, fontSize: 10 }} numberOfLines={2}>
+              <Text style={{ marginTop: 'auto', color: t.muted, fontSize: 14 }} numberOfLines={2}>
                 {[zoneNote(data, now), `Fajr and Isha: ${data.method.name}`].filter(Boolean).join('\n')}
               </Text>
             </>

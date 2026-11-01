@@ -37,21 +37,21 @@ export function ServerPicker({ groups, value, onChange }: { groups: ServerGroup[
         })}
       >
         <View style={{ flex: 1 }}>
-          <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700' }}>SERVER</Text>
+          <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700' }}>SERVER</Text>
           <Text style={{ color: t.text, fontSize: 15, fontWeight: '600' }} numberOfLines={1}>
             {selected?.host || 'Choose a server'}
           </Text>
         </View>
-        <Text style={{ color: t.muted, fontSize: 13 }}>
+        <Text style={{ color: t.muted, fontSize: 14 }}>
           {groups.length > 1 ? `${groups.length} servers` : circlesLabel(selected?.circles.length ?? 0)}
         </Text>
         <Text style={{ color: t.muted, fontSize: 16 }}>▾</Text>
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable onPress={() => setOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', paddingHorizontal: 16 }}>
+        <Pressable onPress={() => setOpen(false)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'center', paddingHorizontal: 16 }}>
           <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderRadius: 20, padding: 8 }}>
-            <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700', marginHorizontal: 12, marginTop: 8, marginBottom: 4 }}>YOUR SERVERS</Text>
+            <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700', marginHorizontal: 12, marginTop: 8, marginBottom: 4 }}>YOUR SERVERS</Text>
             {groups.map((g) => {
               const on = g.url === value;
               return (
@@ -76,7 +76,7 @@ export function ServerPicker({ groups, value, onChange }: { groups: ServerGroup[
                     <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }} numberOfLines={1}>
                       {g.host || 'Unknown server'}
                     </Text>
-                    <Text style={{ color: t.muted, fontSize: 13 }} numberOfLines={1}>
+                    <Text style={{ color: t.muted, fontSize: 14 }} numberOfLines={1}>
                       {circlesLabel(g.circles.length)}
                       {g.circles.some((c) => c.isServerAdmin) ? ' · you set it up' : ''}
                     </Text>

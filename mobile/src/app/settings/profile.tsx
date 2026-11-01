@@ -34,7 +34,7 @@ export default function ProfileSettings() {
       <View style={{ alignItems: 'center', marginTop: 20, gap: 12 }}>
         {me ? <MemberAvatar client={client} member={me} size={96} /> : null}
         {client.feature('photos') ? <PhotoButtons has={!!me?.photo} onPhoto={(bytes) => client.setProfilePhoto(bytes)} /> : null}
-        <Text style={{ color: t.muted, fontSize: 13, textAlign: 'center' }}>Your photo shows wherever the app shows you.</Text>
+        <Text style={{ color: t.muted, fontSize: 14, textAlign: 'center' }}>Your photo shows wherever the app shows you.</Text>
         <HowThisWorks>Your photo also shows on an elder’s tiles. It’s encrypted like everything else.</HowThisWorks>
       </View>
       <SettingsGroup
@@ -83,7 +83,7 @@ export default function ProfileSettings() {
             ))}
         </SettingsGroup>
       ) : null}
-      <Text style={{ color: t.muted, fontSize: 13, marginTop: 16, marginHorizontal: 4 }}>Your chirp, the sound others hear when you chirp them, is under Chirps & SOS.</Text>
+      <Text style={{ color: t.muted, fontSize: 14, marginTop: 16, marginHorizontal: 4 }}>Your chirp, the sound others hear when you chirp them, is under Chirps & SOS.</Text>
     </SettingsPage>
   );
 }

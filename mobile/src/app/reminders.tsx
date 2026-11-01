@@ -92,7 +92,7 @@ export function RemindersBody() {
                   <Text style={{ color: late ? t.danger : t.brand, fontSize: 14 }}>
                     {whenText(r)} · {prettyDate(r.due)}
                   </Text>
-                  <Text style={{ color: t.muted, fontSize: 12 }}>Added by {r.createdByName}</Text>
+                  <Text style={{ color: t.muted, fontSize: 14 }}>Added by {r.createdByName}</Text>
                 </View>
                 {!r.done ? <Button small title="Done" onPress={() => run('reminderDone', { id: r.id })} /> : null}
               </Pressable>

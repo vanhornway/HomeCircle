@@ -196,7 +196,7 @@ function ProviderSettings({ s, onSaved }: { s: AgentSettings; onSaved: () => voi
                     {m.name}
                     {m.id === choices.suggested ? '  · suggested' : ''}
                   </Text>
-                  <Text style={{ color: t.muted, fontSize: 12 }}>
+                  <Text style={{ color: t.muted, fontSize: 14 }}>
                     ${m.inUsd} / ${m.outUsd} per M
                   </Text>
                 </Pressable>
@@ -211,7 +211,7 @@ function ProviderSettings({ s, onSaved }: { s: AgentSettings; onSaved: () => voi
               <TextInput value={inUsd} onChangeText={setIn} keyboardType="decimal-pad" placeholder="$ in / M tokens" placeholderTextColor={t.muted} style={[input, { flex: 1 }]} />
               <TextInput value={outUsd} onChangeText={setOut} keyboardType="decimal-pad" placeholder="$ out / M tokens" placeholderTextColor={t.muted} style={[input, { flex: 1 }]} />
             </View>
-            <Text style={{ color: t.muted, fontSize: 12 }}>The model’s price per million tokens, from the provider’s pricing page (0 for a model on your own machine). It’s how spending is counted.</Text>
+            <Text style={{ color: t.muted, fontSize: 14 }}>The model’s price per million tokens, from the provider’s pricing page (0 for a model on your own machine). It’s how spending is counted.</Text>
           </>
         )}
 
@@ -256,7 +256,7 @@ function BudgetSettings({ s, usage, onSaved }: { s: AgentSettings; usage: Usage 
         {usage?.byMember?.length ? (
           <View style={{ gap: 2 }}>
             {usage.byMember.map((m) => (
-              <Text key={m.name} style={{ color: t.muted, fontSize: 13 }}>
+              <Text key={m.name} style={{ color: t.muted, fontSize: 14 }}>
                 {m.name}: {usd(m.usd)}
               </Text>
             ))}

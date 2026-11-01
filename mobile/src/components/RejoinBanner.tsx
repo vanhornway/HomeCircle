@@ -46,11 +46,11 @@ export function RejoinBanner({ style }: { style?: StyleProp<ViewStyle> }) {
           {first.name} asked to rejoin {client.circle.name}
           {requests.length > 1 ? ` (+${requests.length - 1} more)` : ''}
         </Text>
-        <Text style={{ color: t.muted, fontSize: 13 }}>With this server’s setup code. Tap to review.</Text>
+        <Text style={{ color: t.muted, fontSize: 14 }}>With this server’s setup code. Tap to review.</Text>
       </Pressable>
 
       <Modal visible={!!open} transparent animationType="fade" onRequestClose={() => setOpen(null)}>
-        <Pressable onPress={() => setOpen(null)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', paddingHorizontal: 16 }}>
+        <Pressable onPress={() => setOpen(null)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'center', paddingHorizontal: 16 }}>
           {open ? (
             <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderRadius: 20, padding: 20, gap: 12 }}>
               <Text style={{ color: t.text, fontSize: 18, fontWeight: '700' }}>{open.name} wants to rejoin as the owner</Text>

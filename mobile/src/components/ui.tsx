@@ -59,7 +59,7 @@ export function P({ children, muted, style }: { children: React.ReactNode; muted
 export function SectionTitle({ children }: { children: React.ReactNode }) {
   const t = useTheme();
   return (
-    <Text style={{ fontSize: 13, fontWeight: '600', color: t.muted, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 26, marginBottom: 10 }}>
+    <Text style={{ fontSize: 14, fontWeight: '600', color: t.muted, textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 26, marginBottom: 10 }}>
       {children}
     </Text>
   );
@@ -119,7 +119,7 @@ export function Field({ label, style, ...props }: { label: string } & TextInputP
   const t = useTheme();
   return (
     <View style={{ marginBottom: 16 }}>
-      <Text style={{ fontSize: 13, fontWeight: '600', color: t.muted, marginBottom: 6 }}>{label}</Text>
+      <Text style={{ fontSize: 14, fontWeight: '600', color: t.muted, marginBottom: 6 }}>{label}</Text>
       <TextInput
         placeholderTextColor={t.muted}
         style={[
@@ -222,7 +222,7 @@ export function Tag({ label, warn }: { label: string; warn?: boolean }) {
   const t = useTheme();
   return (
     <View style={{ backgroundColor: warn ? t.warnBg : t.surface2, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 }}>
-      <Text style={{ fontSize: 11, fontWeight: '700', color: warn ? t.warnText : t.muted }}>{label}</Text>
+      <Text style={{ fontSize: 14, fontWeight: '700', color: warn ? t.warnText : t.muted }}>{label}</Text>
     </View>
   );
 }

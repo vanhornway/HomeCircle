@@ -226,7 +226,7 @@ export default function Recover() {
             <View key={c.id} style={{ paddingVertical: 10, gap: 8, borderBottomWidth: i < circles.length - 1 ? 1 : 0, borderBottomColor: t.line }}>
               <View>
                 <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>{label}</Text>
-                <Text style={{ color: t.muted, fontSize: 13 }}>{bits.join(' · ')}</Text>
+                <Text style={{ color: t.muted, fontSize: 14 }}>{bits.join(' · ')}</Text>
               </View>
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 {mine ? (

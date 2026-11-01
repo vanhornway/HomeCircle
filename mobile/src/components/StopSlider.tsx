@@ -52,8 +52,8 @@ export function StopSlider({ value, onChange }: { value: Stop | null; onChange: 
         </View>
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <Text style={{ color: t.muted, fontSize: 12 }}>Longest battery</Text>
-        <Text style={{ color: t.muted, fontSize: 12 }}>Most up to date</Text>
+        <Text style={{ color: t.muted, fontSize: 14 }}>Longest battery</Text>
+        <Text style={{ color: t.muted, fontSize: 14 }}>Most up to date</Text>
       </View>
     </View>
   );

@@ -125,7 +125,7 @@ export function ShoppingBody() {
       >
         <Text style={{ color: t.text }}>
           + {u.name}
-          {u.price ? <Text style={{ color: t.muted, fontSize: 13 }}> · ~{money(u.price.est, list.currency)}</Text> : null}
+          {u.price ? <Text style={{ color: t.muted, fontSize: 14 }}> · ~{money(u.price.est, list.currency)}</Text> : null}
         </Text>
       </Pressable>
     ) : null;
@@ -133,7 +133,7 @@ export function ShoppingBody() {
   const usualBlock =
     matching.length ? (
       <View style={{ gap: 4 }}>
-        <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700' }}>{search ? 'MATCHES' : 'YOU USUALLY GET'}</Text>
+        <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700' }}>{search ? 'MATCHES' : 'YOU USUALLY GET'}</Text>
         {allUsual && !search ? (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
             {matching.map(usualChip)}
@@ -277,7 +277,7 @@ export function ShoppingBody() {
                       {item.name}
                       {item.price ? <Text style={{ color: t.muted, fontSize: 14, textDecorationLine: 'none' }}> · ~{money(item.price.est * item.qty, list.currency)}</Text> : null}
                     </Text>
-                    {item.usual >= 2 && !item.ticked ? <Text style={{ color: t.muted, fontSize: 12 }}>usual</Text> : null}
+                    {item.usual >= 2 && !item.ticked ? <Text style={{ color: t.muted, fontSize: 14 }}>usual</Text> : null}
                   </Pressable>
                   {item.qty > 1 ? (
                     <Pressable
@@ -322,10 +322,10 @@ export function ShoppingBody() {
                   style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700' }}>ESTIMATED CART</Text>
+                    <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700' }}>ESTIMATED CART</Text>
                     <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>{rangeText(list.total.low, list.total.high, list.currency)}</Text>
                   </View>
-                  <Text style={{ color: t.muted, fontSize: 13, textAlign: 'right', flexShrink: 1 }}>
+                  <Text style={{ color: t.muted, fontSize: 14, textAlign: 'right', flexShrink: 1 }}>
                     {list.total.priced} of {list.total.count} item{list.total.count === 1 ? '' : 's'} priced{'\n'}regular prices, from receipts
                   </Text>
                 </View>

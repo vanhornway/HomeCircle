@@ -64,7 +64,7 @@ export function GroupCallSheet({ client, visible, onClose }: { client: CircleCli
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={close}>
-      <Pressable onPress={close} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' }}>
+      <Pressable onPress={close} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
         <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
           <SafeAreaView edges={['bottom']} style={{ padding: 18, gap: 14 }}>
             <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>Group call</Text>
@@ -113,7 +113,7 @@ export function GroupCallSheet({ client, visible, onClose }: { client: CircleCli
                   <Button small title="Save" loading={busy} disabled={!draft.trim()} onPress={() => void save(draft.trim())} />
                 </View>
                 {problem ? <Text style={{ color: t.danger, fontSize: 14 }}>{problem}</Text> : null}
-                <Text style={{ color: t.muted, fontSize: 12 }}>Saved encrypted, like the circle’s name: only your circle can read it.</Text>
+                <Text style={{ color: t.muted, fontSize: 14 }}>Saved encrypted, like the circle’s name: only your circle can read it.</Text>
               </>
             ) : (
               <Text style={{ color: t.muted, fontSize: 15, lineHeight: 21 }}>No group call link is saved yet. Ask a circle admin to add one: long-press Group call.</Text>

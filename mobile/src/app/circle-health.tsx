@@ -91,10 +91,10 @@ export default function CircleHealth() {
                     {m.name}
                     {m.isMe ? ' (you)' : ''}
                   </Text>
-                  <Text style={{ color: state === 'live' ? t.brand : t.warnText, fontSize: 13, fontWeight: '600' }}>{LABELS[state]}</Text>
+                  <Text style={{ color: state === 'live' ? t.brand : t.warnText, fontSize: 14, fontWeight: '600' }}>{LABELS[state]}</Text>
                 </View>
               </View>
-              <Text style={{ color: t.muted, fontSize: 13 }}>{statusLine(client, m, now)}</Text>
+              <Text style={{ color: t.muted, fontSize: 14 }}>{statusLine(client, m, now)}</Text>
               {loc ? (
                 <View>
                   {row('Last update', timeAgo(loc.ts), now - loc.ts > 2 * 3600_000)}

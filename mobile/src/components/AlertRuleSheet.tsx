@@ -49,7 +49,7 @@ export function AlertRuleSheet({
     backgroundColor: selected ? t.brandSoft : 'transparent',
   });
   const chipText = (selected: boolean) => ({ color: selected ? t.brand : t.text, fontWeight: '600' as const, fontSize: 15 });
-  const label = { color: t.muted, fontSize: 13, fontWeight: '700' as const, marginTop: 14, marginBottom: 8 };
+  const label = { color: t.muted, fontSize: 14, fontWeight: '700' as const, marginTop: 14, marginBottom: 8 };
 
   const save = async () => {
     if (!client?.circleId || !member || !place) return;
@@ -63,7 +63,7 @@ export function AlertRuleSheet({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}>
+      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
         <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '85%' }}>
           <SafeAreaView edges={['bottom']}>
             <ScrollView contentContainerStyle={{ padding: 18 }}>
@@ -114,7 +114,7 @@ export function AlertRuleSheet({
                 ))}
                 {!places.length ? <Text style={{ color: t.muted }}>This circle has no places yet. Add one in Places.</Text> : null}
               </View>
-              <Text style={{ color: t.muted, fontSize: 13, marginTop: 14, lineHeight: 18 }}>
+              <Text style={{ color: t.muted, fontSize: 14, marginTop: 14, lineHeight: 18 }}>
                 You’ll get a notification even if place alerts are hidden. It works when their phone announces arrivals and departures.
               </Text>
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>

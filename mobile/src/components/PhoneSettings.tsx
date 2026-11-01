@@ -84,7 +84,7 @@ export function MemberPhoneGroup({ client, memberId, admin }: { client: CircleCl
         ) : (
           <Text style={{ color: t.text, fontSize: 16 }}>{client.phoneOf(memberId) ?? 'None saved'}</Text>
         )}
-        {own ? <Text style={{ color: t.muted, fontSize: 13 }}>They added their own number ({own}), which is used instead.</Text> : null}
+        {own ? <Text style={{ color: t.muted, fontSize: 14 }}>They added their own number ({own}), which is used instead.</Text> : null}
       </GroupBody>
     </SettingsGroup>
   );

@@ -77,7 +77,7 @@ export function PersonSheet({
       style={({ pressed }) => ({ flex: 1, alignItems: 'center', gap: 6, opacity: disabled ? 0.4 : pressed ? 0.7 : 1 })}
     >
       <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: t.brand, alignItems: 'center', justifyContent: 'center' }}>
-        <Icon name={icon} color="#fff" size={26} />
+        <Icon name={icon} color={t.brandInk} size={26} />
       </View>
       <Text style={{ color: t.text, fontSize: 14, fontWeight: '700' }}>{label}</Text>
     </Pressable>
@@ -98,7 +98,7 @@ export function PersonSheet({
       <View style={{ flex: 1 }}>
         <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>{label}</Text>
         {sub ? (
-          <Text style={{ color: t.muted, fontSize: 13, marginTop: 1 }} numberOfLines={1}>
+          <Text style={{ color: t.muted, fontSize: 14, marginTop: 1 }} numberOfLines={1}>
             {sub}
           </Text>
         ) : null}
@@ -132,9 +132,9 @@ export function PersonSheet({
                   <MemberAvatar client={client} member={m} size={52} />
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>{client.displayName(m.id)}</Text>
-                    {client.displayName(m.id) !== m.name ? <Text style={{ color: t.muted, fontSize: 13 }}>{m.name}</Text> : null}
+                    {client.displayName(m.id) !== m.name ? <Text style={{ color: t.muted, fontSize: 14 }}>{m.name}</Text> : null}
                     <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>{statusLine(client, m)}</Text>
-                    {m.isMe && cadenceLine(loc) ? <Text style={{ color: t.muted, fontSize: 13, marginTop: 2 }}>{sentence(cadenceLine(loc)!)}</Text> : null}
+                    {m.isMe && cadenceLine(loc) ? <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>{sentence(cadenceLine(loc)!)}</Text> : null}
                   </View>
                   <Pressable accessibilityRole="button" accessibilityLabel="Close" hitSlop={8} onPress={onClose} style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: t.surface2 }}>
                     <Text style={{ color: t.muted, fontSize: 20, lineHeight: 22 }}>✕</Text>
@@ -185,7 +185,7 @@ export function PersonSheet({
                 )}
                 {!m.isMe && client.feature('frequentPlaces') && client.frequent.get(m.id)?.places.length ? (
                   <View style={{ gap: 8 }}>
-                    <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700' }}>MOST VISITED · LAST 30 DAYS</Text>
+                    <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700' }}>MOST VISITED · LAST 30 DAYS</Text>
                     {(() => {
                       const spots = client.frequent.get(m.id)!.places;
                       // A spot their phone couldn't name: the circle place it's in, or where it is from one.
@@ -205,7 +205,7 @@ export function PersonSheet({
                           <Text style={{ flex: 1, color: t.text, fontSize: 15 }} numberOfLines={1}>
                             {spotName(p, anchors)}
                           </Text>
-                          <Text style={{ color: t.muted, fontSize: 13 }}>
+                          <Text style={{ color: t.muted, fontSize: 14 }}>
                             {p.hours < 1 ? `${Math.round(p.hours * 60)} min` : `${Math.round(p.hours)} h`} · {p.visits} {p.visits === 1 ? 'visit' : 'visits'}
                           </Text>
                         </Pressable>

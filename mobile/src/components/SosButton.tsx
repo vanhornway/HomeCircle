@@ -71,7 +71,7 @@ export function SosButton({ style }: { style?: StyleProp<ViewStyle> }) {
             height: fill.interpolate({ inputRange: [0, 1], outputRange: [0, SIZE] }),
           }}
         />
-        <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800', letterSpacing: 1 }}>SOS</Text>
+        <Text style={{ color: t.dangerInk, fontSize: 18, fontWeight: '800', letterSpacing: 1 }}>SOS</Text>
       </Pressable>
     </View>
   );

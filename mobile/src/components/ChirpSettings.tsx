@@ -37,7 +37,7 @@ export function ChirpSettings({ clients, settings, onChange }: { clients: Circle
       <Card style={{ gap: 12 }}>
         <View>
           <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>My chirp</Text>
-          <Text style={{ color: t.muted, fontSize: 13, marginTop: 2 }}>
+          <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>
             What others hear when you chirp them. Tap to listen.
           </Text>
         </View>
@@ -70,12 +70,12 @@ export function ChirpSettings({ clients, settings, onChange }: { clients: Circle
             );
           })}
         </View>
-        {!mine ? <Text style={{ color: t.muted, fontSize: 13 }}>Until you pick one, others hear the Robin.</Text> : null}
+        {!mine ? <Text style={{ color: t.muted, fontSize: 14 }}>Until you pick one, others hear the Robin.</Text> : null}
 
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Play chirps</Text>
-            <Text style={{ color: t.muted, fontSize: 13, marginTop: 2 }}>
+            <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>
               {settings?.chirpSound ?? true ? 'You hear who’s chirping you.' : 'Chirps show silently.'}
             </Text>
           </View>
@@ -115,7 +115,7 @@ export function ChirpSettings({ clients, settings, onChange }: { clients: Circle
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Ring through Do Not Disturb</Text>
-            <Text style={{ color: t.muted, fontSize: 13, marginTop: 2 }}>
+            <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>
               {settings?.sosThroughDnd
                 ? 'An SOS from your circle plays at alarm volume.'
                 : 'Off. Do Not Disturb silences SOS alerts.'}
@@ -145,7 +145,7 @@ function DndAccess() {
   return (
     <View style={{ gap: 8 }}>
       <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Do Not Disturb access</Text>
-      <Text style={{ color: t.muted, fontSize: 13 }}>
+      <Text style={{ color: t.muted, fontSize: 14 }}>
         {granted
           ? 'Allowed. An SOS notification rings even with Do Not Disturb or bedtime on.'
           : 'Lets an SOS notification through Do Not Disturb, even if alarms are silenced.'}

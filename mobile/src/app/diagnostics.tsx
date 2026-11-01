@@ -75,7 +75,7 @@ export default function Diagnostics() {
   const stat = (label: string, value: string | number) => (
     <View style={{ width: '50%', paddingVertical: 6 }}>
       <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>{value}</Text>
-      <Text style={{ color: t.muted, fontSize: 13 }}>{label}</Text>
+      <Text style={{ color: t.muted, fontSize: 14 }}>{label}</Text>
     </View>
   );
 
@@ -103,12 +103,12 @@ export default function Diagnostics() {
             <Card style={{ gap: 6 }}>
               <Text style={{ color: t.text, fontSize: 16, fontWeight: '700' }}>Message alerts</Text>
               {pushTimingLines(entries).map((l) => (
-                <Text key={l} style={{ color: t.muted, fontSize: 13, lineHeight: 18 }}>
+                <Text key={l} style={{ color: t.muted, fontSize: 14, lineHeight: 18 }}>
                   {l}
                 </Text>
               ))}
               {battery !== null ? (
-                <Text style={{ color: battery ? t.muted : t.danger, fontSize: 13, lineHeight: 18 }}>
+                <Text style={{ color: battery ? t.muted : t.danger, fontSize: 14, lineHeight: 18 }}>
                   {battery ? 'Battery: Unrestricted.' : 'Battery: Optimized. Fix it in Setup check → Battery.'}
                 </Text>
               ) : null}
@@ -124,7 +124,7 @@ export default function Diagnostics() {
                 {stat('Today', formatMah(energy.today.mah))}
                 {stat(energy.charging ? 'Charging now' : `Since unplugged (${sinceText(energy.unplugged.since)})`, formatMah(energy.unplugged.mah))}
               </View>
-              <Text style={{ color: t.muted, fontSize: 13, lineHeight: 18 }}>{countsText(energy.today)}</Text>
+              <Text style={{ color: t.muted, fontSize: 14, lineHeight: 18 }}>{countsText(energy.today)}</Text>
               <HowThisWorks title="How this is estimated">
                 Worked out from what HomeCircle did (each wake-up, location fix and upload has a typical cost), for a 5000 mAh battery. Time on the charger isn’t counted against the battery.
               </HowThisWorks>
@@ -145,11 +145,11 @@ export default function Diagnostics() {
               ])
             }
           />
-          <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700', marginTop: 8 }}>LATEST EVENTS</Text>
+          <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700', marginTop: 8 }}>LATEST EVENTS</Text>
         </View>
       }
       renderItem={({ item }) => (
-        <Text style={{ color: item.e.includes('fail') || item.e === 'error' ? t.danger : t.text, fontSize: 12, fontFamily: 'monospace', paddingVertical: 3 }} selectable>
+        <Text style={{ color: item.e.includes('fail') || item.e === 'error' ? t.danger : t.text, fontSize: 14, fontFamily: 'monospace', paddingVertical: 3 }} selectable>
           {formatEntry(item)}
         </Text>
       )}

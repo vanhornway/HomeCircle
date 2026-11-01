@@ -284,7 +284,7 @@ export default function AddPlace() {
         {!radiusOk ? (
           <Text style={{ color: t.danger, fontSize: 14 }}>Use between {MIN_FT} and {MAX_FT.toLocaleString()} feet.</Text>
         ) : (
-          <Text style={{ color: t.muted, fontSize: 13 }}>500 ft or more: phones can’t reliably detect smaller areas, so arrivals would be missed.</Text>
+          <Text style={{ color: t.muted, fontSize: 14 }}>500 ft or more: phones can’t reliably detect smaller areas, so arrivals would be missed.</Text>
         )}
 
         {editing && editing.copies.length > 1 ? (
@@ -305,7 +305,7 @@ export default function AddPlace() {
         <Button title={editing ? 'Save changes' : 'Save place'} variant="primary" loading={busy === 'save'} disabled={!point || !name.trim() || !radiusOk} onPress={save} style={{ marginTop: 6 }} />
         {editing ? <Button title="Delete place" variant="danger" loading={busy === 'delete'} onPress={remove} /> : null}
         <ErrorText>{error}</ErrorText>
-        <Text style={{ color: t.muted, fontSize: 13 }}>
+        <Text style={{ color: t.muted, fontSize: 14 }}>
           The address is looked up by your phone’s map service. Places are stored end-to-end encrypted, so your HomeCircle server never learns where they are.
         </Text>
       </ScrollView>

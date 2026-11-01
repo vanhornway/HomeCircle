@@ -61,22 +61,22 @@ export default function CircleSettings() {
               {m.role !== 'member' ? <Tag label={m.role} /> : null}
               {m.keyChanged ? <Tag label="Keys changed" warn /> : null}
             </View>
-            <Text style={{ color: t.muted, fontSize: 13 }}>{m.isMe ? 'Tap for safety number' : 'Tap for what you call them, and safety number'}</Text>
+            <Text style={{ color: t.muted, fontSize: 14 }}>{m.isMe ? 'Tap for safety number' : 'Tap for what you call them, and safety number'}</Text>
           </View>
         </Pressable>
         {shown ? (
           <View style={{ marginTop: 10, gap: 10 }}>
             {!m.isMe ? (
               <View style={{ gap: 8 }}>
-                <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700' }}>WHAT DO YOU CALL {m.name.toUpperCase()}?</Text>
+                <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700' }}>WHAT DO YOU CALL {m.name.toUpperCase()}?</Text>
                 <FamilyNameEditor client={client} callerId={client.account!.memberId} memberId={m.id} />
-                <Text style={{ color: t.muted, fontSize: 13 }}>Only shows for you, like “Nani” or “Abbu”. It appears on the map and in chats.</Text>
+                <Text style={{ color: t.muted, fontSize: 14 }}>Only shows for you, like “Nani” or “Abbu”. It appears on the map and in chats.</Text>
               </View>
             ) : (
-              <Text style={{ color: t.muted, fontSize: 13 }}>What others call you is under Profile, at the top of Settings.</Text>
+              <Text style={{ color: t.muted, fontSize: 14 }}>What others call you is under Profile, at the top of Settings.</Text>
             )}
             <Text style={{ color: t.text, fontFamily: 'Menlo', fontSize: 15, letterSpacing: 1 }}>{m.safetyNumber}</Text>
-            <Text style={{ color: t.muted, fontSize: 13 }}>Compare this with {m.isMe ? 'other people’s phones' : `${m.name}’s phone`} in person. If it matches, no one has been swapped in.</Text>
+            <Text style={{ color: t.muted, fontSize: 14 }}>Compare this with {m.isMe ? 'other people’s phones' : `${m.name}’s phone`} in person. If it matches, no one has been swapped in.</Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               {canPromote ? <Button small title={m.role === 'admin' ? 'Make member' : 'Make admin'} onPress={() => client.setRole(m.id, m.role === 'admin' ? 'member' : 'admin').catch((e) => showSheet('Error', errorText(e)))} /> : null}
               {canRemove ? (

@@ -73,7 +73,7 @@ export function PollCard({ client, pollId }: { client: CircleClient; pollId: str
   return (
     <View style={{ alignSelf: 'stretch', marginVertical: 6, backgroundColor: t.surface, borderRadius: 18, borderWidth: 1, borderColor: t.line, padding: 14, gap: 10 }}>
       <View>
-        <Text style={{ color: t.muted, fontSize: fs(12), fontWeight: '700' }}>📊 POLL · {s.creatorName.toUpperCase()}</Text>
+        <Text style={{ color: t.muted, fontSize: fs(14), fontWeight: '700' }}>📊 POLL · {s.creatorName.toUpperCase()}</Text>
         <Text style={{ color: t.text, fontSize: fs(17), fontWeight: '700', marginTop: 2 }}>{s.question}</Text>
       </View>
       {s.options.map((o) => (
@@ -107,7 +107,7 @@ export function PollCard({ client, pollId }: { client: CircleClient; pollId: str
           <Chip label="Add" onPress={add} primary />
         </View>
       ) : null}
-      <Text style={{ color: t.muted, fontSize: fs(13) }}>{footer}</Text>
+      <Text style={{ color: t.muted, fontSize: fs(14) }}>{footer}</Text>
       {!s.closed || (s.closed && s.winners.length > 1) ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {!s.closed && s.allowAdd && !adding && s.options.length < 12 ? <Chip label="+ Add option" onPress={() => setAdding(true)} /> : null}
@@ -166,7 +166,7 @@ function OptionRow({ option, share, winner, disabled, onPress }: { option: PollS
         </View>
       </View>
       {option.voters.length ? (
-        <Text style={{ color: t.muted, fontSize: fs(12), marginTop: 2, marginLeft: 4 }} numberOfLines={1}>
+        <Text style={{ color: t.muted, fontSize: fs(14), marginTop: 2, marginLeft: 4 }} numberOfLines={1}>
           {option.voters.join(', ')}
         </Text>
       ) : null}

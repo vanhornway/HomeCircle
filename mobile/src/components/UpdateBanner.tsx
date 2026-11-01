@@ -13,7 +13,7 @@ export function UpdateBanner({ style }: { style?: StyleProp<ViewStyle> }) {
         <Text style={{ fontSize: 18 }}>⬆️</Text>
         <View style={{ flex: 1 }}>
           <Text style={{ color: t.text, fontWeight: '700', fontSize: 15 }}>HomeCircle {version} is out</Text>
-          <Text style={{ color: t.muted, fontSize: 13 }}>You have {APP_VERSION}. Tap to download it, then tap Install.</Text>
+          <Text style={{ color: t.muted, fontSize: 14 }}>You have {APP_VERSION}. Tap to download it, then tap Install.</Text>
         </View>
       </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="Hide for a day" onPress={() => hideUpdateBanner()} hitSlop={6} style={{ width: 44, height: 48, alignItems: 'center', justifyContent: 'center' }}>

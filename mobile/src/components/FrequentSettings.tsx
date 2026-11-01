@@ -36,7 +36,7 @@ export function FrequentSettings({ clients, settings, onChange }: { clients: Cir
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Share my most visited places</Text>
-            <Text style={{ color: t.muted, fontSize: 13, marginTop: 2 }}>
+            <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>
               {sharing
                 ? 'Circles that see your exact location see where you go most. Your history stays on this phone.'
                 : 'No one sees your most visited places.'}
@@ -61,7 +61,7 @@ export function FrequentSettings({ clients, settings, onChange }: { clients: Cir
                 <Text style={{ color: t.text, fontSize: 15, fontWeight: '600' }} numberOfLines={1}>
                   {p.name}
                 </Text>
-                <Text style={{ color: t.muted, fontSize: 12 }}>
+                <Text style={{ color: t.muted, fontSize: 14 }}>
                   {kindName(p.kind)} · {p.hours < 1 ? `${Math.round(p.hours * 60)} min` : `${Math.round(p.hours)} h`} · {p.visits}{' '}
                   {p.visits === 1 ? 'visit' : 'visits'}
                   {p.hidden ? ' · hidden' : ''}
@@ -80,9 +80,9 @@ export function FrequentSettings({ clients, settings, onChange }: { clients: Cir
             </View>
           ))
         ) : (
-          <Text style={{ color: t.muted, fontSize: 13 }}>Your most visited places appear here after a few days of sharing your location.</Text>
+          <Text style={{ color: t.muted, fontSize: 14 }}>Your most visited places appear here after a few days of sharing your location.</Text>
         )}
-        <Text style={{ color: t.muted, fontSize: 13 }}>
+        <Text style={{ color: t.muted, fontSize: 14 }}>
           Names are a first guess from where you spend nights and weekdays, and from your phone’s map lookup. Rename any that are wrong.
         </Text>
         <Button
@@ -99,7 +99,7 @@ export function FrequentSettings({ clients, settings, onChange }: { clients: Cir
       </Card>
 
       <Modal visible={!!renaming} transparent animationType="fade" onRequestClose={() => setRenaming(null)}>
-        <Pressable onPress={() => setRenaming(null)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', paddingHorizontal: 16 }}>
+        <Pressable onPress={() => setRenaming(null)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'center', paddingHorizontal: 16 }}>
           <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderRadius: 20, padding: 20, gap: 12 }}>
             <Text style={{ color: t.text, fontSize: 18, fontWeight: '700' }}>Name this place</Text>
             <TextInput

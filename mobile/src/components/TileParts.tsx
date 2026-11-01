@@ -43,7 +43,7 @@ export function HourGrid({
         <View key={i} style={{ flexDirection: 'row' }}>
           {row.map((h) => (
             <View key={h.key} style={{ flex: 1, alignItems: 'center' }}>
-              <Text style={{ color: t.muted, fontSize: 10 }}>{h.label}</Text>
+              <Text style={{ color: t.muted, fontSize: 12 }}>{h.label}</Text>
               {h.top ? (
                 <Text style={{ fontSize: 14 }}>{h.top}</Text>
               ) : (
@@ -58,7 +58,7 @@ export function HourGrid({
                 />
               )}
               <Text style={{ color: t.text, fontSize: 12, fontWeight: '600' }}>{h.value}</Text>
-              {h.note !== undefined ? <Text style={{ color: t.muted, fontSize: 9 }}>{h.note || ' '}</Text> : null}
+              {h.note !== undefined ? <Text style={{ color: t.muted, fontSize: 12 }}>{h.note || ' '}</Text> : null}
             </View>
           ))}
         </View>

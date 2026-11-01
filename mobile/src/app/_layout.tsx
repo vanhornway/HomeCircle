@@ -56,7 +56,7 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
       <Logo size={56} />
       <Text style={{ color: t.text, fontSize: 24, fontWeight: '700' }}>Something went wrong</Text>
       <Text style={{ color: t.muted, fontSize: 15, lineHeight: 21 }}>HomeCircle hit an unexpected problem. Your keys and settings are safe on this phone.</Text>
-      <Text style={{ color: t.muted, fontSize: 13 }} selectable>
+      <Text style={{ color: t.muted, fontSize: 14 }} selectable>
         {error.message}
       </Text>
       <Button title="Try again" variant="primary" onPress={retry} />

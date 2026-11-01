@@ -20,14 +20,14 @@ export function FeatureChooser({ value, onChange }: { value: Features; onChange:
         <Text style={{ fontSize: 20 }}>🧩</Text>
         <View style={{ flex: 1 }}>
           <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Features</Text>
-          <Text style={{ color: t.muted, fontSize: 13 }}>
+          <Text style={{ color: t.muted, fontSize: 14 }}>
             {on} of {FEATURES.length} on · {open ? 'tap to hide' : 'choose what this circle has'}
           </Text>
         </View>
         <Text style={{ color: t.muted, fontSize: 18 }}>{open ? '▴' : '▾'}</Text>
       </Pressable>
       {open ? <FeaturePicker value={value} onChange={onChange} /> : null}
-      <Text style={{ color: t.muted, fontSize: 13, marginHorizontal: 4 }}>You can change these any time in Settings → Features.</Text>
+      <Text style={{ color: t.muted, fontSize: 14, marginHorizontal: 4 }}>You can change these any time in Settings → Features.</Text>
     </View>
   );
 }

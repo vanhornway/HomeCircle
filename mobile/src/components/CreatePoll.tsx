@@ -96,7 +96,7 @@ export function CreatePoll({ client, peer, visible, onClose, onCreated }: { clie
     backgroundColor: selected ? t.brandSoft : t.surface,
     justifyContent: 'center' as const,
   });
-  const label = { color: t.muted, fontSize: 13, fontWeight: '700' as const, marginTop: 6 };
+  const label = { color: t.muted, fontSize: 14, fontWeight: '700' as const, marginTop: 6 };
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={close}>

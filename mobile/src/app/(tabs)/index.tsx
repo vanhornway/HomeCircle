@@ -260,7 +260,7 @@ export default function MapTab() {
               <View style={{ transform: [{ rotate: `${Math.round(c.angle + 45)}deg` }] }}>
                 <Icon name="navigate" color={t.brand} size={16} />
               </View>
-              <Text style={{ color: t.text, fontSize: 13, fontWeight: '600', flexShrink: 1 }} numberOfLines={1}>
+              <Text style={{ color: t.text, fontSize: 14, fontWeight: '600', flexShrink: 1 }} numberOfLines={1}>
                 {chipLabel(c.ids, chipWhere[i])}
               </Text>
             </Pressable>
@@ -297,8 +297,8 @@ export default function MapTab() {
                 hitSlop={6}
                 style={{ position: 'absolute', left: 0, top: 58, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: t.warnBg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}
               >
-                <Text style={{ fontSize: 12 }}>⚠️</Text>
-                <Text style={{ color: t.warnText, fontWeight: '700', fontSize: 13 }}>Fix setup{setupIssues > 1 ? ` · ${setupIssues}` : ''}</Text>
+                <Text style={{ fontSize: 14 }}>⚠️</Text>
+                <Text style={{ color: t.warnText, fontWeight: '700', fontSize: 14 }}>Fix setup{setupIssues > 1 ? ` · ${setupIssues}` : ''}</Text>
               </Pressable>
             ) : null}
             {/* The plugins' tiles, if this circle has any: top right, beside the circle's name when both fit. */}

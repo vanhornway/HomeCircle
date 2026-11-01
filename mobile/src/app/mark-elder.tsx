@@ -50,7 +50,7 @@ export default function MarkElder() {
             value={page}
             onPick={setPage}
           />
-          <Text style={{ color: t.muted, fontSize: 13 }}>{page === 'care' ? 'Adult children: SOS, Ring everyone, reminders until someone calls.' : 'Grandchildren: one notification, no reminders, no SOS.'}</Text>
+          <Text style={{ color: t.muted, fontSize: 14 }}>{page === 'care' ? 'Adult children: SOS, Ring everyone, reminders until someone calls.' : 'Grandchildren: one notification, no reminders, no SOS.'}</Text>
         </GroupBody>
       </SettingsGroup>
       <SettingsGroup title="Someone new" footer="Make an invite and scan it on their phone." how="Their name and screens go sealed inside the invite, end-to-end encrypted. Nobody types anything on their phone, and it switches as soon as it joins.">
@@ -69,7 +69,7 @@ export default function MarkElder() {
           ))}
         </SettingsGroup>
       ) : null}
-      {client.me?.role !== 'owner' ? <Text style={{ color: t.muted, fontSize: 13, marginTop: 12 }}>Only the circle’s owner can mark an admin as an elder.</Text> : null}
+      {client.me?.role !== 'owner' ? <Text style={{ color: t.muted, fontSize: 14, marginTop: 12 }}>Only the circle’s owner can mark an admin as an elder.</Text> : null}
     </SettingsPage>
   );
 }

@@ -43,7 +43,7 @@ export function GroupCallCard({ client, m }: { client: CircleClient; m: Message 
         <Text style={{ color: t.muted, fontSize: fs(14), lineHeight: fs(19) }}>{detail}</Text>
         <Button small variant="primary" title={inIt ? 'Back to the call' : 'Join in WhatsApp'} onPress={join} />
       </HighlightCard>
-      <Text style={{ color: t.muted, fontSize: fs(12), marginTop: 2, marginHorizontal: 6 }}>{clock(s.ts)}</Text>
+      <Text style={{ color: t.muted, fontSize: fs(14), marginTop: 2, marginHorizontal: 6 }}>{clock(s.ts)}</Text>
     </View>
   );
 }

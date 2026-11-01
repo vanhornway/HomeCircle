@@ -52,7 +52,7 @@ export default function CompanionInvite() {
       style={{ flex: 1, padding: 12, borderRadius: 14, borderWidth: 2, borderColor: page === value ? t.brand : t.line, backgroundColor: page === value ? t.brandSoft : t.surface }}
     >
       <Text style={{ color: t.text, fontWeight: '700', fontSize: 16 }}>{title}</Text>
-      <Text style={{ color: t.muted, fontSize: 13, marginTop: 2 }}>{detail}</Text>
+      <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>{detail}</Text>
     </Pressable>
   );
 
@@ -67,7 +67,7 @@ export default function CompanionInvite() {
           <View style={{ alignItems: 'center', padding: 16, backgroundColor: '#fff', borderRadius: 20, alignSelf: 'center' }}>
             <QRCode value={invite.link} size={220} />
           </View>
-          <Text style={{ color: t.muted, textAlign: 'center', marginTop: 12, fontSize: 13 }}>
+          <Text style={{ color: t.muted, textAlign: 'center', marginTop: 12, fontSize: 14 }}>
             Works once · expires {new Date(invite.expiresAt).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
           </Text>
           <View style={{ gap: 10, marginTop: 20 }}>
@@ -81,12 +81,12 @@ export default function CompanionInvite() {
             Choose the screens their phone shows.
           </P>
           <Field label="Her name" value={name} onChangeText={setName} placeholder="As the family says it, e.g. Ammi" autoFocus />
-          <Text style={{ color: t.muted, fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, marginLeft: 4 }}>This circle is her</Text>
+          <Text style={{ color: t.muted, fontSize: 14, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, marginLeft: 4 }}>This circle is her</Text>
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>
             {choice('care', 'Care circle', 'Adult children. SOS, reminders until someone calls.')}
             {choice('grandkids', 'Grandkids', 'One notification, no reminders, no SOS.')}
           </View>
-          <Text style={{ color: t.muted, fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, marginLeft: 4 }}>Screens</Text>
+          <Text style={{ color: t.muted, fontSize: 14, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, marginLeft: 4 }}>Screens</Text>
           <View style={{ gap: 10, marginBottom: 18 }}>
             {(Object.keys(SKINS) as SkinId[]).map((id) => (
               <Pressable
@@ -97,7 +97,7 @@ export default function CompanionInvite() {
                 style={{ padding: 12, borderRadius: 14, borderWidth: 2, borderColor: skin === id ? t.brand : t.line, backgroundColor: skin === id ? t.brandSoft : t.surface }}
               >
                 <Text style={{ color: t.text, fontWeight: '700', fontSize: 16 }}>{SKINS[id].label}</Text>
-                <Text style={{ color: t.muted, fontSize: 13, marginTop: 2 }}>{SKINS[id].detail}</Text>
+                <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>{SKINS[id].detail}</Text>
               </Pressable>
             ))}
           </View>

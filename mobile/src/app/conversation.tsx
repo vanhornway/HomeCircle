@@ -317,7 +317,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
       return (
         <View style={{ marginVertical: 3 }}>
           <PollCard client={client} pollId={m.id} />
-          <Text style={{ color: t.muted, fontSize: fs(12), marginHorizontal: 6, alignSelf: mine ? 'flex-end' : 'flex-start' }}>{clock(m.ts)}</Text>
+          <Text style={{ color: t.muted, fontSize: fs(14), marginHorizontal: 6, alignSelf: mine ? 'flex-end' : 'flex-start' }}>{clock(m.ts)}</Text>
         </View>
       );
     }
@@ -338,7 +338,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     return (
       <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', alignItems: mine ? 'flex-end' : 'flex-start', maxWidth: '82%', marginVertical: 3, ...(reminderId ? { width: '84%', maxWidth: undefined, alignItems: 'stretch' } : null) }}>
         {!mine && !peer ? (
-          <Text style={{ color: who?.kind === 'agent' ? t.brand : who?.color || t.muted, fontSize: fs(13), fontWeight: '700', marginLeft: 4, marginBottom: 2 }}>
+          <Text style={{ color: who?.kind === 'agent' ? t.brand : who?.color || t.muted, fontSize: fs(14), fontWeight: '700', marginLeft: 4, marginBottom: 2 }}>
             {who?.kind === 'agent' ? `🐦 ${name}` : name}
           </Text>
         ) : null}
@@ -366,7 +366,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             })}
           >
             {toHelper ? (
-              <Text style={{ color: mine ? t.brandInk : t.brand, opacity: mine ? 0.8 : 1, fontSize: fs(12), fontWeight: '700', marginBottom: 2 }}>To {helperName || 'the helper'}</Text>
+              <Text style={{ color: mine ? t.brandInk : t.brand, opacity: mine ? 0.8 : 1, fontSize: fs(14), fontWeight: '700', marginBottom: 2 }}>To {helperName || 'the helper'}</Text>
             ) : null}
             {big ? (
               <Text style={{ fontSize: fs(44), lineHeight: fs(54) }}>{m.body?.text}</Text>
@@ -445,12 +445,12 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
                 }}
               >
                 <Text style={{ fontSize: fs(16) }}>{r.emoji}</Text>
-                {r.count > 1 ? <Text style={{ fontSize: fs(13), color: r.mine ? t.brand : t.muted, fontWeight: '600' }}>{r.count}</Text> : null}
+                {r.count > 1 ? <Text style={{ fontSize: fs(14), color: r.mine ? t.brand : t.muted, fontWeight: '600' }}>{r.count}</Text> : null}
               </Pressable>
             ))}
           </View>
         ) : null}
-        <Text style={{ color: t.muted, fontSize: fs(12), marginTop: 2, marginHorizontal: 6 }}>
+        <Text style={{ color: t.muted, fontSize: fs(14), marginTop: 2, marginHorizontal: 6 }}>
           {clock(m.ts)}
           {mine ? <Ticks state={client.receipt(m)} showRead={readReceipts} /> : null}
         </Text>
@@ -492,7 +492,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             <Text style={{ color: t.text, fontSize: 18, fontWeight: '700' }} numberOfLines={1}>
               {title}
             </Text>
-            <Text style={{ color: t.muted, fontSize: 13 }} numberOfLines={1}>
+            <Text style={{ color: t.muted, fontSize: 14 }} numberOfLines={1}>
               {subtitle}
             </Text>
           </View>
@@ -511,7 +511,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             </Text>
             {withAgent ? (
               <View style={{ marginTop: 20, gap: 10, alignItems: 'center' }}>
-                <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700' }}>TRY ONE</Text>
+                <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700' }}>TRY ONE</Text>
                 {examples.map((x) => (
                   <Pressable
                     key={x}
@@ -586,7 +586,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
                 style={({ pressed }) => ({ flexBasis: '30%', flexGrow: 1, minHeight: 64, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 2, paddingHorizontal: 4, backgroundColor: pressed ? t.surface2 : t.bg })}
               >
                 <Text style={{ fontSize: 22 }}>{item.icon}</Text>
-                <Text style={{ color: t.text, fontSize: 13, fontWeight: '600', textAlign: 'center' }}>{item.label}</Text>
+                <Text style={{ color: t.text, fontSize: 14, fontWeight: '600', textAlign: 'center' }}>{item.label}</Text>
               </Pressable>
             ))}
           </View>
@@ -677,7 +677,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
         }}
       />
       <Modal visible={!!reactingTo} transparent animationType="fade" onRequestClose={() => setReactingTo(null)}>
-        <Pressable onPress={() => setReactingTo(null)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+        <Pressable onPress={() => setReactingTo(null)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
           {reactingTo ? (
             <View style={{ backgroundColor: t.surface, borderRadius: 20, padding: 16, alignItems: 'center', gap: 12, maxWidth: 380 }}>
               {(() => {
@@ -723,10 +723,10 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
                       />
                     ) : null}
                     {canReply && !s.takenBy && client.feature('whatsapp') && client.phoneOf(s.from) ? (
-                      <Text style={{ color: t.muted, fontSize: 13, textAlign: 'center' }}>Opens WhatsApp and tells {s.name} you’re calling now.</Text>
+                      <Text style={{ color: t.muted, fontSize: 14, textAlign: 'center' }}>Opens WhatsApp and tells {s.name} you’re calling now.</Text>
                     ) : null}
                     {canReply ? (
-                      <Text style={{ color: t.muted, fontSize: 13, lineHeight: 18, textAlign: 'center' }}>
+                      <Text style={{ color: t.muted, fontSize: 14, lineHeight: 18, textAlign: 'center' }}>
                         {s.name} hears your reply in Urdu. Morning and evening mean their time ({timeIn(s.tz)} now).
                       </Text>
                     ) : null}
@@ -831,7 +831,7 @@ function KeptChip({
       </Text>
       {undoable ? (
         undone ? (
-          <Text style={{ color: t.muted, fontSize: fs(13), paddingHorizontal: 8 }}>Undone</Text>
+          <Text style={{ color: t.muted, fontSize: fs(14), paddingHorizontal: 8 }}>Undone</Text>
         ) : (
           <Pressable
             accessibilityRole="button"
@@ -851,7 +851,7 @@ function KeptChip({
 /** Undo at the foot of a helper's answer that changed its memory. */
 function UndoLink({ undone, onPress, fs }: { undone: boolean; onPress: () => void; fs: (n: number) => number }) {
   const t = useTheme();
-  if (undone) return <Text style={{ color: t.muted, fontSize: fs(13), marginTop: 4 }}>Undone</Text>;
+  if (undone) return <Text style={{ color: t.muted, fontSize: fs(14), marginTop: 4 }}>Undone</Text>;
   return (
     <Pressable accessibilityRole="button" accessibilityLabel="Undo" hitSlop={8} onPress={onPress} style={{ alignSelf: 'flex-start', minHeight: 32, justifyContent: 'center', marginTop: 2 }}>
       <Text style={{ color: t.brand, fontSize: fs(14), fontWeight: '700' }}>Undo</Text>
@@ -863,7 +863,7 @@ function UndoLink({ undone, onPress, fs }: { undone: boolean; onPress: () => voi
 function ReplyNotes({ reply, fs }: { reply: HelperReply; fs: (n: number) => number }) {
   const t = useTheme();
   const [open, setOpen] = useState<number | null>(null);
-  const line = { color: t.muted, fontSize: fs(13), lineHeight: fs(18) } as const;
+  const line = { color: t.muted, fontSize: fs(14), lineHeight: fs(18) } as const;
   return (
     <View style={{ gap: 2, marginTop: 4, marginHorizontal: 6 }}>
       {reply.extra.map((x) => (

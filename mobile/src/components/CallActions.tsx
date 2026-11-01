@@ -40,10 +40,10 @@ export function CallChoiceSheet({ client, memberId, visible, onClose, onCalled }
   const phone = usePhone(client, memberId);
   const inApp = canCall(client, memberId);
   const name = client.displayName(memberId);
-  const why = (text: string) => <Text style={{ color: t.muted, fontSize: 13, textAlign: 'center' }}>{text}</Text>;
+  const why = (text: string) => <Text style={{ color: t.muted, fontSize: 14, textAlign: 'center' }}>{text}</Text>;
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' }}>
+      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
         <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
           <SafeAreaView edges={['bottom']} style={{ padding: 18, gap: 12 }}>
             <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>Call {name}</Text>
@@ -189,7 +189,7 @@ export function WhatsAppSetup({ client }: { client: CircleClient }) {
         style={({ pressed }) => ({ minHeight: 44, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
       >
         <Text style={{ color: t.brand, fontSize: 15, fontWeight: '700' }}>{link ? 'Group call link · change' : 'Add the group call link'}</Text>
-        <Text style={{ color: t.muted, fontSize: 13 }}>{link ? link.replace('https://', '') : 'People tap Group call in the group chat to join it. Phone numbers go in Settings → You → Profile.'}</Text>
+        <Text style={{ color: t.muted, fontSize: 14 }}>{link ? link.replace('https://', '') : 'People tap Group call in the group chat to join it. Phone numbers go in Settings → You → Profile.'}</Text>
       </Pressable>
       <GroupCallSheet client={client} visible={sheet} onClose={() => setSheet(false)} />
     </>

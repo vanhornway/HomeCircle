@@ -69,7 +69,7 @@ export default function CirclesSettings() {
                   {c.circle.name}
                   {n ? `  (${n} new)` : ''}
                 </Text>
-                <Text style={{ color: t.muted, fontSize: 13 }} numberOfLines={2}>
+                <Text style={{ color: t.muted, fontSize: 14 }} numberOfLines={2}>
                   {precision === 'exact' ? 'Sees your exact location' : precision === 'approximate' ? 'Sees only your approximate area (about 1 km)' : `Paused${why ? `: “${why}”` : ''}. They see that you paused`}
                   {active || clients.length < 2 ? '' : ' · tap to open'}
                 </Text>
@@ -111,7 +111,7 @@ export default function CirclesSettings() {
       </SettingsGroup>
 
       <Modal visible={!!pausing} transparent animationType="fade" onRequestClose={() => setPausing(null)}>
-        <Pressable onPress={() => setPausing(null)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 24 }}>
+        <Pressable onPress={() => setPausing(null)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'center', padding: 24 }}>
           <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderRadius: 20, padding: 18, gap: 12 }}>
             <Text style={{ color: t.text, fontSize: 18, fontWeight: '700' }}>Pause sharing with {pausing?.circle.name}?</Text>
             <Text style={{ color: t.muted, fontSize: 14, lineHeight: 20 }}>They’ll see “Paused” instead of where you are, and Locate won’t reach you. Add a reason if you like.</Text>

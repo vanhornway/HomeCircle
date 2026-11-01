@@ -109,20 +109,20 @@ export function CallScreen({ elder = false }: { elder?: boolean }) {
     <Modal visible={visible} animationType="fade" transparent={false} statusBarTranslucent onRequestClose={() => (incoming ? declineCall() : snap.phase !== 'idle' ? hangUp() : undefined)}>
       <SafeAreaView style={{ flex: 1, backgroundColor: t.dark ? '#0F1513' : t.brand }}>
         <View accessibilityLiveRegion="polite" style={{ flex: 1, alignItems: 'center', paddingTop: 56, paddingHorizontal: 24 }}>
-          {elder ? null : <Text style={{ color: '#FFFFFFB3', fontSize: 14, letterSpacing: 0.4 }}>{client?.circle.name ? `${client.circle.name} · ` : ''}{incoming ? 'Incoming call' : 'Voice call'}</Text>}
+          {elder ? null : <Text style={{ color: '#FFFFFFE6', fontSize: 14, letterSpacing: 0.4 }}>{client?.circle.name ? `${client.circle.name} · ` : ''}{incoming ? 'Incoming call' : 'Voice call'}</Text>}
           <View style={{ marginTop: 48 }}>{client && member ? <MemberAvatar client={client} member={member} size={132} /> : <Avatar name={name} color={t.brandSoft} size={132} />}</View>
           <Text style={{ color: '#FFFFFF', fontSize: elder ? 44 : 30, fontWeight: '700', marginTop: 24, textAlign: 'center' }} numberOfLines={2}>
             {name}
           </Text>
           {/* Her screen has no English: only the time on the line. */}
-          {elder && snap.phase !== 'active' ? null : <Text style={{ color: '#FFFFFFD9', fontSize: elder ? 28 : 18, marginTop: 8, fontVariant: ['tabular-nums'] }}>{status}</Text>}
+          {elder && snap.phase !== 'active' ? null : <Text style={{ color: '#FFFFFFE6', fontSize: elder ? 28 : 18, marginTop: 8, fontVariant: ['tabular-nums'] }}>{status}</Text>}
           {snap.phase === 'active' && !ended && !elder ? (
             <Pressable accessibilityRole="button" accessibilityHint="Shows four words to compare with the other person" onPress={() => setShowWords((v) => !v)} style={{ marginTop: 14, alignItems: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 }}>
-              <Text style={{ color: '#FFFFFFB3', fontSize: 13 }}>End-to-end encrypted · {showWords ? 'Hide words' : 'Check words'}</Text>
+              <Text style={{ color: '#FFFFFFE6', fontSize: 14 }}>End-to-end encrypted · {showWords ? 'Hide words' : 'Check words'}</Text>
               {showWords && words ? (
                 <>
                   <Text style={{ color: '#FFFFFF', fontSize: 20, fontWeight: '700', marginTop: 8, textTransform: 'capitalize' }}>{words.join(' · ')}</Text>
-                  <Text style={{ color: '#FFFFFF99', fontSize: 12, marginTop: 6, textAlign: 'center' }}>Say them to each other. The same four words on both phones mean the voice goes straight between you.</Text>
+                  <Text style={{ color: '#FFFFFFE6', fontSize: 14, marginTop: 6, textAlign: 'center' }}>Say them to each other. The same four words on both phones mean the voice goes straight between you.</Text>
                 </>
               ) : null}
             </Pressable>
@@ -198,7 +198,7 @@ function ControlLabel({ text, children }: { text: string; children: React.ReactN
   return (
     <View style={{ alignItems: 'center', gap: 8 }}>
       {children}
-      <Text style={{ color: '#FFFFFFD9', fontSize: 13 }}>{text}</Text>
+      <Text style={{ color: '#FFFFFFE6', fontSize: 14 }}>{text}</Text>
     </View>
   );
 }
