@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, AppState, FlatList, Keyboard, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, AppState, FlatList, Keyboard, KeyboardAvoidingView, Modal, Pressable, Text, TextInput, View, type TextInputInstance } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CALLBACK_REPLIES, QUICK_REACTIONS, isEmojiOnly, type CallbackReply, type CircleClient, type Message } from '@homecircle/core';
 import { Avatar, Button, Icon } from '../components/ui';
@@ -95,7 +95,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   const [menuOpen, setMenuOpen] = useState(false);
   // Someone's name or photo in the header: the same sheet as on the map.
   const [personOpen, setPersonOpen] = useState(false);
-  const input = useRef<TextInput>(null);
+  const input = useRef<TextInputInstance>(null);
   const [sendingFile, setSendingFile] = useState<string | null>(null);
   // Writing here: the circle has this kind of chat (the helper's own chat always works).
   const canWrite = peer ? withAgent || client.feature('directMessages') : client.feature('groupChat');
@@ -168,6 +168,17 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     } finally {
       setSendingFile(null);
     }
+  };
+  // A choice from the + menu beside the message box.
+  const pickFromMenu = (key: string) => {
+    if (key === 'ask') {
+      setAsking((v) => !v);
+      setMenuOpen(false);
+      input.current?.focus();
+    } else if (key === 'poll') {
+      setMenuOpen(false);
+      setPollOpen(true);
+    } else attach(key as 'camera' | 'library' | 'file');
   };
 
   const replyCallback = (requestId: string, reply: CallbackReply) => {
@@ -526,21 +537,21 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: t.surface, borderTopWidth: 1, borderTopColor: t.line }}>
             {(
               [
-                ...(canAsk ? [{ key: 'ask', icon: '🐦', label: asking ? `Stop asking ${agent!.name}` : `Ask ${agent!.name}`, onPress: () => { setAsking((v) => !v); setMenuOpen(false); input.current?.focus(); } }] : []),
+                ...(canAsk ? [{ key: 'ask', icon: '🐦', label: asking ? `Stop asking ${agent!.name}` : `Ask ${agent!.name}`, }] : []),
                 ...(canAttach
                   ? [
-                      { key: 'camera', icon: '📷', label: 'Take a photo', onPress: () => attach('camera') },
-                      { key: 'library', icon: '🖼️', label: 'Choose a photo', onPress: () => attach('library') },
-                      { key: 'file', icon: '📄', label: 'PDF, doc or sheet', onPress: () => attach('file') },
+                      { key: 'camera', icon: '📷', label: 'Take a photo' },
+                      { key: 'library', icon: '🖼️', label: 'Choose a photo' },
+                      { key: 'file', icon: '📄', label: 'PDF, doc or sheet' },
                     ]
                   : []),
-                ...(canPoll ? [{ key: 'poll', icon: '📊', label: 'New poll', onPress: () => { setMenuOpen(false); setPollOpen(true); } }] : []),
-              ] as { key: string; icon: string; label: string; onPress: () => void }[]
+                ...(canPoll ? [{ key: 'poll', icon: '📊', label: 'New poll' }] : []),
+              ] as { key: string; icon: string; label: string }[]
             ).map((item) => (
               <Pressable
                 key={item.key}
                 accessibilityRole="button"
-                onPress={item.onPress}
+                onPress={() => pickFromMenu(item.key)}
                 style={({ pressed }) => ({ flexBasis: '30%', flexGrow: 1, minHeight: 64, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 2, paddingHorizontal: 4, backgroundColor: pressed ? t.surface2 : t.bg })}
               >
                 <Text style={{ fontSize: 22 }}>{item.icon}</Text>
