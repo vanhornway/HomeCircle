@@ -66,3 +66,30 @@ export function usePlaceName(client: CircleClient, loc: MemberLocation | undefin
   }, [key, place]);
   return place ?? (key ? (towns.get(key) ?? null) : null);
 }
+
+/** usePlaceName for several people at once (the chips at the edge of the map). */
+export function usePlaceNames(client: CircleClient, locs: (MemberLocation | undefined)[]): (string | null)[] {
+  const [, named] = useState(0);
+  const place = (loc: MemberLocation | undefined) => (loc?.placeId ? (client.places.get(loc.placeId)?.name ?? null) : null);
+  const wanted = locs.filter((loc): loc is MemberLocation => !!loc && !place(loc) && !towns.has(cellKey(loc.lat, loc.lng)));
+  const wantedKey = [...new Set(wanted.map((loc) => cellKey(loc.lat, loc.lng)))].join('|');
+  useEffect(() => {
+    if (!wanted.length) return;
+    let live = true;
+    Promise.all(
+      wanted.map((loc) =>
+        Location.reverseGeocodeAsync({ latitude: loc.lat, longitude: loc.lng })
+          .then((r) => {
+            const a = r[0];
+            towns.set(cellKey(loc.lat, loc.lng), a?.city || a?.district || a?.subregion || a?.region || null);
+          })
+          .catch(() => {}),
+      ),
+    ).then(() => live && named((n) => n + 1));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantedKey]);
+  return locs.map((loc) => place(loc) ?? (loc ? (towns.get(cellKey(loc.lat, loc.lng)) ?? null) : null));
+}

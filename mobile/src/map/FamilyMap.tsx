@@ -38,6 +38,22 @@ export interface MapPlace {
   radius: number;
 }
 
+/** Room taken by things drawn over the map (a top bar, a drawer), in pixels. */
+export interface MapInset {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+/** Where the map is: its size, and each person's spot on it in pixels. */
+export interface MapView {
+  w: number;
+  h: number;
+  zoom: number;
+  pts: Record<string, [number, number]>;
+}
+
 interface Props {
   tileUrl: string;
   attribution: string;
@@ -45,12 +61,21 @@ interface Props {
   fitKey?: string | null;
   members?: MapMember[];
   places?: MapPlace[];
+  /** What to fit when the map opens (or shows another circle); everyone, if not given. */
+  frame?: { lat: number; lng: number }[];
+  /** Fits and fly-tos keep what they show clear of these. */
+  inset?: MapInset;
   /** Change `key` to fly to the same spot again. */
   focus?: { lat: number; lng: number; zoom?: number; key: number } | null;
+  /** Change `key` to fly to fit these points again. */
+  fitTo?: { points: { lat: number; lng: number }[]; key: number } | null;
   pickMode?: boolean;
   picked?: { lat: number; lng: number; radius: number } | null;
   onPick?: (p: { lat: number; lng: number }) => void;
   onMemberPress?: (id: string) => void;
+  /** Place names become tappable. */
+  onPlacePress?: (id: string) => void;
+  onView?: (v: MapView) => void;
   dark?: boolean;
 }
 
@@ -66,8 +91,7 @@ html,body,#map{height:100%;margin:0;background:${dark ? '#1a201e' : '#ece7df'}}
 .m.s{filter:grayscale(.6);opacity:.85}
 .m{position:relative}
 .m .b{position:absolute;right:-7px;top:-7px;width:20px;height:20px;border-radius:50%;background:#fff;font-size:12px;line-height:20px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.3)}
-.pl{background:#fff;color:#1d2422;border-radius:8px;padding:2px 8px;font:600 12px -apple-system,Roboto,sans-serif;border:1px solid #e2ddd4;white-space:nowrap;box-shadow:none}
-.pl:before{display:none}
+.pl{position:absolute;left:0;top:0;transform:translate(-50%,-50%);background:#fff;color:#1d2422;border-radius:8px;padding:3px 9px;font:600 12px -apple-system,Roboto,sans-serif;border:1px solid #e2ddd4;white-space:nowrap}
 ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}' : ''}
 </style></head><body><div id="map"></div>
 <script>${safeScript(LEAFLET_JS)}</script>
@@ -95,9 +119,24 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
     });
   }
   window.addEventListener('online', retryMissing);
+  // Place names sit under people's pins, so a tap on someone at Home is theirs.
+  map.createPane('placeNames').style.zIndex = 550;
   var people = {}, placeLayer = L.layerGroup().addTo(map), pickLayer = L.layerGroup().addTo(map);
-  var fitted = false, pick = false;
+  var pick = false, pad = {t:0, r:0, b:0, l:0};
   function post(m){ window.ReactNativeWebView.postMessage(JSON.stringify(m)); }
+  // Where the map is, and everyone on it in pixels (for chips at the edge).
+  function where(){
+    var c = map.getCenter(), s = map.getSize(), pts = {};
+    Object.keys(people).forEach(function(id){
+      var p = map.latLngToContainerPoint(people[id].marker.getLatLng());
+      pts[id] = [Math.round(p.x), Math.round(p.y)];
+    });
+    post({type:'view', lat:c.lat, lng:c.lng, zoom:map.getZoom(), w:s.x, h:s.y, pts:pts});
+  }
+  // The middle of the part of the map that isn't covered: put lat,lng there at zoom z.
+  function centerFor(lat, lng, z){
+    return map.unproject(map.project([lat,lng], z).subtract([(pad.l - pad.r) / 2, (pad.t - pad.b) / 2]), z);
+  }
   function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function color(c){ return /^#[0-9a-fA-F]{6}$/.test(c) ? c : '#8a8f98'; }
   window.hc = {
@@ -121,18 +160,27 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
       Object.keys(people).forEach(function(id){
         if (!seen[id]) { people[id].marker.remove(); people[id].acc.remove(); delete people[id]; }
       });
-      if (!fitted && list.length) { fitted = true; hc.fit(list); }
+      where();
     },
-    fit: function(list){
-      var pts = list.map(function(m){ return [m.lat,m.lng]; });
-      if (pts.length === 1) map.setView(pts[0], 15);
-      else if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.3), {maxZoom:15});
+    inset: function(p){ pad = p; },
+    // Points [[lat,lng],…], clear of what's over the map (pins are 40 px, so 28 more all round).
+    fit: function(pts, fly){
+      if (!pts.length) return;
+      map.invalidateSize(false);
+      var s = map.getSize(), k = 1;
+      // A short screen with the drawer open: shrink the room kept clear rather than fit into nothing.
+      if (pad.t + pad.b + 56 > s.y - 80) k = Math.max(0, (s.y - 136) / (pad.t + pad.b));
+      var o = {maxZoom:15, paddingTopLeft:[pad.l + 28, pad.t * k + 28], paddingBottomRight:[pad.r + 28, pad.b * k + 28]};
+      var b = L.latLngBounds(pts).pad(0.1);
+      if (fly && map.getZoom() >= 5) map.flyToBounds(b, L.extend(o, {duration:.8}));
+      else map.fitBounds(b, L.extend(o, {animate:false}));
     },
-    places: function(list){
+    places: function(list, tap){
       placeLayer.clearLayers();
       list.forEach(function(p){
-        L.circle([p.lat,p.lng], {radius:p.radius, color:'#2f7d6d', weight:2, fillOpacity:.08, dashArray:'4 6', interactive:false})
-          .bindTooltip(esc(p.name), {permanent:true, direction:'center', className:'pl'}).addTo(placeLayer);
+        L.circle([p.lat,p.lng], {radius:p.radius, color:'#2f7d6d', weight:2, fillOpacity:.08, dashArray:'4 6', interactive:false}).addTo(placeLayer);
+        L.marker([p.lat,p.lng], {pane:'placeNames', interactive:!!tap, keyboard:false, icon:L.divIcon({className:'', iconSize:[0,0], html:'<div class="pl">'+esc(p.name)+'</div>'})})
+          .on('click', function(){ post({type:'place', id:p.id}); }).addTo(placeLayer);
       });
     },
     // Asked for right at 'ready' (e.g. editing a place), the page may not have
@@ -140,11 +188,11 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
     focus: function(lat,lng,zoom){
       map.invalidateSize(false);
       var z = zoom || Math.max(map.getZoom(), 15);
-      if (map.getZoom() < 5) map.setView([lat,lng], z, {animate:false});
-      else map.flyTo([lat,lng], z, {duration:.6});
+      var c = centerFor(lat, lng, z);
+      if (map.getZoom() < 5) map.setView(c, z, {animate:false});
+      else map.flyTo(c, z, {duration:.6});
     },
-    view: function(lat,lng,zoom){ fitted = true; map.setView([lat,lng], zoom, {animate:false}); },
-    refit: function(list){ fitted = list.length > 0; if (list.length) hc.fit(list); },
+    view: function(lat,lng,zoom){ map.setView([lat,lng], zoom, {animate:false}); },
     retryTiles: function(){ map.invalidateSize(); retryMissing(); },
     pickMode: function(on){ pick = on; },
     picked: function(p){
@@ -153,7 +201,7 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
     }
   };
   map.on('click', function(e){ if (pick) post({type:'pick', lat:e.latlng.lat, lng:e.latlng.lng}); });
-  map.on('moveend', function(){ var c = map.getCenter(); post({type:'view', lat:c.lat, lng:c.lng, zoom:map.getZoom()}); });
+  map.on('moveend', where);
   post({type:'ready'});
 })();
 </script></body></html>`;
@@ -165,11 +213,16 @@ export function FamilyMap({
   attribution,
   members = [],
   places = [],
+  frame,
+  inset,
   focus,
+  fitTo,
   pickMode = false,
   picked = null,
   onPick,
   onMemberPress,
+  onPlacePress,
+  onView,
   dark = false,
 }: Props) {
   const ref = useRef<RNWebView>(null);
@@ -180,19 +233,23 @@ export function FamilyMap({
   const html = useMemo(() => buildHtml(tileUrl, attribution, dark), [tileUrl, attribution, dark]);
   const run = useCallback((js: string) => ready && ref.current?.injectJavaScript(`try{${js}}catch(e){};true;`), [ready]);
 
+  const insetJs = `hc.inset(${JSON.stringify({ t: inset?.top ?? 0, r: inset?.right ?? 0, b: inset?.bottom ?? 0, l: inset?.left ?? 0 })})`;
+  // First, so a fit or fly-to in the same render keeps clear of the new inset.
+  useEffect(() => void run(insetJs), [run, insetJs]);
   useEffect(() => void run(`hc.members(${JSON.stringify(members)})`), [run, members]);
-  useEffect(() => void run(`hc.places(${JSON.stringify(places)})`), [run, places]);
+  const tappable = !!onPlacePress;
+  useEffect(() => void run(`hc.places(${JSON.stringify(places)},${tappable})`), [run, places, tappable]);
   useEffect(() => void run(`hc.pickMode(${pickMode})`), [run, pickMode]);
   useEffect(() => void run(`hc.picked(${JSON.stringify(picked)})`), [run, picked]);
-  // Another circle: fit its people (the view kept for page reloads is per circle).
-  const fitted = useRef(fitKey);
+  // Fit once there's something to fit, and again for another circle (not on
+  // every location, nor when the page reloads: that goes back where it was).
+  const frameJs = JSON.stringify((frame ?? members).map((p) => [p.lat, p.lng]));
+  const fitted = useRef<{ key: string | null | undefined } | null>(null);
   useEffect(() => {
-    if (!ready || fitted.current === fitKey) return;
-    fitted.current = fitKey;
-    run(`hc.refit(${JSON.stringify(members)})`);
-    // Only when the circle changes, not on every location.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, run, fitKey]);
+    if (!ready || (fitted.current && fitted.current.key === fitKey) || frameJs === '[]') return;
+    fitted.current = { key: fitKey };
+    run(`hc.fit(${frameJs})`);
+  }, [ready, run, fitKey, frameJs]);
   useEffect(() => {
     const sub = AppState.addEventListener('change', (st) => {
       if (st === 'active') run('hc.retryTiles()');
@@ -206,6 +263,12 @@ export function FamilyMap({
     // Only re-fly when the caller bumps `key`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run, focusKey]);
+  const fitToKey = fitTo?.key;
+  const fitToJs = fitTo ? `hc.fit(${JSON.stringify(fitTo.points.map((p) => [p.lat, p.lng]))},true)` : null;
+  useEffect(() => {
+    if (fitToJs) run(fitToJs);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run, fitToKey]);
 
   const onMessage = (e: WebViewMessageEvent) => {
     let msg: any;
@@ -218,9 +281,12 @@ export function FamilyMap({
       const v = view.current;
       if (v) ref.current?.injectJavaScript(`try{hc.view(${v.lat},${v.lng},${v.zoom})}catch(e){};true;`);
       setReady(true);
-    } else if (msg.type === 'view' && Number.isFinite(msg.lat) && Number.isFinite(msg.lng) && Number.isFinite(msg.zoom)) view.current = { lat: msg.lat, lng: msg.lng, zoom: msg.zoom };
-    else if (msg.type === 'pick' && onPick) onPick({ lat: msg.lat, lng: msg.lng });
+    } else if (msg.type === 'view' && Number.isFinite(msg.lat) && Number.isFinite(msg.lng) && Number.isFinite(msg.zoom)) {
+      view.current = { lat: msg.lat, lng: msg.lng, zoom: msg.zoom };
+      if (onView && msg.pts && typeof msg.pts === 'object') onView({ w: Number(msg.w) || 0, h: Number(msg.h) || 0, zoom: msg.zoom, pts: msg.pts });
+    } else if (msg.type === 'pick' && onPick) onPick({ lat: msg.lat, lng: msg.lng });
     else if (msg.type === 'member' && onMemberPress) onMemberPress(String(msg.id));
+    else if (msg.type === 'place' && onPlacePress) onPlacePress(String(msg.id));
   };
 
   return (
