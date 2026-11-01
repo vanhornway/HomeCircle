@@ -5,16 +5,19 @@ const light = {
   surface: '#FFFFFF',
   surface2: '#F0ECE5',
   text: '#1D2422',
-  muted: '#66706C',
+  muted: '#616A67',
   line: '#E2DDD4',
-  brand: '#2F7D6D',
+  brand: '#2C7465',
   brandInk: '#FFFFFF',
   brandSoft: '#E1EFEB',
   accent: '#F2B84B',
-  danger: '#C2412D',
-  ok: '#2E9A5B',
+  danger: '#B83E2B',
+  ok: '#247847',
   warnBg: '#FBE6D9',
   warnText: '#9A3D16',
+  // Text on a danger fill, and the dimmed page behind a sheet.
+  dangerInk: '#FFFFFF',
+  scrim: 'rgba(0,0,0,0.35)',
   dark: false,
 };
 
@@ -33,6 +36,8 @@ const dark: typeof light = {
   ok: '#4CC27F',
   warnBg: '#3A2418',
   warnText: '#F2B08A',
+  dangerInk: '#0D1412',
+  scrim: 'rgba(0,0,0,0.6)',
   dark: true,
 };
 

@@ -6,6 +6,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { useTheme } from '../theme';
 import { CallHost } from '../components/CallHost';
+import { ConfirmHost } from '../components/ConfirmHost';
+import { StackHeader } from '../components/Header';
 import '../lib/push';
 
 export default function RootLayout() {
@@ -23,9 +25,8 @@ export default function RootLayout() {
             gestureEnabled: true,
             animation: 'slide_from_right',
             contentStyle: { backgroundColor: t.bg },
-            headerStyle: { backgroundColor: t.surface },
-            headerTintColor: t.brand,
-            headerTitleStyle: { color: t.text },
+            // Every page that shows a header gets the same one ("‹", title).
+            header: (props) => <StackHeader {...props} />,
           }}
         >
           <Stack.Screen name="invite" options={{ headerShown: true, title: 'Invite someone' }} />
@@ -41,6 +42,7 @@ export default function RootLayout() {
           <Stack.Screen name="circle-health" options={{ headerShown: true, title: 'Circle health' }} />
         </Stack>
         <CallHost />
+        <ConfirmHost />
       </KeyboardProvider>
     </SafeAreaProvider>
   );

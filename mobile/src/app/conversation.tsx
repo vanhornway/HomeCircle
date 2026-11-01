@@ -4,6 +4,7 @@ import { ActivityIndicator, AppState, FlatList, Keyboard, KeyboardAvoidingView, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CALLBACK_REPLIES, QUICK_REACTIONS, isEmojiOnly, type CallbackReply, type CircleClient, type Message } from '@homecircle/core';
 import { Avatar, Button, Icon } from '../components/ui';
+import { HeaderBar } from '../components/Header';
 import { shareNow } from '../lib/location';
 import { ServerBanner } from '../components/ServerBanner';
 import { PollCard } from '../components/PollCard';
@@ -458,11 +459,15 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }} edges={['top']}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 6, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: t.line }}>
-        <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back" hitSlop={8} style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: t.brand, fontSize: 34, lineHeight: 36, marginTop: -4 }}>‹</Text>
-        </Pressable>
+    <View style={{ flex: 1, backgroundColor: t.bg }}>
+      <HeaderBar
+        right={
+          <>
+            {!peer ? <GroupCallButton client={client} /> : null}
+            {peer && canOpenPerson ? <CallButton client={client} memberId={peer} /> : null}
+          </>
+        }
+      >
         <Pressable
           disabled={!canOpenPerson}
           onPress={() => setPersonOpen(true)}
@@ -492,17 +497,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             </Text>
           </View>
         </Pressable>
-        {!peer ? (
-          <View style={{ marginRight: 6 }}>
-            <GroupCallButton client={client} />
-          </View>
-        ) : null}
-        {peer && canOpenPerson ? (
-          <View style={{ marginRight: 6 }}>
-            <CallButton client={client} memberId={peer} />
-          </View>
-        ) : null}
-      </View>
+      </HeaderBar>
       {/* Android draws edge to edge, so the window doesn't shrink for the keyboard: pad on both platforms. */}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         {/* Over the messages, so "Reconnecting…" coming and going doesn't move them. */}
@@ -771,7 +766,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
         </Pressable>
       </Modal>
       {canOpenPerson ? <PersonSheet client={client} memberId={personOpen ? peer : null} onClose={() => setPersonOpen(false)} /> : null}
-    </SafeAreaView>
+    </View>
   );
 }
 

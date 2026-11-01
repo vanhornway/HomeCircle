@@ -24,20 +24,24 @@ export function Screen({
   children,
   scroll = true,
   style,
+  add,
 }: {
   children: React.ReactNode;
   scroll?: boolean;
   style?: StyleProp<ViewStyle>;
+  /** The page's one way to add something: a floating "+" (see AddButton). */
+  add?: { label: string; hint?: string; onPress: () => void };
 }) {
   const t = useTheme();
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: t.bg }, style]} edges={['top', 'left', 'right']}>
       {scroll ? (
         // The field you're typing in stays above the keyboard.
-        <KeyboardScroll contentContainerStyle={{ padding: 20, paddingBottom: 48 }}>{children}</KeyboardScroll>
+        <KeyboardScroll contentContainerStyle={{ padding: 20, paddingBottom: add ? ADD_BUTTON_SPACE : 48 }}>{children}</KeyboardScroll>
       ) : (
         children
       )}
+      {add ? <AddButton {...add} /> : null}
     </SafeAreaView>
   );
 }
@@ -137,10 +141,18 @@ export function Field({ label, style, ...props }: { label: string } & TextInputP
   );
 }
 
-export function ErrorText({ children }: { children?: string | null }) {
+/** What went wrong, in the page where it happened (for errors that block nothing). */
+export function ErrorText({ children, onRetry }: { children?: string | null; onRetry?: () => void }) {
   const t = useTheme();
   if (!children) return null;
-  return <Text style={{ color: t.danger, fontSize: 15, marginTop: 10 }}>{children}</Text>;
+  return (
+    <View style={{ marginTop: 10, gap: 8, alignItems: 'flex-start' }}>
+      <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={{ color: t.danger, fontSize: 15, lineHeight: 21 }}>
+        {children}
+      </Text>
+      {onRetry ? <Button small title="Try again" onPress={onRetry} /> : null}
+    </View>
+  );
 }
 
 export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
@@ -360,3 +372,60 @@ export function AgeConfirm({ value, onChange }: { value: boolean; onChange: (v: 
     </Pressable>
   );
 }
+
+/**
+ * Nothing here yet: an icon, one line, and (if there is something to do) one
+ * button. Use it wherever a list can be empty.
+ */
+export function EmptyState({ icon, text, action, onAction }: { icon: string; text: string; action?: string; onAction?: () => void }) {
+  const t = useTheme();
+  return (
+    <View style={{ alignItems: 'center', gap: 14, paddingHorizontal: 32, paddingVertical: 36 }}>
+      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: t.brandSoft, alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name={icon} color={t.brand} size={30} />
+      </View>
+      <Text style={{ color: t.muted, fontSize: 16, lineHeight: 23, textAlign: 'center' }}>{text}</Text>
+      {action && onAction ? <Button variant="primary" small title={action} onPress={onAction} /> : null}
+    </View>
+  );
+}
+
+/**
+ * The one way to add to a list of things (a place, a reminder, a message):
+ * a "+" with a word, bottom right, over the list. Quick-entry fields (an
+ * item on a shopping list) stay inline in the list instead.
+ */
+export function AddButton({ label, hint, onPress, bottom = 24 }: { label: string; hint?: string; onPress: () => void; bottom?: number }) {
+  const t = useTheme();
+  return (
+    <View pointerEvents="box-none" style={{ position: 'absolute', right: 16, bottom }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={hint ?? label}
+        onPress={onPress}
+        style={({ pressed }) => ({
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+          minHeight: 56,
+          paddingLeft: 16,
+          paddingRight: 20,
+          borderRadius: 28,
+          backgroundColor: t.brand,
+          opacity: pressed ? 0.85 : 1,
+          shadowColor: '#000',
+          shadowOpacity: 0.2,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 3 },
+          elevation: 5,
+        })}
+      >
+        <Icon name="plus" color={t.brandInk} size={22} />
+        <Text style={{ color: t.brandInk, fontSize: 16, fontWeight: '700' }}>{label}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+/** Space to leave under a scrolling list so the add button never covers its last row. */
+export const ADD_BUTTON_SPACE = 100;
