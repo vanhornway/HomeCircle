@@ -2,6 +2,20 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.22.4
+
+- Elders can be called. Their phone listens for calls in the Elderly
+  Companion skin too and rings with a screen made for them: the name they know
+  the caller by, "calling you now" said in their language, one big answer
+  button; on the line, the sound is on the speaker and there is one big
+  hang-up button.
+- Call on a person's sheet opens two buttons: Call in HomeCircle or Call on
+  WhatsApp. A button that can't be used says why.
+- Admins can set anyone's phone number (Settings → the circle → People →
+  the person), not only an elder's. People lists everyone with their profile
+  and number.
+- Needs the HomeCircle app 0.22.4; no server change.
+
 ## 0.22.3
 
 - Fixed: a voice call answered from the lock screen, or with HomeCircle

@@ -1,6 +1,16 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.22.4',
+    date: '2026-11-01',
+    title: 'Call anyone, your way',
+    items: [
+      'Call now offers two buttons: Call in HomeCircle (voice, phone to phone) or Call on WhatsApp.',
+      'Elders can be called too. Their phone rings with a screen made for them: who is calling, said in their language, one big button to answer, and the sound on the speaker.',
+      'Admins can add anyone’s phone number in Settings → your circle → People, so Call on WhatsApp works for everyone.',
+    ],
+  },
+  {
     version: '0.22.3',
     date: '2026-11-01',
     title: 'Calls connect from the lock screen',
