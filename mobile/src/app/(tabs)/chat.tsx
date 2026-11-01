@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CircleClient, Message } from '@homecircle/core';
 import { Avatar, Button } from '../../components/ui';
+import { HelperAvatar } from '../../components/HelperAvatar';
 import { ServerBanner } from '../../components/ServerBanner';
 import { getClient } from '../../lib/circle';
 import { initials, useAllCircles } from '../../lib/useCircle';
@@ -17,7 +18,9 @@ type Row = {
   client: CircleClient;
   peer: string | null;
   title: string;
+  /** What's under the name; empty for a plain direct chat (the avatar says it). */
   subtitle: string;
+  helper: boolean;
   color: string | null;
   last: Message | undefined;
   unread: number;
@@ -31,8 +34,11 @@ function when(ts: number) {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-function preview(client: CircleClient, m: Message | undefined, group: boolean) {
-  if (!m) return group ? 'No messages yet' : 'Say hello';
+function preview(client: CircleClient, m: Message | undefined, group: boolean, helper: boolean) {
+  if (!m) return group ? 'No messages yet' : helper ? 'Ask anything' : 'Say hello';
+  // A group call is one short line, without naming who started it twice.
+  const gc = m.kind === 'chat' ? m.body?.groupCall : null;
+  if (gc) return client.groupCallState(gc.state === 'join' ? gc.of : m.id)?.open ? 'Group call · tap to join' : 'Group call ended';
   const mine = m.from === client.account?.memberId;
   const name = mine ? 'You' : client.members.get(m.from)?.name || 'Someone';
   if (m.kind === 'event') return `${name} ${m.body?.action === 'left' ? 'left' : 'arrived at'} ${m.body?.placeName || 'a place'}`;
@@ -60,20 +66,26 @@ export default function Chats() {
       peer: null,
       title: c.circle.name,
       subtitle: `Group · ${c.memberList().length} ${c.memberList().length === 1 ? 'member' : 'members'}`,
+      helper: false,
       color: null,
       last: lastOf(c, null),
       unread: unreadIn(c, null),
     };
     // Direct chats: if the circle has them, the helper's own chat, and check-ins (which come as direct messages).
     const dmOn = (peer: string) => (peer === c.agent?.id ? c.feature('agent') : c.feature('directMessages') || c.feature('checkIns'));
-    const dms = c.directPeers().filter(dmOn).map((peer): Row => {
+    // The helper's chat is always there, even before the first message.
+    const peers = c.directPeers();
+    if (c.agent && c.feature('agent') && !peers.includes(c.agent.id)) peers.push(c.agent.id);
+    const dms = peers.filter(dmOn).map((peer): Row => {
       const m = c.members.get(peer);
+      const helper = peer === c.agent?.id;
       return {
         key: `${c.circleId}:${peer}`,
         client: c,
         peer,
         title: m?.name || 'Former member',
-        subtitle: multi ? `Direct · ${c.circle.name}` : 'Direct message',
+        subtitle: helper ? (multi ? `Helper · ${c.circle.name}` : 'Helper') : multi ? c.circle.name : '',
+        helper,
         color: m?.color || t.muted,
         last: lastOf(c, peer),
         unread: unreadIn(c, peer),
@@ -81,7 +93,8 @@ export default function Chats() {
     });
     return [...(c.feature('groupChat') ? [group] : []), ...dms];
   });
-  rows.sort((a, b) => (b.last?.seq ?? 0) - (a.last?.seq ?? 0));
+  // The helper stays near the top; the rest by latest message.
+  rows.sort((a, b) => Number(b.helper) - Number(a.helper) || (b.last?.seq ?? 0) - (a.last?.seq ?? 0));
 
   const open = (client: CircleClient, peer: string | null) => {
     setPicking(false);
@@ -110,7 +123,7 @@ export default function Chats() {
           <Pressable
             onPress={() => open(r.client, r.peer)}
             accessibilityRole="button"
-            accessibilityLabel={`${r.title}, ${r.subtitle}${r.unread ? `, ${r.unread} unread` : ''}`}
+            accessibilityLabel={`${r.title}${r.subtitle ? `, ${r.subtitle}` : ''}${r.unread ? `, ${r.unread} unread` : ''}`}
             style={({ pressed }) => ({
               flexDirection: 'row',
               alignItems: 'center',
@@ -121,7 +134,9 @@ export default function Chats() {
               backgroundColor: pressed ? t.surface2 : 'transparent',
             })}
           >
-            {r.peer ? (
+            {r.helper ? (
+              <HelperAvatar size={52} />
+            ) : r.peer ? (
               <Avatar name={r.title} color={r.color!} size={52} />
             ) : (
               <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: t.brandSoft, alignItems: 'center', justifyContent: 'center' }}>
@@ -135,12 +150,14 @@ export default function Chats() {
                 </Text>
                 {r.last ? <Text style={{ color: r.unread ? t.brand : t.muted, fontSize: 13 }}>{when(r.last.createdAt)}</Text> : null}
               </View>
-              <Text style={{ color: t.muted, fontSize: 12, marginTop: 1 }} numberOfLines={1}>
-                {r.subtitle}
-              </Text>
+              {r.subtitle ? (
+                <Text style={{ color: t.muted, fontSize: 12, marginTop: 1 }} numberOfLines={1}>
+                  {r.subtitle}
+                </Text>
+              ) : null}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 }}>
                 <Text style={{ flex: 1, color: r.unread ? t.text : t.muted, fontSize: 15, fontWeight: r.unread ? '600' : '400' }} numberOfLines={1}>
-                  {preview(r.client, r.last, !r.peer)}
+                  {preview(r.client, r.last, !r.peer, r.helper)}
                 </Text>
                 {r.unread ? (
                   <View style={{ minWidth: 24, height: 24, borderRadius: 12, backgroundColor: t.brand, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7 }}>
@@ -172,7 +189,7 @@ export default function Chats() {
                       </Text>
                       {c.feature('groupChat') ? <PickRow title={`Everyone in ${c.circle.name}`} subtitle="Group chat" onPress={() => open(c, null)} /> : null}
                       {(c.feature('directMessages') ? others : []).map((m) => (
-                        <PickRow key={m.id} title={m.name} subtitle="Direct message" color={m.color} onPress={() => open(c, m.id)} />
+                        <PickRow key={m.id} title={m.name} subtitle={m.kind === 'agent' ? 'Helper' : undefined} helper={m.kind === 'agent'} color={m.color} onPress={() => open(c, m.id)} />
                       ))}
                       {others.length ? null : <Text style={{ color: t.muted, marginHorizontal: 18, fontSize: 14 }}>No one else here yet.</Text>}
                     </View>
@@ -201,7 +218,7 @@ function Shortcut({ icon, label, onPress }: { icon: string; label: string; onPre
   );
 }
 
-function PickRow({ title, subtitle, color, onPress }: { title: string; subtitle: string; color?: string; onPress: () => void }) {
+function PickRow({ title, subtitle, color, helper, onPress }: { title: string; subtitle?: string; color?: string; helper?: boolean; onPress: () => void }) {
   const t = useTheme();
   return (
     <Pressable
@@ -209,7 +226,9 @@ function PickRow({ title, subtitle, color, onPress }: { title: string; subtitle:
       accessibilityRole="button"
       style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 18, minHeight: 64, backgroundColor: pressed ? t.surface2 : 'transparent' })}
     >
-      {color ? (
+      {helper ? (
+        <HelperAvatar size={44} />
+      ) : color ? (
         <Avatar name={title} color={color} size={44} />
       ) : (
         <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: t.brandSoft, alignItems: 'center', justifyContent: 'center' }}>
@@ -218,7 +237,7 @@ function PickRow({ title, subtitle, color, onPress }: { title: string; subtitle:
       )}
       <View style={{ flex: 1 }}>
         <Text style={{ color: t.text, fontSize: 17, fontWeight: '600' }}>{title}</Text>
-        <Text style={{ color: t.muted, fontSize: 13 }}>{subtitle}</Text>
+        {subtitle ? <Text style={{ color: t.muted, fontSize: 13 }}>{subtitle}</Text> : null}
       </View>
     </Pressable>
   );

@@ -2,16 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, AppState, FlatList, Keyboard, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CALLBACK_REPLIES, EMOJI_GROUPS, QUICK_REACTIONS, isEmojiOnly, type CallbackReply, type CircleClient, type Message } from '@homecircle/core';
-import { Avatar, Button, Icon, IconButton } from '../components/ui';
-import { canLocate, isAsking, locatePerson, locateState, openDirections, useLocateVersion } from '../lib/people';
+import { CALLBACK_REPLIES, QUICK_REACTIONS, isEmojiOnly, type CallbackReply, type CircleClient, type Message } from '@homecircle/core';
+import { Avatar, Button, Icon } from '../components/ui';
 import { shareNow } from '../lib/location';
 import { ServerBanner } from '../components/ServerBanner';
 import { PollCard } from '../components/PollCard';
 import { CallbackCard } from '../components/CallbackCard';
 import { GroupCallCard } from '../components/GroupCallCard';
 import { ReminderCard } from '../components/ReminderCard';
-import { GroupCallButton, WhatsAppCallButton } from '../components/CallActions';
+import { CallButton, GroupCallButton, WhatsAppCallButton } from '../components/CallActions';
+import { PersonSheet } from '../components/PersonSheet';
+import { HelperAvatar } from '../components/HelperAvatar';
 import { MemberAvatar } from '../components/MemberAvatar';
 import { REPLY_LABELS, syncCallbackReminders, timeIn } from '../lib/callbacks';
 import { CreatePoll } from '../components/CreatePoll';
@@ -81,8 +82,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   const pinch = usePinchZoom();
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  // The circle's agent: asked with "/Name …", the 🤖 button, or in its own chat.
+  // The circle's agent: asked with "/Name …", the + menu, or in its own chat.
   const agent = client.feature('agent') ? client.agent : null;
   const withAgent = !!agent && peer === agent.id;
   const [asking, setAsking] = useState(false);
@@ -91,13 +91,18 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   // Lists from the agent (dates in a PDF) answered on this screen: no buttons twice.
   const [savedLists, setSavedLists] = useState<Set<string>>(() => new Set());
   const [checkingIn, setCheckingIn] = useState<string | null>(null);
-  // Sending the helper a photo or file: the 📎 choices, and the file on its way.
-  const [attachOpen, setAttachOpen] = useState(false);
+  // The + menu above the composer, and the file on its way to the helper.
+  const [menuOpen, setMenuOpen] = useState(false);
+  // Someone's name or photo in the header: the same sheet as on the map.
+  const [personOpen, setPersonOpen] = useState(false);
+  const input = useRef<TextInput>(null);
   const [sendingFile, setSendingFile] = useState<string | null>(null);
   // Writing here: the circle has this kind of chat (the helper's own chat always works).
   const canWrite = peer ? withAgent || client.feature('directMessages') : client.feature('groupChat');
-  const canAttach = !!agent && client.feature('uploads') && (withAgent || (!peer && asking));
-  useLocateVersion();
+  const canAttach = !!agent && client.feature('uploads') && (withAgent || !peer);
+  const canPoll = !withAgent && client.feature('polls');
+  const canAsk = !!agent && !peer;
+  const hasMenu = canAsk || canAttach || canPoll;
   const list = useRef<FlatList<ChatRow>>(null);
   const me = client.account?.memberId;
   const key = conversationKey(client.circleId!, peer);
@@ -149,7 +154,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   };
 
   const attach = async (from: 'camera' | 'library' | 'file') => {
-    setAttachOpen(false);
+    setMenuOpen(false);
     setError(null);
     try {
       const picked = from === 'file' ? await pickDocument() : await pickPhoto(from);
@@ -192,15 +197,23 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
       setCheckingIn(null);
     }
   };
-  const ask = () => {
-    if (peer) client.askToCheckIn(peer).catch((e) => setError(errorText(e)));
+  // The helper's chat starts with a few things to try.
+  const tryIt = (starter: string) => {
+    setText(starter);
+    input.current?.focus();
   };
-  const peerLoc = peer ? client.locations.get(peer) : undefined;
-  const locState = peer ? locateState(client, peer) : 'idle';
+  const examples = [
+    'Remember ',
+    'What’s on this week?',
+    ...(client.feature('shoppingLists') ? ['Add milk to Costco'] : []),
+  ];
+  const canOpenPerson = !!peer && !!other && !other.removed && other.kind !== 'agent';
 
   const title = peer ? (other ? client.displayName(other.id) : 'Former member') : client.circle.name;
   const subtitle = peer
-    ? `Direct message · ${client.circle.name} · end-to-end encrypted`
+    ? withAgent
+      ? 'Helper · end-to-end encrypted'
+      : `Direct message · ${client.circle.name} · end-to-end encrypted`
     : `Group · ${plural(client.memberList().length, 'member')} · end-to-end encrypted`;
 
   const eventLabel = (m: Message) =>
@@ -260,9 +273,9 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     // Call-back requests from the Elderly Companion app, and the replies (a line each).
     if (!peer && m.body?.callback?.state === 'ask') return <CallbackCard client={client} m={m} onReply={() => setReactingTo(m)} />;
     if (!peer && m.body?.callback?.state === 'reply') return <Text style={pill}>{String(m.body.text ?? '').replace(/^📞\s*/, '')}</Text>;
-    // The WhatsApp group call: a card with Join; who joined, a line each.
+    // The WhatsApp group call: a card with Join while it's on, then one line. Joins show on the card, not as lines.
     if (!peer && m.body?.groupCall?.state === 'start') return <GroupCallCard client={client} m={m} />;
-    if (!peer && m.body?.groupCall?.state === 'join') return <Text style={pill}>{String(m.body.text ?? '').replace(/^📞\s*/, '')}</Text>;
+    if (!peer && m.body?.groupCall?.state === 'join') return null;
     const mine = m.from === me;
     if (m.body?.poll) {
       return (
@@ -403,51 +416,43 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
         <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back" hitSlop={8} style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ color: t.brand, fontSize: 34, lineHeight: 36, marginTop: -4 }}>‹</Text>
         </Pressable>
-        {peer ? (
-          other ? (
-            <MemberAvatar client={client} member={other} size={40} />
+        <Pressable
+          disabled={!canOpenPerson}
+          onPress={() => setPersonOpen(true)}
+          accessibilityRole={canOpenPerson ? 'button' : undefined}
+          accessibilityLabel={canOpenPerson ? `${title}. Directions, locate, check in` : undefined}
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+        >
+          {peer ? (
+            withAgent ? (
+              <HelperAvatar size={40} />
+            ) : other ? (
+              <MemberAvatar client={client} member={other} size={40} />
+            ) : (
+              <Avatar name={title} color={t.muted} size={40} />
+            )
           ) : (
-            <Avatar name={title} color={t.muted} size={40} />
-          )
-        ) : (
-          <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: t.brandSoft, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ color: t.brand, fontWeight: '700' }}>{initials(title)}</Text>
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: t.brandSoft, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ color: t.brand, fontWeight: '700' }}>{initials(title)}</Text>
+            </View>
+          )}
+          <View style={{ flex: 1, marginLeft: 6 }}>
+            <Text style={{ color: t.text, fontSize: 18, fontWeight: '700' }} numberOfLines={1}>
+              {title}
+            </Text>
+            <Text style={{ color: t.muted, fontSize: 13 }} numberOfLines={1}>
+              {subtitle}
+            </Text>
           </View>
-        )}
-        <View style={{ flex: 1, marginLeft: 6 }}>
-          <Text style={{ color: t.text, fontSize: 18, fontWeight: '700' }} numberOfLines={1}>
-            {title}
-          </Text>
-          <Text style={{ color: t.muted, fontSize: 13 }} numberOfLines={1}>
-            {subtitle}
-          </Text>
-        </View>
+        </Pressable>
         {!peer ? (
           <View style={{ marginRight: 6 }}>
             <GroupCallButton client={client} />
           </View>
         ) : null}
-        {peer && other && !other.removed && other.kind !== 'agent' ? (
-          <View style={{ flexDirection: 'row', gap: 6, marginRight: 6 }}>
-            {client.feature('locationSharing') ? (
-              <IconButton
-                icon="navigate"
-                label={`Directions to ${title}`}
-                disabled={!peerLoc}
-                onPress={() => peerLoc && openDirections(title, peerLoc, () => locatePerson(client, peer))}
-              />
-            ) : null}
-            {client.feature('locate') ? (
-              <IconButton
-                icon="locate"
-                label={`Locate ${title}`}
-                busy={isAsking(locState)}
-                done={locState === 'updated'}
-                disabled={!canLocate(locState) || client.paused.has(peer)}
-                onPress={() => locatePerson(client, peer)}
-              />
-            ) : null}
-            {client.feature('checkIns') ? <IconButton icon="checkin" label={`Ask ${title} to check in`} onPress={ask} /> : null}
+        {peer && canOpenPerson ? (
+          <View style={{ marginRight: 6 }}>
+            <CallButton client={client} memberId={peer} />
           </View>
         ) : null}
       </View>
@@ -462,6 +467,22 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             <Text style={{ color: t.muted, textAlign: 'center', fontSize: 15 }}>
               {peer ? `Only you and ${title} can read this conversation.` : 'No messages yet. Say hi 👋'}
             </Text>
+            {withAgent ? (
+              <View style={{ marginTop: 20, gap: 10, alignItems: 'center' }}>
+                <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700' }}>TRY ONE</Text>
+                {examples.map((x) => (
+                  <Pressable
+                    key={x}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${x.trim()}. Fills the message box`}
+                    onPress={() => tryIt(x)}
+                    style={({ pressed }) => ({ minHeight: 44, paddingHorizontal: 16, borderRadius: 22, borderWidth: 1, borderColor: t.line, backgroundColor: pressed ? t.surface2 : t.surface, justifyContent: 'center' })}
+                  >
+                    <Text style={{ color: t.text, fontSize: 16 }}>{x.trim() === 'Remember' ? 'Remember…' : x}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
           </View>
         )}
         {/* Two fingers on the messages zoom their text; one finger scrolls, taps and long-presses as before. */}
@@ -501,23 +522,29 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             <Text style={{ color: t.muted, fontSize: 14 }}>Sending {sendingFile}, encrypted…</Text>
           </View>
         ) : null}
-        {attachOpen && agent ? (
-          <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: t.surface, borderTopWidth: 1, borderTopColor: t.line }}>
+        {menuOpen && hasMenu ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: t.surface, borderTopWidth: 1, borderTopColor: t.line }}>
             {(
               [
-                ['camera', '📷', 'Take a photo'],
-                ['library', '🖼️', 'Choose a photo'],
-                ['file', '📄', 'PDF, doc or sheet'],
-              ] as const
-            ).map(([from, icon, label]) => (
+                ...(canAsk ? [{ key: 'ask', icon: '🐦', label: asking ? `Stop asking ${agent!.name}` : `Ask ${agent!.name}`, onPress: () => { setAsking((v) => !v); setMenuOpen(false); input.current?.focus(); } }] : []),
+                ...(canAttach
+                  ? [
+                      { key: 'camera', icon: '📷', label: 'Take a photo', onPress: () => attach('camera') },
+                      { key: 'library', icon: '🖼️', label: 'Choose a photo', onPress: () => attach('library') },
+                      { key: 'file', icon: '📄', label: 'PDF, doc or sheet', onPress: () => attach('file') },
+                    ]
+                  : []),
+                ...(canPoll ? [{ key: 'poll', icon: '📊', label: 'New poll', onPress: () => { setMenuOpen(false); setPollOpen(true); } }] : []),
+              ] as { key: string; icon: string; label: string; onPress: () => void }[]
+            ).map((item) => (
               <Pressable
-                key={from}
+                key={item.key}
                 accessibilityRole="button"
-                onPress={() => attach(from)}
-                style={({ pressed }) => ({ flex: 1, minHeight: 64, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 2, backgroundColor: pressed ? t.surface2 : t.bg })}
+                onPress={item.onPress}
+                style={({ pressed }) => ({ flexBasis: '30%', flexGrow: 1, minHeight: 64, borderRadius: 14, alignItems: 'center', justifyContent: 'center', gap: 2, paddingHorizontal: 4, backgroundColor: pressed ? t.surface2 : t.bg })}
               >
-                <Text style={{ fontSize: 22 }}>{icon}</Text>
-                <Text style={{ color: t.text, fontSize: 13, fontWeight: '600', textAlign: 'center' }}>{label}</Text>
+                <Text style={{ fontSize: 22 }}>{item.icon}</Text>
+                <Text style={{ color: t.text, fontSize: 13, fontWeight: '600', textAlign: 'center' }}>{item.label}</Text>
               </Pressable>
             ))}
           </View>
@@ -531,58 +558,26 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
         ) : (
           <SafeAreaView edges={['bottom']} style={{ backgroundColor: t.surface }}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 10, borderTopWidth: 1, borderTopColor: t.line }}>
-              <Pressable
-                accessibilityLabel={pickerOpen ? 'Hide emoji' : 'Emoji'}
-                onPress={() => {
-                  if (!pickerOpen) Keyboard.dismiss();
-                  setPickerOpen((v) => !v);
-                }}
-                style={{ width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: pickerOpen ? t.brandSoft : 'transparent' }}
-              >
-                <Text style={{ fontSize: 26 }}>😊</Text>
-              </Pressable>
-              {agent && !peer && !text.trim() ? (
+              {hasMenu ? (
                 <Pressable
-                  accessibilityLabel={asking ? `Stop asking ${agent.name}` : `Ask ${agent.name}`}
-                  accessibilityState={{ selected: asking }}
-                  onPress={() => setAsking((v) => !v)}
-                  style={{ width: 40, height: 48, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginLeft: -6, backgroundColor: asking ? t.brandSoft : 'transparent' }}
-                >
-                  <Text style={{ fontSize: 24 }}>🤖</Text>
-                </Pressable>
-              ) : null}
-              {canAttach && !text.trim() ? (
-                <Pressable
-                  accessibilityLabel={`Send ${agent!.name} a photo or file`}
-                  accessibilityState={{ expanded: attachOpen }}
+                  accessibilityRole="button"
+                  accessibilityLabel={menuOpen ? 'Close menu' : 'More: ask the helper, photos, polls'}
+                  accessibilityState={{ expanded: menuOpen }}
                   disabled={!!sendingFile}
                   onPress={() => {
                     Keyboard.dismiss();
-                    setPickerOpen(false);
-                    setAttachOpen((v) => !v);
+                    setMenuOpen((v) => !v);
                   }}
-                  style={{ width: 40, height: 48, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginLeft: -6, backgroundColor: attachOpen ? t.brandSoft : 'transparent' }}
+                  style={{ width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: menuOpen || asking ? t.brandSoft : t.bg }}
                 >
-                  <Text style={{ fontSize: 22 }}>📎</Text>
+                  <Text style={{ color: t.brand, fontSize: 30, lineHeight: 34, fontWeight: '500' }}>{menuOpen ? '×' : '+'}</Text>
                 </Pressable>
               ) : null}
-              {text.trim() || withAgent || canAttach || !client.feature('polls') ? null : (
-                <Pressable
-                  accessibilityLabel="New poll"
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    setPickerOpen(false);
-                    setPollOpen(true);
-                  }}
-                  style={{ width: 40, height: 48, alignItems: 'center', justifyContent: 'center', marginLeft: -6 }}
-                >
-                  <Text style={{ fontSize: 24 }}>📊</Text>
-                </Pressable>
-              )}
               <TextInput
+                ref={input}
                 value={text}
                 onChangeText={setText}
-                onFocus={() => setPickerOpen(false)}
+                onFocus={() => setMenuOpen(false)}
                 placeholder={withAgent ? `Ask ${title} anything` : asking && agent ? `Ask ${agent.name}…` : peer ? `Message ${title}` : 'Message your circle'}
                 placeholderTextColor={t.muted}
                 multiline
@@ -608,27 +603,6 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
                 <Text style={{ color: t.brand, fontSize: 16, fontWeight: '700' }}>/{agent.name}</Text>
                 <Text style={{ color: t.muted, fontSize: 13 }}>ask the circle’s helper</Text>
               </Pressable>
-            ) : null}
-            {pickerOpen ? (
-              <ScrollView style={{ maxHeight: 280, backgroundColor: t.surface }} contentContainerStyle={{ paddingHorizontal: 10, paddingBottom: 16 }} keyboardShouldPersistTaps="handled">
-                {EMOJI_GROUPS.map((g) => (
-                  <View key={g.name}>
-                    <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700', marginTop: 10, marginBottom: 4, marginLeft: 4 }}>{g.name}</Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-                      {g.emojis.map((e) => (
-                        <Pressable
-                          key={e}
-                          accessibilityLabel={`Insert ${e}`}
-                          onPress={() => setText((v) => v + e)}
-                          style={({ pressed }) => ({ width: '12.5%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: pressed ? t.surface2 : 'transparent' })}
-                        >
-                          <Text style={{ fontSize: 28 }}>{e}</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
             ) : null}
           </SafeAreaView>
         )}
@@ -733,6 +707,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
           ) : null}
         </Pressable>
       </Modal>
+      {canOpenPerson ? <PersonSheet client={client} memberId={personOpen ? peer : null} onClose={() => setPersonOpen(false)} /> : null}
     </SafeAreaView>
   );
 }
