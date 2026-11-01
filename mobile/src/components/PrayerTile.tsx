@@ -10,8 +10,8 @@ import { Pill, type Face } from './TileParts';
 const SKY: Record<string, { bg: string; ink: string }> = {
   fajr: { bg: '#3E5C9A', ink: '#fff' },
   dhuhr: { bg: '#E3B341', ink: '#3A2E00' },
-  asr: { bg: '#E08A3C', ink: '#fff' },
-  maghrib: { bg: '#C8553D', ink: '#fff' },
+  asr: { bg: '#E08A3C', ink: '#16201C' },
+  maghrib: { bg: '#C04E36', ink: '#fff' },
   isha: { bg: '#2E3F73', ink: '#fff' },
 };
 const COUNTDOWN = { bg: '#CFC8F5', ink: '#2B2550' };
