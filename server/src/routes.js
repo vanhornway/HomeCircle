@@ -726,6 +726,14 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     else if (!isAdmin(me) && !people.some((m) => m.id === me.id)) fail(403, 'forbidden', 'Only either of them or an admin can set that');
   };
 
+  // A change to what an admin set about a member (their skin, her page)
+  // wakes that phone with a silent, content-free push, so it follows even
+  // when the app is closed or the live connection is down.
+  const wakeSubject = (me, kind, people) => {
+    const m = kind === 'member' ? people[0] : null;
+    if (m && m.id !== me.id && m.pushToken) push.settingsChanged([m]);
+  };
+
   r.add('GET', '/records', ({ me, query }) => {
     const kind = query.get('kind');
     return { records: store.records(me.circleId, kind === 'member' || kind === 'alias' ? kind : null) };
@@ -739,13 +747,17 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     if (store.countRecords(me.circleId) >= MAX_RECORDS) fail(507, 'circle_full', 'This circle has too many settings saved');
     store.putRecord({ circleId: me.circleId, kind: params.kind, subject: params.subject, env, by: me.id, now: Date.now() });
     hub.broadcast(me.circleId, { type: 'records', kind: params.kind, subject: params.subject }, me.id);
+    wakeSubject(me, params.kind, people);
     return { ok: true };
   });
 
   r.add('DELETE', '/records/:kind/:subject', ({ me, params }) => {
     const people = recordTarget(me, params.kind, params.subject);
     mayWriteRecord(me, params.kind, people);
-    if (store.deleteRecord(me.circleId, params.kind, params.subject)) hub.broadcast(me.circleId, { type: 'records', kind: params.kind, subject: params.subject }, me.id);
+    if (store.deleteRecord(me.circleId, params.kind, params.subject)) {
+      hub.broadcast(me.circleId, { type: 'records', kind: params.kind, subject: params.subject }, me.id);
+      wakeSubject(me, params.kind, people);
+    }
     return { ok: true };
   });
 

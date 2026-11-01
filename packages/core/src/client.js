@@ -855,6 +855,10 @@ export class CircleClient {
       dnd: b.dnd === true,
       tz: cleanTimeZone(b.tz),
       used: num(b.used),
+      // Which skin and page this phone is showing (0.22.1), so an admin who
+      // switched it can see it has.
+      skin: typeof b.skin === 'string' && /^[a-z]{2,16}$/.test(b.skin) ? b.skin : null,
+      page: b.page === 'care' || b.page === 'grandkids' ? b.page : null,
       ts: msg.ts,
       receivedAt: updatedAt,
     };
@@ -876,7 +880,7 @@ export class CircleClient {
   }
 
   /** Upload this device's location, encrypted. */
-  async shareLocation({ lat, lng, accuracy, battery, charging, speed, trigger = 'update', placeId = null, approx = false, power, perm, precise, app, cadence, ts, dnd, tz, used }) {
+  async shareLocation({ lat, lng, accuracy, battery, charging, speed, trigger = 'update', placeId = null, approx = false, power, perm, precise, app, cadence, ts, dnd, tz, used, skin, page }) {
     const body = { lat, lng, accuracy, battery, charging, speed, trigger, placeId };
     // Which HomeCircle app the phone runs, for Circle health (0.16+).
     if (typeof app === 'string' && app) body.app = app.slice(0, 16);
@@ -892,6 +896,8 @@ export class CircleClient {
     if (dnd === true) body.dnd = true;
     if (cleanTimeZone(tz)) body.tz = tz;
     if (typeof used === 'number' && Number.isFinite(used)) body.used = used;
+    if (typeof skin === 'string' && /^[a-z]{2,16}$/.test(skin)) body.skin = skin;
+    if (page === 'care' || page === 'grandkids') body.page = page;
     await this._withEpochRetry(() => {
       const env = this._seal('location', body);
       return this.api.putLocation(env);
@@ -1694,8 +1700,15 @@ export class CircleClient {
     return !!m && !m.removed && (m.role === 'owner' || m.role === 'admin');
   }
 
-  async fetchRecords() {
+  async fetchRecords(refreshed = false) {
     const { records } = await this.api.records();
+    // Written by someone this phone doesn't know yet (an admin who joined
+    // since the last refresh): learn the members first, once, or the record
+    // would be dropped as unsigned.
+    if (!refreshed && records.some((r) => !this.account.known[r.by])) {
+      await this.refresh();
+      return this.fetchRecords(true);
+    }
     const member = new Map();
     const alias = new Map();
     for (const r of records) {
@@ -1713,6 +1726,26 @@ export class CircleClient {
     this.records = { member, alias };
     this.emit('records', this.records);
     return this.records;
+  }
+
+  /**
+   * After a key rotation: seal the settings records again under the new key,
+   * so a member who joins later can read them (their skin and her settings),
+   * as places are. Each is signed by the admin who rotated; phones accept
+   * a record from any admin.
+   */
+  async _resealRecords() {
+    const pairs = [...[...this.records.member].map(([k, r]) => ['member', k, r]), ...[...this.records.alias].map(([k, r]) => ['alias', k, r])];
+    const here = (id) => !!this.members.get(id) && !this.members.get(id).removed;
+    for (const [kind, subject, rec] of pairs) {
+      // Records about someone who just left go with them (the server deletes them).
+      if (!subject.split('.').every(here)) continue;
+      const { by, ts, ...body } = rec;
+      await this.api.putRecord(kind, subject, this._seal(kind, body)).catch((e) => {
+        if (!(e instanceof ApiError && e.status === 404)) this.onError(e);
+      });
+    }
+    await this.fetchRecords().catch(() => {});
   }
 
   async _putRecord(kind, subject, body) {
@@ -2504,6 +2537,7 @@ export class CircleClient {
       const { updatedBy, ...body } = p;
       await this.api.putPlace(p.id, this._seal('place', body));
     }
+    await this._resealRecords();
     await this.refresh();
   }
 
@@ -2526,9 +2560,11 @@ export class CircleClient {
     const t0 = Date.now();
     await this.refresh();
     this.timings.refreshMs = Date.now() - t0;
-    await Promise.all([this.fetchLocations(), this.fetchPlaces(), this.fetchRecords().catch(() => {})]);
+    await Promise.all([this.fetchLocations(), this.fetchPlaces()]);
     this.connect();
-    await this.fetchMessages();
+    // After the connection opens, so a change made while this was loading
+    // (an admin switching this phone's skin) is in one or the other.
+    await Promise.all([this.fetchRecords().catch(() => {}), this.fetchMessages()]);
     this._started = true;
     // The rest of the history, behind the screen.
     this.backfillHistory().catch(() => {});
@@ -2545,6 +2581,9 @@ export class CircleClient {
         if (s === 'online') {
           // Anything sent while we were disconnected never reached us live.
           if (connectedBefore) this.catchUp().catch(this.onError);
+          // The first time: settings fetched while the connection was still
+          // opening may already be out of date (an admin's change of skin).
+          else this.fetchRecords().catch(() => {});
           connectedBefore = true;
         }
       },
@@ -2567,7 +2606,9 @@ export class CircleClient {
         do {
           this._catchAgain = false;
           await this.refresh();
-          await Promise.all([this.fetchLocations(), this.fetchPlaces()]);
+          // Records too: an admin's change of this phone's skin comes with
+          // them, and a live event for it is missed while the phone is away.
+          await Promise.all([this.fetchLocations(), this.fetchPlaces(), this.fetchRecords().catch(() => {})]);
           await this.fetchMessages();
         } while (this._catchAgain && this.account);
       } finally {

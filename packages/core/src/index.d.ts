@@ -157,6 +157,10 @@ export interface MemberLocation {
   tz?: string | null;
   /** An elder's phone: when she last used it. */
   used?: number | null;
+  /** The skin this phone is showing ('full', 'elderly'), 0.22.1+. */
+  skin?: string | null;
+  /** The page it shows in the Elderly Companion skin. */
+  page?: 'care' | 'grandkids' | null;
   ts: number;
   receivedAt: number;
 }
@@ -545,6 +549,9 @@ export class CircleClient {
     tz?: string | null;
     /** An elder's phone: when she last used it. */
     used?: number | null;
+    /** The skin and page this phone is showing now. */
+    skin?: string;
+    page?: 'care' | 'grandkids' | null;
   }): Promise<void>;
   /** Remove this device's location from the circle (stop sharing with it). */
   clearLocation(): Promise<void>;

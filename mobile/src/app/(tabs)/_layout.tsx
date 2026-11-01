@@ -200,7 +200,9 @@ function useCircleLifecycle(circlesKey: string) {
       client.on('places', () => syncGeofences().catch(() => {})),
       // An admin marked this phone's person as an elder (or back): switch skin.
       client.on('records', () => {
-        syncSkinFromRecords(allClients()).catch(() => {});
+        syncSkinFromRecords(allClients())
+          .then((followed) => followed && shareNow('manual'))
+          .catch(() => {});
         recordNewElders(client).catch(() => {});
         checkInactivity(client).catch(() => {});
       }),
