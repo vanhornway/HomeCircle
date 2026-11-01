@@ -567,3 +567,79 @@ test('both sides know each other’s DTLS fingerprints once the call is set up',
   await flush();
   assert.deepEqual(a.engine.fingerprints, fa);
 });
+
+test('answered while asleep: the caller’s candidates it missed come again with the answer, once each', async () => {
+  const w = world(['a', 'b']);
+  const [a, b] = [w.get('a'), w.get('b')];
+  await a.engine.start('b');
+  await flush();
+  // B's phone is locked: its connection is dead but the server still sends to it.
+  w.net.down.add('b');
+  mock.timers.enable({ apis: ['setTimeout'] });
+  a.pcs[0].localCandidate('c1');
+  a.pcs[0].localCandidate('c2');
+  mock.timers.tick(150);
+  await flush();
+  mock.timers.reset();
+  assert.equal(w.dropped.filter((s) => s.op === 'ice').length, 1, 'lost on the way');
+  // B answers from the lock screen, awake again.
+  w.net.down.delete('b');
+  await b.engine.accept();
+  await flush();
+  assert.deepEqual(b.pcs[0].added.map((c) => c.candidate), ['c1', 'c2']);
+  // Sent again later: still once each.
+  await b.engine.handleSignal({ from: 'a', callId: a.engine.snapshot.callId!, op: 'ice', cands: [{ candidate: 'c1', sdpMid: '0', sdpMLineIndex: 0 }] });
+  assert.equal(b.pcs[0].added.length, 2);
+});
+
+test('answered but not connecting: a restart offer every 6 s (up to 3); connecting stops them', async () => {
+  mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const w = world(['a', 'b']);
+  const [a, b] = [w.get('a'), w.get('b')];
+  await a.engine.start('b');
+  await flush();
+  await b.engine.accept();
+  await flush();
+  const restarts = () => b.sent.filter((s) => s.body.op === 'offer' && s.body.restart).length;
+  assert.equal(restarts(), 0);
+  mock.timers.tick(6_000);
+  await flush();
+  assert.equal(restarts(), 1, 'B offers fresh candidates');
+  assert.ok(a.sent.some((s) => s.body.op === 'answer'), 'A answers it');
+  mock.timers.tick(6_000);
+  await flush();
+  assert.equal(restarts(), 2);
+  connect(a, b);
+  await flush();
+  mock.timers.tick(30_000);
+  await flush();
+  assert.equal(restarts(), 2, 'no more once connected');
+  assert.equal(b.engine.snapshot.phase, 'active');
+  assert.equal(b.ended.length, 0);
+});
+
+test('a microphone that never starts ends the call after 10 s instead of leaving it connecting', async () => {
+  mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const ended: EndInfo[] = [];
+  // B's microphone hangs (the app wasn't on screen yet).
+  const b = new VoiceCallEngine({
+    selfId: 'b',
+    newId: () => 'b-1',
+    send: async () => ({}),
+    createPeerConnection: () => new FakePc(),
+    getLocalAudio: () => new Promise(() => {}),
+    onEnded: (e) => ended.push(e),
+  });
+  everyone.push(b);
+  await b.handleSignal({ from: 'a', callId: 'call-1', op: 'offer', sdp: 'v=0\r\n' });
+  await flush();
+  const answering = b.accept();
+  await flush();
+  assert.equal(b.snapshot.phase, 'connecting');
+  mock.timers.tick(10_000);
+  await answering;
+  await flush();
+  assert.equal(ended[0].reason, 'no_microphone');
+  assert.match(ended[0].error ?? '', /microphone didn’t start/);
+  assert.equal(b.snapshot.phase, 'idle');
+});

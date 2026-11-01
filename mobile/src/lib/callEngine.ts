@@ -84,8 +84,19 @@ export interface Timing {
   retryMs: number;
   /** Local candidates are sent together, this long after the first. */
   candidateBatchMs: number;
+  /** The microphone has this long to start, or the call ends (it never hangs). */
+  micMs: number;
+  /**
+   * An answered call not yet connected after this long sends a restart
+   * offer: fresh candidates both ways, now that both phones are awake.
+   * Candidates sent while the answering phone was asleep (its connection
+   * dead, the server not knowing yet) are otherwise lost.
+   */
+  earlyRestartMs: number;
 }
-export const DEFAULT_TIMING: Timing = { ringMs: 45_000, connectMs: 30_000, disconnectedGraceMs: 5_000, reconnectMs: 45_000, retryMs: 3_000, candidateBatchMs: 100 };
+export const DEFAULT_TIMING: Timing = { ringMs: 45_000, connectMs: 30_000, disconnectedGraceMs: 5_000, reconnectMs: 45_000, retryMs: 3_000, candidateBatchMs: 100, micMs: 10_000, earlyRestartMs: 6_000 };
+/** Early restarts per call, before the connect deadline ends it. */
+const EARLY_RESTARTS = 3;
 
 // --- state -----------------------------------------------------------------
 
@@ -143,12 +154,19 @@ export class VoiceCallEngine {
   private pendingOffer: string | null = null;
   private localReady = false;
   private localBatch: IceCandidateInit[] = [];
+  // Every local candidate sent for this connection, to send again once the
+  // other phone has answered (and is surely listening).
+  private localSent: IceCandidateInit[] = [];
+  // Remote candidates already taken for this call.
+  private remoteSeen = new Set<string>();
   private batchTimer: Timer | null = null;
   private ringTimer: Timer | null = null;
   private connectTimer: Timer | null = null;
   private disconnectTimer: Timer | null = null;
   private reconnectTimer: Timer | null = null;
   private retryTimer: Timer | null = null;
+  private earlyTimer: Timer | null = null;
+  private earlyRestarts = 0;
   private restarting = false;
   private everConnected = false;
   // The DTLS fingerprints each side offered for this call (for the four words).
@@ -201,6 +219,8 @@ export class VoiceCallEngine {
     if (phase !== 'incoming' || !callId || !peerId || this.pendingOffer == null) return;
     this.set({ phase: 'connecting' });
     this.clearTimer('ringTimer');
+    // From the moment it's answered: connected within connectMs, or over.
+    this.armConnect(callId);
     await this.answerPending(callId);
   }
 
@@ -213,6 +233,8 @@ export class VoiceCallEngine {
       await this.answerOffer(pc, this.pendingOffer);
       this.pendingOffer = null;
       this.armConnect(callId);
+      this.earlyRestarts = 0;
+      this.armEarlyRestart(callId);
     } catch (e) {
       if (this.snap.callId === callId) this.finish(this.failure(e), { error: errorText(e), notify: true, op: 'decline' });
     }
@@ -275,6 +297,9 @@ export class VoiceCallEngine {
           this.clearTimer('ringTimer');
           this.set({ phase: 'connecting', remoteRinging: false });
           this.armConnect(callId!);
+          // Candidates sent while their phone was asleep may never have
+          // reached it (a dead connection the server still trusted): again.
+          if (this.localSent.length) this.deps.send(peerId!, { callId: callId!, op: 'ice', cands: [...this.localSent] }).catch(() => {});
         }
         this.restarting = false;
         this.healIfConnected();
@@ -311,6 +336,7 @@ export class VoiceCallEngine {
       this.set({ ...IDLE, phase: 'connecting', callId: sig.callId, peerId: sig.from, incoming: true });
       this.pendingOffer = sdp;
       this.pendingRemote = [];
+      this.remoteSeen.clear();
       await this.answerPending(sig.callId);
       return;
     }
@@ -322,6 +348,7 @@ export class VoiceCallEngine {
     this.set({ ...IDLE, phase: 'incoming', callId: sig.callId, peerId: sig.from, incoming: true });
     this.pendingOffer = sdp;
     this.pendingRemote = [];
+    this.remoteSeen.clear();
     this.armRing(sig.callId, 'missed');
     this.deps.send(sig.from, { callId: sig.callId, op: 'ringing' }).catch(() => {});
   }
@@ -379,7 +406,7 @@ export class VoiceCallEngine {
     if (this.audio) return true;
     let a: LocalAudio;
     try {
-      a = await this.deps.getLocalAudio();
+      a = await withTimeout(this.deps.getLocalAudio(), this.timing.micMs, 'The microphone didn’t start. Open HomeCircle and try again.');
     } catch (e) {
       const err = new Error(errorText(e)) as Error & { micDenied?: boolean };
       err.micDenied = true;
@@ -408,6 +435,7 @@ export class VoiceCallEngine {
     this.remoteSet = false;
     this.localReady = false;
     this.localBatch = [];
+    this.localSent = [];
     for (const t of this.audio?.tracks ?? []) pc.addTrack(t, this.audio!.stream);
     pc.onicecandidate = (e) => {
       const c = e.candidate;
@@ -502,12 +530,19 @@ export class VoiceCallEngine {
     if (!callId || !peerId || !this.localBatch.length || !this.localReady) return;
     const cands = this.localBatch;
     this.localBatch = [];
+    this.localSent.push(...cands);
     // A candidate that doesn't get through is lost: a restart makes new ones.
     this.deps.send(peerId, { callId, op: 'ice', cands }).catch(() => {});
   }
 
   /** Candidates that arrive before the remote description is set wait here. */
-  private async addRemote(c: IceCandidateInit) {
+  private async addRemote(c: IceCandidateInit, { seen = false } = {}) {
+    // The caller sends its candidates again once answered: each one once.
+    const key = `${c.sdpMid ?? ''}|${c.candidate ?? ''}`;
+    if (!seen) {
+      if (this.remoteSeen.has(key)) return;
+      this.remoteSeen.add(key);
+    }
     if (!this.pc || !this.remoteSet) {
       this.pendingRemote.push(c);
       return;
@@ -522,7 +557,7 @@ export class VoiceCallEngine {
   private async drainRemote() {
     const list = this.pendingRemote;
     this.pendingRemote = [];
-    for (const c of list) await this.addRemote(c);
+    for (const c of list) await this.addRemote(c, { seen: true });
   }
 
   // --- timers and the end ------------------------------------------------------
@@ -534,6 +569,28 @@ export class VoiceCallEngine {
       if (this.snap.callId !== callId) return;
       this.finish(reason, { notify: reason === 'no_answer', op: 'hangup' });
     }, this.timing.ringMs);
+  }
+
+  /** Not connected yet after earlyRestartMs: a restart offer, up to EARLY_RESTARTS times. */
+  private armEarlyRestart(callId: string) {
+    this.clearTimer('earlyTimer');
+    this.earlyTimer = setTimeout(() => {
+      this.earlyTimer = null;
+      const pc = this.pc;
+      const { phase, peerId } = this.snap;
+      if (this.snap.callId !== callId || !pc || !peerId || this.everConnected || phase !== 'connecting') return;
+      if (this.earlyRestarts >= EARLY_RESTARTS) return;
+      this.earlyRestarts++;
+      this.deps.log?.('not connected yet: restarting ICE', this.earlyRestarts);
+      if (!this.restarting) {
+        this.restarting = true;
+        void this.sendRestartOffer(pc, callId, peerId).finally(() => {
+          // The answer to it (or nothing) arrives later; allow the next try.
+          this.restarting = false;
+        });
+      }
+      this.armEarlyRestart(callId);
+    }, this.timing.earlyRestartMs);
   }
 
   private armConnect(callId: string) {
@@ -589,8 +646,10 @@ export class VoiceCallEngine {
     this.audio = null;
     this.remoteSet = false;
     this.pendingRemote = [];
+    this.remoteSeen.clear();
     this.pendingOffer = null;
     this.localBatch = [];
+    this.localSent = [];
     this.localReady = false;
     this.restarting = false;
     const durationMs = startedAt ? Date.now() - startedAt : 0;
@@ -601,13 +660,13 @@ export class VoiceCallEngine {
     this.deps.onEnded?.({ reason, callId, peerId, incoming, durationMs, ...(error ? { error } : {}) });
   }
 
-  private clearTimer(name: 'ringTimer' | 'connectTimer' | 'disconnectTimer' | 'reconnectTimer' | 'retryTimer') {
+  private clearTimer(name: 'ringTimer' | 'connectTimer' | 'disconnectTimer' | 'reconnectTimer' | 'retryTimer' | 'earlyTimer') {
     if (this[name]) clearTimeout(this[name]!);
     this[name] = null;
   }
 
   private clearTimers() {
-    for (const n of ['ringTimer', 'connectTimer', 'disconnectTimer', 'reconnectTimer', 'retryTimer'] as const) this.clearTimer(n);
+    for (const n of ['ringTimer', 'connectTimer', 'disconnectTimer', 'reconnectTimer', 'retryTimer', 'earlyTimer'] as const) this.clearTimer(n);
   }
 
   private set(patch: Partial<CallSnapshot>) {
@@ -618,4 +677,15 @@ export class VoiceCallEngine {
 
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+/** A promise that rejects with `message` if it hasn't settled within `ms`. */
+function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([p, late]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }

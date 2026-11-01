@@ -85,6 +85,8 @@ const engine = new VoiceCallEngine({
   onEnded: (info) => ended(info),
   log: (...a) => {
     if (__DEV__) console.log('[homecircle:call]', ...a);
+    // How the connection went, for Diagnostics: each ICE state, and early restarts.
+    if (a[0] === 'ice' || String(a[0]).startsWith('not connected')) diag('call:ice', { at: a.map(String).join(' ').slice(0, 60) });
   },
 });
 
@@ -272,7 +274,29 @@ export async function startCall(client: CircleClient, peerId: string): Promise<v
   await engine.start(peerId).catch(() => {});
 }
 
+/**
+ * Android lets an app use the microphone only while it's on screen. Answered
+ * from the notification or the lock screen, the app may still be coming
+ * forward (or waiting for the PIN): wait for that, up to 20 s.
+ */
+function whenOnScreen(maxMs = 20_000): Promise<void> {
+  if (AppState.currentState === 'active') return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      sub.remove();
+      clearTimeout(timer);
+      resolve();
+    };
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') done();
+    });
+    const timer = setTimeout(done, maxMs);
+  });
+}
+
 export async function answerCall() {
+  await whenOnScreen();
+  diag('call:answer', { onScreen: AppState.currentState === 'active' });
   // As for calling: the microphone before the call (and its service) starts.
   try {
     await ensureMicrophone();
