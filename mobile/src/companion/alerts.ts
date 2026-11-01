@@ -41,7 +41,7 @@ export async function companionAlerts(client: CircleClient, messages: Message[],
     if (m.body?.groupCall?.state === 'start' && !asleep) {
       const s = client.groupCallState(m.id);
       if (s?.open) {
-        const line: Line = { key: 'groupcall.started', name: tileName(client, s.from) };
+        const line: Line = { key: 'groupcall.started', g: genderOf(client, s.from), name: tileName(client, s.from) };
         say(line);
         await notifyGroupCall(client, s, { title: `📞 ${text(line)}`, body: '' }).catch(() => {});
       }

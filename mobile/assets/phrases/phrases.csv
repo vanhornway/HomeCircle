@@ -46,4 +46,4 @@ family.asleep_told,Family app: chat note,,{member} is asleep. {elder} was told.,
 family.inactive,Family app: inactivity check-in,elder,{elder} hasn't used her phone for {hours} hours,,
 family.game_invite,Family app: she starts a game,elder,{elder} wants to play {game} with you,,
 sos.safe,Her app: I'm safe now button (added; Urdu from the owner's 27 Oct review),,I'm safe now,اب میں ٹھیک ہوں,
-groupcall.started,Her app: someone in the family started the WhatsApp group call,,{name} started a family call. Touch to join.,{name} نے فیملی کال شروع کی ہے۔ شامل ہونے کے لیے چھوئیں۔,
+groupcall.started,Her app: someone in the family started the WhatsApp group call (wording from the owner's 31 Oct review),name,The family call has started. {name} is waiting for you.,فیملی کال شروع ہو گئی ہے۔ {name} آپ کا انتظار کر رہے ہیں۔,فیملی کال شروع ہو گئی ہے۔ {name} آپ کا انتظار کر رہی ہیں۔

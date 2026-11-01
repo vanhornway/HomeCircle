@@ -721,17 +721,34 @@
    }
   },
   "groupcall.started": {
-   "en": "{name} started a family call. Touch to join.",
-   "gender": null,
+   "en": "The family call has started. {name} is waiting for you.",
+   "gender": "name",
    "ur": {
     "m": {
-     "text": "{name} نے فیملی کال شروع کی ہے۔ شامل ہونے کے لیے چھوئیں۔",
+     "text": "فیملی کال شروع ہو گئی ہے۔ {name} آپ کا انتظار کر رہے ہیں۔",
      "parts": [
+      {
+       "clip": "ur_groupcall_started_1"
+      },
       {
        "slot": "name"
       },
       {
-       "clip": "ur_groupcall_started_1"
+       "clip": "ur_groupcall_started_2"
+      }
+     ]
+    },
+    "f": {
+     "text": "فیملی کال شروع ہو گئی ہے۔ {name} آپ کا انتظار کر رہی ہیں۔",
+     "parts": [
+      {
+       "clip": "ur_groupcall_started_1_f"
+      },
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_groupcall_started_2_f"
       }
      ]
     }
