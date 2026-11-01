@@ -30,10 +30,16 @@ export default function NotificationSettings() {
 
   return (
     <SettingsPage title="Notifications">
-      <SettingsGroup footer="Messages are decrypted on this phone before they’re shown. The push service only learns that something arrived.">
+      <SettingsGroup
+        footer="Choose what shows on your lock screen."
+        how={[
+          'Messages are decrypted on this phone before they’re shown.',
+          'The push service that wakes your phone only learns that something arrived. It never sees who wrote or what they said.',
+        ]}
+      >
         <ToggleRow
           title="Show message text"
-          detail={settings.showPreviews ? 'Notifications show who wrote and what they said.' : 'Notifications just say “New message”.'}
+          detail={settings.showPreviews ? 'Shows who wrote and what they said.' : 'Just says “New message”.'}
           value={settings.showPreviews}
           onChange={(v) => updateSettings({ showPreviews: v })}
         />
@@ -52,15 +58,21 @@ export default function NotificationSettings() {
       {Platform.OS === 'android' ? (
         <SettingsGroup
           title="When your phone is locked"
-          footer="Android can hold back HomeCircle’s silent wake-ups while the phone is locked and idle, so a message doesn’t sound until you pick the phone up. Both settings below fix that; neither sends anything but a generic notice."
+          footer={
+            battery === false
+              ? 'Android can delay message sounds while your phone is locked. Letting HomeCircle run in the background and the backup alert both help.'
+              : 'Android can delay message sounds while your phone is locked. The backup alert covers for that.'
+          }
+          how={[
+            'Android can hold back HomeCircle’s silent wake-ups while the phone is locked and idle, so a message doesn’t sound until you pick the phone up.',
+            'The backup alert: if a message hasn’t reached this phone within seconds, your server sends one alert that says only “New message in your circle”. Android sounds it at once, and the real notification replaces it as soon as the phone catches up. Anyone who sees your lock screen could read that line.',
+            ...(battery === false ? ['Letting HomeCircle run in the background lets Android wake it as usual. It sends nothing extra.'] : []),
+          ]}
+          howTitle="Why messages can be late"
         >
           <ToggleRow
             title="Backup alert"
-            detail={
-              settings.backupAlerts
-                ? 'If a message hasn’t reached this phone within seconds, your server sends one alert that says only “New message in your circle”. Android sounds it at once, and it is replaced by the real notification as soon as the phone catches up. Anyone who sees your lock screen could read that line.'
-                : 'Off. Messages sound only when the phone lets HomeCircle wake up.'
-            }
+            detail={settings.backupAlerts ? 'If a message is late, you get one alert: “New message in your circle”.' : 'Off. Messages sound only when Android lets HomeCircle wake up.'}
             value={settings.backupAlerts}
             onChange={setBackup}
           />
@@ -72,10 +84,10 @@ export default function NotificationSettings() {
         </SettingsGroup>
       ) : null}
 
-      <SettingsGroup title="Chats" footer="Delivered ticks (✓✓) always show. Read receipts work both ways, as in other messengers.">
+      <SettingsGroup title="Chats" footer="Delivered ticks (✓✓) always show.">
         <ToggleRow
           title="Read receipts"
-          detail={settings.readReceipts ? 'Others see when you’ve read their messages, and you see when they’ve read yours.' : 'Off: others don’t see when you’ve read, and you don’t see when they have.'}
+          detail={settings.readReceipts ? 'Others see when you’ve read, and you see when they have.' : 'Off. You don’t see read receipts and neither do they.'}
           value={settings.readReceipts}
           onChange={(v) => updateSettings({ readReceipts: v })}
         />

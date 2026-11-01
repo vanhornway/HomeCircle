@@ -3,9 +3,11 @@ import { router } from 'expo-router';
 import { View } from 'react-native';
 import { CircleClient, defaultFeatures } from '@homecircle/core';
 import { FeatureChooser } from '../components/FeaturePicker';
-import { Button, ErrorText, Field, H1, LockNote, P, Screen } from '../components/ui';
+import { Button, ErrorText, Field, H1, P, Screen } from '../components/ui';
+import { HowThisWorks } from '../components/HowThisWorks';
 import { addCircle, allClients, draftClient, errorText } from '../lib/circle';
 import { enterApp } from '../lib/nav';
+import { finishJoining } from '../lib/firstRun';
 import { updateSettings } from '../lib/storage';
 
 export default function Setup() {
@@ -32,7 +34,7 @@ export default function Setup() {
       await addCircle(client);
       if (first) {
         await updateSettings({ tileUrl: info.tileUrl, tileAttribution: info.tileAttribution });
-        enterApp('/permissions');
+        await finishJoining();
       } else {
         enterApp();
       }
@@ -47,7 +49,7 @@ export default function Setup() {
     <Screen>
       <H1 style={{ marginTop: 12 }}>Set up your server</H1>
       <P muted style={{ marginTop: 8, marginBottom: 24 }}>
-        Enter the address of the HomeCircle server you just deployed and the setup code from its logs or dashboard.
+        Enter your server’s address and the setup code from its logs or dashboard.
       </P>
       <Field label="Server address" value={server} onChangeText={setServer} placeholder="homecircle-abc.onrender.com" autoCapitalize="none" autoCorrect={false} keyboardType="url" />
       <Field label="Setup code" value={code} onChangeText={setCode} placeholder="From your server logs" autoCapitalize="none" autoCorrect={false} />
@@ -64,10 +66,12 @@ export default function Setup() {
         style={{ marginTop: 8 }}
         onPress={() => router.push(server.trim() ? { pathname: '/recover', params: { server } } : '/recover')}
       />
-      <LockNote>
-        Your encryption keys are created on this phone and never leave it. You’ll be the circle’s owner. Everyone who joins agrees that the
-        circle can see their location and ask for it at any time.
-      </LockNote>
+      <HowThisWorks style={{ marginTop: 14 }}>
+        {[
+          'Your encryption keys are created on this phone and never leave it.',
+          'You’ll be the circle’s owner. Everyone who joins agrees that the circle can see their location and ask for it at any time.',
+        ]}
+      </HowThisWorks>
     </Screen>
   );
 }

@@ -48,7 +48,7 @@ export async function ensureCallbackChannel() {
   if (Platform.OS !== 'android') return;
   await Notifications.setNotificationChannelAsync(CALLBACKS_CHANNEL, {
     name: 'Call-back requests',
-    description: 'When someone using the Elderly Companion app asks you to call',
+    description: 'When an elder asks you to call',
     importance: AndroidImportance.HIGH,
     sound: 'default',
     vibrationPattern: [0, 400, 200, 400],

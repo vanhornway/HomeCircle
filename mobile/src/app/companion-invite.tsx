@@ -3,12 +3,13 @@ import { ActivityIndicator, Pressable, Share, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import type { FeatureId, Invite } from '@homecircle/core';
 import { QRCode } from '../components/QRCode';
-import { AgeConfirm, Button, ErrorText, Field, LockNote, P, Screen } from '../components/ui';
+import { AgeConfirm, Button, ErrorText, Field, P, Screen } from '../components/ui';
+import { HowThisWorks } from '../components/HowThisWorks';
 import { errorText, getClient } from '../lib/circle';
 import { SKINS, type SkinId } from '../skins';
 import { useTheme } from '../theme';
 
-// An Elderly Companion invite lasts a week, so a helper near her has time to set up her phone.
+// An elder's invite lasts a week, so a helper near her has time to set up her phone.
 const HOURS = 168;
 
 /**
@@ -61,7 +62,7 @@ export default function CompanionInvite() {
       {invite ? (
         <>
           <P muted style={{ marginBottom: 18 }}>
-            Install HomeCircle on {name.trim()}’s phone, tap “Join my family” and scan this code. Or send the link to whoever is setting up her phone. Once joined, it shows {SKINS[skin].label === 'Full app' ? 'the full app' : 'the simple screens'}.
+            Install HomeCircle on {name.trim()}’s phone, tap “Join my family” and scan this code. Or send the link to whoever is setting up her phone.
           </P>
           <View style={{ alignItems: 'center', padding: 16, backgroundColor: '#fff', borderRadius: 20, alignSelf: 'center' }}>
             <QRCode value={invite.link} size={220} />
@@ -77,8 +78,7 @@ export default function CompanionInvite() {
       ) : (
         <>
           <P muted style={{ marginBottom: 18 }}>
-            Choose which skin their HomeCircle app shows. The Elderly Companion screens are big photo tiles, Ring everyone, SOS and games; there’s no way back to
-            the full app from their phone. Location sharing and everything else keeps working underneath.
+            Choose the screens their phone shows.
           </P>
           <Field label="Her name" value={name} onChangeText={setName} placeholder="As the family says it, e.g. Ammi" autoFocus />
           <Text style={{ color: t.muted, fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, marginLeft: 4 }}>This circle is her</Text>
@@ -86,7 +86,7 @@ export default function CompanionInvite() {
             {choice('care', 'Care circle', 'Adult children. SOS, reminders until someone calls.')}
             {choice('grandkids', 'Grandkids', 'One notification, no reminders, no SOS.')}
           </View>
-          <Text style={{ color: t.muted, fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, marginLeft: 4 }}>Skin</Text>
+          <Text style={{ color: t.muted, fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8, marginLeft: 4 }}>Screens</Text>
           <View style={{ gap: 10, marginBottom: 18 }}>
             {(Object.keys(SKINS) as SkinId[]).map((id) => (
               <Pressable
@@ -107,7 +107,14 @@ export default function CompanionInvite() {
           <ErrorText>{error}</ErrorText>
         </>
       )}
-      <LockNote>Her name travels inside the invite, end-to-end encrypted. The invite works once and lasts a week.</LockNote>
+      <HowThisWorks style={{ marginTop: 14 }}>
+        {[
+          invite
+            ? `Once joined, ${name.trim()}’s phone shows ${SKINS[skin].label === 'Full app' ? 'the full app' : 'the simple elder screens'}.`
+            : 'The elder screens are big photo tiles, Ring everyone, SOS and games. There’s no way back to the full app from their phone. Location sharing and everything else keeps working underneath.',
+          'Her name travels inside the invite, end-to-end encrypted. The invite works once and lasts a week.',
+        ]}
+      </HowThisWorks>
     </Screen>
   );
 }

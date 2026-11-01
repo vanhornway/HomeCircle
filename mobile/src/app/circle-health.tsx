@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Text, View } from 'react-native';
 import { Avatar, Button, Card, P, Screen } from '../components/ui';
+import { HowThisWorks } from '../components/HowThisWorks';
 import { errorText } from '../lib/circle';
 import { cadenceLine, memberState, statusLine, type MemberState } from '../lib/people';
 import { timeAgo, useCircle } from '../lib/useCircle';
@@ -67,8 +68,14 @@ export default function CircleHealth() {
   return (
     <Screen>
       <P muted style={{ marginTop: 8, marginBottom: 14 }}>
-        How each phone in {client.circle.name} is set up, from what it sends with its location. Names and places stay encrypted; this only shows settings.
+        How each phone in {client.circle.name} is set up.
       </P>
+      <HowThisWorks style={{ marginBottom: 8 }}>
+        {[
+          'This comes from what each phone sends with its location. Names and places stay encrypted; this only shows settings.',
+          '“Not reported” means that phone runs an older HomeCircle version. It updates once they install the latest app.',
+        ]}
+      </HowThisWorks>
       <View style={{ gap: 10 }}>
         {members.map((m) => {
           const loc = client.locations.get(m.id);
@@ -112,9 +119,6 @@ export default function CircleHealth() {
           );
         })}
       </View>
-      <Text style={{ color: t.muted, fontSize: 13, marginTop: 14 }}>
-        “Not reported” means that phone runs an older HomeCircle version. It updates once they install the latest app.
-      </Text>
     </Screen>
   );
 }

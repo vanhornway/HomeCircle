@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { Alert, FlatList, Share, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Button, Card, P } from '../components/ui';
+import { HowThisWorks } from '../components/HowThisWorks';
 import { clearDiagnostics, diagnosticsText, formatEntry, formatGap, readDiagnostics, summarize, type DiagEntry } from '../lib/diagnostics';
 import { errorText, getClient } from '../lib/circle';
 import { energyReport, formatMah, type Counts } from '../lib/energy';
@@ -85,7 +86,8 @@ export default function Diagnostics() {
       keyExtractor={(x, i) => `${x.t}-${i}`}
       ListHeaderComponent={
         <View style={{ gap: 12, marginBottom: 12 }}>
-          <P muted>What HomeCircle did in the background over the last 7 days. It stays encrypted on this phone unless you send it.</P>
+          <P muted>What HomeCircle did in the background over the last 7 days.</P>
+          <HowThisWorks>The log stays encrypted on this phone unless you send it.</HowThisWorks>
           {s ? (
             <Card style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
               {stat('Background wake-ups', s.wakeups)}
@@ -106,13 +108,12 @@ export default function Diagnostics() {
               ))}
               {battery !== null ? (
                 <Text style={{ color: battery ? t.muted : t.danger, fontSize: 13, lineHeight: 18 }}>
-                  {battery ? 'Battery: Unrestricted.' : 'Battery: Optimized. Android may hold back wake-ups while the phone is locked (Setup check → Battery).'}
+                  {battery ? 'Battery: Unrestricted.' : 'Battery: Optimized. Fix it in Setup check → Battery.'}
                 </Text>
               ) : null}
-              <Text style={{ color: t.muted, fontSize: 12, lineHeight: 17 }}>
-                “In transit” is how long a push waited between your server’s relay sending it and this phone receiving it. Minutes or hours here with the phone locked means Android
-                held it back.
-              </Text>
+              <HowThisWorks title="What “in transit” means">
+                “In transit” is how long a push waited between your server’s relay sending it and this phone receiving it. Minutes or hours here with the phone locked means Android held it back.
+              </HowThisWorks>
             </Card>
           ) : null}
           {energy ? (
@@ -123,10 +124,9 @@ export default function Diagnostics() {
                 {stat(energy.charging ? 'Charging now' : `Since unplugged (${sinceText(energy.unplugged.since)})`, formatMah(energy.unplugged.mah))}
               </View>
               <Text style={{ color: t.muted, fontSize: 13, lineHeight: 18 }}>{countsText(energy.today)}</Text>
-              <Text style={{ color: t.muted, fontSize: 12, lineHeight: 17 }}>
-                Worked out from what HomeCircle did (each wake-up, location fix and upload has a typical cost), for a 5000 mAh battery. Time on the charger isn’t counted
-                against the battery.
-              </Text>
+              <HowThisWorks title="How this is estimated">
+                Worked out from what HomeCircle did (each wake-up, location fix and upload has a typical cost), for a 5000 mAh battery. Time on the charger isn’t counted against the battery.
+              </HowThisWorks>
             </Card>
           ) : null}
           {admins.length ? (

@@ -124,7 +124,7 @@ export default function LocationSettings() {
       </View>
 
       {view === 'basic' ? (
-        <SettingsGroup title="Location updates" footer="Locate, SOS, arrivals and departures are always sent right away.">
+        <SettingsGroup title="Location updates" footer="Locate, SOS and arrivals are always sent right away.">
           <GroupBody gap={12}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Text style={{ color: t.text, fontSize: 18, fontWeight: '700' }}>{profile === 'custom' ? 'Custom' : STOP_NAMES[profile]}</Text>
@@ -145,7 +145,15 @@ export default function LocationSettings() {
         </SettingsGroup>
       ) : (
         <>
-          <SettingsGroup title="Updates" footer="Changing these shows “Custom” in Basic. Locate, SOS, arrivals and departures are always sent right away.">
+          <SettingsGroup
+            title="Updates"
+            footer="Changing these shows “Custom” in Basic."
+            how={[
+              'Locate, SOS, arrivals and departures are always sent right away.',
+              'Slow down after an hour in one place: after an hour within about 100 m, updates while still come hourly.',
+              'Pause location checks when still: after 10 minutes without moving, location is checked every 10 minutes instead of every minute, until you move.',
+            ]}
+          >
             <GroupBody gap={10}>
               {label('While moving, at most every')}
               {choice(MOVING_GAPS, values.movingGapMin, ' min', (n) => setValue({ movingGapMin: n }))}
@@ -154,32 +162,38 @@ export default function LocationSettings() {
             </GroupBody>
             <ToggleRow
               title="Slow down after an hour in one place"
-              detail="After an hour within about 100 m, updates while still come hourly."
+              detail="Updates come hourly once you’ve stayed put for an hour."
               value={values.slowWhenStill}
               onChange={(v) => setValue({ slowWhenStill: v })}
             />
             <ToggleRow
               title="Pause location checks when still"
-              detail="After 10 minutes without moving, location is checked every 10 minutes instead of every minute, until you move."
+              detail="Checks less often once you stop moving."
               value={values.stillMode}
               onChange={(v) => setValue({ stillMode: v })}
             />
           </SettingsGroup>
-          <SettingsGroup title="Battery">
+          <SettingsGroup
+            title="Battery"
+            how={[
+              'Near the daily budget, moving updates slow down for the rest of the day. Charging starts it again.',
+              'Full detail while charging: updates every 30 seconds while moving, using GPS, until you unplug.',
+              'Save more with Battery Saver: with Battery Saver on, or under 20% battery, HomeCircle uses Longest battery until Battery Saver is off or the phone is charged.',
+            ]}
+          >
             <GroupBody gap={10}>
               {label('Daily battery budget')}
               {choice(BUDGETS, values.budgetPct, '%', (n) => setValue({ budgetPct: n }))}
-              <Text style={{ color: t.muted, fontSize: 13, lineHeight: 18 }}>Near it, moving updates slow down for the rest of the day. Charging starts it again.</Text>
             </GroupBody>
             <ToggleRow
               title="Full detail while charging"
-              detail="Updates every 30 seconds while moving, using GPS, until you unplug."
+              detail="Every 30 seconds while moving, until you unplug."
               value={settings.location.fullDetailCharging}
               onChange={(v) => apply({ location: { ...settings.location, fullDetailCharging: v } })}
             />
             <ToggleRow
               title="Save more with Battery Saver"
-              detail="With Battery Saver on, or under 20% battery, use Longest battery until it’s off or charged."
+              detail="Longest battery when Battery Saver is on or under 20%."
               value={settings.location.saveWithBatterySaver}
               onChange={(v) => apply({ location: { ...settings.location, saveWithBatterySaver: v } })}
             />
@@ -193,15 +207,15 @@ export default function LocationSettings() {
             title="Announce my arrivals"
             detail={
               settings.announcePlaces
-                ? 'Your circles’ chats get “Sam arrived at Home” when you arrive at or leave a place.'
-                : 'Your phone won’t post when you arrive or leave. Your location still shows on the map.'
+                ? 'Chats get “Sam arrived at Home” when you arrive or leave.'
+                : 'Nothing is posted when you arrive or leave. The map still shows you.'
             }
             value={settings.announcePlaces}
             onChange={(v) => updateSettings({ announcePlaces: v })}
           />
           <ToggleRow
             title="Show others’ arrivals"
-            detail={settings.showPlaceAlerts ? 'You see and get notified when others arrive or leave.' : 'Hidden on this phone, and no notifications. Others still see them.'}
+            detail={settings.showPlaceAlerts ? 'You see and hear when others arrive or leave.' : 'Hidden on this phone, with no notifications.'}
             value={settings.showPlaceAlerts}
             onChange={(v) => updateSettings({ showPlaceAlerts: v })}
           />
@@ -209,13 +223,13 @@ export default function LocationSettings() {
       ) : null}
 
       {clients.some((c) => c.feature('homeAssistant')) ? (
-        <SettingsGroup title="Home Assistant">
+        <SettingsGroup title="Home Assistant" how="Your circle’s Home Assistant gets your location with each update, so it can start automations, like lights on when you get home. Your circle still sees you on the map either way.">
           <ToggleRow
             title="Send my location to Home Assistant"
             detail={
               settings.sendToHomeAssistant
-                ? 'Your circle’s Home Assistant gets your location with each update, so it can start automations (like lights on when you get home).'
-                : 'Your circle’s Home Assistant doesn’t get your location. Your circle still sees it on the map.'
+                ? 'Home Assistant gets your location with each update.'
+                : 'Home Assistant doesn’t get your location.'
             }
             value={settings.sendToHomeAssistant}
             onChange={(v) => updateSettings({ sendToHomeAssistant: v })}

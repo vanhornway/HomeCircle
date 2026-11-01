@@ -97,9 +97,13 @@ function CirclePage({ client, index, count, current }: { client: CircleClient; i
             accessibilityRole="button"
             accessibilityLabel="Ring everyone in this circle"
             onPress={ringEveryone}
-            style={({ pressed }) => ({ height: 124, borderRadius: 32, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.85 : 1 })}
+            style={({ pressed }) => ({ minHeight: 160, borderRadius: 32, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', gap: 2, paddingHorizontal: 20, paddingVertical: 12, opacity: pressed ? 0.85 : 1 })}
           >
-            <PeopleIcon size={72} />
+            <PeopleIcon size={64} />
+            {/* "Ask everyone to call me", in her language: the icon alone doesn't say what the tile does. */}
+            <Text style={[URDU, { color: C.white, fontSize: 24, lineHeight: 46, textAlign: 'center' }]} numberOfLines={2}>
+              {text({ key: 'ui.ring_everyone' })}
+            </Text>
           </Pressable>
         )
       ) : null}

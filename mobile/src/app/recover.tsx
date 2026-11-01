@@ -3,9 +3,11 @@ import { Alert, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { CircleClient, defaultFeatures, type PendingRejoin, type RecoverableCircle, type ServerInfo } from '@homecircle/core';
 import { FeatureChooser } from '../components/FeaturePicker';
-import { Button, Card, ErrorText, Field, H1, LockNote, P, Screen } from '../components/ui';
+import { Button, Card, ErrorText, Field, H1, P, Screen } from '../components/ui';
 import { addCircle, allClients, clientForCircle, draftClient, errorText, serverHost, setActiveCircle } from '../lib/circle';
 import { enterApp } from '../lib/nav';
+import { finishJoining } from '../lib/firstRun';
+import { HowThisWorks } from '../components/HowThisWorks';
 import { clearPendingRejoin, getPendingRejoin, setPendingRejoin } from '../lib/rejoin';
 import { updateSettings } from '../lib/storage';
 import { timeAgo } from '../lib/useCircle';
@@ -21,13 +23,13 @@ type Phase =
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-/** After joining a circle from here: the first one on this phone goes through permissions. */
+/** After joining a circle from here: the first one on this phone asks for location. */
 async function opened(client: CircleClient, info?: ServerInfo) {
   const first = allClients().length === 0;
   await addCircle(client);
   if (first) {
     if (info) await updateSettings({ tileUrl: info.tileUrl, tileAttribution: info.tileAttribution });
-    enterApp('/permissions');
+    await finishJoining();
   } else {
     enterApp();
   }
@@ -141,7 +143,7 @@ export default function Recover() {
     return (
       <Screen>
         <P muted style={{ marginTop: 8, marginBottom: 20 }}>
-          If you set up a HomeCircle server, its setup code gets you back in: rejoin your circle, start a new one, or delete one nobody uses.
+          Your server’s setup code gets you back in.
         </P>
         <Field label="Server address" value={address} onChangeText={setAddress} placeholder="homecircle-abc.onrender.com" autoCapitalize="none" autoCorrect={false} keyboardType="url" />
         <Field label="Setup code" value={code} onChangeText={setCode} placeholder="From your server logs" autoCapitalize="none" autoCorrect={false} />
@@ -161,7 +163,12 @@ export default function Recover() {
           }
         />
         <ErrorText>{error}</ErrorText>
-        <LockNote>Find the setup code in your server’s log, in Render’s Environment tab (SETUP_TOKEN), or as setup_code in Home Assistant.</LockNote>
+        <HowThisWorks title="Where is my setup code?" style={{ marginTop: 14 }}>
+          {[
+            'Find the setup code in your server’s log, in Render’s Environment tab (SETUP_TOKEN), or as setup_code in Home Assistant.',
+            'With it you can rejoin your circle, start a new one, or delete one nobody uses.',
+          ]}
+        </HowThisWorks>
       </Screen>
     );
   }
@@ -172,8 +179,9 @@ export default function Recover() {
       <Screen>
         <H1 style={{ marginTop: 8 }}>Rejoin {label}</H1>
         <P muted style={{ marginTop: 8, marginBottom: 20 }}>
-          Someone still in it ({plural(circle.members, 'member')}) approves you on their phone. You’ll come back as the circle’s owner. Your old phone stays listed until you remove it.
+          Someone still in it ({plural(circle.members, 'member')}) approves you on their phone. You’ll come back as the circle’s owner.
         </P>
+        <HowThisWorks style={{ marginBottom: 14 }}>Your old phone stays listed until you remove it. The setup code alone can’t open a circle.</HowThisWorks>
         <Field label="Your name" value={name} onChangeText={setName} placeholder="So they know it’s you" autoComplete="given-name" autoFocus />
         <Button
           title="Ask to rejoin"
@@ -199,8 +207,9 @@ export default function Recover() {
     <Screen>
       <H1 style={{ marginTop: 8 }}>Circles on {serverHost(server.info.server)}</H1>
       <P muted style={{ marginTop: 8 }}>
-        Circle names are encrypted, so the server can’t show them. Tell them apart by when each was created and how many people are in it.
+        Tell circles apart by when each was created and how many people are in it.
       </P>
+      <HowThisWorks>Circle names are encrypted, so the server can’t show them.</HowThisWorks>
       <Card style={{ marginTop: 16, gap: 4 }}>
         {circles.length ? null : <Text style={{ color: t.muted, fontSize: 15 }}>There are no circles on this server.</Text>}
         {circles.map((c, i) => {
@@ -280,7 +289,7 @@ export default function Recover() {
         }
       />
       <Button title="Refresh" variant="ghost" style={{ marginTop: 8 }} onPress={() => loadCircles(server)} />
-      <LockNote>Rejoining needs someone still in that circle to approve you on their phone. The setup code alone can’t open a circle.</LockNote>
+      <HowThisWorks style={{ marginTop: 14 }}>Rejoining needs someone still in that circle to approve you on their phone. The setup code alone can’t open a circle.</HowThisWorks>
     </Screen>
   );
 }

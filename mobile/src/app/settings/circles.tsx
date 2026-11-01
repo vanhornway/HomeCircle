@@ -54,7 +54,7 @@ export default function CirclesSettings() {
           <ServerPicker groups={servers} value={shown.url} onChange={setPicked} />
         </View>
       ) : null}
-      <SettingsGroup footer="Each circle is separate: its own people, map, chat and encryption key. Nobody sees anything from a circle they’re not in.">
+      <SettingsGroup footer="Choose how much each circle sees of where you are." how="Each circle is separate: its own people, map, chat and encryption key. Nobody sees anything from a circle they’re not in." howTitle="How circles are kept apart">
         {(shown?.circles ?? clients).map((c) => {
           const active = c === client;
           const precision = precisionOf(c.circleId!);

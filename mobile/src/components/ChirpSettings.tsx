@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, Pressable, Switch, Text, View } from 'react-native';
 import { CHIRP_SOUNDS, type ChirpSound, type CircleClient } from '@homecircle/core';
 import { Button, Card, Checkbox, SectionTitle } from './ui';
+import { HowThisWorks } from './HowThisWorks';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { hasDndAccess } from '../../modules/hc-attention/src/HcAttentionModule';
 import { CHIRP_NAMES, previewChirp, setMyChirp } from '../lib/chirp';
@@ -36,7 +37,7 @@ export function ChirpSettings({ clients, settings, onChange }: { clients: Circle
         <View>
           <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>My chirp</Text>
           <Text style={{ color: t.muted, fontSize: 13, marginTop: 2 }}>
-            What everyone hears when you chirp them, so they know it’s you without looking. Tap to listen.
+            What others hear when you chirp them. Tap to listen.
           </Text>
         </View>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -74,7 +75,7 @@ export function ChirpSettings({ clients, settings, onChange }: { clients: Circle
           <View style={{ flex: 1 }}>
             <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Play chirps</Text>
             <Text style={{ color: t.muted, fontSize: 13, marginTop: 2 }}>
-              {settings?.chirpSound ?? true ? 'You hear who’s chirping you. Silent while Do Not Disturb is on.' : 'Chirps show silently.'}
+              {settings?.chirpSound ?? true ? 'You hear who’s chirping you.' : 'Chirps show silently.'}
             </Text>
           </View>
           <Switch
@@ -89,30 +90,34 @@ export function ChirpSettings({ clients, settings, onChange }: { clients: Circle
           label="Flash the camera light"
           detail={
             settings?.chirpFlash ?? true
-              ? 'When someone chirps with a flash, the light blinks three times. Never while Do Not Disturb is on.'
+              ? 'The light blinks three times for a chirp with a flash.'
               : 'The light never blinks for chirps.'
           }
         />
-        <Text style={{ color: t.muted, fontSize: 13 }}>
-          Anyone can chirp the same person, or the whole circle, three times in a row, then has to wait 30 minutes.
-        </Text>
-        <Text style={{ color: t.muted, fontSize: 13 }}>
-          At school from 8 AM to 3 PM, chirps only flash, so they don’t go off in class. A school is a place with “school” in its name, or a school among your most visited places.
-        </Text>
+        <HowThisWorks title="How chirps work">
+          {[
+            'Chirps are silent while Do Not Disturb is on, and the light never blinks then.',
+            'Anyone can chirp the same person, or the whole circle, three times in a row, then has to wait 30 minutes.',
+            'At school from 8 AM to 3 PM, chirps only flash, so they don’t go off in class. A school is a place with “school” in its name, or a school among your most visited places.',
+          ]}
+        </HowThisWorks>
       </Card>
 
       <SectionTitle>SOS</SectionTitle>
       <Card style={{ gap: 12 }}>
         <Text style={{ color: t.text, fontSize: 15, lineHeight: 21 }}>
-          Hold the red SOS button on the map for 2 seconds. After a 5-second countdown, everyone in your circles is alerted and your exact location is shared every minute until you say you’re safe.
+          Hold the red SOS button on the map for 2 seconds to alert everyone in your circles.
         </Text>
+        <HowThisWorks title="What SOS does">
+          After a 5-second countdown, everyone in your circles is alerted and your exact location is shared every minute until you say you’re safe.
+        </HowThisWorks>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Ring through Do Not Disturb</Text>
             <Text style={{ color: t.muted, fontSize: 13, marginTop: 2 }}>
               {settings?.sosThroughDnd
-                ? 'An SOS from your circle plays at alarm volume, even with Do Not Disturb on.'
-                : 'Off: Do Not Disturb silences SOS alerts like other notifications.'}
+                ? 'An SOS from your circle plays at alarm volume.'
+                : 'Off. Do Not Disturb silences SOS alerts.'}
             </Text>
           </View>
           <Switch
@@ -130,7 +135,7 @@ export function ChirpSettings({ clients, settings, onChange }: { clients: Circle
 /**
  * Let HomeCircle through Do Not Disturb in the phone's settings: then an
  * SOS notification rings through it itself, not only at alarm volume. An
- * SOS from an elder on the Elderly Companion screens always tries to get
+ * SOS from an elder on the elder screens always tries to get
  * through.
  */
 function DndAccess() {
@@ -141,8 +146,8 @@ function DndAccess() {
       <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Do Not Disturb access</Text>
       <Text style={{ color: t.muted, fontSize: 13 }}>
         {granted
-          ? 'Allowed: an SOS notification rings even with Do Not Disturb or bedtime on.'
-          : 'An SOS from an elder in your circle rings at alarm volume. Allow access so the SOS notification itself gets through Do Not Disturb, even if alarms are silenced.'}
+          ? 'Allowed. An SOS notification rings even with Do Not Disturb or bedtime on.'
+          : 'Lets an SOS notification through Do Not Disturb, even if alarms are silenced.'}
       </Text>
       {granted ? null : (
         <Button

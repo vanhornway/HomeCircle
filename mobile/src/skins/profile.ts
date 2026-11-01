@@ -1,5 +1,5 @@
-// A person's profile as an admin thinks of it: the full app, or the Elderly
-// Companion with its care circle page or its grandkids page. It is stored as
+// A person's profile as an admin thinks of it: the full app, or the elder
+// screens with their care circle page or its grandkids page. It is stored as
 // a skin and a page in the sealed `member` record about them. Kept free of
 // React Native imports so it is tested in Node.
 

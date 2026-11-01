@@ -3,6 +3,8 @@ import { Pressable, Switch, Text, View } from 'react-native';
 import { router, Stack, type Href } from 'expo-router';
 import { useTheme } from '../theme';
 import { KeyboardScroll } from './KeyboardScroll';
+import { HowThisWorks } from './HowThisWorks';
+import { Icon, hasIcon } from './ui';
 
 /** A settings page under its own header: scrolls, with the app's padding. */
 export function SettingsPage({ title, children }: { title: string; children: React.ReactNode }) {
@@ -19,7 +21,7 @@ export function SettingsPage({ title, children }: { title: string; children: Rea
 }
 
 /** Rows that belong together, in one rounded card. */
-export function SettingsGroup({ title, children, footer }: { title?: string; children: React.ReactNode; footer?: string }) {
+export function SettingsGroup({ title, children, footer, how, howTitle }: { title?: string; children: React.ReactNode; footer?: string; how?: React.ReactNode; howTitle?: string }) {
   const t = useTheme();
   const rows = React.Children.toArray(children).filter(Boolean);
   return (
@@ -33,11 +35,12 @@ export function SettingsGroup({ title, children, footer }: { title?: string; chi
         ))}
       </View>
       {footer ? <Text style={{ color: t.muted, fontSize: 13, lineHeight: 18, marginTop: 8, marginHorizontal: 4 }}>{footer}</Text> : null}
+      {how ? <HowThisWorks title={howTitle}>{how}</HowThisWorks> : null}
     </View>
   );
 }
 
-/** A row that opens another page: icon, title, a one-line summary, and a chevron. */
+/** A row that opens another page: a line icon (see `Icon` in ui.tsx), title, a one-line summary, and a chevron. */
 export function SettingsRow({ icon, title, detail, href, onPress, badge }: { icon: string; title: string; detail?: string; href?: Href; onPress?: () => void; badge?: string | null }) {
   const t = useTheme();
   return (
@@ -48,7 +51,7 @@ export function SettingsRow({ icon, title, detail, href, onPress, badge }: { ico
       style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 60, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: pressed ? t.surface2 : 'transparent' })}
     >
       <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: t.brandSoft, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontSize: 18 }}>{icon}</Text>
+        {hasIcon(icon) ? <Icon name={icon} color={t.brand} size={20} /> : <Text style={{ fontSize: 18 }}>{icon}</Text>}
       </View>
       <View style={{ flex: 1 }}>
         <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }} numberOfLines={1}>

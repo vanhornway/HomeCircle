@@ -3,7 +3,8 @@ import { ActivityIndicator, Share, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import type { Invite } from '@homecircle/core';
 import { QRCode } from '../components/QRCode';
-import { AgeConfirm, Button, ErrorText, LockNote, P, Screen } from '../components/ui';
+import { AgeConfirm, Button, ErrorText, P, Screen } from '../components/ui';
+import { HowThisWorks } from '../components/HowThisWorks';
 import { errorText, getClient } from '../lib/circle';
 import { useTheme } from '../theme';
 
@@ -44,7 +45,7 @@ export default function InviteScreen() {
   return (
     <Screen>
       <P muted style={{ marginBottom: 18 }}>
-        Have them open HomeCircle, tap “Join my family”, and scan this code. Or send the link privately.
+        They open HomeCircle, tap “Join my family” and scan this code. Or send the link.
       </P>
       <View style={{ alignItems: 'center', padding: 16, backgroundColor: '#fff', borderRadius: 20, alignSelf: 'center', minWidth: 252, minHeight: 252, justifyContent: 'center' }}>
         {invite ? <QRCode value={invite.link} size={220} /> : <ActivityIndicator color={t.brand} />}
@@ -68,7 +69,9 @@ export default function InviteScreen() {
         </>
       ) : null}
       <ErrorText>{error}</ErrorText>
-      <LockNote>The secret part of this link never reaches your server. Anyone who has it can join until it’s used, so share it only with family.</LockNote>
+      <HowThisWorks style={{ marginTop: 14 }}>
+        {['Share the link only with family: anyone who has it can join until it’s used.', 'The secret part of this link never reaches your server.']}
+      </HowThisWorks>
     </Screen>
   );
 }

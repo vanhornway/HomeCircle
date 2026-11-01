@@ -8,7 +8,7 @@ import { AirFace } from './AirTile';
 import { PrayerFace } from './PrayerTile';
 import { WeatherFace } from './WeatherTile';
 
-// Three sizes, stepped by double-tap: a circle with just the plugin's icon
+// Three sizes, stepped by a tap: a circle with just the plugin's icon
 // (the default, so the map is free), the small tile, and the big one with the
 // next hours; then back to the circle.
 const CIRCLE = { scale: 0.8, width: 48, height: 48 };
@@ -16,7 +16,6 @@ const SMALL = { scale: 0.8, width: 140, height: 142 };
 const BIG = { scale: 1.1, width: 290, height: 336 };
 // The card lets the map show through (#RRGGBB + alpha).
 const see = (hex: string) => `${hex}B8`;
-const DOUBLE_TAP_MS = 320;
 const SWIPE_PX = 36;
 
 const FACES = [
@@ -34,7 +33,6 @@ class Swipe {
   x = new Animated.Value(0);
   private count = 0;
   private width = 0;
-  private lastTap = 0;
   constructor(private turn: (dir: 1 | -1, count: number) => void) {}
   pan = PanResponder.create({
     // Sideways only, so taps and the map's own drags are left alone.
@@ -63,19 +61,12 @@ class Swipe {
   back() {
     Animated.spring(this.x, { toValue: 0, useNativeDriver: false }).start();
   }
-  /** True on the second of two quick taps. */
-  doubleTap() {
-    const now = Date.now();
-    const yes = now - this.lastTap < DOUBLE_TAP_MS;
-    this.lastTap = yes ? 0 : now;
-    return yes;
-  }
 }
 
 /**
  * The plugins' tiles in the map's top-right corner, for the selected person
  * (or you): weather, air and pollen, prayer times, one at a time in the same
- * card. Swipe for the next one, in any size. Double-tap steps the size: a
+ * card. Swipe for the next one, in any size; dots show there are more. A tap steps the size: a
  * circle with just the plugin's icon, the small tile, the big tile, and back
  * to the circle. The size is remembered on the phone.
  */
@@ -116,13 +107,13 @@ export function PluginTiles({ client, memberId }: { client: CircleClient; member
         accessibilityRole="adjustable"
         accessibilityLabel={view === 'circle' ? `${name}` : undefined}
         accessibilityState={{ expanded: view !== 'circle' }}
-        accessibilityHint={`Double-tap to ${next}.${faces.length > 1 ? ' Swipe up or down for the next tile.' : ''}`}
+        accessibilityHint={`Tap to ${next}.${faces.length > 1 ? ' Swipe up or down for the next tile.' : ''}`}
         accessibilityActions={[{ name: 'activate' }, { name: 'increment' }, { name: 'decrement' }]}
         onAccessibilityAction={(e) => {
           if (e.nativeEvent.actionName === 'activate') toggle();
           else turn(e.nativeEvent.actionName === 'increment' ? 1 : -1);
         }}
-        onPress={() => swipe.doubleTap() && toggle()}
+        onPress={toggle}
         style={{ flex: 1 }}
       >
         {view === 'circle' ? (
@@ -135,10 +126,10 @@ export function PluginTiles({ client, memberId }: { client: CircleClient; member
             <Face client={client} loc={loc} title={title} big={big} z={z} />
           </Animated.View>
         )}
-        {faces.length > 1 && view !== 'circle' ? (
-          <View pointerEvents="none" style={{ position: 'absolute', bottom: 5, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 5 }}>
+        {faces.length > 1 ? (
+          <View pointerEvents="none" style={{ position: 'absolute', bottom: view === 'circle' ? 4 : 5, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: view === 'circle' ? 3 : 5 }}>
             {faces.map((f, i) => (
-              <View key={f.id} style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: i === at ? t.text : t.muted, opacity: i === at ? 0.9 : 0.4 }} />
+              <View key={f.id} style={{ width: view === 'circle' ? 4 : 5, height: view === 'circle' ? 4 : 5, borderRadius: 3, backgroundColor: i === at ? t.text : t.muted, opacity: i === at ? 0.9 : 0.4 }} />
             ))}
           </View>
         ) : null}

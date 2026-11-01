@@ -4,6 +4,7 @@ import { Button } from '../../components/ui';
 import { MemberAvatar } from '../../components/MemberAvatar';
 import { PhotoButtons } from '../../components/PhotoPicker';
 import { GroupBody, SettingsGroup, SettingsPage } from '../../components/SettingsKit';
+import { HowThisWorks } from '../../components/HowThisWorks';
 import { FamilyNameEditor, GenderChips } from '../../components/FamilyNames';
 import { MyPhoneGroup } from '../../components/PhoneSettings';
 import { errorText, useCircles } from '../../lib/circle';
@@ -32,7 +33,8 @@ export default function ProfileSettings() {
       <View style={{ alignItems: 'center', marginTop: 20, gap: 12 }}>
         {me ? <MemberAvatar client={client} member={me} size={96} /> : null}
         {client.feature('photos') ? <PhotoButtons has={!!me?.photo} onPhoto={(bytes) => client.setProfilePhoto(bytes)} /> : null}
-        <Text style={{ color: t.muted, fontSize: 13, textAlign: 'center' }}>Your photo shows wherever the app shows you, and on an elder’s tiles. It’s encrypted like everything else.</Text>
+        <Text style={{ color: t.muted, fontSize: 13, textAlign: 'center' }}>Your photo shows wherever the app shows you.</Text>
+        <HowThisWorks>Your photo also shows on an elder’s tiles. It’s encrypted like everything else.</HowThisWorks>
       </View>
       <SettingsGroup
         title={clients.length > 1 ? `Your name in ${client.circle.name}` : 'Your name'}
@@ -53,14 +55,22 @@ export default function ProfileSettings() {
           </View>
         </GroupBody>
       </SettingsGroup>
-      <SettingsGroup title="He or she" footer="Only for languages whose words change with the person, like the Urdu an elder hears: “Umair is calling you” is said differently for a man and a woman.">
+      <SettingsGroup
+        title="He or she"
+        footer="For languages whose words change with the person, like Urdu."
+        how="In the Urdu an elder hears, “Umair is calling you” is said differently for a man and a woman."
+      >
         <GroupBody>
           <GenderChips value={me?.g ?? null} onPick={(g) => client.setGender(g).catch((e) => Alert.alert('Couldn’t save', errorText(e)))} />
         </GroupBody>
       </SettingsGroup>
       <MyPhoneGroup client={client} />
       {client.memberList().some((m) => !m.isMe) ? (
-        <SettingsGroup title="What do they call you?" footer="What each person calls you: Nani to one grandchild, Dadi to another. They see that name everywhere the app names you to them.">
+        <SettingsGroup
+          title="What do they call you?"
+          footer="What each person calls you, like Nani to one grandchild and Dadi to another."
+          how="They see that name everywhere the app names you to them."
+        >
           {client
             .memberList()
             .filter((m) => !m.isMe)
