@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Modal, Pressable, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { Button } from '../../components/ui';
 import { ServerPicker } from '../../components/ServerPicker';
@@ -10,6 +10,7 @@ import { getSettings, updateSettings, useSettings } from '../../lib/storage';
 import { unreadInCircle } from '../../lib/unread';
 import { useCircle } from '../../lib/useCircle';
 import { useTheme } from '../../theme';
+import { showSheet } from '../../lib/sheet';
 
 type Precision = 'exact' | 'approximate' | 'paused';
 
@@ -43,7 +44,7 @@ export default function CirclesSettings() {
     if (mode === 'approximate') approx.add(id);
     await updateSettings({ pausedCircles: [...paused], approximateCircles: [...approx], pauseReasons: reasons });
     syncGeofences().catch(() => {});
-    if (mode === 'paused') target.pauseSharing(why).catch((e) => Alert.alert('Couldn’t pause sharing', errorText(e)));
+    if (mode === 'paused') target.pauseSharing(why).catch((e) => showSheet('Couldn’t pause sharing', errorText(e)));
     else shareNow('manual').catch(() => {});
   };
 

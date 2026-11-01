@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, Text, Vibration, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, Text, Vibration, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { distanceM } from '@homecircle/core';
 import { Button } from '../components/ui';
@@ -11,6 +11,7 @@ import { stopAlarm, useAlarmRinging } from '../lib/sosAlarm';
 import { formatFeet } from '../lib/units';
 import { timeAgo, useAllCircles } from '../lib/useCircle';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 const COUNTDOWN = 5;
 // Countdowns already run (by when they were asked for). The SOS screen can be
@@ -54,7 +55,7 @@ function Countdown({ asked }: { asked: string }) {
       setLeft(left - 1);
       if (left > 1) return;
       startMySos().catch((e) => {
-        Alert.alert('Couldn’t send the SOS', `${errorText(e)}\n\nCall ${EMERGENCY_NUMBER} if you need help now.`);
+        showSheet('Couldn’t send the SOS', `${errorText(e)}\n\nCall ${EMERGENCY_NUMBER} if you need help now.`);
         router.back();
       });
     }, 1000);
@@ -88,7 +89,7 @@ function MySosView() {
   const [ending, setEnding] = useState(false);
   const here = sos.at;
   const safe = () =>
-    Alert.alert('Are you safe?', 'Everyone in your circles is told you’re safe, and location sharing goes back to normal.', [
+    showSheet('Are you safe?', 'Everyone in your circles is told you’re safe, and location sharing goes back to normal.', [
       { text: 'Not yet', style: 'cancel' },
       {
         text: 'I’m safe',
@@ -96,7 +97,7 @@ function MySosView() {
           setEnding(true);
           endMySos()
             .then(() => router.back())
-            .catch((e) => Alert.alert('Couldn’t end the SOS', errorText(e)))
+            .catch((e) => showSheet('Couldn’t end the SOS', errorText(e)))
             .finally(() => setEnding(false));
         },
       },

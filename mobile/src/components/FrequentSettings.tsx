@@ -1,11 +1,12 @@
 import { useCallback, useState } from 'react';
-import { Alert, Modal, Pressable, Switch, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, Switch, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import type { CircleClient } from '@homecircle/core';
 import { Button, Card, SectionTitle } from './ui';
 import { updateSettings, type Settings } from '../lib/storage';
 import { circlePlaces, clearVisits, editPlace, kindName, KIND_EMOJI, myPlaces, shareMyPlaces, type MyPlace } from '../lib/visits';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /** Your most visited places: share them or not, rename or hide each one. */
 export function FrequentSettings({ clients, settings, onChange }: { clients: CircleClient[]; settings: Settings | null; onChange: (s: Settings) => void }) {
@@ -89,7 +90,7 @@ export function FrequentSettings({ clients, settings, onChange }: { clients: Cir
           variant="danger"
           title="Forget my history"
           onPress={() =>
-            Alert.alert('Forget your history?', 'This phone forgets where you’ve been, and your circles stop seeing your most visited places.', [
+            showSheet('Forget your history?', 'This phone forgets where you’ve been, and your circles stop seeing your most visited places.', [
               { text: 'Cancel', style: 'cancel' },
               { text: 'Forget', style: 'destructive', onPress: () => clearVisits().then(changed) },
             ])

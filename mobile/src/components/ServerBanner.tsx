@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Button } from './ui';
 import { retryServer, setServerState, useServerState } from '../lib/connection';
 import { getClient } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /**
  * Shown on every tab while the server can't be reached, or when it no longer
@@ -48,7 +49,7 @@ export function ServerBanner({ style }: { style?: object }) {
             variant="danger"
             style={{ flex: 1 }}
             onPress={() =>
-              Alert.alert(`Remove ${name} from this phone?`, 'Its keys on this phone are deleted. To come back, you’ll need a new invite.', [
+              showSheet(`Remove ${name} from this phone?`, 'Its keys on this phone are deleted. To come back, you’ll need a new invite.', [
                 { text: 'Cancel', style: 'cancel' },
                 {
                   text: 'Remove',

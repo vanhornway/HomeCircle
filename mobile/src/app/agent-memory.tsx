@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Pressable, ScrollView, SectionList, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Pressable, ScrollView, SectionList, Text, TextInput, View } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Stack, useFocusEffect } from 'expo-router';
@@ -8,6 +8,7 @@ import { Button, Tag } from '../components/ui';
 import { errorText } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 type Note = {
   id: string;
@@ -95,7 +96,7 @@ export function MemoryBody() {
 
   // "Tidy up memory" (the helper's "dream" command): it answers in your chat with it.
   const dream = () =>
-    Alert.alert(
+    showSheet(
       'Tidy up memory?',
       `${name} sorts everything the circle shares: clearer titles, each note in its kind, links between them, duplicates merged. It uses the AI budget, and one Undo takes it back.`,
       [
@@ -105,7 +106,7 @@ export function MemoryBody() {
           onPress: () =>
             client
               .askAgent('dream', { peer: client.agent?.id ?? null })
-              .then(() => Alert.alert('Tidying up…', `${name} will message you when it’s done.`))
+              .then(() => showSheet('Tidying up…', `${name} will message you when it’s done.`))
               .catch((e) => setError(errorText(e))),
         },
       ],
@@ -225,7 +226,7 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
   const [opening, setOpening] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
   const opened = useRef<File[]>([]);
-  const fail = (e: unknown) => Alert.alert('Couldn’t do that', errorText(e));
+  const fail = (e: unknown) => showSheet('Couldn’t do that', errorText(e));
   // The decrypted copies are only for looking at: gone when the note closes.
   useEffect(
     () => () => {
@@ -251,7 +252,7 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
         setTags((d.note.tags ?? []).join(', '));
       })
       .catch((e) => {
-        Alert.alert('Couldn’t open it', errorText(e));
+        showSheet('Couldn’t open it', errorText(e));
         onClose();
       });
   }, [client, id, onClose]);
@@ -295,12 +296,12 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
     }
   };
   const deleteFile = () =>
-    Alert.alert(`Delete “${file?.name}”?`, 'It’s deleted from the server. The notes stay.', [
+    showSheet(`Delete “${file?.name}”?`, 'It’s deleted from the server. The notes stay.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => id && run(client.agentRpc('deleteFile', { id })) },
     ]);
   const remove = () =>
-    Alert.alert('Delete this note?', 'You can undo it from its history afterwards.', [
+    showSheet('Delete this note?', 'You can undo it from its history afterwards.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => id && run(client.agentRpc('remove', { id })) },
     ]);

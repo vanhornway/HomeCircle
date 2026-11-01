@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Button } from '../../components/ui';
 import { GroupBody, SettingsGroup, SettingsPage } from '../../components/SettingsKit';
@@ -7,6 +7,7 @@ import { errorText } from '../../lib/circle';
 import { downloadMemory } from '../../lib/memoryDownload';
 import { useCircle } from '../../lib/useCircle';
 import { useTheme } from '../../theme';
+import { showSheet } from '../../lib/sheet';
 
 type ModelChoice = { id: string; name: string; inUsd: number; outUsd: number };
 type AgentSettings = {
@@ -58,15 +59,15 @@ function Setup({ name }: { name: string }) {
   useFocusEffect(load);
 
   const remove = () =>
-    Alert.alert(`Remove ${name}?`, 'Its memory is deleted for good. You can download a copy first.', [
+    showSheet(`Remove ${name}?`, 'Its memory is deleted for good. You can download a copy first.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Download first',
         onPress: () => {
-          downloadMemory(client).catch((e) => Alert.alert('Couldn’t download it', errorText(e)));
+          downloadMemory(client).catch((e) => showSheet('Couldn’t download it', errorText(e)));
         },
       },
-      { text: 'Remove', style: 'destructive', onPress: () => client.removeAgent().catch((e) => Alert.alert('Couldn’t remove it', errorText(e))) },
+      { text: 'Remove', style: 'destructive', onPress: () => client.removeAgent().catch((e) => showSheet('Couldn’t remove it', errorText(e))) },
     ]);
 
   return (
@@ -151,10 +152,10 @@ function ProviderSettings({ s, onSaved }: { s: AgentSettings; onSaved: () => voi
       .agentRpc('setSettings', { provider: { provider, model: model.trim(), apiKey: key.trim(), baseUrl: baseUrl.trim(), inUsd: Number(inUsd), outUsd: Number(outUsd) } }, { timeoutMs: 90_000 })
       .then(() => {
         setKey('');
-        Alert.alert('Saved', 'The provider answered a test question, so the key and model work.');
+        showSheet('Saved', 'The provider answered a test question, so the key and model work.');
         onSaved();
       })
-      .catch((e) => Alert.alert('That didn’t work', errorText(e)))
+      .catch((e) => showSheet('That didn’t work', errorText(e)))
       .finally(() => setBusy(false));
   };
   const input = { color: t.text, fontSize: 16, minHeight: 46, borderWidth: 1, borderColor: t.line, borderRadius: 12, paddingHorizontal: 12, backgroundColor: t.bg } as const;
@@ -238,7 +239,7 @@ function BudgetSettings({ s, usage, onSaved }: { s: AgentSettings; usage: Usage 
     client
       .agentRpc('setSettings', { budgetUsd: Number(budget) || 0 })
       .then(onSaved)
-      .catch((e) => Alert.alert('Couldn’t save', errorText(e)));
+      .catch((e) => showSheet('Couldn’t save', errorText(e)));
   const spent = usage?.total ?? 0;
   const cap = s.budgetUsd;
   return (
@@ -293,7 +294,7 @@ function RenameAgent({ name }: { name: string }) {
           accessibilityLabel="Helper’s name"
           style={{ flex: 1, color: t.text, fontSize: 16, minHeight: 46, borderBottomWidth: 1, borderBottomColor: t.line }}
         />
-        <Button small title="Rename" disabled={!draft.trim() || draft.trim() === name} onPress={() => client.setAgentName(draft.trim()).catch((e) => Alert.alert('Couldn’t rename it', errorText(e)))} />
+        <Button small title="Rename" disabled={!draft.trim() || draft.trim() === name} onPress={() => client.setAgentName(draft.trim()).catch((e) => showSheet('Couldn’t rename it', errorText(e)))} />
       </View>
     </GroupBody>
   );

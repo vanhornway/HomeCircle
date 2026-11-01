@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
 import { Button } from '../../components/ui';
 import { MemberAvatar } from '../../components/MemberAvatar';
 import { PhotoButtons } from '../../components/PhotoPicker';
@@ -10,6 +10,7 @@ import { MyPhoneGroup } from '../../components/PhoneSettings';
 import { errorText, useCircles } from '../../lib/circle';
 import { useCircle } from '../../lib/useCircle';
 import { useTheme } from '../../theme';
+import { showSheet } from '../../lib/sheet';
 
 /** Your name in the open circle (each circle can know you by a different name). */
 export default function ProfileSettings() {
@@ -25,7 +26,7 @@ export default function ProfileSettings() {
     client
       .setName(name)
       .then(() => setDraft(null))
-      .catch((e) => Alert.alert('Couldn’t save', errorText(e)))
+      .catch((e) => showSheet('Couldn’t save', errorText(e)))
       .finally(() => setSaving(false));
   };
   return (
@@ -61,7 +62,7 @@ export default function ProfileSettings() {
         how="In the Urdu an elder hears, “Umair is calling you” is said differently for a man and a woman."
       >
         <GroupBody>
-          <GenderChips value={me?.g ?? null} onPick={(g) => client.setGender(g).catch((e) => Alert.alert('Couldn’t save', errorText(e)))} />
+          <GenderChips value={me?.g ?? null} onPick={(g) => client.setGender(g).catch((e) => showSheet('Couldn’t save', errorText(e)))} />
         </GroupBody>
       </SettingsGroup>
       <MyPhoneGroup client={client} />

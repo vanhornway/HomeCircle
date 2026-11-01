@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Text, TextInput, View } from 'react-native';
 import { router } from 'expo-router';
 import { Button } from '../../components/ui';
 import { HelperAvatar } from '../../components/HelperAvatar';
@@ -9,6 +9,7 @@ import { errorText } from '../../lib/circle';
 import { downloadMemory } from '../../lib/memoryDownload';
 import { useCircle } from '../../lib/useCircle';
 import { useTheme } from '../../theme';
+import { showSheet } from '../../lib/sheet';
 
 /**
  * The circle's helper, as everyone uses it: what it remembers, a private chat
@@ -68,8 +69,8 @@ function AddAgent() {
     setBusy(true);
     client
       .setUpAgent({ name: name.trim() })
-      .then((a) => Alert.alert(`${a?.name ?? name} is here`, `Everyone in the circle can ask it things now. Next, tap Set up ${a?.name ?? name} to pick its AI provider.`))
-      .catch((e) => Alert.alert('Couldn’t add the helper', errorText(e)))
+      .then((a) => showSheet(`${a?.name ?? name} is here`, `Everyone in the circle can ask it things now. Next, tap Set up ${a?.name ?? name} to pick its AI provider.`))
+      .catch((e) => showSheet('Couldn’t add the helper', errorText(e)))
       .finally(() => setBusy(false));
   };
   return (
@@ -123,7 +124,7 @@ function Waiting({ name }: { name: string }) {
           <ActivityIndicator color={t.brand} />
           <Text style={{ color: t.text, fontSize: 15, flex: 1 }}>Waiting for {name} to join. This takes a few seconds when your server runs it.</Text>
         </View>
-        {client.isAdmin ? <Button small title="Cancel" onPress={() => client.removeAgent().catch((e) => Alert.alert('Error', errorText(e)))} /> : null}
+        {client.isAdmin ? <Button small title="Cancel" onPress={() => client.removeAgent().catch((e) => showSheet('Error', errorText(e)))} /> : null}
       </GroupBody>
     </SettingsGroup>
   );
@@ -139,9 +140,9 @@ function AgentReady({ name }: { name: string }) {
     setDownloading(true);
     return downloadMemory(client)
       .then((out) => {
-        if (out.missing.length) Alert.alert('Some files weren’t included', `These kept files couldn’t be read back: ${out.missing.join(', ')}. The README in the download lists them too.`);
+        if (out.missing.length) showSheet('Some files weren’t included', `These kept files couldn’t be read back: ${out.missing.join(', ')}. The README in the download lists them too.`);
       })
-      .catch((e) => Alert.alert('Couldn’t download it', errorText(e)))
+      .catch((e) => showSheet('Couldn’t download it', errorText(e)))
       .finally(() => setDownloading(false));
   };
 

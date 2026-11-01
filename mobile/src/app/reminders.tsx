@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Stack, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Tag } from '../components/ui';
@@ -7,6 +7,7 @@ import { errorText } from '../lib/circle';
 import { daysUntil, parseDueDate, prettyDate } from '../lib/dueDate';
 import { useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 type Reminder = { id: string; title: string; due: string; repeat: 'none' | 'yearly' | 'months'; months?: number; note: string; createdBy: string; createdByName: string; done: boolean };
 
@@ -120,7 +121,7 @@ function ReminderSheet({ reminder, onClose, run }: { reminder: Reminder | null; 
   };
   const remove = () =>
     reminder &&
-    Alert.alert(`Delete “${reminder.title}”?`, undefined, [
+    showSheet(`Delete “${reminder.title}”?`, undefined, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => run('reminderRemove', { id: reminder.id }).then((ok) => ok && onClose()) },
     ]);

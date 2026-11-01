@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Alert, Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import type { CircleClient, Gender } from '@homecircle/core';
 import { Button } from './ui';
 import { errorText } from '../lib/circle';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /** Quick picks for what someone calls a person (PRD A2). */
 export const FAMILY_NAME_CHIPS = ['Ammi', 'Abbu', 'Nani', 'Nana', 'Dadi', 'Dada', 'Grandma', 'Grandpa', 'Gran', 'Gramps', 'Mom', 'Dad'];
@@ -46,7 +47,7 @@ export function FamilyNameEditor({ client, callerId, memberId, chips = FAMILY_NA
     client
       .setFamilyName(callerId, memberId, { name })
       .then(() => setDraft(null))
-      .catch((e) => Alert.alert('Couldn’t save', errorText(e)))
+      .catch((e) => showSheet('Couldn’t save', errorText(e)))
       .finally(() => setSaving(false));
   };
   return (

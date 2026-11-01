@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Keyboard, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as Location from 'expo-location';
 import { randomId, type CircleClient, type Place } from '@homecircle/core';
@@ -9,6 +9,7 @@ import { allClients, errorText, getClient } from '../lib/circle';
 import { DEFAULT_SETTINGS, getSettings } from '../lib/storage';
 import { feetToMeters, metersToFeet } from '../lib/units';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 const RADII_FT = [500, 1000, 2000, 5000];
 // Phones can't reliably tell smaller areas apart (GPS drift, and the OS
@@ -123,7 +124,7 @@ export default function AddPlace() {
   const remove = () => {
     if (!editing) return;
     const copies = editing.copies;
-    Alert.alert(
+    showSheet(
       `Delete ${editing.place.name}?`,
       copies.length > 1
         ? `Arrival alerts for this place stop for everyone in ${copies.map((c) => c.client.circle.name).join(' and ')}.`

@@ -26,8 +26,9 @@
 //  - failed: the phone refused to open it.
 // The number is never put in a message, a log or a link other than the one
 // opened here; the circle keeps it sealed (see CircleClient.phoneOf).
-import { Alert, Linking, Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import { NUMBER_PROBLEMS, chatUrls, cleanCallUrl, cleanNumber, storeUrls } from './whatsappCore';
+import { showSheet } from './sheet';
 
 export type Outcome =
   | { ok: true; via: 'app' | 'web' | 'store' }
@@ -95,12 +96,12 @@ export async function openInBrowser(url: string): Promise<Outcome> {
 export function showOutcome(o: Outcome) {
   if (o.ok) return;
   if (o.reason === 'not_installed') {
-    Alert.alert('WhatsApp isn’t installed', 'Install it to call from here, or open the link in your browser.', [
+    showSheet('WhatsApp isn’t installed', 'Install it to call from here, or open the link in your browser.', [
       { text: 'Get WhatsApp', onPress: () => void openWhatsappStore().then(showOutcome) },
       { text: 'Open in browser', onPress: () => void openInBrowser(o.web).then(showOutcome) },
       { text: 'Cancel', style: 'cancel' },
     ]);
     return;
   }
-  Alert.alert(o.reason === 'bad_number' ? 'Check the phone number' : o.reason === 'bad_link' ? 'Check the call link' : 'Couldn’t open WhatsApp', o.message);
+  showSheet(o.reason === 'bad_number' ? 'Check the phone number' : o.reason === 'bad_link' ? 'Check the call link' : 'Couldn’t open WhatsApp', o.message);
 }

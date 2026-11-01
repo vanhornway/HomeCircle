@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Alert, Modal, Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Modal, Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { RejoinRequest } from '@homecircle/core';
 import { errorText } from '../lib/circle';
 import { useRejoinRequests } from '../lib/rejoin';
 import { useCircle } from '../lib/useCircle';
 import { Button } from './ui';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /**
  * Someone used the server's setup code to ask to rejoin this circle. Any
@@ -27,7 +28,7 @@ export function RejoinBanner({ style }: { style?: StyleProp<ViewStyle> }) {
       else await client.denyRejoin(q.id);
       setOpen(null);
     } catch (e) {
-      Alert.alert('Error', errorText(e));
+      showSheet('Error', errorText(e));
     } finally {
       setBusy(false);
       reload();
@@ -66,7 +67,7 @@ export function RejoinBanner({ style }: { style?: StyleProp<ViewStyle> }) {
                   variant="primary"
                   loading={busy}
                   onPress={() =>
-                    Alert.alert(`Let ${open.name} back in?`, `They’ll see everything in ${client.circle.name} and become its owner.`, [
+                    showSheet(`Let ${open.name} back in?`, `They’ll see everything in ${client.circle.name} and become its owner.`, [
                       { text: 'Cancel', style: 'cancel' },
                       { text: 'Let them in', onPress: () => decide(true, open) },
                     ])

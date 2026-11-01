@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Alert, Text } from 'react-native';
+import { Text } from 'react-native';
 import { router } from 'expo-router';
 import { GroupBody, SettingsGroup, SettingsPage, SettingsRow } from '../components/SettingsKit';
 import { Chips } from '../components/FamilyNames';
 import { errorText } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 const EVENTS = ['members', 'records'] as const;
 
@@ -27,10 +28,10 @@ export default function MarkElder() {
       client
         .markElder(id, { page, ringEveryone: page === 'care' })
         .then(() => router.replace({ pathname: '/elder', params: { member: id } }))
-        .catch((e) => Alert.alert('Couldn’t mark them', errorText(e)))
+        .catch((e) => showSheet('Couldn’t mark them', errorText(e)))
         .finally(() => setBusy(null));
     };
-    Alert.alert(
+    showSheet(
       `Mark ${name} as an elder?`,
       `${name}’s phone switches to the simple elder screens, with no way back to the full app from that phone.${admin ? ` ${name} also stops being an admin.` : ''}`,
       [{ text: 'Cancel', style: 'cancel' }, { text: 'Mark as elder', onPress: go }],

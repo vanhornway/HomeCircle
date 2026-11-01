@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Alert, FlatList, Share, Text, View } from 'react-native';
+import { FlatList, Share, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Button, Card, P } from '../components/ui';
 import { HowThisWorks } from '../components/HowThisWorks';
@@ -9,6 +9,7 @@ import { energyReport, formatMah, type Counts } from '../lib/energy';
 import { pushTimingLines } from '../lib/pushTiming';
 import { batteryUnrestricted } from '../lib/health';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /** "today 9:12" or "Oct 25, 18:40". */
 const sinceText = (t: number) =>
@@ -61,9 +62,9 @@ export default function Diagnostics() {
       // can be shared separately.
       const text = diagnosticsText(entries, header, 40).slice(0, 3900);
       for (const a of admins) await client.sendChat(text, { to: a.id });
-      Alert.alert('Sent', `Your diagnostics summary was sent to ${admins.map((a) => a.name).join(' and ')} as a private message.`);
+      showSheet('Sent', `Your diagnostics summary was sent to ${admins.map((a) => a.name).join(' and ')} as a private message.`);
     } catch (e) {
-      Alert.alert('Couldn’t send it', errorText(e));
+      showSheet('Couldn’t send it', errorText(e));
     } finally {
       setBusy(false);
     }
@@ -138,7 +139,7 @@ export default function Diagnostics() {
             variant="ghost"
             title="Clear log"
             onPress={() =>
-              Alert.alert('Clear the diagnostics log?', 'It starts again from now.', [
+              showSheet('Clear the diagnostics log?', 'It starts again from now.', [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Clear', style: 'destructive', onPress: () => clearDiagnostics().then(load) },
               ])

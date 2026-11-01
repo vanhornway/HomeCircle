@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { Stack, useFocusEffect } from 'expo-router';
 import { Button } from '../components/ui';
 import { errorText } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 // What one costs, from past receipts: the usual price, and the range it has been.
 type Price = { est: number; low: number; high: number; n: number };
@@ -148,13 +149,13 @@ export function ShoppingBody() {
     ) : null;
 
   const listMenu = (l: List) =>
-    Alert.alert(l.name, undefined, [
+    showSheet(l.name, undefined, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete list',
         style: 'destructive',
         onPress: () =>
-          Alert.alert(`Delete ${l.name}?`, 'Its items and what it learned you usually buy go too.', [
+          showSheet(`Delete ${l.name}?`, 'Its items and what it learned you usually buy go too.', [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Delete', style: 'destructive', onPress: () => run('listDelete', { listId: l.id }).then(() => setCurrent(null)) },
           ]),

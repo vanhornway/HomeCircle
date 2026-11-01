@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Pressable, Switch, Text, View } from 'react-native';
+import { Pressable, Switch, Text, View } from 'react-native';
 import { CHIRP_SOUNDS, type ChirpSound, type CircleClient } from '@homecircle/core';
 import { Button, Card, Checkbox, SectionTitle } from './ui';
 import { HowThisWorks } from './HowThisWorks';
@@ -9,6 +9,7 @@ import { CHIRP_NAMES, previewChirp, setMyChirp } from '../lib/chirp';
 import { errorText } from '../lib/circle';
 import { updateSettings, type Settings } from '../lib/storage';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /** Your chirp (what others hear), and whether chirps sound or flash on this phone. */
 export function ChirpSettings({ clients, settings, onChange }: { clients: CircleClient[]; settings: Settings | null; onChange: (s: Settings) => void }) {
@@ -24,7 +25,7 @@ export function ChirpSettings({ clients, settings, onChange }: { clients: Circle
       await setMyChirp(clients, sound);
       onChange({ ...(settings as Settings), myChirp: sound });
     } catch (e) {
-      Alert.alert('Couldn’t save your chirp', errorText(e));
+      showSheet('Couldn’t save your chirp', errorText(e));
     } finally {
       setBusy(null);
     }

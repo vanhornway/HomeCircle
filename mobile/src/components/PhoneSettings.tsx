@@ -1,18 +1,19 @@
 import { useState } from 'react';
-import { Alert, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
 import type { CircleClient } from '@homecircle/core';
 import { Button } from './ui';
 import { GroupBody, SettingsGroup } from './SettingsKit';
 import { errorText } from '../lib/circle';
 import { NUMBER_PROBLEMS, cleanNumber } from '../lib/whatsappCore';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /** "+923001234567" from what was typed, '' for nothing, or an Alert and null when it can't be used. */
 function checked(typed: string): string | null {
   if (!typed.trim()) return '';
   const n = cleanNumber(typed);
   if (n.ok) return `+${n.digits}`;
-  Alert.alert('Check the phone number', NUMBER_PROBLEMS[n.problem]);
+  showSheet('Check the phone number', NUMBER_PROBLEMS[n.problem]);
   return null;
 }
 
@@ -27,7 +28,7 @@ function PhoneEditor({ saved, label, onSave }: { saved: string | null; label: st
     setSaving(true);
     onSave(phone)
       .then(() => setDraft(null))
-      .catch((e) => Alert.alert('Couldn’t save', errorText(e)))
+      .catch((e) => showSheet('Couldn’t save', errorText(e)))
       .finally(() => setSaving(false));
   };
   return (

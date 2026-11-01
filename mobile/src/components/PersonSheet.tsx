@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Alert, BackHandler, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { BackHandler, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
 import type { CircleClient } from '@homecircle/core';
 import { Icon } from './ui';
@@ -12,6 +12,7 @@ import { spotName, type Anchor } from '../lib/visitsCore';
 import { MemberAvatar } from './MemberAvatar';
 import { cadenceLine, canLocate, locatePerson, locateState, openDirections, statusLine, useLocateVersion } from '../lib/people';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /**
  * Everything you can do about one person, in a bottom sheet. It isn't a
@@ -113,7 +114,7 @@ export function PersonSheet({
       onClose();
       router.push({ pathname: '/conversation', params: { circle: client.circleId!, peer: m.id } });
     } catch (e) {
-      Alert.alert('Couldn’t send it', errorText(e));
+      showSheet('Couldn’t send it', errorText(e));
     } finally {
       setChecking(false);
     }

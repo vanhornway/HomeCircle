@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Modal, Pressable, Text } from 'react-native';
+import { Modal, Pressable, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CircleClient } from '@homecircle/core';
 import { Button, Icon } from './ui';
@@ -9,6 +9,7 @@ import { errorText } from '../lib/circle';
 import { openChat, openGroupCallLink, showOutcome } from '../lib/whatsapp';
 import { useSkin } from '../skins';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /**
  * The number to call someone on, or null: nothing when the circle hasn't
@@ -52,7 +53,7 @@ export function CallChoiceSheet({ client, memberId, visible, onClose, onCalled }
               disabled={!inApp}
               onPress={() => {
                 onCalled();
-                startCall(client, memberId).catch((e) => Alert.alert('Couldn’t call', errorText(e)));
+                startCall(client, memberId).catch((e) => showSheet('Couldn’t call', errorText(e)));
               }}
             />
             {inApp ? why('Voice, phone to phone, only you two') : why(client.feature('calls') ? 'Not on this phone yet (Android only for now).' : 'Voice calls are off for this circle. An admin turns them on in Settings → Features.')}

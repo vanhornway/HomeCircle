@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { Avatar, Button, Card, P, Screen } from '../components/ui';
 import { HowThisWorks } from '../components/HowThisWorks';
 import { errorText } from '../lib/circle';
@@ -7,6 +7,7 @@ import { cadenceLine, memberState, statusLine, type MemberState } from '../lib/p
 import { timeAgo, useCircle } from '../lib/useCircle';
 import { APP_VERSION } from '../lib/updates';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /** Whether version a ("0.15.0") is older than b. */
 const olderThan = (a: string, b: string) => {
@@ -54,7 +55,7 @@ export default function CircleHealth() {
       await client.nudgeSetup(id, why);
       setSent((s) => ({ ...s, [id]: true }));
     } catch (e) {
-      Alert.alert('Couldn’t send it', errorText(e));
+      showSheet('Couldn’t send it', errorText(e));
     }
   };
 

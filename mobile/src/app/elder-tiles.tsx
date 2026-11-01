@@ -1,4 +1,4 @@
-import { Alert, Image, Pressable, Text, View } from 'react-native';
+import { Image, Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import type { CircleClient, Member } from '@homecircle/core';
 import { Avatar } from '../components/ui';
@@ -9,6 +9,7 @@ import { FamilyNameEditor, GenderChips } from '../components/FamilyNames';
 import { errorText } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 const EVENTS = ['members', 'records'] as const;
 
@@ -35,7 +36,7 @@ export default function ElderTiles() {
     const j = i + by;
     if (j < 0 || j >= ids.length) return;
     [ids[i], ids[j]] = [ids[j], ids[i]];
-    client.setMemberRecord(member, { tiles: ids }).catch((e) => Alert.alert('Couldn’t save', errorText(e)));
+    client.setMemberRecord(member, { tiles: ids }).catch((e) => showSheet('Couldn’t save', errorText(e)));
   };
   const arrow = (label: string, on: boolean, onPress: () => void) => (
     <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={!on} onPress={onPress} style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: t.surface2, opacity: on ? 1 : 0.3 }}>
@@ -79,7 +80,7 @@ export default function ElderTiles() {
             {p.g ? (
               <Text style={{ color: t.muted, fontSize: 13 }}>{p.g === 'f' ? 'She' : 'He'}, set in their own profile.</Text>
             ) : (
-              <GenderChips value={client.memberRecord(p.id)?.g ?? null} onPick={(g) => client.setMemberRecord(p.id, { g }).catch((e) => Alert.alert('Couldn’t save', errorText(e)))} />
+              <GenderChips value={client.memberRecord(p.id)?.g ?? null} onPick={(g) => client.setMemberRecord(p.id, { g }).catch((e) => showSheet('Couldn’t save', errorText(e)))} />
             )}
           </GroupBody>
         </SettingsGroup>

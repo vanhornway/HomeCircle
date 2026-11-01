@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import type { Member } from '@homecircle/core';
 import { Button, Tag } from '../../components/ui';
@@ -12,6 +12,7 @@ import { stopBackgroundUpdates, syncGeofences } from '../../lib/location';
 import { useCircle } from '../../lib/useCircle';
 import { profileLabel, profileOf, skinStatus } from '../../skins/profile';
 import { useTheme } from '../../theme';
+import { showSheet } from '../../lib/sheet';
 
 const RETENTION_LABELS: Record<number, string> = { 1: '1 day', 7: '1 week', 30: '1 month', 90: '3 months', 365: '1 year' };
 
@@ -25,9 +26,9 @@ export default function CircleSettings() {
   const [open, setOpen] = useState<string | null>(null);
 
   const confirm = (title: string, body: string, action: string, fn: () => Promise<unknown>) =>
-    Alert.alert(title, body, [
+    showSheet(title, body, [
       { text: 'Cancel', style: 'cancel' },
-      { text: action, style: 'destructive', onPress: () => fn().catch((e) => Alert.alert('Something went wrong', errorText(e))) },
+      { text: action, style: 'destructive', onPress: () => fn().catch((e) => showSheet('Something went wrong', errorText(e))) },
     ]);
 
   // Leaving the phone's last circle also clears its settings and stops sharing.
@@ -77,7 +78,7 @@ export default function CircleSettings() {
             <Text style={{ color: t.text, fontFamily: 'Menlo', fontSize: 15, letterSpacing: 1 }}>{m.safetyNumber}</Text>
             <Text style={{ color: t.muted, fontSize: 13 }}>Compare this with {m.isMe ? 'other people’s phones' : `${m.name}’s phone`} in person. If it matches, no one has been swapped in.</Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              {canPromote ? <Button small title={m.role === 'admin' ? 'Make member' : 'Make admin'} onPress={() => client.setRole(m.id, m.role === 'admin' ? 'member' : 'admin').catch((e) => Alert.alert('Error', errorText(e)))} /> : null}
+              {canPromote ? <Button small title={m.role === 'admin' ? 'Make member' : 'Make admin'} onPress={() => client.setRole(m.id, m.role === 'admin' ? 'member' : 'admin').catch((e) => showSheet('Error', errorText(e)))} /> : null}
               {canRemove ? (
                 <Button small variant="danger" title="Remove" onPress={() => confirm(`Remove ${m.name}?`, 'They lose access right away and the circle’s encryption key is changed.', 'Remove', () => client.removeMember(m.id))} />
               ) : null}
@@ -150,7 +151,7 @@ export default function CircleSettings() {
                   disabled={!client.isAdmin}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: on, disabled: !client.isAdmin }}
-                  onPress={() => client.setRetention(d).catch((e) => Alert.alert('Couldn’t change it', errorText(e)))}
+                  onPress={() => client.setRetention(d).catch((e) => showSheet('Couldn’t change it', errorText(e)))}
                   style={{ minHeight: 44, paddingHorizontal: 16, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: on ? t.brand : t.line, backgroundColor: on ? t.brandSoft : 'transparent', opacity: client.isAdmin || on ? 1 : 0.5 }}
                 >
                   <Text style={{ color: on ? t.brand : t.text, fontWeight: '600', fontSize: 15 }}>{RETENTION_LABELS[d] ?? `${d} days`}</Text>

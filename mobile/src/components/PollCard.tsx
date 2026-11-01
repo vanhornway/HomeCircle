@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Alert, Animated, Easing, Pressable, Text, TextInput, View } from 'react-native';
+import { Animated, Easing, Pressable, Text, TextInput, View } from 'react-native';
 import type { CircleClient, PollState } from '@homecircle/core';
 import { errorText } from '../lib/circle';
 import { useChatFont } from '../lib/chatZoom';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /** A poll in the chat: tap an option to vote; live bars, add, spin and close. */
 export function PollCard({ client, pollId }: { client: CircleClient; pollId: string }) {
@@ -24,7 +25,7 @@ export function PollCard({ client, pollId }: { client: CircleClient; pollId: str
   }, [s?.closesAt, s?.closed]);
 
   if (!s) return null;
-  const fail = (e: unknown) => Alert.alert('Poll', errorText(e));
+  const fail = (e: unknown) => showSheet('Poll', errorText(e));
 
   const tap = (optionId: string) => {
     if (s.closed) return;
@@ -53,7 +54,7 @@ export function PollCard({ client, pollId }: { client: CircleClient; pollId: str
   };
 
   const close = () =>
-    Alert.alert('Close this poll?', 'No more votes after this. Everyone sees the result.', [
+    showSheet('Close this poll?', 'No more votes after this. Everyone sees the result.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Close poll', onPress: () => client.closePoll(pollId).catch(fail) },
     ]);

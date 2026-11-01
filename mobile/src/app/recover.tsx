@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { CircleClient, defaultFeatures, type PendingRejoin, type RecoverableCircle, type ServerInfo } from '@homecircle/core';
 import { FeatureChooser } from '../components/FeaturePicker';
@@ -12,6 +12,7 @@ import { clearPendingRejoin, getPendingRejoin, setPendingRejoin } from '../lib/r
 import { updateSettings } from '../lib/storage';
 import { timeAgo } from '../lib/useCircle';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 type Server = { info: ServerInfo; code: string };
 type Phase =
@@ -247,7 +248,7 @@ export default function Recover() {
                   variant="danger"
                   style={{ flex: 1 }}
                   onPress={() =>
-                    Alert.alert(`Delete ${label}?`, 'Everyone in it is removed, and its messages, places and locations are deleted. This can’t be undone.', [
+                    showSheet(`Delete ${label}?`, 'Everyone in it is removed, and its messages, places and locations are deleted. This can’t be undone.', [
                       { text: 'Cancel', style: 'cancel' },
                       {
                         text: 'Delete',

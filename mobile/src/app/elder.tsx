@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Text } from 'react-native';
+import { Text } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import type { MemberRecord } from '@homecircle/core';
 import { GroupBody, SettingsGroup, SettingsPage, SettingsRow, ToggleRow } from '../components/SettingsKit';
@@ -9,6 +9,7 @@ import { errorText } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
 import { PROFILES, profileOf, profilePatch, skinStatus, type Profile } from '../skins/profile';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 const EVENTS = ['members', 'records', 'circle', 'locations'] as const;
 const SLEEP_FROM = ['21:00', '22:00', '23:00', '00:00'];
@@ -40,7 +41,7 @@ export default function ElderSettings() {
     setBusy(true);
     client
       .setMemberRecord(member, patch)
-      .catch((e) => Alert.alert('Couldn’t save', errorText(e)))
+      .catch((e) => showSheet('Couldn’t save', errorText(e)))
       .finally(() => setBusy(false));
   };
   const profile = profileOf(rec);
@@ -55,11 +56,11 @@ export default function ElderSettings() {
     const go = () => {
       setBusy(true);
       (p === 'full' ? client.setMemberRecord(member, profilePatch('full')) : client.markElder(member, { page: profilePatch(p).page }))
-        .catch((e) => Alert.alert('Couldn’t save', errorText(e)))
+        .catch((e) => showSheet('Couldn’t save', errorText(e)))
         .finally(() => setBusy(false));
     };
     if (p !== 'full' && m.role === 'admin') {
-      Alert.alert(`Make ${m.name} an elder?`, `They stop being an admin. You can switch them back to the full app any time, but that won’t make them an admin again.`, [
+      showSheet(`Make ${m.name} an elder?`, `They stop being an admin. You can switch them back to the full app any time, but that won’t make them an admin again.`, [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Switch', onPress: go },
       ]);
