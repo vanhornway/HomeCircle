@@ -2,6 +2,17 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.22.1
+
+- Fixed: tapping Call closed the app. The app now asks for the microphone
+  before calling or answering, and the service that keeps a call going falls
+  back to what Android allows instead of stopping the app.
+- Fixed: switching a person between the full app, elder care and grandkids
+  didn't always reach their phone. A phone now catches up on settings when it
+  opens or reconnects, a closed app gets a silent push to follow, and admins
+  see Waiting, then Updated. Settings records are sealed again after a key
+  change so people who join later can read them.
+
 ## 0.22.0
 
 - Voice calls (Settings → Features → Voice calls, off until an admin

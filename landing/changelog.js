@@ -1,6 +1,15 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.22.1',
+    date: '2026-10-31',
+    title: 'Calls and profile switching fixed',
+    items: [
+      'Fixed: tapping Call closed the app. It now asks for the microphone first, and if you say no it tells you why.',
+      'Fixed: switching someone between the full app, elder care and grandkids now reaches their phone every time, even when the app is closed. You see “Waiting” until their phone has it, then “Updated”.',
+    ],
+  },
+  {
     version: '0.22.0',
     date: '2026-10-31',
     title: 'Calls, WhatsApp links and a quicker start',
