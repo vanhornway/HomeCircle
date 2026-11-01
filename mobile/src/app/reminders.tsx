@@ -2,7 +2,8 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Stack, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ADD_BUTTON_SPACE, AddButton, Button, EmptyState, ErrorText, Tag } from '../components/ui';
+import { ADD_BUTTON_SPACE, AddButton, useAddButtonScroll, Button, EmptyState, ErrorText, Tag } from '../components/ui';
+import { DatePicker } from '../components/DatePicker';
 import { HowThisWorks } from '../components/HowThisWorks';
 import { errorText } from '../lib/circle';
 import { daysUntil, parseDueDate, prettyDate } from '../lib/dueDate';
@@ -25,6 +26,7 @@ const whenText = (r: Reminder) => {
  */
 export function RemindersBody() {
   const t = useTheme();
+  const addScroll = useAddButtonScroll();
   const client = useCircle(['circle']);
   const [list, setList] = useState<Reminder[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +68,8 @@ export function RemindersBody() {
           data={list}
           keyExtractor={(r) => r.id}
           contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: ADD_BUTTON_SPACE }}
+          onScroll={addScroll.onScroll}
+          scrollEventThrottle={64}
           ListHeaderComponent={
             <View style={{ marginBottom: 6 }}>
               <Text style={{ color: t.muted, fontSize: 15, lineHeight: 21 }}>Things that come once a year, like a car registration.</Text>
@@ -100,7 +104,7 @@ export function RemindersBody() {
           }}
         />
       )}
-      <AddButton label="Reminder" hint="Add a reminder" onPress={() => setEditing('new')} />
+      <AddButton label="Reminder" hint="Add a reminder" onPress={() => setEditing('new')} hidden={addScroll.hidden} />
       {editing ? <ReminderSheet reminder={editing === 'new' ? null : editing} onClose={() => setEditing(null)} run={run} /> : null}
     </View>
   );
@@ -149,9 +153,9 @@ function ReminderSheet({ reminder, onClose, run }: { reminder: Reminder | null; 
                 {whenText(reminder)} · Added by {reminder.createdByName}
               </Text>
             ) : null}
+            <Text style={{ color: t.text, fontSize: 15, fontWeight: '700' }}>What</Text>
             <TextInput accessibilityLabel="What, like Car registration" value={title} onChangeText={setTitle} placeholder="What, like Car registration" placeholderTextColor={t.muted} maxLength={80} style={[input, { fontWeight: '700' }]} />
-            <TextInput accessibilityLabel="When it’s due: Nov 30, or 11/30/2027" value={date} onChangeText={setDate} placeholder="When it’s due: Nov 30, or 11/30/2027" placeholderTextColor={t.muted} autoCapitalize="none" style={input} />
-            <Text style={{ color: date && !due ? t.danger : t.brand, fontSize: 14 }}>{date ? (due ? prettyDate(due) : 'That isn’t a date I know. Try “Nov 30”.') : ' '}</Text>
+            <DatePicker value={due} onChange={setDate} />
             <Text style={{ color: t.text, fontSize: 15, fontWeight: '700' }}>Repeat</Text>
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
               {(

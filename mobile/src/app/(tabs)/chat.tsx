@@ -3,7 +3,7 @@ import { FlatList, Modal, Pressable, ScrollView, Text, View } from 'react-native
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CircleClient, Message } from '@homecircle/core';
-import { ADD_BUTTON_SPACE, AddButton, Avatar, Button, EmptyState } from '../../components/ui';
+import { ADD_BUTTON_SPACE, AddButton, useAddButtonScroll, Avatar, Button, EmptyState } from '../../components/ui';
 import { HelperAvatar } from '../../components/HelperAvatar';
 import { ServerBanner } from '../../components/ServerBanner';
 import { initials, useAllCircles } from '../../lib/useCircle';
@@ -49,6 +49,7 @@ function preview(client: CircleClient, m: Message | undefined, group: boolean, h
 /** Every conversation on this phone: each circle's group chat and your direct chats. */
 export default function Chats() {
   const t = useTheme();
+  const addScroll = useAddButtonScroll();
   const clients = useAllCircles();
   const { showPlaceAlerts } = useSettings();
   const [picking, setPicking] = useState(false);
@@ -108,6 +109,8 @@ export default function Chats() {
         data={rows}
         keyExtractor={(r) => r.key}
         contentContainerStyle={{ paddingBottom: ADD_BUTTON_SPACE }}
+          onScroll={addScroll.onScroll}
+          scrollEventThrottle={64}
         ListEmptyComponent={<EmptyState icon="chat" text="No chats yet." action="New message" onAction={() => setPicking(true)} />}
         renderItem={({ item: r }) => (
           <Pressable
@@ -161,7 +164,7 @@ export default function Chats() {
         ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: t.line, marginLeft: 82 }} />}
       />
 
-      <AddButton label="Message" hint="New message" onPress={() => setPicking(true)} />
+      <AddButton label="Message" hint="New message" onPress={() => setPicking(true)} hidden={addScroll.hidden} />
 
       <Modal visible={picking} animationType="slide" transparent onRequestClose={() => setPicking(false)}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setPicking(false)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>

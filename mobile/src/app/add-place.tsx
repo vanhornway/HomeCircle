@@ -5,6 +5,7 @@ import * as Location from 'expo-location';
 import { randomId, type CircleClient, type Place } from '@homecircle/core';
 import { FamilyMap } from '../map/FamilyMap';
 import { Button, ErrorText } from '../components/ui';
+import { HowThisWorks } from '../components/HowThisWorks';
 import { allClients, errorText, getClient } from '../lib/circle';
 import { DEFAULT_SETTINGS, getSettings } from '../lib/storage';
 import { feetToMeters, metersToFeet } from '../lib/units';
@@ -230,10 +231,10 @@ export default function AddPlace() {
       <ScrollView style={{ backgroundColor: t.surface }} contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
         <Text style={{ color: t.text, fontSize: 15, fontWeight: '700' }}>Address</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TextInput accessibilityLabel="123 Main St, San Jose"
+          <TextInput accessibilityLabel="Address or place name"
             value={query}
             onChangeText={setQuery}
-            placeholder="123 Main St, San Jose"
+            placeholder="Search an address or place"
             placeholderTextColor={t.muted}
             returnKeyType="search"
             onSubmitEditing={find}
@@ -305,9 +306,9 @@ export default function AddPlace() {
         <Button title={editing ? 'Save changes' : 'Save place'} variant="primary" loading={busy === 'save'} disabled={!point || !name.trim() || !radiusOk} onPress={save} style={{ marginTop: 6 }} />
         {editing ? <Button title="Delete place" variant="danger" loading={busy === 'delete'} onPress={remove} /> : null}
         <ErrorText>{error}</ErrorText>
-        <Text style={{ color: t.muted, fontSize: 14 }}>
+        <HowThisWorks title="Who sees your places">
           The address is looked up by your phone’s map service. Places are stored end-to-end encrypted, so your HomeCircle server never learns where they are.
-        </Text>
+        </HowThisWorks>
       </ScrollView>
     </View>
   );

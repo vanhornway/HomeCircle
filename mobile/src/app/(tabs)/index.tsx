@@ -19,7 +19,7 @@ import { Drawer, useDrawer } from '../../components/Drawer';
 import { useServerState } from '../../lib/connection';
 import { initials, useAllCircles, useCircle } from '../../lib/useCircle';
 import { chirpWithChoice } from '../../lib/chirp';
-import { canLocate, everyoneCoolingDown, isAsking, memberState, locatePerson, locateState, lowBattery, refreshEveryone, statusLine, useLocateVersion } from '../../lib/people';
+import { canLocate, everyoneCoolingDown, isAsking, memberState, locatePerson, locateState, lowBattery, refreshEveryone, settingWarning, statusLine, useLocateVersion } from '../../lib/people';
 import { DEFAULT_SETTINGS, getSettings } from '../../lib/storage';
 import { edgeChips, groups, openingFrame } from '../../lib/mapFrame';
 import { usePlaceNames } from '../../lib/weather';
@@ -385,10 +385,12 @@ export default function MapTab() {
                     </Text>
                     {m.isMe ? <Tag label="You" /> : null}
                     {lowBattery(loc) ? <Tag label="Low battery" warn /> : null}
+                    {/* The setting that slows their updates, as a tag: the line below is cut to one row. */}
+                    {settingWarning(client, m, now) ? <Tag label={settingWarning(client, m, now)!} warn /> : null}
                     {m.keyChanged ? <Tag label="Keys changed" warn /> : !m.verified ? <Tag label="Unverified" warn /> : null}
                   </View>
                   <Text style={{ color: t.muted, fontSize: 14, marginTop: 2, lineHeight: 19 }} numberOfLines={1}>
-                    {statusLine(client, m, now)}
+                    {statusLine(client, m, now, { warnings: false })}
                   </Text>
                 </View>
                 {!m.isMe && client.feature('locate') ? (

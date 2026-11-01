@@ -47,7 +47,21 @@ export function memberState(client: CircleClient, m: Member, now = Date.now()): 
 }
 
 /** One line about where someone is: "At Home · 5 min ago · 80%", "Battery saver on · 40 min ago"… */
-export function statusLine(client: CircleClient, m: Member, now = Date.now()): string {
+/**
+ * A phone setting that keeps someone's location from updating well, as a
+ * short tag for the People list ("Location limited", "Battery saver").
+ */
+export function settingWarning(client: CircleClient, m: Member, now = Date.now()): string | null {
+  const loc = client.locations.get(m.id);
+  const state = memberState(client, m, now);
+  if (!loc || client.paused.get(m.id)) return null;
+  if (state === 'settings') return loc.perm === 'foreground' ? 'Location limited' : 'Precise off';
+  if (state === 'saver') return 'Battery saver';
+  return null;
+}
+
+/** One line about someone; `{ warnings: false }` leaves out what settingWarning shows as a tag. */
+export function statusLine(client: CircleClient, m: Member, now = Date.now(), { warnings = true }: { warnings?: boolean } = {}): string {
   const paused = client.paused.get(m.id);
   if (paused) return [`Paused${paused.reason ? `: ${paused.reason}` : ''}`, timeAgo(paused.since)].join(' · ');
   const loc = client.locations.get(m.id);
@@ -62,8 +76,8 @@ export function statusLine(client: CircleClient, m: Member, now = Date.now()): s
   const where = loc.approximate ? 'Approximate area' : place ? `At ${place.name}` : `±${formatFeet(loc.accuracy || 0)}`;
   const bits = [where, timeAgo(loc.ts)];
   if (loc.battery != null) bits.push(`${lowBattery(loc) ? '🪫 ' : ''}${Math.round(loc.battery * 100)}%${loc.charging ? ' ⚡' : ''}`);
-  if (state === 'settings') bits.push(loc.perm === 'foreground' ? 'Location set to While Using' : 'Precise location off');
-  if (state === 'saver') bits.push('Battery saver on');
+  if (warnings && state === 'settings') bits.push(loc.perm === 'foreground' ? 'Location set to While Using' : 'Precise location off');
+  if (warnings && state === 'saver') bits.push('Battery saver on');
   return bits.join(' · ');
 }
 

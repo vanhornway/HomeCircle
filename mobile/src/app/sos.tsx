@@ -62,11 +62,11 @@ function Countdown({ asked }: { asked: string }) {
     return () => clearTimeout(id);
   }, [left]);
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: t.danger, padding: 24, justifyContent: 'space-between' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: t.sos, padding: 24, justifyContent: 'space-between' }}>
       <View style={{ alignItems: 'center', marginTop: 60, gap: 12 }}>
-        <Text style={{ color: t.dangerInk, fontSize: 22, fontWeight: '700' }}>{sending ? 'Sending SOS…' : 'Sending SOS in'}</Text>
-        {sending ? <ActivityIndicator color={t.dangerInk} size="large" /> : <Text style={{ color: t.dangerInk, fontSize: 120, fontWeight: '800' }}>{left}</Text>}
-        <Text style={{ color: t.dangerInk, fontSize: 16, textAlign: 'center', lineHeight: 22 }}>
+        <Text style={{ color: t.sosInk, fontSize: 22, fontWeight: '700' }}>{sending ? 'Sending SOS…' : 'Sending SOS in'}</Text>
+        {sending ? <ActivityIndicator color={t.sosInk} size="large" /> : <Text style={{ color: t.sosInk, fontSize: 120, fontWeight: '800' }}>{left}</Text>}
+        <Text style={{ color: t.sosInk, fontSize: 16, textAlign: 'center', lineHeight: 22 }}>
           Everyone in your circles is alerted, and your exact location is shared every minute until you say you’re safe.
         </Text>
       </View>
@@ -74,9 +74,9 @@ function Countdown({ asked }: { asked: string }) {
         <Pressable
           accessibilityRole="button"
           onPress={() => router.back()}
-          style={({ pressed }) => ({ backgroundColor: t.dangerInk, borderRadius: 20, minHeight: 64, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.8 : 1 })}
+          style={({ pressed }) => ({ backgroundColor: t.sosInk, borderRadius: 20, minHeight: 64, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.8 : 1 })}
         >
-          <Text style={{ color: t.danger, fontSize: 20, fontWeight: '800' }}>Cancel</Text>
+          <Text style={{ color: t.sos, fontSize: 20, fontWeight: '800' }}>Cancel</Text>
         </Pressable>
       )}
     </SafeAreaView>
@@ -104,9 +104,9 @@ function MySosView() {
     ]);
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }} edges={['top', 'bottom']}>
-      <View style={{ backgroundColor: t.danger, padding: 20, gap: 6 }}>
-        <Text style={{ color: t.dangerInk, fontSize: 26, fontWeight: '800' }}>🆘 SOS is on</Text>
-        <Text style={{ color: t.dangerInk, fontSize: 15, lineHeight: 21 }}>
+      <View style={{ backgroundColor: t.sos, padding: 20, gap: 6 }}>
+        <Text style={{ color: t.sosInk, fontSize: 26, fontWeight: '800' }}>🆘 SOS is on</Text>
+        <Text style={{ color: t.sosInk, fontSize: 15, lineHeight: 21 }}>
           Since {clock(sos.startedAt)}. Your exact location goes to everyone in your circles every minute, until you tap I’m safe.
         </Text>
       </View>
@@ -164,9 +164,9 @@ function TheirSos({ circleId, memberId }: { circleId: string; memberId: string }
   const me = client.account?.memberId ? client.locations.get(client.account.memberId) : undefined;
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }} edges={['top', 'bottom']}>
-      <View style={{ backgroundColor: t.danger, padding: 20, gap: 6 }}>
-        <Text style={{ color: t.dangerInk, fontSize: 26, fontWeight: '800' }}>🆘 {name} needs help</Text>
-        <Text style={{ color: t.dangerInk, fontSize: 15 }}>
+      <View style={{ backgroundColor: t.sos, padding: 20, gap: 6 }}>
+        <Text style={{ color: t.sosInk, fontSize: 26, fontWeight: '800' }}>🆘 {name} needs help</Text>
+        <Text style={{ color: t.sosInk, fontSize: 15 }}>
           SOS since {clock(sos.since)}
           {client.circle.name ? ` · ${client.circle.name}` : ''}
         </Text>

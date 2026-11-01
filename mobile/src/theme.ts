@@ -18,6 +18,9 @@ const light = {
   // Text on a danger fill, and the dimmed page behind a sheet.
   dangerInk: '#FFFFFF',
   scrim: 'rgba(0,0,0,0.35)',
+  // SOS stays an alarm red with white text in both themes (5.6:1 here, 5.0:1 in dark).
+  sos: '#C62828',
+  sosInk: '#FFFFFF',
   dark: false,
 };
 
@@ -38,6 +41,8 @@ const dark: typeof light = {
   warnText: '#F2B08A',
   dangerInk: '#0D1412',
   scrim: 'rgba(0,0,0,0.6)',
+  sos: '#D32F2F',
+  sosInk: '#FFFFFF',
   dark: true,
 };
 

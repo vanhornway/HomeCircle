@@ -4,7 +4,7 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Stack, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ADD_BUTTON_SPACE, AddButton, Button, EmptyState, ErrorText, Tag } from '../components/ui';
+import { ADD_BUTTON_SPACE, AddButton, useAddButtonScroll, Button, EmptyState, ErrorText, Tag } from '../components/ui';
 import { HowThisWorks } from '../components/HowThisWorks';
 import { errorText } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
@@ -73,6 +73,7 @@ const when = (n: Note) => (n.start ? (n.end && n.end !== n.start ? `${day(n.star
 /** What the circle's agent remembers: search, browse by kind, open, edit, delete, undo. */
 export function MemoryBody() {
   const t = useTheme();
+  const addScroll = useAddButtonScroll();
   const client = useCircle(['circle']);
   const name = client.agent?.name ?? 'The agent';
   const me = client.account?.memberId;
@@ -168,6 +169,8 @@ export function MemoryBody() {
           keyExtractor={(n) => n.id}
           stickySectionHeadersEnabled={false}
           contentContainerStyle={{ padding: 16, paddingTop: 6, gap: 8, paddingBottom: ADD_BUTTON_SPACE }}
+          onScroll={addScroll.onScroll}
+          scrollEventThrottle={64}
           renderSectionHeader={({ section }) =>
             section.title ? <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700', letterSpacing: 0.5, marginTop: 10, textTransform: 'uppercase' }}>{section.title}</Text> : null
           }
@@ -213,7 +216,7 @@ export function MemoryBody() {
           )}
         />
       )}
-      <AddButton label="Note" hint="Add a note" onPress={() => setAdding(true)} />
+      <AddButton label="Note" hint="Add a note" onPress={() => setAdding(true)} hidden={addScroll.hidden} />
       {open ? <NoteSheet id={open} onClose={closeNote} onChanged={load} /> : null}
       {adding ? <NoteSheet id={null} onClose={closeNew} onChanged={load} /> : null}
     </View>

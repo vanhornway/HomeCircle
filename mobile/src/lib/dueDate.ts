@@ -41,3 +41,18 @@ export function daysUntil(d: string, today = new Date()) {
   const [y, m, dd] = d.split('-').map(Number);
   return Math.round((Date.UTC(y, m - 1, dd) - a) / 86400_000);
 }
+
+/** "2026-11-20" for a local date. */
+export const isoDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+/**
+ * The days of a month as calendar weeks, Sunday first: each cell is
+ * YYYY-MM-DD, or null before the 1st and after the last day.
+ */
+export function monthWeeks(year: number, month: number): (string | null)[][] {
+  const first = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const cells: (string | null)[] = [...Array(first).fill(null), ...Array.from({ length: days }, (_, i) => `${year}-${pad(month)}-${pad(i + 1)}`)];
+  while (cells.length % 7) cells.push(null);
+  return Array.from({ length: cells.length / 7 }, (_, w) => cells.slice(w * 7, w * 7 + 7));
+}

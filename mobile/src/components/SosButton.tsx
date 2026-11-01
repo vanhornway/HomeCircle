@@ -48,7 +48,7 @@ export function SosButton({ style }: { style?: StyleProp<ViewStyle> }) {
           width: SIZE,
           height: SIZE,
           borderRadius: SIZE / 2,
-          backgroundColor: t.danger,
+          backgroundColor: t.sos,
           alignItems: 'center',
           justifyContent: 'center',
           overflow: 'hidden',
@@ -71,7 +71,7 @@ export function SosButton({ style }: { style?: StyleProp<ViewStyle> }) {
             height: fill.interpolate({ inputRange: [0, 1], outputRange: [0, SIZE] }),
           }}
         />
-        <Text style={{ color: t.dangerInk, fontSize: 18, fontWeight: '800', letterSpacing: 1 }}>SOS</Text>
+        <Text style={{ color: t.sosInk, fontSize: 18, fontWeight: '800', letterSpacing: 1 }}>SOS</Text>
       </Pressable>
     </View>
   );

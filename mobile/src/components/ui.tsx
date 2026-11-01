@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Image,
   Pressable,
   StyleSheet,
@@ -13,6 +14,8 @@ import {
   type TextStyle,
   type ViewStyle,
   type ColorValue,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, G, Path, Rect } from 'react-native-svg';
@@ -33,15 +36,18 @@ export function Screen({
   add?: { label: string; hint?: string; onPress: () => void };
 }) {
   const t = useTheme();
+  const addScroll = useAddButtonScroll();
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: t.bg }, style]} edges={['top', 'left', 'right']}>
       {scroll ? (
         // The field you're typing in stays above the keyboard.
-        <KeyboardScroll contentContainerStyle={{ padding: 20, paddingBottom: add ? ADD_BUTTON_SPACE : 48 }}>{children}</KeyboardScroll>
+        <KeyboardScroll onScroll={add ? addScroll.onScroll : undefined} contentContainerStyle={{ padding: 20, paddingBottom: add ? ADD_BUTTON_SPACE : 48 }}>
+          {children}
+        </KeyboardScroll>
       ) : (
         children
       )}
-      {add ? <AddButton {...add} /> : null}
+      {add ? <AddButton {...add} hidden={addScroll.hidden} /> : null}
     </SafeAreaView>
   );
 }
@@ -395,10 +401,16 @@ export function EmptyState({ icon, text, action, onAction }: { icon: string; tex
  * a "+" with a word, bottom right, over the list. Quick-entry fields (an
  * item on a shopping list) stay inline in the list instead.
  */
-export function AddButton({ label, hint, onPress, bottom = 24 }: { label: string; hint?: string; onPress: () => void; bottom?: number }) {
+export function AddButton({ label, hint, onPress, bottom = 24, hidden = false }: { label: string; hint?: string; onPress: () => void; bottom?: number; hidden?: boolean }) {
   const t = useTheme();
+  // Slides off the bottom while the list scrolls down, so it doesn't sit on a row's own button.
+  const [slide] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    Animated.timing(slide, { toValue: hidden ? 1 : 0, duration: 180, useNativeDriver: true }).start();
+  }, [hidden, slide]);
+  const translateY = slide.interpolate({ inputRange: [0, 1], outputRange: [0, 56 + bottom + 24] });
   return (
-    <View pointerEvents="box-none" style={{ position: 'absolute', right: 16, bottom }}>
+    <Animated.View pointerEvents={hidden ? 'none' : 'box-none'} style={{ position: 'absolute', right: 16, bottom, transform: [{ translateY }] }}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={hint ?? label}
@@ -423,9 +435,27 @@ export function AddButton({ label, hint, onPress, bottom = 24 }: { label: string
         <Icon name="plus" color={t.brandInk} size={22} />
         <Text style={{ color: t.brandInk, fontSize: 16, fontWeight: '700' }}>{label}</Text>
       </Pressable>
-    </View>
+    </Animated.View>
   );
 }
 
 /** Space to leave under a scrolling list so the add button never covers its last row. */
 export const ADD_BUTTON_SPACE = 100;
+
+/**
+ * Hides the add button while a list scrolls down and brings it back on the
+ * way up or at the end. Pass `onScroll` to the list and `hidden` to AddButton.
+ */
+export function useAddButtonScroll() {
+  const [hidden, setHidden] = useState(false);
+  const lastY = useRef(0);
+  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    const y = contentOffset.y;
+    const atEnd = y + layoutMeasurement.height >= contentSize.height - 24;
+    if (atEnd || y < 40 || y < lastY.current - 8) setHidden(false);
+    else if (y > lastY.current + 8) setHidden(true);
+    lastY.current = y;
+  };
+  return { hidden, onScroll };
+}
