@@ -9,6 +9,8 @@ import { answerCall, chooseRoute, declineCall, hangUp, setMuted, useCall } from 
 import { useTheme } from '../theme';
 import { clientForCircle } from '../lib/circle';
 import type { AudioRoute } from '../../modules/hc-calls/src/HcCallsModule';
+import { say } from '../companion/lines';
+import { genderOf, tileName } from '../companion/people';
 
 // Call-screen glyphs, drawn here so the shared icon set stays as it is.
 const GLYPH = {
@@ -52,15 +54,20 @@ const clock = (ms: number) => {
 const NEXT_ROUTE: Record<AudioRoute, AudioRoute> = { earpiece: 'speaker', speaker: 'earpiece', bluetooth: 'earpiece' };
 const ROUTE_LABEL: Record<AudioRoute, string> = { earpiece: 'Phone', speaker: 'Speaker', bluetooth: 'Headset' };
 
-/** The call: ringing, calling, on the line (with a timer, mute, speaker) and how it ended. Covers whatever screen is open. */
-export function CallScreen() {
+/**
+ * The call: ringing, calling, on the line (with a timer, mute, speaker) and
+ * how it ended. Covers whatever screen is open. For an elder (`elder`): the
+ * name she knows them by, her phone says who is calling in her language, one
+ * big answer button, and on the line only the speaker and a big hang-up.
+ */
+export function CallScreen({ elder = false }: { elder?: boolean }) {
   const t = useTheme();
   const { snap, circleId, ended, routes, words } = useCall();
   const [showWords, setShowWords] = useState(false);
   const client: CircleClient | undefined = clientForCircle(circleId);
   const peerId = snap.peerId ?? ended?.peerId ?? null;
   const member = client && peerId ? client.members.get(peerId) : undefined;
-  const name = (client && peerId ? client.displayName(peerId) : null) || member?.name || 'Someone';
+  const name = (client && peerId ? (elder ? tileName(client, peerId) : client.displayName(peerId)) : null) || member?.name || 'Someone';
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (snap.phase !== 'active') return;
@@ -70,6 +77,15 @@ export function CallScreen() {
 
   const visible = snap.phase !== 'idle' || !!ended;
   const incoming = snap.phase === 'incoming';
+  // Her phone says who is calling, once per call; on the line, the sound is on the speaker.
+  useEffect(() => {
+    if (!elder || !incoming || !client || !peerId) return;
+    say({ key: 'reply.calling_now', g: genderOf(client, peerId), name: tileName(client, peerId) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elder, incoming, snap.callId]);
+  useEffect(() => {
+    if (elder && snap.phase === 'active') chooseRoute('speaker');
+  }, [elder, snap.phase, snap.callId]);
   const status = ended
     ? ended.text
     : snap.phase === 'incoming'
@@ -93,13 +109,14 @@ export function CallScreen() {
     <Modal visible={visible} animationType="fade" transparent={false} statusBarTranslucent onRequestClose={() => (incoming ? declineCall() : snap.phase !== 'idle' ? hangUp() : undefined)}>
       <SafeAreaView style={{ flex: 1, backgroundColor: t.dark ? '#0F1513' : t.brand }}>
         <View accessibilityLiveRegion="polite" style={{ flex: 1, alignItems: 'center', paddingTop: 56, paddingHorizontal: 24 }}>
-          <Text style={{ color: '#FFFFFFB3', fontSize: 14, letterSpacing: 0.4 }}>{client?.circle.name ? `${client.circle.name} · ` : ''}{incoming ? 'Incoming call' : 'Voice call'}</Text>
+          {elder ? null : <Text style={{ color: '#FFFFFFB3', fontSize: 14, letterSpacing: 0.4 }}>{client?.circle.name ? `${client.circle.name} · ` : ''}{incoming ? 'Incoming call' : 'Voice call'}</Text>}
           <View style={{ marginTop: 48 }}>{client && member ? <MemberAvatar client={client} member={member} size={132} /> : <Avatar name={name} color={t.brandSoft} size={132} />}</View>
-          <Text style={{ color: '#FFFFFF', fontSize: 30, fontWeight: '700', marginTop: 24, textAlign: 'center' }} numberOfLines={2}>
+          <Text style={{ color: '#FFFFFF', fontSize: elder ? 44 : 30, fontWeight: '700', marginTop: 24, textAlign: 'center' }} numberOfLines={2}>
             {name}
           </Text>
-          <Text style={{ color: '#FFFFFFD9', fontSize: 18, marginTop: 8, fontVariant: ['tabular-nums'] }}>{status}</Text>
-          {snap.phase === 'active' && !ended ? (
+          {/* Her screen has no English: only the time on the line. */}
+          {elder && snap.phase !== 'active' ? null : <Text style={{ color: '#FFFFFFD9', fontSize: elder ? 28 : 18, marginTop: 8, fontVariant: ['tabular-nums'] }}>{status}</Text>}
+          {snap.phase === 'active' && !ended && !elder ? (
             <Pressable accessibilityRole="button" accessibilityHint="Shows four words to compare with the other person" onPress={() => setShowWords((v) => !v)} style={{ marginTop: 14, alignItems: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: 12 }}>
               <Text style={{ color: '#FFFFFFB3', fontSize: 13 }}>End-to-end encrypted · {showWords ? 'Hide words' : 'Check words'}</Text>
               {showWords && words ? (
@@ -112,7 +129,26 @@ export function CallScreen() {
           ) : null}
         </View>
         <View style={{ paddingBottom: 40, paddingHorizontal: 24, gap: 28 }}>
-          {incoming ? (
+          {incoming && elder ? (
+            <View style={{ flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' }}>
+              <Round label="Decline" onPress={() => declineCall()} bg={t.danger} size={88}>
+                <View style={{ transform: [{ rotate: '135deg' }] }}>
+                  <Icon name="phone" color="#fff" size={36} />
+                </View>
+              </Round>
+              <Round label="Answer" onPress={() => answerCall()} bg={t.ok} size={140}>
+                <Icon name="phone" color="#fff" size={60} />
+              </Round>
+            </View>
+          ) : elder && !ended ? (
+            <View style={{ alignItems: 'center' }}>
+              <Round label="Hang up" onPress={() => hangUp()} bg={t.danger} size={120}>
+                <View style={{ transform: [{ rotate: '135deg' }] }}>
+                  <Icon name="phone" color="#fff" size={52} />
+                </View>
+              </Round>
+            </View>
+          ) : incoming ? (
             <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
               <View style={{ alignItems: 'center', gap: 8 }}>
                 <Round label="Decline" onPress={() => declineCall()} bg={t.danger} size={72}>

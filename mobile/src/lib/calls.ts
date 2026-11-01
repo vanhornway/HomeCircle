@@ -246,12 +246,11 @@ function onSignal(client: CircleClient, s: CallSignal) {
   void engine.handleSignal(s as never);
 }
 
-/** Whether you can call this person from the person sheet: calls on, a real person, not an elder. */
+/** Whether you can call this person from the person sheet: calls on, a real person (elders too: their phone rings with a screen made for them). */
 export function canCall(client: CircleClient, memberId: string): boolean {
   if (Platform.OS !== 'android') return false; // iOS needs CallKit first (docs/CALLS-PLAN.md)
   const m = client.members.get(memberId);
   if (!client.feature('calls') || !m || m.isMe || m.removed || m.kind === 'agent') return false;
-  if (client.memberRecord(memberId)?.skin === 'elderly') return false;
   return !!client.account?.known[memberId];
 }
 

@@ -7,15 +7,15 @@ import { CallScreen } from './CallScreen';
 
 /**
  * Calls for the whole app: listens in every circle, shows the call screen over
- * whatever is open, and picks up a call the phone was woken for. Nothing
- * here for the Elderly Companion skin: she is never called in this release.
+ * whatever is open, and picks up a call the phone was woken for. In the
+ * Elderly Companion skin too: family can call her, and the call screen is
+ * one made for her.
  */
 export function CallHost() {
   const skin = useSkin();
   const { clients } = useCircles();
   const circlesKey = clients.map((c) => c.accountKey).join('|');
   useEffect(() => {
-    if (skin === 'elderly') return;
     for (const c of clients) attachCalls(c);
     const off = startCallHost();
     // Coming forward again (a tap on the notification): anything that waited.
@@ -27,6 +27,6 @@ export function CallHost() {
       sub.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [skin, circlesKey]);
-  return skin === 'elderly' ? null : <CallScreen />;
+  }, [circlesKey]);
+  return <CallScreen elder={skin === 'elderly'} />;
 }
