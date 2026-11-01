@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Keyboard, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { Keyboard, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import * as Location from 'expo-location';
 import { randomId, type CircleClient, type Place } from '@homecircle/core';
@@ -9,6 +9,7 @@ import { allClients, errorText, getClient } from '../lib/circle';
 import { DEFAULT_SETTINGS, getSettings } from '../lib/storage';
 import { feetToMeters, metersToFeet } from '../lib/units';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 const RADII_FT = [500, 1000, 2000, 5000];
 // Phones can't reliably tell smaller areas apart (GPS drift, and the OS
@@ -123,7 +124,7 @@ export default function AddPlace() {
   const remove = () => {
     if (!editing) return;
     const copies = editing.copies;
-    Alert.alert(
+    showSheet(
       `Delete ${editing.place.name}?`,
       copies.length > 1
         ? `Arrival alerts for this place stop for everyone in ${copies.map((c) => c.client.circle.name).join(' and ')}.`
@@ -229,7 +230,7 @@ export default function AddPlace() {
       <ScrollView style={{ backgroundColor: t.surface }} contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
         <Text style={{ color: t.text, fontSize: 15, fontWeight: '700' }}>Address</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TextInput
+          <TextInput accessibilityLabel="123 Main St, San Jose"
             value={query}
             onChangeText={setQuery}
             placeholder="123 Main St, San Jose"
@@ -247,7 +248,7 @@ export default function AddPlace() {
         </Text>
 
         <Text style={{ color: t.text, fontSize: 15, fontWeight: '700', marginTop: 4 }}>Name</Text>
-        <TextInput value={name} onChangeText={setName} placeholder="Home, School, Work…" placeholderTextColor={t.muted} maxLength={40} style={input} />
+        <TextInput accessibilityLabel="Home, School, Work…" value={name} onChangeText={setName} placeholder="Home, School, Work…" placeholderTextColor={t.muted} maxLength={40} style={input} />
 
         <Text style={{ color: t.text, fontSize: 15, fontWeight: '700', marginTop: 4 }}>Radius</Text>
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
@@ -268,7 +269,7 @@ export default function AddPlace() {
           ))}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <TextInput
+          <TextInput accessibilityLabel="Other"
             value={customFeet}
             onChangeText={(v) => setCustomFeet(v.replace(/[^0-9]/g, ''))}
             placeholder="Other"
@@ -283,7 +284,7 @@ export default function AddPlace() {
         {!radiusOk ? (
           <Text style={{ color: t.danger, fontSize: 14 }}>Use between {MIN_FT} and {MAX_FT.toLocaleString()} feet.</Text>
         ) : (
-          <Text style={{ color: t.muted, fontSize: 13 }}>500 ft or more: phones can’t reliably detect smaller areas, so arrivals would be missed.</Text>
+          <Text style={{ color: t.muted, fontSize: 14 }}>500 ft or more: phones can’t reliably detect smaller areas, so arrivals would be missed.</Text>
         )}
 
         {editing && editing.copies.length > 1 ? (
@@ -297,14 +298,14 @@ export default function AddPlace() {
                 {everywhere ? 'Everyone in each of your circles gets alerts for it, in that circle’s chat.' : `Only ${getClient().circle.name}.`}
               </Text>
             </View>
-            <Switch value={everywhere} onValueChange={setEverywhere} trackColor={{ true: t.brand }} />
+            <Switch accessibilityLabel="Add to all my circles" value={everywhere} onValueChange={setEverywhere} trackColor={{ true: t.brand }} />
           </View>
         ) : null}
 
         <Button title={editing ? 'Save changes' : 'Save place'} variant="primary" loading={busy === 'save'} disabled={!point || !name.trim() || !radiusOk} onPress={save} style={{ marginTop: 6 }} />
         {editing ? <Button title="Delete place" variant="danger" loading={busy === 'delete'} onPress={remove} /> : null}
         <ErrorText>{error}</ErrorText>
-        <Text style={{ color: t.muted, fontSize: 13 }}>
+        <Text style={{ color: t.muted, fontSize: 14 }}>
           The address is looked up by your phone’s map service. Places are stored end-to-end encrypted, so your HomeCircle server never learns where they are.
         </Text>
       </ScrollView>

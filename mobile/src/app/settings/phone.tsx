@@ -22,14 +22,14 @@ export default function PhoneSettings() {
       <SettingsGroup title="Server">
         <GroupBody gap={4}>
           <Text style={{ color: t.text, fontSize: 15 }}>{client.serverUrl?.replace(/^https?:\/\//, '')}</Text>
-          <Text style={{ color: server.reachable ? t.muted : t.danger, fontSize: 13 }}>
+          <Text style={{ color: server.reachable ? t.muted : t.danger, fontSize: 14 }}>
             {server.reachable ? `Key version ${client.account?.epoch} · ${client.status} · end-to-end encrypted` : 'Not reachable right now'}
           </Text>
           <Button small title="Change server address" style={{ marginTop: 8 }} onPress={() => router.push('/server')} />
         </GroupBody>
       </SettingsGroup>
 
-      <Text style={{ color: t.muted, fontSize: 13, textAlign: 'center', marginTop: 24 }}>HomeCircle {APP_VERSION}</Text>
+      <Text style={{ color: t.muted, fontSize: 14, textAlign: 'center', marginTop: 24 }}>HomeCircle {APP_VERSION}</Text>
     </SettingsPage>
   );
 }

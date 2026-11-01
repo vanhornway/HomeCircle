@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { EmptyState } from '../../components/ui';
 import { ServerBanner } from '../../components/ServerBanner';
 import { listsOf } from '../../lib/helperLists';
 import { useCircle } from '../../lib/useCircle';
@@ -29,7 +30,7 @@ export default function ListsTab() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }} edges={['top']}>
-      <Text style={{ color: t.text, fontSize: 30, fontWeight: '800', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 6 }}>Lists</Text>
+      <Text accessibilityRole="header" style={{ color: t.text, fontSize: 30, fontWeight: '800', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 6 }}>Lists</Text>
       <ServerBanner style={{ marginHorizontal: 16, marginBottom: 6 }} />
       {parts.length ? (
         <>
@@ -43,7 +44,7 @@ export default function ListsTab() {
                     accessibilityRole="tab"
                     accessibilityState={{ selected: on }}
                     onPress={() => setPicked(id)}
-                    style={{ flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: on ? t.surface : 'transparent' }}
+                    style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: on ? t.surface : 'transparent' }}
                   >
                     <Text style={{ color: on ? t.brand : t.muted, fontSize: 15, fontWeight: '700' }}>{label}</Text>
                   </Pressable>
@@ -54,7 +55,7 @@ export default function ListsTab() {
           {part === 'shopping' ? <ShoppingBody /> : part === 'reminders' ? <RemindersBody /> : <MemoryBody />}
         </>
       ) : (
-        <Text style={{ color: t.muted, fontSize: 15, lineHeight: 21, textAlign: 'center', margin: 24 }}>This circle has no helper with lists yet.</Text>
+        <EmptyState icon="lists" text="This circle has no helper with lists yet." />
       )}
     </SafeAreaView>
   );

@@ -4,7 +4,7 @@
 // (components/CallHost.tsx). One call at a time, in any circle. See
 // docs/CALLS-PLAN.md.
 import { useSyncExternalStore } from 'react';
-import { Alert, AppState, Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import * as Network from 'expo-network';
 import { randomId, type CircleClient, type CallSignal } from '@homecircle/core';
 import { VoiceCallEngine, type CallSnapshot, type EndInfo, type IceServer } from './callEngine';
@@ -31,6 +31,7 @@ import {
   type LaunchAction,
   type Routes,
 } from '../../modules/hc-calls/src/HcCallsModule';
+import { showSheet } from './sheet';
 
 /** What the call screen shows. */
 export interface CallUi {
@@ -301,7 +302,7 @@ export async function answerCall() {
     await ensureMicrophone();
   } catch (e) {
     await engine.decline();
-    Alert.alert('Couldn’t answer', errorText(e));
+    showSheet('Couldn’t answer', errorText(e));
     return;
   }
   await engine.accept();

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { Avatar, Button, Card, P, Screen } from '../components/ui';
 import { HowThisWorks } from '../components/HowThisWorks';
 import { errorText } from '../lib/circle';
@@ -7,6 +7,7 @@ import { cadenceLine, memberState, statusLine, type MemberState } from '../lib/p
 import { timeAgo, useCircle } from '../lib/useCircle';
 import { APP_VERSION } from '../lib/updates';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /** Whether version a ("0.15.0") is older than b. */
 const olderThan = (a: string, b: string) => {
@@ -54,7 +55,7 @@ export default function CircleHealth() {
       await client.nudgeSetup(id, why);
       setSent((s) => ({ ...s, [id]: true }));
     } catch (e) {
-      Alert.alert('Couldn’t send it', errorText(e));
+      showSheet('Couldn’t send it', errorText(e));
     }
   };
 
@@ -90,10 +91,10 @@ export default function CircleHealth() {
                     {m.name}
                     {m.isMe ? ' (you)' : ''}
                   </Text>
-                  <Text style={{ color: state === 'live' ? t.brand : t.warnText, fontSize: 13, fontWeight: '600' }}>{LABELS[state]}</Text>
+                  <Text style={{ color: state === 'live' ? t.brand : t.warnText, fontSize: 14, fontWeight: '600' }}>{LABELS[state]}</Text>
                 </View>
               </View>
-              <Text style={{ color: t.muted, fontSize: 13 }}>{statusLine(client, m, now)}</Text>
+              <Text style={{ color: t.muted, fontSize: 14 }}>{statusLine(client, m, now)}</Text>
               {loc ? (
                 <View>
                   {row('Last update', timeAgo(loc.ts), now - loc.ts > 2 * 3600_000)}

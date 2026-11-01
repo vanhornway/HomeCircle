@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
 import { Button } from '../../components/ui';
 import { MemberAvatar } from '../../components/MemberAvatar';
 import { PhotoButtons } from '../../components/PhotoPicker';
@@ -10,6 +10,7 @@ import { MyPhoneGroup } from '../../components/PhoneSettings';
 import { errorText, useCircles } from '../../lib/circle';
 import { useCircle } from '../../lib/useCircle';
 import { useTheme } from '../../theme';
+import { showSheet } from '../../lib/sheet';
 
 /** Your name in the open circle (each circle can know you by a different name). */
 export default function ProfileSettings() {
@@ -25,7 +26,7 @@ export default function ProfileSettings() {
     client
       .setName(name)
       .then(() => setDraft(null))
-      .catch((e) => Alert.alert('Couldn’t save', errorText(e)))
+      .catch((e) => showSheet('Couldn’t save', errorText(e)))
       .finally(() => setSaving(false));
   };
   return (
@@ -33,7 +34,7 @@ export default function ProfileSettings() {
       <View style={{ alignItems: 'center', marginTop: 20, gap: 12 }}>
         {me ? <MemberAvatar client={client} member={me} size={96} /> : null}
         {client.feature('photos') ? <PhotoButtons has={!!me?.photo} onPhoto={(bytes) => client.setProfilePhoto(bytes)} /> : null}
-        <Text style={{ color: t.muted, fontSize: 13, textAlign: 'center' }}>Your photo shows wherever the app shows you.</Text>
+        <Text style={{ color: t.muted, fontSize: 14, textAlign: 'center' }}>Your photo shows wherever the app shows you.</Text>
         <HowThisWorks>Your photo also shows on an elder’s tiles. It’s encrypted like everything else.</HowThisWorks>
       </View>
       <SettingsGroup
@@ -61,7 +62,7 @@ export default function ProfileSettings() {
         how="In the Urdu an elder hears, “Umair is calling you” is said differently for a man and a woman."
       >
         <GroupBody>
-          <GenderChips value={me?.g ?? null} onPick={(g) => client.setGender(g).catch((e) => Alert.alert('Couldn’t save', errorText(e)))} />
+          <GenderChips value={me?.g ?? null} onPick={(g) => client.setGender(g).catch((e) => showSheet('Couldn’t save', errorText(e)))} />
         </GroupBody>
       </SettingsGroup>
       <MyPhoneGroup client={client} />
@@ -82,7 +83,7 @@ export default function ProfileSettings() {
             ))}
         </SettingsGroup>
       ) : null}
-      <Text style={{ color: t.muted, fontSize: 13, marginTop: 16, marginHorizontal: 4 }}>Your chirp, the sound others hear when you chirp them, is under Chirps & SOS.</Text>
+      <Text style={{ color: t.muted, fontSize: 14, marginTop: 16, marginHorizontal: 4 }}>Your chirp, the sound others hear when you chirp them, is under Chirps & SOS.</Text>
     </SettingsPage>
   );
 }

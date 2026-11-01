@@ -1,11 +1,12 @@
 // What we show about a person, and the actions you can take on them, shared
 // by the map's people list, the person sheet and direct conversations.
 import { useSyncExternalStore } from 'react';
-import { Alert, Linking, Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import { distanceM, type CircleClient, type Member, type MemberLocation, type Place } from '@homecircle/core';
 import { formatFeet } from './units';
 import { timeAgo } from './useCircle';
 import { errorText } from './circle';
+import { showSheet } from './sheet';
 
 const STALE_MS = 30 * 60_000;
 const COOLDOWN_MS = 60_000;
@@ -79,11 +80,11 @@ export function openDirections(name: string, loc: MemberLocation, onLocate?: () 
   const go = () => {
     const at = `${loc.lat},${loc.lng}`;
     const url = Platform.OS === 'ios' ? `http://maps.apple.com/?daddr=${at}&dirflg=d` : `https://www.google.com/maps/dir/?api=1&destination=${at}`;
-    Linking.openURL(url).catch((e) => Alert.alert('Couldn’t open maps', errorText(e)));
+    Linking.openURL(url).catch((e) => showSheet('Couldn’t open maps', errorText(e)));
   };
   const age = Date.now() - loc.ts;
   if (age < STALE_MS && !loc.approximate) return go();
-  Alert.alert(
+  showSheet(
     loc.approximate ? `${name} shares an approximate area` : `${name}’s location is ${timeAgo(loc.ts)}`,
     loc.approximate ? 'Directions lead to the general area, not an exact spot.' : 'They may have moved since. You can ask for a fresh location first.',
     [
@@ -165,7 +166,7 @@ export async function locatePerson(client: CircleClient, memberId: string) {
   } catch (e) {
     asked.delete(`${client.circleId}:${memberId}`);
     bump();
-    Alert.alert('Couldn’t ask for their location', errorText(e));
+    showSheet('Couldn’t ask for their location', errorText(e));
   }
   setTimeout(bump, NO_REPLY_MS + 100);
   setTimeout(bump, COOLDOWN_MS + 100);
@@ -181,7 +182,7 @@ export async function refreshEveryone(client: CircleClient) {
   } catch (e) {
     asked.delete(`${client.circleId}:*`);
     bump();
-    Alert.alert('Couldn’t ask for locations', errorText(e));
+    showSheet('Couldn’t ask for locations', errorText(e));
   }
   setTimeout(bump, NO_REPLY_MS + 100);
   setTimeout(bump, COOLDOWN_MS + 100);

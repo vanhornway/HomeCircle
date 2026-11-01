@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Button } from './ui';
 import { retryServer, setServerState, useServerState } from '../lib/connection';
 import { getClient } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /**
  * Shown on every tab while the server can't be reached, or when it no longer
@@ -35,7 +36,7 @@ export function ServerBanner({ style }: { style?: object }) {
       <View accessibilityRole="alert" style={box}>
         <View>
           <Text style={{ color: t.warnText, fontWeight: '700', fontSize: 15 }}>Your server doesn’t recognize this phone</Text>
-          <Text style={{ color: t.warnText, fontSize: 13, marginTop: 2 }}>
+          <Text style={{ color: t.warnText, fontSize: 14, marginTop: 2 }}>
             In {name}. You may have been removed, or the circle deleted. If the server lost its data, its keys on this phone are still here, so
             don’t remove it until you’re sure.
           </Text>
@@ -48,7 +49,7 @@ export function ServerBanner({ style }: { style?: object }) {
             variant="danger"
             style={{ flex: 1 }}
             onPress={() =>
-              Alert.alert(`Remove ${name} from this phone?`, 'Its keys on this phone are deleted. To come back, you’ll need a new invite.', [
+              showSheet(`Remove ${name} from this phone?`, 'Its keys on this phone are deleted. To come back, you’ll need a new invite.', [
                 { text: 'Cancel', style: 'cancel' },
                 {
                   text: 'Remove',
@@ -90,12 +91,12 @@ export function ServerBanner({ style }: { style?: object }) {
     <View accessibilityRole="alert" style={box}>
       <View>
         <Text style={{ color: t.warnText, fontWeight: '700', fontSize: 15 }}>Can’t reach your server</Text>
-        <Text style={{ color: t.warnText, fontSize: 13, marginTop: 2 }} numberOfLines={2}>
+        <Text style={{ color: t.warnText, fontSize: 14, marginTop: 2 }} numberOfLines={2}>
           {address}
           {server.retrying ? ' · retrying…' : ''}
         </Text>
         {server.error ? (
-          <Text style={{ color: t.warnText, fontSize: 12, marginTop: 2, opacity: 0.8 }} numberOfLines={2}>
+          <Text style={{ color: t.warnText, fontSize: 14, marginTop: 2, opacity: 0.8 }} numberOfLines={2}>
             {server.error}
           </Text>
         ) : null}

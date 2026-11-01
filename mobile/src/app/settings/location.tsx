@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Button, Tag } from '../../components/ui';
 import { FrequentSettings } from '../../components/FrequentSettings';
@@ -10,6 +10,7 @@ import { currentPolicy, shareNow, startBackgroundUpdates, stopBackgroundUpdates,
 import { DEFAULT_STOP, STOPS, STOP_NAMES, describePolicy, type LocationValues, type Policy, type Stop } from '../../lib/locationPolicy';
 import { locationProfileOf, updateSettings, useSettings } from '../../lib/storage';
 import { useTheme } from '../../theme';
+import { showSheet } from '../../lib/sheet';
 
 // What Advanced offers.
 const MOVING_GAPS = [1, 2, 3, 5, 10, 15];
@@ -137,10 +138,10 @@ export default function LocationSettings() {
             <Text style={{ color: t.muted, fontSize: 14 }}>Uses at most about {values.budgetPct}% of your battery a day.</Text>
             {policy?.reason ? (
               <View style={{ alignSelf: 'flex-start', backgroundColor: t.brandSoft, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 }}>
-                <Text style={{ color: t.brand, fontSize: 13, fontWeight: '600' }}>{CHIPS[policy.reason]}</Text>
+                <Text style={{ color: t.brand, fontSize: 14, fontWeight: '600' }}>{CHIPS[policy.reason]}</Text>
               </View>
             ) : null}
-            <Button small title="Share my location now" onPress={() => shareNow('manual').then((ok) => !ok && Alert.alert('Couldn’t get your location', 'Check that location is allowed.'))} />
+            <Button small title="Share my location now" onPress={() => shareNow('manual').then((ok) => !ok && showSheet('Couldn’t get your location', 'Check that location is allowed.'))} />
           </GroupBody>
         </SettingsGroup>
       ) : (

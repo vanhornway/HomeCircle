@@ -52,7 +52,7 @@ export default function InviteScreen() {
       </View>
       {invite ? (
         <>
-          <Text style={{ color: t.muted, textAlign: 'center', marginTop: 12, fontSize: 13 }}>
+          <Text style={{ color: t.muted, textAlign: 'center', marginTop: 12, fontSize: 14 }}>
             Works once · expires {new Date(invite.expiresAt).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}
           </Text>
           <View style={{ gap: 10, marginTop: 20 }}>

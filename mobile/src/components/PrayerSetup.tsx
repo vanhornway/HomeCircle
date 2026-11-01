@@ -33,7 +33,7 @@ export function PrayerSetup() {
           );
         })}
       </View>
-      <Text style={{ color: t.muted, fontSize: 13, lineHeight: 18 }}>
+      <Text style={{ color: t.muted, fontSize: 14, lineHeight: 18 }}>
         Hanafi Asr comes later, when a shadow is twice its length. Shia times follow the Ja‘fari method, with Maghrib once the redness in the east has gone. Fajr and Isha follow the region you or the person you select are in, so the times stay right as you travel. All
         times are approximate: allow a few minutes. Only your phone uses this choice.
       </Text>

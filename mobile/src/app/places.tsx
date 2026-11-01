@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { router, Stack } from 'expo-router';
 import type { CircleClient, Member, Place } from '@homecircle/core';
-import { Avatar, Button, Card, Checkbox, Icon, P, Screen, SectionTitle } from '../components/ui';
+import { Avatar, Button, Card, Checkbox, EmptyState, Icon, P, Screen, SectionTitle } from '../components/ui';
+import { HowThisWorks } from '../components/HowThisWorks';
 import { AlertRuleSheet } from '../components/AlertRuleSheet';
 import { updateSettings, useSettings } from '../lib/storage';
 import { useAllCircles } from '../lib/useCircle';
@@ -47,15 +48,15 @@ export default function Places() {
   const edit = (s: Shared) => router.push({ pathname: '/add-place', params: { circle: s.copies[0].client.circleId!, id: s.copies[0].place.id } });
 
   return (
-    <Screen>
+    <Screen add={{ label: 'Place', hint: 'Add a place', onPress: () => router.push('/add-place') }}>
       <Stack.Screen options={{ headerShown: true, title: 'Places' }} />
-      <P muted style={{ marginBottom: 18 }}>
+      <P muted>Places your circle shares on the map.</P>
+      <HowThisWorks title="How places work">
         {alerts
           ? 'When someone arrives at or leaves a place, their circle’s group chat gets a message. Each phone detects this itself; the server never learns where your places are.'
-          : 'Places your circle shares on the map. The server never learns where they are.'}
-      </P>
-      <Button title="Add a place" variant="primary" onPress={() => router.push('/add-place')} />
-      <View style={{ marginTop: 18, gap: 10 }}>
+          : 'Your circle sees these places on the map. The server never learns where they are.'}
+      </HowThisWorks>
+      <View style={{ marginTop: 8, gap: 10 }}>
         {places.map((s) => {
           const here: Member[] = s.copies.flatMap(({ client, place }) =>
             client.memberList().filter((m) => client.locations.get(m.id)?.placeId === place.id),
@@ -99,7 +100,7 @@ export default function Places() {
             </Pressable>
           );
         })}
-        {!places.length ? <P muted>No places yet. Try Home, School or Work.</P> : null}
+        {!places.length ? <EmptyState icon="place" text="No places yet. Try Home, School or Work." action="Add a place" onAction={() => router.push('/add-place')} /> : null}
       </View>
 
       {alerts ? (

@@ -10,8 +10,8 @@ import { Pill, type Face } from './TileParts';
 const SKY: Record<string, { bg: string; ink: string }> = {
   fajr: { bg: '#3E5C9A', ink: '#fff' },
   dhuhr: { bg: '#E3B341', ink: '#3A2E00' },
-  asr: { bg: '#E08A3C', ink: '#fff' },
-  maghrib: { bg: '#C8553D', ink: '#fff' },
+  asr: { bg: '#E08A3C', ink: '#16201C' },
+  maghrib: { bg: '#C04E36', ink: '#fff' },
   isha: { bg: '#2E3F73', ink: '#fff' },
 };
 const COUNTDOWN = { bg: '#CFC8F5', ink: '#2B2550' };
@@ -130,16 +130,16 @@ export function PrayerFace({ client, loc, title, big, z }: { client: CircleClien
                       }}
                     >
                       <View style={{ width: 8, height: 8, borderRadius: 4, marginRight: 8, backgroundColor: SKY[p.id].bg }} />
-                      <Text style={{ width: 62, color: isNow ? NOW.ink : t.text, fontSize: 13, fontWeight: isNow || isNext ? '800' : '600' }}>{p.name}</Text>
-                      <Text style={{ flex: 1, color: isNow ? NOW.ink : t.text, fontSize: 13, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
+                      <Text style={{ width: 62, color: isNow ? NOW.ink : t.text, fontSize: 14, fontWeight: isNow || isNext ? '800' : '600' }}>{p.name}</Text>
+                      <Text style={{ flex: 1, color: isNow ? NOW.ink : t.text, fontSize: 14, fontVariant: ['tabular-nums'] }} numberOfLines={1}>
                         {clockAt(start, today.offset)} – {clockAt(end, today.offset)}
                       </Text>
-                      {isNext ? <Text style={{ color: t.muted, fontSize: 10 }}>next</Text> : null}
+                      {isNext ? <Text style={{ color: t.muted, fontSize: 14 }}>next</Text> : null}
                     </View>
                   );
                 })}
               </View>
-              <Text style={{ marginTop: 'auto', color: t.muted, fontSize: 10 }} numberOfLines={2}>
+              <Text style={{ marginTop: 'auto', color: t.muted, fontSize: 14 }} numberOfLines={2}>
                 {[zoneNote(data, now), `Fajr and Isha: ${data.method.name}`].filter(Boolean).join('\n')}
               </Text>
             </>

@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { Stack, useFocusEffect } from 'expo-router';
-import { Button } from '../components/ui';
+import { Button, EmptyState, ErrorText } from '../components/ui';
 import { errorText } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 // What one costs, from past receipts: the usual price, and the range it has been.
 type Price = { est: number; low: number; high: number; n: number };
@@ -108,7 +109,7 @@ export function ShoppingBody() {
       key="more"
       accessibilityRole="button"
       onPress={() => setAllUsual((v) => !v)}
-      style={{ minHeight: 34, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: t.brand }}
+      style={{ minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: t.brand }}
     >
       <Text style={{ color: t.brand, fontWeight: '600' }}>{label}</Text>
     </Pressable>
@@ -120,11 +121,11 @@ export function ShoppingBody() {
         accessibilityRole="button"
         accessibilityLabel={u.price ? `Add ${u.name}, about ${money(u.price.est, list.currency)}` : `Add ${u.name}`}
         onPress={() => add(u.name, { fromBox: false })}
-        style={{ minHeight: 34, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, backgroundColor: t.surface2 }}
+        style={{ minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, backgroundColor: t.surface2 }}
       >
         <Text style={{ color: t.text }}>
           + {u.name}
-          {u.price ? <Text style={{ color: t.muted, fontSize: 13 }}> · ~{money(u.price.est, list.currency)}</Text> : null}
+          {u.price ? <Text style={{ color: t.muted, fontSize: 14 }}> · ~{money(u.price.est, list.currency)}</Text> : null}
         </Text>
       </Pressable>
     ) : null;
@@ -132,7 +133,7 @@ export function ShoppingBody() {
   const usualBlock =
     matching.length ? (
       <View style={{ gap: 4 }}>
-        <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700' }}>{search ? 'MATCHES' : 'YOU USUALLY GET'}</Text>
+        <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700' }}>{search ? 'MATCHES' : 'YOU USUALLY GET'}</Text>
         {allUsual && !search ? (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
             {matching.map(usualChip)}
@@ -148,13 +149,13 @@ export function ShoppingBody() {
     ) : null;
 
   const listMenu = (l: List) =>
-    Alert.alert(l.name, undefined, [
+    showSheet(l.name, undefined, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete list',
         style: 'destructive',
         onPress: () =>
-          Alert.alert(`Delete ${l.name}?`, 'Its items and what it learned you usually buy go too.', [
+          showSheet(`Delete ${l.name}?`, 'Its items and what it learned you usually buy go too.', [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Delete', style: 'destructive', onPress: () => run('listDelete', { listId: l.id }).then(() => setCurrent(null)) },
           ]),
@@ -166,9 +167,8 @@ export function ShoppingBody() {
     <View style={{ flex: 1, backgroundColor: t.bg }}>
       {!lists ? (
         error ? (
-          <View style={{ padding: 16, gap: 10 }}>
-            <Text style={{ color: t.danger }}>{error}</Text>
-            <Button small title="Try again" onPress={() => run('lists')} />
+          <View style={{ paddingHorizontal: 16 }}>
+            <ErrorText onRetry={() => run('lists')}>{error}</ErrorText>
           </View>
         ) : (
           <ActivityIndicator style={{ marginTop: 32 }} color={t.brand} />
@@ -187,7 +187,7 @@ export function ShoppingBody() {
                   accessibilityHint="Long-press to delete"
                   onPress={() => setCurrent(l.id)}
                   onLongPress={() => listMenu(l)}
-                  style={{ minHeight: 40, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: on ? t.brand : t.line, backgroundColor: on ? t.brandSoft : t.surface }}
+                  style={{ minHeight: 44, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: on ? t.brand : t.line, backgroundColor: on ? t.brandSoft : t.surface }}
                 >
                   <Text style={{ color: on ? t.brand : t.text, fontWeight: '600' }}>
                     {l.name}
@@ -199,14 +199,14 @@ export function ShoppingBody() {
             <Pressable
               accessibilityRole="button"
               onPress={newList}
-              style={{ minHeight: 40, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderStyle: 'dashed', borderColor: t.line }}
+              style={{ minHeight: 44, paddingHorizontal: 14, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderStyle: 'dashed', borderColor: t.line }}
             >
               <Text style={{ color: t.brand, fontWeight: '600' }}>+ New list</Text>
             </Pressable>
           </ScrollView>
           {naming ? (
             <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingBottom: 8 }}>
-              <TextInput value={newName} onChangeText={setNewName} placeholder="Store, like Costco" placeholderTextColor={t.muted} autoFocus style={input} />
+              <TextInput accessibilityLabel="Store, like Costco" value={newName} onChangeText={setNewName} placeholder="Store, like Costco" placeholderTextColor={t.muted} autoFocus style={input} />
               <Button
                 small
                 variant="primary"
@@ -222,11 +222,13 @@ export function ShoppingBody() {
               />
             </View>
           ) : null}
-          {error ? <Text style={{ color: t.danger, paddingHorizontal: 16 }}>{error}</Text> : null}
+          {error ? (
+            <View style={{ paddingHorizontal: 16 }}>
+              <ErrorText>{error}</ErrorText>
+            </View>
+          ) : null}
           {!list ? (
-            <Text style={{ color: t.muted, fontSize: 15, lineHeight: 21, textAlign: 'center', margin: 24 }}>
-              No lists yet. Make one for each store you go to. You can also tell {name}: “/{name} add milk to the Costco list”, or send it a receipt.
-            </Text>
+            <EmptyState icon="lists" text={`No lists yet. Make one for each store you go to, or ask ${name} to.`} action="New list" onAction={newList} />
           ) : (
             <FlatList
               data={list.items}
@@ -244,7 +246,7 @@ export function ShoppingBody() {
               ListHeaderComponent={
                 <View style={{ gap: 10, marginBottom: 8 }}>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <TextInput
+                    <TextInput accessibilityLabel={`Add to ${list.name}, or search what you get`}
                       value={adding}
                       onChangeText={setAdding}
                       placeholder={`Add to ${list.name}, or search what you get`}
@@ -259,7 +261,7 @@ export function ShoppingBody() {
                 </View>
               }
               ListFooterComponent={search ? undefined : <View style={{ marginTop: 14 }}>{usualBlock}</View>}
-              ListEmptyComponent={<Text style={{ color: t.muted, textAlign: 'center', marginTop: 16 }}>Nothing on {list.name} yet.</Text>}
+              ListEmptyComponent={<EmptyState icon="lists" text={`Nothing on ${list.name} yet. Add the first thing above.`} />}
               renderItem={({ item }) => (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, paddingHorizontal: 12, borderRadius: 12, backgroundColor: t.surface }}>
                   <Pressable
@@ -275,7 +277,7 @@ export function ShoppingBody() {
                       {item.name}
                       {item.price ? <Text style={{ color: t.muted, fontSize: 14, textDecorationLine: 'none' }}> · ~{money(item.price.est * item.qty, list.currency)}</Text> : null}
                     </Text>
-                    {item.usual >= 2 && !item.ticked ? <Text style={{ color: t.muted, fontSize: 12 }}>usual</Text> : null}
+                    {item.usual >= 2 && !item.ticked ? <Text style={{ color: t.muted, fontSize: 14 }}>usual</Text> : null}
                   </Pressable>
                   {item.qty > 1 ? (
                     <Pressable
@@ -320,10 +322,10 @@ export function ShoppingBody() {
                   style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
                 >
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700' }}>ESTIMATED CART</Text>
+                    <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700' }}>ESTIMATED CART</Text>
                     <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>{rangeText(list.total.low, list.total.high, list.currency)}</Text>
                   </View>
-                  <Text style={{ color: t.muted, fontSize: 13, textAlign: 'right', flexShrink: 1 }}>
+                  <Text style={{ color: t.muted, fontSize: 14, textAlign: 'right', flexShrink: 1 }}>
                     {list.total.priced} of {list.total.count} item{list.total.count === 1 ? '' : 's'} priced{'\n'}regular prices, from receipts
                   </Text>
                 </View>

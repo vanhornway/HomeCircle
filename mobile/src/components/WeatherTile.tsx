@@ -7,12 +7,12 @@ import { HourGrid, Pill, type Face } from './TileParts';
 
 // The big square takes the sky's colour; the pills stay the same, as on a watch face.
 const SKY = {
-  clear: ['#5B8DEF', '#2E3F73'],
-  cloud: ['#6F86B3', '#3A4560'],
+  clear: ['#3F6FD0', '#2E3F73'],
+  cloud: ['#5A6F9E', '#3A4560'],
   rain: ['#4E79A7', '#2C3E57'],
-  snow: ['#8BA6C9', '#4B5B73'],
+  snow: ['#56709A', '#4B5B73'],
   storm: ['#5D568C', '#36325A'],
-  fog: ['#8E98A6', '#4C535E'],
+  fog: ['#667180', '#4C535E'],
 } as const;
 const HIGH_LOW = { bg: '#CFC8F5', ink: '#2B2550' };
 const RAIN = { bg: '#7CCBF2', ink: '#0B3550' };
@@ -165,7 +165,7 @@ export function WeatherFace({ client, loc, title, big, z }: { client: CircleClie
                   justifyContent: 'space-between',
                 }}
               >
-                <Text style={{ color: t.muted, fontSize: 10 }}>Weather: Open-Meteo</Text>
+                <Text style={{ color: t.muted, fontSize: 14 }}>Weather: Open-Meteo</Text>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={f ? 'Show °C' : 'Show °F'}
@@ -178,7 +178,7 @@ export function WeatherFace({ client, loc, title, big, z }: { client: CircleClie
                     backgroundColor: t.surface2,
                   }}
                 >
-                  <Text style={{ color: t.text, fontSize: 11, fontWeight: '600' }}>{f ? '°F · use °C' : '°C · use °F'}</Text>
+                  <Text style={{ color: t.text, fontSize: 14, fontWeight: '600' }}>{f ? '°F · use °C' : '°C · use °F'}</Text>
                 </Pressable>
               </View>
             </>

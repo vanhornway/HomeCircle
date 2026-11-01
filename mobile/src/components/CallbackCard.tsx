@@ -32,7 +32,7 @@ export function CallbackCard({ client, m, onReply }: { client: CircleClient; m: 
     : `${clock(s.ts)}${s.remind ? ` · reminding every ${s.remind} min` : ''}`;
   return (
     <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', width: '84%', marginVertical: 4 }}>
-      {!mine ? <Text style={{ color: client.members.get(m.from)?.color || t.muted, fontSize: fs(13), fontWeight: '700', marginLeft: 4, marginBottom: 2 }}>{elder}</Text> : null}
+      {!mine ? <Text style={{ color: client.members.get(m.from)?.color || t.muted, fontSize: fs(14), fontWeight: '700', marginLeft: 4, marginBottom: 2 }}>{elder}</Text> : null}
       <HighlightCard
         icon="phone"
         title={title}
@@ -52,12 +52,12 @@ export function CallbackCard({ client, m, onReply }: { client: CircleClient; m: 
           <Text style={{ color: t.text, fontSize: fs(14), lineHeight: fs(19) }}>{s.replies.map((r) => `${nameOf(r.memberId)}: ${REPLY_SHORT[r.reply]}`).join(' · ')}</Text>
         ) : null}
         {s.open && asksMe ? (
-          <Text style={{ alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, overflow: 'hidden', backgroundColor: t.brandSoft, color: t.brand, fontSize: fs(13), fontWeight: '700' }}>
+          <Text style={{ alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, overflow: 'hidden', backgroundColor: t.brandSoft, color: t.brand, fontSize: fs(14), fontWeight: '700' }}>
             {answered ? `You said ${REPLY_SHORT[answered.reply]} · tap to change` : 'Tap or long-press to reply'}
           </Text>
         ) : null}
       </HighlightCard>
-      <Text style={{ color: t.muted, fontSize: fs(12), marginTop: 2, marginHorizontal: 6 }}>{footer}</Text>
+      <Text style={{ color: t.muted, fontSize: fs(14), marginTop: 2, marginHorizontal: 6 }}>{footer}</Text>
     </View>
   );
 }

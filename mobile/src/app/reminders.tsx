@@ -1,12 +1,14 @@
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Stack, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Tag } from '../components/ui';
+import { ADD_BUTTON_SPACE, AddButton, Button, EmptyState, ErrorText, Tag } from '../components/ui';
+import { HowThisWorks } from '../components/HowThisWorks';
 import { errorText } from '../lib/circle';
 import { daysUntil, parseDueDate, prettyDate } from '../lib/dueDate';
 import { useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 type Reminder = { id: string; title: string; due: string; repeat: 'none' | 'yearly' | 'months'; months?: number; note: string; createdBy: string; createdByName: string; done: boolean };
 
@@ -52,20 +54,27 @@ export function RemindersBody() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
-      {error ? <Text style={{ color: t.danger, padding: 16, paddingBottom: 0 }}>{error}</Text> : null}
+      {error ? (
+        <View style={{ paddingHorizontal: 16 }}>
+          <ErrorText onRetry={() => run('reminders')}>{error}</ErrorText>
+        </View>
+      ) : null}
       {!list ? (
         <ActivityIndicator style={{ marginTop: 32 }} color={t.brand} />
       ) : (
         <FlatList
           data={list}
           keyExtractor={(r) => r.id}
-          contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: 110 }}
+          contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: ADD_BUTTON_SPACE }}
           ListHeaderComponent={
-            <Text style={{ color: t.muted, fontSize: 14, lineHeight: 20, marginBottom: 6 }}>
-              Things that come once a year or so, like a car registration. Every admin, and whoever added it, is reminded 30, 7 and 1 days before, on the day, and every few days after until someone marks it done.
-            </Text>
+            <View style={{ marginBottom: 6 }}>
+              <Text style={{ color: t.muted, fontSize: 15, lineHeight: 21 }}>Things that come once a year, like a car registration.</Text>
+              <HowThisWorks title="How reminders work">
+                Things that come once a year or so, like a car registration. Every admin, and whoever added it, is reminded 30, 7 and 1 days before, on the day, and every few days after until someone marks it done.
+              </HowThisWorks>
+            </View>
           }
-          ListEmptyComponent={<Text style={{ color: t.muted, textAlign: 'center', marginTop: 24 }}>No reminders yet.</Text>}
+          ListEmptyComponent={<EmptyState icon="bell" text="No reminders yet." action="Add a reminder" onAction={() => setEditing('new')} />}
           renderItem={({ item: r }) => {
             const late = !r.done && daysUntil(r.due) < 0;
             return (
@@ -83,7 +92,7 @@ export function RemindersBody() {
                   <Text style={{ color: late ? t.danger : t.brand, fontSize: 14 }}>
                     {whenText(r)} · {prettyDate(r.due)}
                   </Text>
-                  <Text style={{ color: t.muted, fontSize: 12 }}>Added by {r.createdByName}</Text>
+                  <Text style={{ color: t.muted, fontSize: 14 }}>Added by {r.createdByName}</Text>
                 </View>
                 {!r.done ? <Button small title="Done" onPress={() => run('reminderDone', { id: r.id })} /> : null}
               </Pressable>
@@ -91,9 +100,7 @@ export function RemindersBody() {
           }}
         />
       )}
-      <View style={{ position: 'absolute', right: 16, bottom: 28 }}>
-        <Button variant="primary" title="+ Reminder" onPress={() => setEditing('new')} />
-      </View>
+      <AddButton label="Reminder" hint="Add a reminder" onPress={() => setEditing('new')} />
       {editing ? <ReminderSheet reminder={editing === 'new' ? null : editing} onClose={() => setEditing(null)} run={run} /> : null}
     </View>
   );
@@ -120,7 +127,7 @@ function ReminderSheet({ reminder, onClose, run }: { reminder: Reminder | null; 
   };
   const remove = () =>
     reminder &&
-    Alert.alert(`Delete “${reminder.title}”?`, undefined, [
+    showSheet(`Delete “${reminder.title}”?`, undefined, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => run('reminderRemove', { id: reminder.id }).then((ok) => ok && onClose()) },
     ]);
@@ -142,8 +149,8 @@ function ReminderSheet({ reminder, onClose, run }: { reminder: Reminder | null; 
                 {whenText(reminder)} · Added by {reminder.createdByName}
               </Text>
             ) : null}
-            <TextInput value={title} onChangeText={setTitle} placeholder="What, like Car registration" placeholderTextColor={t.muted} maxLength={80} style={[input, { fontWeight: '700' }]} />
-            <TextInput value={date} onChangeText={setDate} placeholder="When it’s due: Nov 30, or 11/30/2027" placeholderTextColor={t.muted} autoCapitalize="none" style={input} />
+            <TextInput accessibilityLabel="What, like Car registration" value={title} onChangeText={setTitle} placeholder="What, like Car registration" placeholderTextColor={t.muted} maxLength={80} style={[input, { fontWeight: '700' }]} />
+            <TextInput accessibilityLabel="When it’s due: Nov 30, or 11/30/2027" value={date} onChangeText={setDate} placeholder="When it’s due: Nov 30, or 11/30/2027" placeholderTextColor={t.muted} autoCapitalize="none" style={input} />
             <Text style={{ color: date && !due ? t.danger : t.brand, fontSize: 14 }}>{date ? (due ? prettyDate(due) : 'That isn’t a date I know. Try “Nov 30”.') : ' '}</Text>
             <Text style={{ color: t.text, fontSize: 15, fontWeight: '700' }}>Repeat</Text>
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
@@ -175,7 +182,7 @@ function ReminderSheet({ reminder, onClose, run }: { reminder: Reminder | null; 
                 <Button small title="+" accessibilityLabel="One month more" disabled={months >= 60} onPress={() => setMonths((m) => Math.min(60, m + 1))} />
               </View>
             ) : null}
-            <TextInput value={note} onChangeText={setNote} placeholder="A note, like where to renew (optional)" placeholderTextColor={t.muted} multiline style={[input, { minHeight: 80, textAlignVertical: 'top' }]} />
+            <TextInput accessibilityLabel="A note, like where to renew (optional)" value={note} onChangeText={setNote} placeholder="A note, like where to renew (optional)" placeholderTextColor={t.muted} multiline style={[input, { minHeight: 80, textAlignVertical: 'top' }]} />
             <Button variant="primary" title="Save" loading={busy} disabled={!title.trim() || !due} onPress={save} />
             {reminder ? <Button variant="danger" title="Delete" onPress={remove} /> : null}
           </ScrollView>

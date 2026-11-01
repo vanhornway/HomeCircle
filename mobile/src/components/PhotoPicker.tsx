@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { ActivityIndicator, Alert, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 import { Button } from './ui';
 import { errorText } from '../lib/circle';
 import { pickSquarePhoto } from '../lib/photos';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /** Take a photo, choose one, or remove it. `onPhoto` gets square JPEG bytes, or null to remove. */
 export function PhotoButtons({ has, onPhoto }: { has: boolean; onPhoto: (bytes: Uint8Array | null) => Promise<unknown> }) {
@@ -13,7 +14,7 @@ export function PhotoButtons({ has, onPhoto }: { has: boolean; onPhoto: (bytes: 
     setBusy(true);
     fn()
       .then((r) => (r === 'remove' ? onPhoto(null) : r ? onPhoto(r) : undefined))
-      .catch((e) => Alert.alert('Couldn’t save the photo', errorText(e)))
+      .catch((e) => showSheet('Couldn’t save the photo', errorText(e)))
       .finally(() => setBusy(false));
   };
   if (busy) return <ActivityIndicator color={t.brand} style={{ marginVertical: 8 }} />;

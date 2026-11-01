@@ -49,7 +49,7 @@ export function AlertRuleSheet({
     backgroundColor: selected ? t.brandSoft : 'transparent',
   });
   const chipText = (selected: boolean) => ({ color: selected ? t.brand : t.text, fontWeight: '600' as const, fontSize: 15 });
-  const label = { color: t.muted, fontSize: 13, fontWeight: '700' as const, marginTop: 14, marginBottom: 8 };
+  const label = { color: t.muted, fontSize: 14, fontWeight: '700' as const, marginTop: 14, marginBottom: 8 };
 
   const save = async () => {
     if (!client?.circleId || !member || !place) return;
@@ -63,8 +63,8 @@ export function AlertRuleSheet({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}>
-        <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '85%' }}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
+        <Pressable accessible={false} onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '85%' }}>
           <SafeAreaView edges={['bottom']}>
             <ScrollView contentContainerStyle={{ padding: 18 }}>
               <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>Notify me when…</Text>
@@ -73,9 +73,9 @@ export function AlertRuleSheet({
                   <Text style={label}>CIRCLE</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     {clients.map((c) => (
-                      <Pressable
+                      <Pressable accessibilityRole="button"
                         key={c.accountKey}
-                        style={chip(c === client)}
+                        accessibilityState={{ selected: c === client }} style={chip(c === client)}
                         onPress={() => {
                           setClient(c);
                           setMember(undefined);
@@ -91,7 +91,7 @@ export function AlertRuleSheet({
               <Text style={label}>PERSON</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {people.map((m) => (
-                  <Pressable key={m.id} style={chip(m.id === member)} onPress={() => setMember(m.id)}>
+                  <Pressable accessibilityRole="button" key={m.id} accessibilityState={{ selected: m.id === member }} style={chip(m.id === member)} onPress={() => setMember(m.id)}>
                     <Text style={chipText(m.id === member)}>{m.name}</Text>
                   </Pressable>
                 ))}
@@ -100,7 +100,7 @@ export function AlertRuleSheet({
               <Text style={label}>WHEN THEY</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {WHEN.map((w) => (
-                  <Pressable key={w.on} style={chip(w.on === on)} onPress={() => setOn(w.on)}>
+                  <Pressable accessibilityRole="button" key={w.on} accessibilityState={{ selected: w.on === on }} style={chip(w.on === on)} onPress={() => setOn(w.on)}>
                     <Text style={chipText(w.on === on)}>{w.label}</Text>
                   </Pressable>
                 ))}
@@ -108,13 +108,13 @@ export function AlertRuleSheet({
               <Text style={label}>PLACE</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {places.map((p) => (
-                  <Pressable key={p.id} style={chip(p.id === place)} onPress={() => setPlace(p.id)}>
+                  <Pressable accessibilityRole="button" key={p.id} accessibilityState={{ selected: p.id === place }} style={chip(p.id === place)} onPress={() => setPlace(p.id)}>
                     <Text style={chipText(p.id === place)}>{p.name}</Text>
                   </Pressable>
                 ))}
                 {!places.length ? <Text style={{ color: t.muted }}>This circle has no places yet. Add one in Places.</Text> : null}
               </View>
-              <Text style={{ color: t.muted, fontSize: 13, marginTop: 14, lineHeight: 18 }}>
+              <Text style={{ color: t.muted, fontSize: 14, marginTop: 14, lineHeight: 18 }}>
                 You’ll get a notification even if place alerts are hidden. It works when their phone announces arrivals and departures.
               </Text>
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>

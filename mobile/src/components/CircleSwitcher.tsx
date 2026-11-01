@@ -53,9 +53,9 @@ export function CircleSwitcher({ style, large }: { style?: StyleProp<ViewStyle>;
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <Pressable onPress={() => setOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-start', paddingTop: 90, paddingHorizontal: 16 }}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderRadius: 20, padding: 8 }}>
-            <Text style={{ color: t.muted, fontSize: 12, fontWeight: '700', marginHorizontal: 12, marginTop: 8, marginBottom: 4 }}>YOUR CIRCLES</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setOpen(false)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-start', paddingTop: 90, paddingHorizontal: 16 }}>
+          <Pressable accessible={false} onPress={() => {}} style={{ backgroundColor: t.surface, borderRadius: 20, padding: 8 }}>
+            <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700', marginHorizontal: 12, marginTop: 8, marginBottom: 4 }}>YOUR CIRCLES</Text>
             {clients.map((c) => {
               const isActive = c === client;
               const n = unreadInCircle(c);
@@ -81,15 +81,15 @@ export function CircleSwitcher({ style, large }: { style?: StyleProp<ViewStyle>;
                     <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }} numberOfLines={1}>
                       {c.circle.name}
                     </Text>
-                    <Text style={{ color: t.muted, fontSize: 13 }} numberOfLines={1}>
+                    <Text style={{ color: t.muted, fontSize: 14 }} numberOfLines={1}>
                       {c.memberList().length || ''}
                       {c.memberList().length ? (c.memberList().length === 1 ? ' member · ' : ' members · ') : ''}
                       {c.serverUrl?.replace(/^https?:\/\//, '')}
                     </Text>
                   </View>
                   {n ? (
-                    <View style={{ minWidth: 22, height: 22, borderRadius: 11, backgroundColor: t.danger, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}>
-                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{n > 9 ? '9+' : n}</Text>
+                    <View style={{ minWidth: 22, minHeight: 22, borderRadius: 11, backgroundColor: t.danger, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}>
+                      <Text style={{ color: t.dangerInk, fontSize: 14, fontWeight: '700' }}>{n > 9 ? '9+' : n}</Text>
                     </View>
                   ) : null}
                   {isActive ? <Text style={{ color: t.brand, fontSize: 18, fontWeight: '700' }}>✓</Text> : null}
@@ -103,7 +103,7 @@ export function CircleSwitcher({ style, large }: { style?: StyleProp<ViewStyle>;
             {canCreate ? null : (
               <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', paddingHorizontal: 12, paddingBottom: 10 }}>
                 <Icon name="lock" size={14} color={t.muted} />
-                <Text style={{ color: t.muted, fontSize: 12, flex: 1 }}>Only the person who set up your server can create new circles on it.</Text>
+                <Text style={{ color: t.muted, fontSize: 14, flex: 1 }}>Only the person who set up your server can create new circles on it.</Text>
               </View>
             )}
           </Pressable>

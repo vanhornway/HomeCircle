@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Button } from '../../components/ui';
 import { GroupBody, SettingsGroup, SettingsPage } from '../../components/SettingsKit';
@@ -7,6 +7,7 @@ import { errorText } from '../../lib/circle';
 import { downloadMemory } from '../../lib/memoryDownload';
 import { useCircle } from '../../lib/useCircle';
 import { useTheme } from '../../theme';
+import { showSheet } from '../../lib/sheet';
 
 type ModelChoice = { id: string; name: string; inUsd: number; outUsd: number };
 type AgentSettings = {
@@ -58,15 +59,15 @@ function Setup({ name }: { name: string }) {
   useFocusEffect(load);
 
   const remove = () =>
-    Alert.alert(`Remove ${name}?`, 'Its memory is deleted for good. You can download a copy first.', [
+    showSheet(`Remove ${name}?`, 'Its memory is deleted for good. You can download a copy first.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Download first',
         onPress: () => {
-          downloadMemory(client).catch((e) => Alert.alert('Couldn’t download it', errorText(e)));
+          downloadMemory(client).catch((e) => showSheet('Couldn’t download it', errorText(e)));
         },
       },
-      { text: 'Remove', style: 'destructive', onPress: () => client.removeAgent().catch((e) => Alert.alert('Couldn’t remove it', errorText(e))) },
+      { text: 'Remove', style: 'destructive', onPress: () => client.removeAgent().catch((e) => showSheet('Couldn’t remove it', errorText(e))) },
     ]);
 
   return (
@@ -151,10 +152,10 @@ function ProviderSettings({ s, onSaved }: { s: AgentSettings; onSaved: () => voi
       .agentRpc('setSettings', { provider: { provider, model: model.trim(), apiKey: key.trim(), baseUrl: baseUrl.trim(), inUsd: Number(inUsd), outUsd: Number(outUsd) } }, { timeoutMs: 90_000 })
       .then(() => {
         setKey('');
-        Alert.alert('Saved', 'The provider answered a test question, so the key and model work.');
+        showSheet('Saved', 'The provider answered a test question, so the key and model work.');
         onSaved();
       })
-      .catch((e) => Alert.alert('That didn’t work', errorText(e)))
+      .catch((e) => showSheet('That didn’t work', errorText(e)))
       .finally(() => setBusy(false));
   };
   const input = { color: t.text, fontSize: 16, minHeight: 46, borderWidth: 1, borderColor: t.line, borderRadius: 12, paddingHorizontal: 12, backgroundColor: t.bg } as const;
@@ -171,7 +172,7 @@ function ProviderSettings({ s, onSaved }: { s: AgentSettings; onSaved: () => voi
                 accessibilityRole="radio"
                 accessibilityState={{ selected: on }}
                 onPress={() => pickProvider(id)}
-                style={{ minHeight: 40, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: on ? t.brand : t.line, backgroundColor: on ? t.brandSoft : 'transparent' }}
+                style={{ minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: on ? t.brand : t.line, backgroundColor: on ? t.brandSoft : 'transparent' }}
               >
                 <Text style={{ color: on ? t.brand : t.text, fontWeight: '600', fontSize: 14 }}>{p.name}</Text>
               </Pressable>
@@ -195,7 +196,7 @@ function ProviderSettings({ s, onSaved }: { s: AgentSettings; onSaved: () => voi
                     {m.name}
                     {m.id === choices.suggested ? '  · suggested' : ''}
                   </Text>
-                  <Text style={{ color: t.muted, fontSize: 12 }}>
+                  <Text style={{ color: t.muted, fontSize: 14 }}>
                     ${m.inUsd} / ${m.outUsd} per M
                   </Text>
                 </Pressable>
@@ -204,17 +205,17 @@ function ProviderSettings({ s, onSaved }: { s: AgentSettings; onSaved: () => voi
           </View>
         ) : (
           <>
-            {provider === 'other' ? <TextInput value={baseUrl} onChangeText={setBaseUrl} autoCapitalize="none" placeholder="Address, e.g. http://192.168.1.20:11434/v1" placeholderTextColor={t.muted} style={input} /> : null}
-            <TextInput value={model} onChangeText={setModel} autoCapitalize="none" placeholder="Model name" placeholderTextColor={t.muted} style={input} />
+            {provider === 'other' ? <TextInput accessibilityLabel="Address, e.g. http://192.168.1.20:11434/v1" value={baseUrl} onChangeText={setBaseUrl} autoCapitalize="none" placeholder="Address, e.g. http://192.168.1.20:11434/v1" placeholderTextColor={t.muted} style={input} /> : null}
+            <TextInput accessibilityLabel="Model name" value={model} onChangeText={setModel} autoCapitalize="none" placeholder="Model name" placeholderTextColor={t.muted} style={input} />
             <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TextInput value={inUsd} onChangeText={setIn} keyboardType="decimal-pad" placeholder="$ in / M tokens" placeholderTextColor={t.muted} style={[input, { flex: 1 }]} />
-              <TextInput value={outUsd} onChangeText={setOut} keyboardType="decimal-pad" placeholder="$ out / M tokens" placeholderTextColor={t.muted} style={[input, { flex: 1 }]} />
+              <TextInput accessibilityLabel="$ in / M tokens" value={inUsd} onChangeText={setIn} keyboardType="decimal-pad" placeholder="$ in / M tokens" placeholderTextColor={t.muted} style={[input, { flex: 1 }]} />
+              <TextInput accessibilityLabel="$ out / M tokens" value={outUsd} onChangeText={setOut} keyboardType="decimal-pad" placeholder="$ out / M tokens" placeholderTextColor={t.muted} style={[input, { flex: 1 }]} />
             </View>
-            <Text style={{ color: t.muted, fontSize: 12 }}>The model’s price per million tokens, from the provider’s pricing page (0 for a model on your own machine). It’s how spending is counted.</Text>
+            <Text style={{ color: t.muted, fontSize: 14 }}>The model’s price per million tokens, from the provider’s pricing page (0 for a model on your own machine). It’s how spending is counted.</Text>
           </>
         )}
 
-        <TextInput
+        <TextInput accessibilityLabel={keySaved ? 'API key saved (paste a new one to change it)' : provider === 'other' ? 'API key (if it needs one)' : 'Paste your API key'}
           value={key}
           onChangeText={setKey}
           autoCapitalize="none"
@@ -238,7 +239,7 @@ function BudgetSettings({ s, usage, onSaved }: { s: AgentSettings; usage: Usage 
     client
       .agentRpc('setSettings', { budgetUsd: Number(budget) || 0 })
       .then(onSaved)
-      .catch((e) => Alert.alert('Couldn’t save', errorText(e)));
+      .catch((e) => showSheet('Couldn’t save', errorText(e)));
   const spent = usage?.total ?? 0;
   const cap = s.budgetUsd;
   return (
@@ -255,7 +256,7 @@ function BudgetSettings({ s, usage, onSaved }: { s: AgentSettings; usage: Usage 
         {usage?.byMember?.length ? (
           <View style={{ gap: 2 }}>
             {usage.byMember.map((m) => (
-              <Text key={m.name} style={{ color: t.muted, fontSize: 13 }}>
+              <Text key={m.name} style={{ color: t.muted, fontSize: 14 }}>
                 {m.name}: {usd(m.usd)}
               </Text>
             ))}
@@ -293,7 +294,7 @@ function RenameAgent({ name }: { name: string }) {
           accessibilityLabel="Helper’s name"
           style={{ flex: 1, color: t.text, fontSize: 16, minHeight: 46, borderBottomWidth: 1, borderBottomColor: t.line }}
         />
-        <Button small title="Rename" disabled={!draft.trim() || draft.trim() === name} onPress={() => client.setAgentName(draft.trim()).catch((e) => Alert.alert('Couldn’t rename it', errorText(e)))} />
+        <Button small title="Rename" disabled={!draft.trim() || draft.trim() === name} onPress={() => client.setAgentName(draft.trim()).catch((e) => showSheet('Couldn’t rename it', errorText(e)))} />
       </View>
     </GroupBody>
   );

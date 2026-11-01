@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Alert, Animated, Easing, Pressable, Text, TextInput, View } from 'react-native';
+import { Animated, Easing, Pressable, Text, TextInput, View } from 'react-native';
 import type { CircleClient, PollState } from '@homecircle/core';
 import { errorText } from '../lib/circle';
 import { useChatFont } from '../lib/chatZoom';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /** A poll in the chat: tap an option to vote; live bars, add, spin and close. */
 export function PollCard({ client, pollId }: { client: CircleClient; pollId: string }) {
@@ -24,7 +25,7 @@ export function PollCard({ client, pollId }: { client: CircleClient; pollId: str
   }, [s?.closesAt, s?.closed]);
 
   if (!s) return null;
-  const fail = (e: unknown) => Alert.alert('Poll', errorText(e));
+  const fail = (e: unknown) => showSheet('Poll', errorText(e));
 
   const tap = (optionId: string) => {
     if (s.closed) return;
@@ -53,7 +54,7 @@ export function PollCard({ client, pollId }: { client: CircleClient; pollId: str
   };
 
   const close = () =>
-    Alert.alert('Close this poll?', 'No more votes after this. Everyone sees the result.', [
+    showSheet('Close this poll?', 'No more votes after this. Everyone sees the result.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Close poll', onPress: () => client.closePoll(pollId).catch(fail) },
     ]);
@@ -72,7 +73,7 @@ export function PollCard({ client, pollId }: { client: CircleClient; pollId: str
   return (
     <View style={{ alignSelf: 'stretch', marginVertical: 6, backgroundColor: t.surface, borderRadius: 18, borderWidth: 1, borderColor: t.line, padding: 14, gap: 10 }}>
       <View>
-        <Text style={{ color: t.muted, fontSize: fs(12), fontWeight: '700' }}>📊 POLL · {s.creatorName.toUpperCase()}</Text>
+        <Text style={{ color: t.muted, fontSize: fs(14), fontWeight: '700' }}>📊 POLL · {s.creatorName.toUpperCase()}</Text>
         <Text style={{ color: t.text, fontSize: fs(17), fontWeight: '700', marginTop: 2 }}>{s.question}</Text>
       </View>
       {s.options.map((o) => (
@@ -93,7 +94,7 @@ export function PollCard({ client, pollId }: { client: CircleClient; pollId: str
       ) : null}
       {adding ? (
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-          <TextInput
+          <TextInput accessibilityLabel="Another option"
             value={label}
             onChangeText={setLabel}
             autoFocus
@@ -106,7 +107,7 @@ export function PollCard({ client, pollId }: { client: CircleClient; pollId: str
           <Chip label="Add" onPress={add} primary />
         </View>
       ) : null}
-      <Text style={{ color: t.muted, fontSize: fs(13) }}>{footer}</Text>
+      <Text style={{ color: t.muted, fontSize: fs(14) }}>{footer}</Text>
       {!s.closed || (s.closed && s.winners.length > 1) ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {!s.closed && s.allowAdd && !adding && s.options.length < 12 ? <Chip label="+ Add option" onPress={() => setAdding(true)} /> : null}
@@ -115,7 +116,7 @@ export function PollCard({ client, pollId }: { client: CircleClient; pollId: str
             accessibilityLabel="Spin the wheel"
             disabled={spinning}
             onPress={spinIt}
-            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, paddingHorizontal: 12, borderRadius: 18, borderWidth: 1, borderColor: t.line, opacity: pressed || spinning ? 0.7 : 1 })}
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 12, borderRadius: 18, borderWidth: 1, borderColor: t.line, opacity: pressed || spinning ? 0.7 : 1 })}
           >
             <Animated.Text style={{ fontSize: fs(16), transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '1080deg'] }) }] }}>🎡</Animated.Text>
             <Text style={{ color: t.text, fontSize: fs(14), fontWeight: '600' }}>{spinning ? 'Spinning…' : 'Spin'}</Text>
@@ -165,7 +166,7 @@ function OptionRow({ option, share, winner, disabled, onPress }: { option: PollS
         </View>
       </View>
       {option.voters.length ? (
-        <Text style={{ color: t.muted, fontSize: fs(12), marginTop: 2, marginLeft: 4 }} numberOfLines={1}>
+        <Text style={{ color: t.muted, fontSize: fs(14), marginTop: 2, marginLeft: 4 }} numberOfLines={1}>
           {option.voters.join(', ')}
         </Text>
       ) : null}
@@ -181,7 +182,7 @@ function Chip({ label, onPress, primary }: { label: string; onPress: () => void;
       accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => ({
-        minHeight: 36,
+        minHeight: 44,
         paddingHorizontal: 12,
         borderRadius: 18,
         borderWidth: 1,

@@ -3,7 +3,7 @@ import { FlatList, Modal, Pressable, ScrollView, Text, View } from 'react-native
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CircleClient, Message } from '@homecircle/core';
-import { Avatar, Button } from '../../components/ui';
+import { ADD_BUTTON_SPACE, AddButton, Avatar, Button, EmptyState } from '../../components/ui';
 import { HelperAvatar } from '../../components/HelperAvatar';
 import { ServerBanner } from '../../components/ServerBanner';
 import { initials, useAllCircles } from '../../lib/useCircle';
@@ -101,14 +101,14 @@ export default function Chats() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }} edges={['top']}>
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 6 }}>
-        <Text style={{ flex: 1, color: t.text, fontSize: 30, fontWeight: '800' }}>Chats</Text>
-        <Button title="New message" variant="primary" small onPress={() => setPicking(true)} />
+        <Text accessibilityRole="header" style={{ flex: 1, color: t.text, fontSize: 30, fontWeight: '800' }}>Chats</Text>
       </View>
       <ServerBanner style={{ marginHorizontal: 16, marginBottom: 6 }} />
       <FlatList
         data={rows}
         keyExtractor={(r) => r.key}
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={{ paddingBottom: ADD_BUTTON_SPACE }}
+        ListEmptyComponent={<EmptyState icon="chat" text="No chats yet." action="New message" onAction={() => setPicking(true)} />}
         renderItem={({ item: r }) => (
           <Pressable
             onPress={() => open(r.client, r.peer)}
@@ -138,10 +138,10 @@ export default function Chats() {
                 <Text style={{ flex: 1, color: t.text, fontSize: 17, fontWeight: '700' }} numberOfLines={1}>
                   {r.title}
                 </Text>
-                {r.last ? <Text style={{ color: r.unread ? t.brand : t.muted, fontSize: 13 }}>{when(r.last.createdAt)}</Text> : null}
+                {r.last ? <Text style={{ color: r.unread ? t.brand : t.muted, fontSize: 14 }}>{when(r.last.createdAt)}</Text> : null}
               </View>
               {r.subtitle ? (
-                <Text style={{ color: t.muted, fontSize: 12, marginTop: 1 }} numberOfLines={1}>
+                <Text style={{ color: t.muted, fontSize: 14, marginTop: 1 }} numberOfLines={1}>
                   {r.subtitle}
                 </Text>
               ) : null}
@@ -150,8 +150,8 @@ export default function Chats() {
                   {preview(r.client, r.last, !r.peer, r.helper)}
                 </Text>
                 {r.unread ? (
-                  <View style={{ minWidth: 24, height: 24, borderRadius: 12, backgroundColor: t.brand, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7 }}>
-                    <Text style={{ color: t.brandInk, fontSize: 13, fontWeight: '700' }}>{r.unread > 99 ? '99+' : r.unread}</Text>
+                  <View style={{ minWidth: 24, minHeight: 24, borderRadius: 12, backgroundColor: t.brand, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7 }}>
+                    <Text style={{ color: t.brandInk, fontSize: 14, fontWeight: '700' }}>{r.unread > 99 ? '99+' : r.unread}</Text>
                   </View>
                 ) : null}
               </View>
@@ -161,9 +161,11 @@ export default function Chats() {
         ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: t.line, marginLeft: 82 }} />}
       />
 
+      <AddButton label="Message" hint="New message" onPress={() => setPicking(true)} />
+
       <Modal visible={picking} animationType="slide" transparent onRequestClose={() => setPicking(false)}>
-        <Pressable onPress={() => setPicking(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' }}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '80%' }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setPicking(false)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
+          <Pressable accessible={false} onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, maxHeight: '80%' }}>
             <SafeAreaView edges={['bottom']}>
               <View style={{ flexDirection: 'row', alignItems: 'center', padding: 18, paddingBottom: 8 }}>
                 <Text style={{ flex: 1, color: t.text, fontSize: 20, fontWeight: '700' }}>New message</Text>
@@ -174,7 +176,7 @@ export default function Chats() {
                   const others = c.memberList().filter((m) => !m.isMe);
                   return (
                     <View key={c.accountKey}>
-                      <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700', marginHorizontal: 18, marginTop: 12, marginBottom: 4 }}>
+                      <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700', marginHorizontal: 18, marginTop: 12, marginBottom: 4 }}>
                         {c.circle.name.toUpperCase()}
                       </Text>
                       {c.feature('groupChat') ? <PickRow title={`Everyone in ${c.circle.name}`} subtitle="Group chat" onPress={() => open(c, null)} /> : null}
@@ -213,7 +215,7 @@ function PickRow({ title, subtitle, color, helper, onPress }: { title: string; s
       )}
       <View style={{ flex: 1 }}>
         <Text style={{ color: t.text, fontSize: 17, fontWeight: '600' }}>{title}</Text>
-        {subtitle ? <Text style={{ color: t.muted, fontSize: 13 }}>{subtitle}</Text> : null}
+        {subtitle ? <Text style={{ color: t.muted, fontSize: 14 }}>{subtitle}</Text> : null}
       </View>
     </Pressable>
   );

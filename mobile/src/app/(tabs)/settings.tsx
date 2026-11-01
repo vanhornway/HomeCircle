@@ -65,7 +65,7 @@ export default function SettingsTab() {
           <Text style={{ color: t.text, fontSize: 19, fontWeight: '700' }} numberOfLines={1}>
             {me?.name ?? 'You'}
           </Text>
-          <Text style={{ color: t.muted, fontSize: 13 }} numberOfLines={1}>
+          <Text style={{ color: t.muted, fontSize: 14 }} numberOfLines={1}>
             {me?.role && me.role !== 'member' ? `${me.role[0].toUpperCase()}${me.role.slice(1)} of ${circle}` : `In ${circle}`}
             {settings.sharing ? ' · sharing your location' : ' · sharing paused'}
           </Text>

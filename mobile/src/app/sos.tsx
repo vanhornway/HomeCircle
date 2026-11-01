@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, Text, Vibration, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, Text, Vibration, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { distanceM } from '@homecircle/core';
 import { Button } from '../components/ui';
@@ -11,6 +11,7 @@ import { stopAlarm, useAlarmRinging } from '../lib/sosAlarm';
 import { formatFeet } from '../lib/units';
 import { timeAgo, useAllCircles } from '../lib/useCircle';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 const COUNTDOWN = 5;
 // Countdowns already run (by when they were asked for). The SOS screen can be
@@ -54,7 +55,7 @@ function Countdown({ asked }: { asked: string }) {
       setLeft(left - 1);
       if (left > 1) return;
       startMySos().catch((e) => {
-        Alert.alert('Couldn’t send the SOS', `${errorText(e)}\n\nCall ${EMERGENCY_NUMBER} if you need help now.`);
+        showSheet('Couldn’t send the SOS', `${errorText(e)}\n\nCall ${EMERGENCY_NUMBER} if you need help now.`);
         router.back();
       });
     }, 1000);
@@ -63,9 +64,9 @@ function Countdown({ asked }: { asked: string }) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.danger, padding: 24, justifyContent: 'space-between' }}>
       <View style={{ alignItems: 'center', marginTop: 60, gap: 12 }}>
-        <Text style={{ color: '#fff', fontSize: 22, fontWeight: '700' }}>{sending ? 'Sending SOS…' : 'Sending SOS in'}</Text>
-        {sending ? <ActivityIndicator color="#fff" size="large" /> : <Text style={{ color: '#fff', fontSize: 120, fontWeight: '800' }}>{left}</Text>}
-        <Text style={{ color: '#fff', fontSize: 16, textAlign: 'center', lineHeight: 22 }}>
+        <Text style={{ color: t.dangerInk, fontSize: 22, fontWeight: '700' }}>{sending ? 'Sending SOS…' : 'Sending SOS in'}</Text>
+        {sending ? <ActivityIndicator color={t.dangerInk} size="large" /> : <Text style={{ color: t.dangerInk, fontSize: 120, fontWeight: '800' }}>{left}</Text>}
+        <Text style={{ color: t.dangerInk, fontSize: 16, textAlign: 'center', lineHeight: 22 }}>
           Everyone in your circles is alerted, and your exact location is shared every minute until you say you’re safe.
         </Text>
       </View>
@@ -73,7 +74,7 @@ function Countdown({ asked }: { asked: string }) {
         <Pressable
           accessibilityRole="button"
           onPress={() => router.back()}
-          style={({ pressed }) => ({ backgroundColor: '#fff', borderRadius: 20, minHeight: 64, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.8 : 1 })}
+          style={({ pressed }) => ({ backgroundColor: t.dangerInk, borderRadius: 20, minHeight: 64, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.8 : 1 })}
         >
           <Text style={{ color: t.danger, fontSize: 20, fontWeight: '800' }}>Cancel</Text>
         </Pressable>
@@ -88,7 +89,7 @@ function MySosView() {
   const [ending, setEnding] = useState(false);
   const here = sos.at;
   const safe = () =>
-    Alert.alert('Are you safe?', 'Everyone in your circles is told you’re safe, and location sharing goes back to normal.', [
+    showSheet('Are you safe?', 'Everyone in your circles is told you’re safe, and location sharing goes back to normal.', [
       { text: 'Not yet', style: 'cancel' },
       {
         text: 'I’m safe',
@@ -96,7 +97,7 @@ function MySosView() {
           setEnding(true);
           endMySos()
             .then(() => router.back())
-            .catch((e) => Alert.alert('Couldn’t end the SOS', errorText(e)))
+            .catch((e) => showSheet('Couldn’t end the SOS', errorText(e)))
             .finally(() => setEnding(false));
         },
       },
@@ -104,21 +105,21 @@ function MySosView() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }} edges={['top', 'bottom']}>
       <View style={{ backgroundColor: t.danger, padding: 20, gap: 6 }}>
-        <Text style={{ color: '#fff', fontSize: 26, fontWeight: '800' }}>🆘 SOS is on</Text>
-        <Text style={{ color: '#fff', fontSize: 15, lineHeight: 21 }}>
+        <Text style={{ color: t.dangerInk, fontSize: 26, fontWeight: '800' }}>🆘 SOS is on</Text>
+        <Text style={{ color: t.dangerInk, fontSize: 15, lineHeight: 21 }}>
           Since {clock(sos.startedAt)}. Your exact location goes to everyone in your circles every minute, until you tap I’m safe.
         </Text>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
         <Button variant="danger" title={`📞 Call ${EMERGENCY_NUMBER}`} onPress={() => Linking.openURL(`tel:${EMERGENCY_NUMBER}`)} />
         <Button variant="primary" title="I’m safe" loading={ending} onPress={safe} />
-        <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700', marginTop: 8 }}>SAFE PLACES NEARBY</Text>
+        <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700', marginTop: 8 }}>SAFE PLACES NEARBY</Text>
         {sos.places.length ? (
           sos.places.map((p) => <SafePlaceRow key={p.id} place={p} here={here} reached={sos.reached.includes(p.id)} />)
         ) : (
           <Text style={{ color: t.muted, fontSize: 15 }}>Looking for police, fire stations, hospitals and other safe places near you…</Text>
         )}
-        <Text style={{ color: t.muted, fontSize: 12, lineHeight: 17, marginTop: 8 }}>
+        <Text style={{ color: t.muted, fontSize: 14, lineHeight: 20, marginTop: 8 }}>
           When you reach one of these places, your circles are told. HomeCircle doesn’t call emergency services for you.
         </Text>
       </ScrollView>
@@ -140,7 +141,7 @@ function SafePlaceRow({ place, here, reached }: { place: SafePlace; here: { lat:
           {reached ? '✓ ' : ''}
           {place.name}
         </Text>
-        <Text style={{ color: t.muted, fontSize: 13 }}>
+        <Text style={{ color: t.muted, fontSize: 14 }}>
           {SAFE_KIND_NAME[place.kind]}
           {here ? ` · ${formatFeet(distanceM(here, place))}` : ''}
         </Text>
@@ -164,8 +165,8 @@ function TheirSos({ circleId, memberId }: { circleId: string; memberId: string }
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }} edges={['top', 'bottom']}>
       <View style={{ backgroundColor: t.danger, padding: 20, gap: 6 }}>
-        <Text style={{ color: '#fff', fontSize: 26, fontWeight: '800' }}>🆘 {name} needs help</Text>
-        <Text style={{ color: '#fff', fontSize: 15 }}>
+        <Text style={{ color: t.dangerInk, fontSize: 26, fontWeight: '800' }}>🆘 {name} needs help</Text>
+        <Text style={{ color: t.dangerInk, fontSize: 15 }}>
           SOS since {clock(sos.since)}
           {client.circle.name ? ` · ${client.circle.name}` : ''}
         </Text>
@@ -180,7 +181,7 @@ function TheirSos({ circleId, memberId }: { circleId: string; memberId: string }
               📍 Reached {sos.arrived.place} at {clock(sos.arrived.at)}
             </Text>
           ) : null}
-          <Text style={{ color: t.muted, fontSize: 13 }}>Their phone shares its location every minute until they say they’re safe.</Text>
+          <Text style={{ color: t.muted, fontSize: 14 }}>Their phone shares its location every minute until they say they’re safe.</Text>
         </View>
         {/* Doing anything about it also stops the alarm. */}
         <Button

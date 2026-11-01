@@ -1,11 +1,12 @@
 import { useCallback, useState } from 'react';
-import { Alert, Modal, Pressable, Switch, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, Switch, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import type { CircleClient } from '@homecircle/core';
 import { Button, Card, SectionTitle } from './ui';
 import { updateSettings, type Settings } from '../lib/storage';
 import { circlePlaces, clearVisits, editPlace, kindName, KIND_EMOJI, myPlaces, shareMyPlaces, type MyPlace } from '../lib/visits';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /** Your most visited places: share them or not, rename or hide each one. */
 export function FrequentSettings({ clients, settings, onChange }: { clients: CircleClient[]; settings: Settings | null; onChange: (s: Settings) => void }) {
@@ -35,13 +36,14 @@ export function FrequentSettings({ clients, settings, onChange }: { clients: Cir
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Share my most visited places</Text>
-            <Text style={{ color: t.muted, fontSize: 13, marginTop: 2 }}>
+            <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>
               {sharing
                 ? 'Circles that see your exact location see where you go most. Your history stays on this phone.'
                 : 'No one sees your most visited places.'}
             </Text>
           </View>
           <Switch
+            accessibilityLabel="Share my most visited places"
             value={sharing}
             onValueChange={(v) =>
               updateSettings({ shareFrequent: v })
@@ -60,7 +62,7 @@ export function FrequentSettings({ clients, settings, onChange }: { clients: Cir
                 <Text style={{ color: t.text, fontSize: 15, fontWeight: '600' }} numberOfLines={1}>
                   {p.name}
                 </Text>
-                <Text style={{ color: t.muted, fontSize: 12 }}>
+                <Text style={{ color: t.muted, fontSize: 14 }}>
                   {kindName(p.kind)} · {p.hours < 1 ? `${Math.round(p.hours * 60)} min` : `${Math.round(p.hours)} h`} · {p.visits}{' '}
                   {p.visits === 1 ? 'visit' : 'visits'}
                   {p.hidden ? ' · hidden' : ''}
@@ -79,9 +81,9 @@ export function FrequentSettings({ clients, settings, onChange }: { clients: Cir
             </View>
           ))
         ) : (
-          <Text style={{ color: t.muted, fontSize: 13 }}>Your most visited places appear here after a few days of sharing your location.</Text>
+          <Text style={{ color: t.muted, fontSize: 14 }}>Your most visited places appear here after a few days of sharing your location.</Text>
         )}
-        <Text style={{ color: t.muted, fontSize: 13 }}>
+        <Text style={{ color: t.muted, fontSize: 14 }}>
           Names are a first guess from where you spend nights and weekdays, and from your phone’s map lookup. Rename any that are wrong.
         </Text>
         <Button
@@ -89,7 +91,7 @@ export function FrequentSettings({ clients, settings, onChange }: { clients: Cir
           variant="danger"
           title="Forget my history"
           onPress={() =>
-            Alert.alert('Forget your history?', 'This phone forgets where you’ve been, and your circles stop seeing your most visited places.', [
+            showSheet('Forget your history?', 'This phone forgets where you’ve been, and your circles stop seeing your most visited places.', [
               { text: 'Cancel', style: 'cancel' },
               { text: 'Forget', style: 'destructive', onPress: () => clearVisits().then(changed) },
             ])
@@ -98,10 +100,10 @@ export function FrequentSettings({ clients, settings, onChange }: { clients: Cir
       </Card>
 
       <Modal visible={!!renaming} transparent animationType="fade" onRequestClose={() => setRenaming(null)}>
-        <Pressable onPress={() => setRenaming(null)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', paddingHorizontal: 16 }}>
-          <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderRadius: 20, padding: 20, gap: 12 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setRenaming(null)} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'center', paddingHorizontal: 16 }}>
+          <Pressable accessible={false} onPress={() => {}} style={{ backgroundColor: t.surface, borderRadius: 20, padding: 20, gap: 12 }}>
             <Text style={{ color: t.text, fontSize: 18, fontWeight: '700' }}>Name this place</Text>
-            <TextInput
+            <TextInput accessibilityLabel="Name this place"
               value={name}
               onChangeText={setName}
               autoFocus

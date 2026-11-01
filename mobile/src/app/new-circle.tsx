@@ -62,7 +62,7 @@ export default function NewCircle() {
       </P>
       <Field label="Circle name" value={circleName} onChangeText={setCircleName} placeholder="e.g. Parents & siblings" autoFocus />
       <Field label="Your name in this circle" value={name} onChangeText={setName} placeholder="What they call you" autoComplete="given-name" />
-      <Text style={{ color: t.muted, fontSize: 13, marginBottom: 16 }}>On {admin.serverUrl?.replace(/^https?:\/\//, '')}</Text>
+      <Text style={{ color: t.muted, fontSize: 14, marginBottom: 16 }}>On {admin.serverUrl?.replace(/^https?:\/\//, '')}</Text>
       <View style={{ marginBottom: 18 }}>
         <FeatureChooser value={features} onChange={setFeatures} />
       </View>

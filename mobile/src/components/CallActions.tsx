@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Modal, Pressable, Text } from 'react-native';
+import { Modal, Pressable, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CircleClient } from '@homecircle/core';
 import { Button, Icon } from './ui';
@@ -9,6 +9,7 @@ import { errorText } from '../lib/circle';
 import { openChat, openGroupCallLink, showOutcome } from '../lib/whatsapp';
 import { useSkin } from '../skins';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /**
  * The number to call someone on, or null: nothing when the circle hasn't
@@ -39,11 +40,11 @@ export function CallChoiceSheet({ client, memberId, visible, onClose, onCalled }
   const phone = usePhone(client, memberId);
   const inApp = canCall(client, memberId);
   const name = client.displayName(memberId);
-  const why = (text: string) => <Text style={{ color: t.muted, fontSize: 13, textAlign: 'center' }}>{text}</Text>;
+  const why = (text: string) => <Text style={{ color: t.muted, fontSize: 14, textAlign: 'center' }}>{text}</Text>;
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'flex-end' }}>
-        <Pressable onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
+        <Pressable accessible={false} onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
           <SafeAreaView edges={['bottom']} style={{ padding: 18, gap: 12 }}>
             <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>Call {name}</Text>
             <Button
@@ -52,7 +53,7 @@ export function CallChoiceSheet({ client, memberId, visible, onClose, onCalled }
               disabled={!inApp}
               onPress={() => {
                 onCalled();
-                startCall(client, memberId).catch((e) => Alert.alert('Couldn’t call', errorText(e)));
+                startCall(client, memberId).catch((e) => showSheet('Couldn’t call', errorText(e)));
               }}
             />
             {inApp ? why('Voice, phone to phone, only you two') : why(client.feature('calls') ? 'Not on this phone yet (Android only for now).' : 'Voice calls are off for this circle. An admin turns them on in Settings → Features.')}
@@ -188,7 +189,7 @@ export function WhatsAppSetup({ client }: { client: CircleClient }) {
         style={({ pressed }) => ({ minHeight: 44, justifyContent: 'center', opacity: pressed ? 0.6 : 1 })}
       >
         <Text style={{ color: t.brand, fontSize: 15, fontWeight: '700' }}>{link ? 'Group call link · change' : 'Add the group call link'}</Text>
-        <Text style={{ color: t.muted, fontSize: 13 }}>{link ? link.replace('https://', '') : 'People tap Group call in the group chat to join it. Phone numbers go in Settings → You → Profile.'}</Text>
+        <Text style={{ color: t.muted, fontSize: 14 }}>{link ? link.replace('https://', '') : 'People tap Group call in the group chat to join it. Phone numbers go in Settings → You → Profile.'}</Text>
       </Pressable>
       <GroupCallSheet client={client} visible={sheet} onClose={() => setSheet(false)} />
     </>

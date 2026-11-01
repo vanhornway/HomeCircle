@@ -5,7 +5,7 @@ import { needsAttention, setupChecklist } from '../../lib/health';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Place } from '@homecircle/core';
 import { FamilyMap, type MapInset, type MapMember, type MapView } from '../../map/FamilyMap';
-import { Icon, IconButton, Tag } from '../../components/ui';
+import { EmptyState, Icon, IconButton, Tag } from '../../components/ui';
 import { MemberAvatar } from '../../components/MemberAvatar';
 import { ServerBanner } from '../../components/ServerBanner';
 import { CircleSwitcher } from '../../components/CircleSwitcher';
@@ -260,7 +260,7 @@ export default function MapTab() {
               <View style={{ transform: [{ rotate: `${Math.round(c.angle + 45)}deg` }] }}>
                 <Icon name="navigate" color={t.brand} size={16} />
               </View>
-              <Text style={{ color: t.text, fontSize: 13, fontWeight: '600', flexShrink: 1 }} numberOfLines={1}>
+              <Text style={{ color: t.text, fontSize: 14, fontWeight: '600', flexShrink: 1 }} numberOfLines={1}>
                 {chipLabel(c.ids, chipWhere[i])}
               </Text>
             </Pressable>
@@ -297,8 +297,8 @@ export default function MapTab() {
                 hitSlop={6}
                 style={{ position: 'absolute', left: 0, top: 58, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: t.warnBg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 }}
               >
-                <Text style={{ fontSize: 12 }}>⚠️</Text>
-                <Text style={{ color: t.warnText, fontWeight: '700', fontSize: 13 }}>Fix setup{setupIssues > 1 ? ` · ${setupIssues}` : ''}</Text>
+                <Text style={{ fontSize: 14 }}>⚠️</Text>
+                <Text style={{ color: t.warnText, fontWeight: '700', fontSize: 14 }}>Fix setup{setupIssues > 1 ? ` · ${setupIssues}` : ''}</Text>
               </Pressable>
             ) : null}
             {/* The plugins' tiles, if this circle has any: top right, beside the circle's name when both fit. */}
@@ -360,7 +360,7 @@ export default function MapTab() {
           }
           ListFooterComponent={
             members.length === 1 ? (
-              <Text style={{ color: t.muted, padding: 8, lineHeight: 20 }}>It’s just you so far. Invite your family from Settings.</Text>
+              <EmptyState icon="users" text="It’s just you so far." action="Invite someone" onAction={() => router.push('/invite')} />
             ) : undefined
           }
           renderItem={({ item: m }) => {

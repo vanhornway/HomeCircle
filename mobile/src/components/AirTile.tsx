@@ -6,14 +6,14 @@ import { HourGrid, Pill, type Face } from './TileParts';
 
 // The square takes the US AQI band's colour (EPA's, softened to sit on the map).
 const BANDS: { max: number; bg: string; ink: string }[] = [
-  { max: 50, bg: '#3FA66B', ink: '#fff' },
+  { max: 50, bg: '#3FA66B', ink: '#16201C' },
   { max: 100, bg: '#E3BE3B', ink: '#3A2E00' },
-  { max: 150, bg: '#EE8A3C', ink: '#fff' },
-  { max: 200, bg: '#DC4A3F', ink: '#fff' },
+  { max: 150, bg: '#EE8A3C', ink: '#16201C' },
+  { max: 200, bg: '#CC4237', ink: '#fff' },
   { max: 300, bg: '#8F3F97', ink: '#fff' },
   { max: Infinity, bg: '#7E0023', ink: '#fff' },
 ];
-const band = (aqi: number | null) => (aqi == null ? { bg: '#8E98A6', ink: '#fff' } : BANDS.find((b) => aqi <= b.max)!);
+const band = (aqi: number | null) => (aqi == null ? { bg: '#8E98A6', ink: '#16201C' } : BANDS.find((b) => aqi <= b.max)!);
 // Pollen 0 none … 5 very high.
 const POLLEN = ['#D6EFD9', '#D6EFD9', '#E6F0C2', '#F6E3A1', '#F7C08A', '#F29B8C'];
 const POLLEN_INK = '#2E2A1E';
@@ -154,10 +154,10 @@ export function AirFace({ client, loc, title, big, z }: { client: CircleClient; 
                   dot: band(h.aqi).bg,
                 }))}
               />
-              <Text style={{ color: t.muted, fontSize: 11, textAlign: 'center' }}>
+              <Text style={{ color: t.muted, fontSize: 14, textAlign: 'center' }}>
                 PM2.5 {data.aqi.pm25 ?? '–'} · PM10 {data.aqi.pm10 ?? '–'} · Ozone {data.aqi.ozone ?? '–'} µg/m³
               </Text>
-              <Text style={{ marginTop: 'auto', color: t.muted, fontSize: 10 }} numberOfLines={2}>
+              <Text style={{ marginTop: 'auto', color: t.muted, fontSize: 14 }} numberOfLines={2}>
                 Air: Open-Meteo · {data.pollen ? `Pollen: ${data.pollen.source}` : client.isAdmin ? 'Pollen here: add a Google key in Features' : 'No pollen data here'}
               </Text>
             </>

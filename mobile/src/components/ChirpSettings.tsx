@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Pressable, Switch, Text, View } from 'react-native';
+import { Pressable, Switch, Text, View } from 'react-native';
 import { CHIRP_SOUNDS, type ChirpSound, type CircleClient } from '@homecircle/core';
 import { Button, Card, Checkbox, SectionTitle } from './ui';
 import { HowThisWorks } from './HowThisWorks';
@@ -9,6 +9,7 @@ import { CHIRP_NAMES, previewChirp, setMyChirp } from '../lib/chirp';
 import { errorText } from '../lib/circle';
 import { updateSettings, type Settings } from '../lib/storage';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 /** Your chirp (what others hear), and whether chirps sound or flash on this phone. */
 export function ChirpSettings({ clients, settings, onChange }: { clients: CircleClient[]; settings: Settings | null; onChange: (s: Settings) => void }) {
@@ -24,7 +25,7 @@ export function ChirpSettings({ clients, settings, onChange }: { clients: Circle
       await setMyChirp(clients, sound);
       onChange({ ...(settings as Settings), myChirp: sound });
     } catch (e) {
-      Alert.alert('Couldn’t save your chirp', errorText(e));
+      showSheet('Couldn’t save your chirp', errorText(e));
     } finally {
       setBusy(null);
     }
@@ -36,7 +37,7 @@ export function ChirpSettings({ clients, settings, onChange }: { clients: Circle
       <Card style={{ gap: 12 }}>
         <View>
           <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>My chirp</Text>
-          <Text style={{ color: t.muted, fontSize: 13, marginTop: 2 }}>
+          <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>
             What others hear when you chirp them. Tap to listen.
           </Text>
         </View>
@@ -69,16 +70,17 @@ export function ChirpSettings({ clients, settings, onChange }: { clients: Circle
             );
           })}
         </View>
-        {!mine ? <Text style={{ color: t.muted, fontSize: 13 }}>Until you pick one, others hear the Robin.</Text> : null}
+        {!mine ? <Text style={{ color: t.muted, fontSize: 14 }}>Until you pick one, others hear the Robin.</Text> : null}
 
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Play chirps</Text>
-            <Text style={{ color: t.muted, fontSize: 13, marginTop: 2 }}>
+            <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>
               {settings?.chirpSound ?? true ? 'You hear who’s chirping you.' : 'Chirps show silently.'}
             </Text>
           </View>
           <Switch
+            accessibilityLabel="Play chirps"
             value={settings?.chirpSound ?? true}
             onValueChange={(v) => updateSettings({ chirpSound: v }).then(onChange)}
             trackColor={{ true: t.brand }}
@@ -114,13 +116,14 @@ export function ChirpSettings({ clients, settings, onChange }: { clients: Circle
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ flex: 1 }}>
             <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Ring through Do Not Disturb</Text>
-            <Text style={{ color: t.muted, fontSize: 13, marginTop: 2 }}>
+            <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>
               {settings?.sosThroughDnd
                 ? 'An SOS from your circle plays at alarm volume.'
                 : 'Off. Do Not Disturb silences SOS alerts.'}
             </Text>
           </View>
           <Switch
+            accessibilityLabel="Ring through Do Not Disturb"
             value={settings?.sosThroughDnd ?? false}
             onValueChange={(v) => updateSettings({ sosThroughDnd: v }).then(onChange)}
             trackColor={{ true: t.danger }}
@@ -144,7 +147,7 @@ function DndAccess() {
   return (
     <View style={{ gap: 8 }}>
       <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }}>Do Not Disturb access</Text>
-      <Text style={{ color: t.muted, fontSize: 13 }}>
+      <Text style={{ color: t.muted, fontSize: 14 }}>
         {granted
           ? 'Allowed. An SOS notification rings even with Do Not Disturb or bedtime on.'
           : 'Lets an SOS notification through Do Not Disturb, even if alarms are silenced.'}

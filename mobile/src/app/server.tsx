@@ -56,11 +56,11 @@ export default function ServerScreen() {
   return (
     <Screen>
       <Card style={{ marginBottom: 18 }}>
-        <Text style={{ color: t.muted, fontSize: 13 }}>Current address</Text>
+        <Text style={{ color: t.muted, fontSize: 14 }}>Current address</Text>
         <Text style={{ color: t.text, fontSize: 16, marginTop: 2 }} selectable>
           {current.replace(/^https?:\/\//, '') || 'none'}
         </Text>
-        <Text style={{ color: server.reachable ? t.ok : t.danger, fontSize: 13, marginTop: 6, fontWeight: '600' }}>
+        <Text style={{ color: server.reachable ? t.ok : t.danger, fontSize: 14, marginTop: 6, fontWeight: '600' }}>
           {server.reachable ? 'Connected' : 'Not reachable right now'}
         </Text>
       </Card>

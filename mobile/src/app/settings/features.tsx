@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Text } from 'react-native';
+import { Text } from 'react-native';
 import type { Features } from '@homecircle/core';
 import { WhatsAppSetup } from '../../components/CallActions';
 import { FeaturePicker } from '../../components/FeaturePicker';
@@ -9,6 +9,7 @@ import { GroupBody, SettingsGroup, SettingsPage } from '../../components/Setting
 import { errorText } from '../../lib/circle';
 import { useCircle } from '../../lib/useCircle';
 import { useTheme } from '../../theme';
+import { showSheet } from '../../lib/sheet';
 
 /** What this circle has: admins switch features on and off; everyone else sees the list. */
 export default function FeatureSettings() {
@@ -22,7 +23,7 @@ export default function FeatureSettings() {
     setPending(next);
     client
       .setFeatures(next)
-      .catch((e) => Alert.alert('Couldn’t change it', errorText(e)))
+      .catch((e) => showSheet('Couldn’t change it', errorText(e)))
       .finally(() => setPending(null));
   };
   return (

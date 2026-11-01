@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Pressable, ScrollView, SectionList, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Pressable, ScrollView, SectionList, Text, TextInput, View } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Stack, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Tag } from '../components/ui';
+import { ADD_BUTTON_SPACE, AddButton, Button, EmptyState, ErrorText, Tag } from '../components/ui';
+import { HowThisWorks } from '../components/HowThisWorks';
 import { errorText } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
+import { showSheet } from '../lib/sheet';
 
 type Note = {
   id: string;
@@ -95,7 +97,7 @@ export function MemoryBody() {
 
   // "Tidy up memory" (the helper's "dream" command): it answers in your chat with it.
   const dream = () =>
-    Alert.alert(
+    showSheet(
       'Tidy up memory?',
       `${name} sorts everything the circle shares: clearer titles, each note in its kind, links between them, duplicates merged. It uses the AI budget, and one Undo takes it back.`,
       [
@@ -105,7 +107,7 @@ export function MemoryBody() {
           onPress: () =>
             client
               .askAgent('dream', { peer: client.agent?.id ?? null })
-              .then(() => Alert.alert('Tidying up…', `${name} will message you when it’s done.`))
+              .then(() => showSheet('Tidying up…', `${name} will message you when it’s done.`))
               .catch((e) => setError(errorText(e))),
         },
       ],
@@ -136,7 +138,7 @@ export function MemoryBody() {
                 accessibilityRole="radio"
                 accessibilityState={{ selected: on }}
                 onPress={() => setType(x.id)}
-                style={{ minHeight: 38, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: on ? t.brand : t.line, backgroundColor: on ? t.brandSoft : t.surface }}
+                style={{ minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: on ? t.brand : t.line, backgroundColor: on ? t.brandSoft : t.surface }}
               >
                 <Text style={{ color: on ? t.brand : t.text, fontWeight: '600' }}>
                   {x.icon} {x.label}
@@ -145,11 +147,11 @@ export function MemoryBody() {
             );
           })}
         </ScrollView>
+        {client.isAdmin ? <Button small variant="ghost" title="Tidy up memory" onPress={dream} style={{ alignSelf: 'flex-start' }} /> : null}
       </View>
       {error ? (
-        <View style={{ padding: 16, gap: 10 }}>
-          <Text style={{ color: t.danger }}>{error}</Text>
-          <Button small title="Try again" onPress={load} />
+        <View style={{ paddingHorizontal: 16 }}>
+          <ErrorText onRetry={load}>{error}</ErrorText>
         </View>
       ) : !notes ? (
         <ActivityIndicator style={{ marginTop: 32 }} color={t.brand} />
@@ -165,14 +167,24 @@ export function MemoryBody() {
           }
           keyExtractor={(n) => n.id}
           stickySectionHeadersEnabled={false}
-          contentContainerStyle={{ padding: 16, paddingTop: 6, gap: 8, paddingBottom: 100 }}
+          contentContainerStyle={{ padding: 16, paddingTop: 6, gap: 8, paddingBottom: ADD_BUTTON_SPACE }}
           renderSectionHeader={({ section }) =>
-            section.title ? <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700', letterSpacing: 0.5, marginTop: 10, textTransform: 'uppercase' }}>{section.title}</Text> : null
+            section.title ? <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700', letterSpacing: 0.5, marginTop: 10, textTransform: 'uppercase' }}>{section.title}</Text> : null
           }
           ListEmptyComponent={
-            <Text style={{ color: t.muted, fontSize: 15, lineHeight: 21, textAlign: 'center', marginTop: 24 }}>
-              {query ? 'Nothing matches.' : `Nothing yet. Tell ${name} something (“${name}, our dentist is Dr. Lee”), long-press a message and tap Remember, or send it a calendar link or PDF.`}
-            </Text>
+            <View style={{ alignItems: 'center' }}>
+              <EmptyState
+                icon="clipboard"
+                text={query ? 'Nothing matches.' : `Nothing yet. Tell ${name} something and it remembers.`}
+                action={query ? undefined : 'Add a note'}
+                onAction={() => setAdding(true)}
+              />
+              {query ? null : (
+                <HowThisWorks title="Ways to add to memory">
+                  {`Tell ${name} something (“${name}, our dentist is Dr. Lee”), long-press a message and tap Remember, or send it a calendar link or PDF.`}
+                </HowThisWorks>
+              )}
+            </View>
           }
           renderItem={({ item: n }) => (
             <Pressable
@@ -190,7 +202,7 @@ export function MemoryBody() {
                   {n.data?.role ? <Tag label={n.data.role} /> : null}
                   {n.data?.file ? <Tag label="📎 file" /> : null}
                 </View>
-                {when(n) ? <Text style={{ color: t.brand, fontSize: 13 }}>{when(n)}</Text> : null}
+                {when(n) ? <Text style={{ color: t.brand, fontSize: 14 }}>{when(n)}</Text> : null}
                 <Text style={{ color: t.muted, fontSize: 14 }} numberOfLines={2}>
                   {n.type === 'source'
                     ? `${n.data?.format === 'pdf' ? `PDF · ${n.data?.count ?? 0} dates` : `${n.data?.count ?? 0} events`} · checked every 6 hours`
@@ -201,10 +213,7 @@ export function MemoryBody() {
           )}
         />
       )}
-      <View style={{ position: 'absolute', right: 16, bottom: 24, flexDirection: 'row', gap: 10 }}>
-        {client.isAdmin ? <Button title="🧹 Tidy up memory" onPress={dream} /> : null}
-        <Button variant="primary" title="+ Note" onPress={() => setAdding(true)} />
-      </View>
+      <AddButton label="Note" hint="Add a note" onPress={() => setAdding(true)} />
       {open ? <NoteSheet id={open} onClose={closeNote} onChanged={load} /> : null}
       {adding ? <NoteSheet id={null} onClose={closeNew} onChanged={load} /> : null}
     </View>
@@ -225,7 +234,7 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
   const [opening, setOpening] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
   const opened = useRef<File[]>([]);
-  const fail = (e: unknown) => Alert.alert('Couldn’t do that', errorText(e));
+  const fail = (e: unknown) => showSheet('Couldn’t do that', errorText(e));
   // The decrypted copies are only for looking at: gone when the note closes.
   useEffect(
     () => () => {
@@ -251,7 +260,7 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
         setTags((d.note.tags ?? []).join(', '));
       })
       .catch((e) => {
-        Alert.alert('Couldn’t open it', errorText(e));
+        showSheet('Couldn’t open it', errorText(e));
         onClose();
       });
   }, [client, id, onClose]);
@@ -295,12 +304,12 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
     }
   };
   const deleteFile = () =>
-    Alert.alert(`Delete “${file?.name}”?`, 'It’s deleted from the server. The notes stay.', [
+    showSheet(`Delete “${file?.name}”?`, 'It’s deleted from the server. The notes stay.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => id && run(client.agentRpc('deleteFile', { id })) },
     ]);
   const remove = () =>
-    Alert.alert('Delete this note?', 'You can undo it from its history afterwards.', [
+    showSheet('Delete this note?', 'You can undo it from its history afterwards.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => id && run(client.agentRpc('remove', { id })) },
     ]);
@@ -326,9 +335,9 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
                   A calendar {detail.note.data?.count ?? 0} events long, for {(detail.note.data?.for ?? []).join(', ')}. Its address stays private; ask “/agent list calendars” to see what it reads.
                 </Text>
               ) : null}
-              <TextInput value={title} onChangeText={setTitle} placeholder="Title" placeholderTextColor={t.muted} maxLength={120} style={[input, { fontWeight: '700' }]} />
+              <TextInput accessibilityLabel="Title" value={title} onChangeText={setTitle} placeholder="Title" placeholderTextColor={t.muted} maxLength={120} style={[input, { fontWeight: '700' }]} />
               {detail && when(detail.note) ? <Text style={{ color: t.brand, fontSize: 14 }}>{when(detail.note)}</Text> : null}
-              <TextInput
+              <TextInput accessibilityLabel="What to remember. Link people and places with [[Name]]."
                 value={body}
                 onChangeText={setBody}
                 placeholder="What to remember. Link people and places with [[Name]]."
@@ -350,7 +359,7 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
                   <Text style={{ color: t.text, fontSize: 15, fontWeight: '600' }} numberOfLines={1}>
                     📎 {file.name}
                   </Text>
-                  <Text style={{ color: t.muted, fontSize: 13 }}>Kept on the server, encrypted · {file.size > 1e6 ? `${(file.size / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(file.size / 1e3))} KB`}</Text>
+                  <Text style={{ color: t.muted, fontSize: 14 }}>Kept on the server, encrypted · {file.size > 1e6 ? `${(file.size / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(file.size / 1e3))} KB`}</Text>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <Button small variant="primary" title="Open" loading={opening} onPress={openFile} style={{ flex: 1 }} />
                     <Button small title="Delete file" onPress={deleteFile} style={{ flex: 1 }} />
@@ -367,7 +376,7 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
 
               {detail?.linked.length ? (
                 <View style={{ gap: 6, marginTop: 8 }}>
-                  <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700' }}>LINKED</Text>
+                  <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700' }}>LINKED</Text>
                   {detail.linked.map((l) => (
                     <Text key={l.id} style={{ color: t.text, fontSize: 15 }}>
                       {icon(l.type)} {l.title}
@@ -377,7 +386,7 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
               ) : null}
               {detail?.history.length ? (
                 <View style={{ gap: 4, marginTop: 8 }}>
-                  <Text style={{ color: t.muted, fontSize: 13, fontWeight: '700' }}>HISTORY</Text>
+                  <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700' }}>HISTORY</Text>
                   {detail.history.map((h, i) => (
                     <Text key={i} style={{ color: t.muted, fontSize: 14 }}>
                       {h.change[0].toUpperCase()}

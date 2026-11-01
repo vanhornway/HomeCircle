@@ -35,7 +35,7 @@ export default function Welcome() {
         ))}
       </HowThisWorks>
 
-      <Text style={{ color: t.muted, fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 30, marginBottom: 10, marginLeft: 4 }}>Running the family server?</Text>
+      <Text style={{ color: t.muted, fontSize: 14, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8, marginTop: 30, marginBottom: 10, marginLeft: 4 }}>Running the family server?</Text>
       <Button title="Set up a new server" onPress={() => router.push('/setup')} />
       <Button title="Get back in with a setup code" variant="ghost" onPress={() => router.push('/recover')} style={{ marginTop: 6 }} />
       <Button title="How to get a server" variant="ghost" onPress={() => Linking.openURL(LANDING_URL)} style={{ marginTop: 2 }} />

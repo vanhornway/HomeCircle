@@ -6,13 +6,14 @@
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import { AndroidImportance } from 'expo-notifications';
-import { Alert, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { ApiError, CHIRP_SOUNDS, type ChirpSound, type CircleClient, type IncomingChirp } from '@homecircle/core';
 import { blinkLight, isDoNotDisturbOn, previewSound } from '../../modules/hc-attention/src/HcAttentionModule';
 import { errorText } from './circle';
 import { diag } from './diagnostics';
 import { classHours, inClass } from './school';
 import { getSettings, updateSettings } from './storage';
+import { showSheet } from './sheet';
 
 export const CHIRP_NAMES: Record<ChirpSound, string> = {
   robin: 'Robin',
@@ -149,16 +150,16 @@ export function chirpWithChoice(client: CircleClient, to: string | null) {
   const mine = client.me?.chirp ? `your ${CHIRP_NAMES[client.me.chirp]}` : 'your chirp';
   const go = (flash: boolean) =>
     sendChirp(client, to, flash)
-      .then((msg) => Alert.alert('Chirp', msg))
-      .catch((e) => Alert.alert('Couldn’t chirp', errorText(e)));
+      .then((msg) => showSheet('Chirp', msg))
+      .catch((e) => showSheet('Couldn’t chirp', errorText(e)));
   if (to && inClassNow(client, to).length) {
-    Alert.alert(`Chirp ${who}?`, `${who} is at school and might be in class, so they’ll only get a flash.`, [
+    showSheet(`Chirp ${who}?`, `${who} is at school and might be in class, so they’ll only get a flash.`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Flash', onPress: () => go(true) },
     ]);
     return;
   }
-  Alert.alert(`Chirp ${who}?`, `They’ll hear ${mine}, even with the app closed. Not while Do Not Disturb is on.`, [
+  showSheet(`Chirp ${who}?`, `They’ll hear ${mine}, even with the app closed. Not while Do Not Disturb is on.`, [
     { text: 'Cancel', style: 'cancel' },
     { text: 'Sound + flash', onPress: () => go(true) },
     { text: 'Chirp', onPress: () => go(false) },
