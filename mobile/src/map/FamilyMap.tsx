@@ -91,7 +91,8 @@ html,body,#map{height:100%;margin:0;background:${dark ? '#1a201e' : '#ece7df'}}
 .m.s{filter:grayscale(.6);opacity:.85}
 .m{position:relative}
 .m .b{position:absolute;right:-7px;top:-7px;width:20px;height:20px;border-radius:50%;background:#fff;font-size:12px;line-height:20px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.3)}
-.pl{position:absolute;left:0;top:0;transform:translate(-50%,-50%);background:#fff;color:#1d2422;border-radius:8px;padding:3px 9px;font:600 12px -apple-system,Roboto,sans-serif;border:1px solid #e2ddd4;white-space:nowrap}
+.pl{position:absolute;left:0;top:0;transform:translate(-50%,24px);background:#fff;color:#1d2422;border-radius:8px;padding:3px 9px;font:600 12px -apple-system,Roboto,sans-serif;border:1px solid #e2ddd4;white-space:nowrap}
+.pl.hide{visibility:hidden;pointer-events:none}
 ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}' : ''}
 </style></head><body><div id="map"></div>
 <script>${safeScript(LEAFLET_JS)}</script>
@@ -139,6 +140,23 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
   }
   function esc(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function color(c){ return /^#[0-9a-fA-F]{6}$/.test(c) ? c : '#8a8f98'; }
+  // Place names sit just under their place. One that would land on someone's
+  // pin or on another name is hidden until zooming in makes room (the first
+  // places in the list win).
+  function overlap(a, b){ return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom; }
+  function declutter(){
+    var pins = Object.keys(people).map(function(id){ var el = people[id].marker.getElement(); return el && el.getBoundingClientRect(); }).filter(Boolean);
+    var shown = [];
+    placeLayer.eachLayer(function(l){
+      var el = l.getElement && l.getElement(), lab = el && el.firstChild;
+      if (!lab || !lab.classList || !lab.classList.contains('pl')) return;
+      lab.classList.remove('hide');
+      var r = lab.getBoundingClientRect();
+      var hit = pins.some(function(p){ return overlap(r, p); }) || shown.some(function(q){ return overlap(r, q); });
+      if (hit) lab.classList.add('hide'); else shown.push(r);
+    });
+  }
+  map.on('zoomend moveend', declutter);
   window.hc = {
     members: function(list){
       var seen = {};
@@ -161,6 +179,7 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
         if (!seen[id]) { people[id].marker.remove(); people[id].acc.remove(); delete people[id]; }
       });
       where();
+      declutter();
     },
     inset: function(p){ pad = p; },
     // Points [[lat,lng],…], clear of what's over the map (pins are 40 px, so 28 more all round).
@@ -182,6 +201,7 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
         L.marker([p.lat,p.lng], {pane:'placeNames', interactive:!!tap, keyboard:false, icon:L.divIcon({className:'', iconSize:[0,0], html:'<div class="pl">'+esc(p.name)+'</div>'})})
           .on('click', function(){ post({type:'place', id:p.id}); }).addTo(placeLayer);
       });
+      declutter();
     },
     // Asked for right at 'ready' (e.g. editing a place), the page may not have
     // its size yet: measure again, and jump rather than fly from the world view.
