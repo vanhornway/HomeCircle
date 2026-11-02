@@ -307,7 +307,7 @@ window.HOMECIRCLE_CHANGELOG = [
     date: '2026-10-21',
     title: 'Directions, check-ins and more control over sharing',
     items: [
-      'Tap a person for Directions (Google Maps or Apple Maps, with how old their location is), Locate, Check in, Message and Alert me.',
+      'Tap a person for Directions (in your maps app, with how old their location is), Locate, Check in, Message and Alert me.',
       'Check-ins: “Where are you?” with a one-tap “I’m OK” answer.',
       'Share an exact location, an approximate area (about 1 km, rounded on your phone) or pause, per circle, with an optional reason.',
       'Low-battery handoff: a last location at 10% and 5% battery.',
@@ -328,7 +328,7 @@ window.HOMECIRCLE_CHANGELOG = [
       'Add places by address with a radius in feet, to all your circles at once.',
       'Choose whether your arrivals are announced and whether you see others’.',
       'Joining a circle asks you to agree to location sharing and Locate.',
-      'Bigger buttons, and swipe back on iPhone and Android.',
+      'Bigger buttons, and swipe back.',
     ],
   },
   {
