@@ -337,7 +337,7 @@ fly secrets list   # remember the SETUP_TOKEN you set`,
   const link = (href, label) =>
     href
       ? `<a class="btn primary" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${label}</a>`
-      : `<span class="btn" aria-disabled="true" title="Coming soon">${label} · soon</span>`;
+      : '';
   const apkLabel = (version) => `⬇ Android app (APK)${version ? ` · v${esc(version)}` : ''}`;
   stores.innerHTML =
     (cfg.androidApk ? `<a class="btn primary" id="apk-link" href="${esc(cfg.androidApk)}">${apkLabel(cfg.androidVersion)}</a>` : '') +
