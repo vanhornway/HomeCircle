@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Button } from './ui';
+import { DemoBanner } from './DemoBanner';
 import { retryServer, setServerState, useServerState } from '../lib/connection';
 import { getClient } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
@@ -13,6 +14,15 @@ import { showSheet } from '../lib/sheet';
  * recognizes this phone in the open circle.
  */
 export function ServerBanner({ style }: { style?: object }) {
+  return (
+    <>
+      <DemoBanner style={style} />
+      <ConnectionBanner style={style} />
+    </>
+  );
+}
+
+function ConnectionBanner({ style }: { style?: object }) {
   const t = useTheme();
   const server = useServerState();
   const client = useCircle(['status', 'circle']);

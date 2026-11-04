@@ -81,6 +81,7 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 .error { color: var(--danger); font-size: 14px; margin: 8px 0 0; min-height: 1em; }
 
 /* onboarding */
+.demo-bar { background: var(--brand-soft); color: var(--text, inherit); font-size: 14px; font-weight: 600; padding: 8px 14px; text-align: center; }
 .onboard { min-height: 100%; display: grid; place-items: center; padding: 24px 16px; }
 .card {
   background: var(--surface); border: 1px solid var(--line); border-radius: 20px;

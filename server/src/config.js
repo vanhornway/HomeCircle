@@ -63,9 +63,27 @@ export function loadConfig() {
     callsRelayOnly: bool('CALLS_RELAY_ONLY', false),
     // Run each circle's agent (the optional AI helper) in this server.
     agent: bool('AGENT', false),
+    // A public demo server (server/src/demo.js): only throwaway copies of a
+    // made-up family, handed to visitors for an hour. Never for real circles.
+    demoMode: bool('DEMO_MODE', false),
+    demoToken: process.env.DEMO_TOKEN || '',
+    demoMinutes: int('DEMO_MINUTES', 60),
+    demoIdleMinutes: int('DEMO_IDLE_MINUTES', 10),
+    demoUnusedMinutes: int('DEMO_UNUSED_MINUTES', 5),
+    demoMaxRunning: int('DEMO_MAX_RUNNING', 10),
+    demoStartsPerIp: int('DEMO_STARTS_PER_IP', 6),
+    demoStartsPerDevice: int('DEMO_STARTS_PER_DEVICE', 3),
+    demoSweepMs: int('DEMO_SWEEP_SECONDS', 15) * 1000,
+    // Run the demo director as a child of this server (off to run it apart).
+    demoDirector: bool('DEMO_DIRECTOR', true),
   };
+  // Lists, recipes and reminders live with the helper, so a demo needs it.
+  if (config.demoMode) config.agent = true;
   if (config.setupToken && config.setupToken.length < 12) {
     throw new Error('SETUP_TOKEN must be at least 12 characters');
+  }
+  if (config.demoMode && config.demoToken.length < 16) {
+    throw new Error('DEMO_MODE needs DEMO_TOKEN, at least 16 characters');
   }
   return config;
 }

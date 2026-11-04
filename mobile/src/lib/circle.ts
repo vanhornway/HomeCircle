@@ -18,6 +18,7 @@ let active: string | null = null;
 let loading: Promise<void> | null = null;
 let loaded = false;
 let draft: CircleClient | null = null;
+let demoEnded = false;
 let version = 0;
 const subs = new Set<() => void>();
 
@@ -38,6 +39,10 @@ function makeClient(accountKey: string): CircleClient {
       if (__DEV__) console.warn('[homecircle]', e.message);
     },
   });
+  // A demo family's hour is up: the app says so once the circle is gone.
+  client.on('removed', () => {
+    if (client.demo) demoEnded = true;
+  });
   // Signed out, left, removed by an admin, or the circle was deleted. Keys
   // are only ever deleted for one of these reasons; each is logged.
   client.on('signedOut', ({ reason }) => {
@@ -50,6 +55,13 @@ function makeClient(accountKey: string): CircleClient {
     diag('server:unrecognized', { via: 'live' });
   });
   return client;
+}
+
+/** Whether a demo family just ended, once. */
+export function takeDemoEnded() {
+  const ended = demoEnded;
+  demoEnded = false;
+  return ended;
 }
 
 async function saveList() {

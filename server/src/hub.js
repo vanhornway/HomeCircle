@@ -4,7 +4,7 @@ import { WebSocketServer } from 'ws';
 import { sha256 } from './http.js';
 
 export class Hub {
-  constructor({ store, log, onReady = null, heartbeatMs = 25000, authTimeoutMs = 10000, maxSocketsPerIp = 40, ipOf = (req) => req.socket.remoteAddress || 'unknown' }) {
+  constructor({ store, log, onReady = null, heartbeatMs = 25000, authTimeoutMs = 10000, maxSocketsPerIp = 40, ipOf = (req) => req.socket.remoteAddress || 'unknown', noSocketLimit = () => false }) {
     this.store = store;
     // Called with a member's id once their connection is ready (held call signals follow).
     this.onReady = onReady;
@@ -14,6 +14,7 @@ export class Hub {
     // hold thousands of sockets open.
     this.maxSocketsPerIp = maxSocketsPerIp;
     this.ipOf = ipOf;
+    this.noSocketLimit = noSocketLimit;
     this.perIp = new Map();
     this.sockets = new Map(); // memberId -> Set<WebSocket>
     this.circleOf = new Map(); // memberId -> circleId, for connected members
@@ -31,7 +32,7 @@ export class Hub {
       }
       const ip = this.ipOf(req);
       const open = this.perIp.get(ip) || 0;
-      if (open >= this.maxSocketsPerIp) {
+      if (open >= this.maxSocketsPerIp && !this.noSocketLimit(req)) {
         socket.end('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
         return;
       }

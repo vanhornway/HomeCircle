@@ -176,7 +176,13 @@ export default function CircleSettings() {
             }
           />
           {me?.role !== 'owner' ? (
-            <Button title={`Leave ${name}`} variant="danger" onPress={() => confirm(`Leave ${name}?`, 'You’ll be removed and your location deleted from the server.', 'Leave', () => afterLeaving(() => client.leave()))} />
+            <Button
+              title={client.demo ? 'Leave the demo' : `Leave ${name}`}
+              variant="danger"
+              onPress={() =>
+                confirm(client.demo ? 'Leave the demo?' : `Leave ${name}?`, client.demo ? 'This copy of the family is deleted. You can start a new one any time.' : 'You’ll be removed and your location deleted from the server.', 'Leave', () => afterLeaving(() => client.leave()))
+              }
+            />
           ) : (
             <Button
               title={`Delete ${name}`}

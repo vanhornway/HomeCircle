@@ -17,6 +17,7 @@ COPY --from=deps /app/server/node_modules ./node_modules
 COPY server/package.json server/docker-entrypoint.sh ./server/
 COPY server/src ./server/src
 COPY server/public ./server/public
+COPY server/demo ./server/demo
 COPY packages/core/src ./packages/core/src
 VOLUME ["/data"]
 EXPOSE 8080

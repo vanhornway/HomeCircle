@@ -14,6 +14,12 @@
       "port": 8080
     },
     {
+      "name": "demo-server",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["DEMO_MODE=1", "DEMO_TOKEN=local-demo-only-token", "DEMO_POOL=2", "DEMO_PACE=6", "PORT=8091", "HOST=127.0.0.1", "DATA_DIR=./data/demo", "npm", "--prefix", "server", "start"],
+      "port": 8091
+    },
+    {
       "name": "landing",
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "8090", "--directory", "landing"],

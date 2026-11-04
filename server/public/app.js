@@ -356,7 +356,93 @@ async function renderJoin(link) {
   );
 }
 
+// --- demo server -----------------------------------------------------------
+
+const DEMO_DEVICE_KEY = 'homecircle.demoDevice';
+function demoDevice() {
+  let id = local.get(DEMO_DEVICE_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    local.set(DEMO_DEVICE_KEY, id);
+  }
+  return id;
+}
+
+/** On a demo server, the front page: a name, and straight in. */
+function renderDemoStart() {
+  const name = h('input', { class: 'input', placeholder: 'Your first name', autocomplete: 'given-name', maxlength: 40, 'aria-label': 'Your first name' });
+  const btn = h('button', { class: 'btn primary block', type: 'submit' }, 'Try a demo family');
+  const error = h('p', { class: 'error', role: 'alert' });
+  mount(
+    h(
+      'main',
+      { class: 'onboard' },
+      h(
+        'div',
+        { class: 'card' },
+        brandRow(),
+        h('h1', {}, 'Meet a family for an hour'),
+        h('p', { class: 'muted' }, `Twenty made-up people go through a whole day in ${info.demo.minutes} minutes: school runs, commutes, groceries, dinner at Nani’s. This copy is yours alone. It’s deleted when the hour is up or when you leave.`),
+        h(
+          'form',
+          {
+            onsubmit: async (e) => {
+              e.preventDefault();
+              if (!name.value.trim()) return name.focus();
+              btn.disabled = true;
+              error.textContent = '';
+              try {
+                const { link } = await CircleClient.startDemo(SERVER, { device: demoDevice() });
+                const joiner = newCircleClient();
+                await joiner.joinWithInvite(link, { name: name.value });
+                openNewCircle(joiner);
+              } catch (err) {
+                error.textContent = errorText(err);
+                btn.disabled = false;
+              }
+            },
+          },
+          name,
+          btn,
+        ),
+        error,
+        lockNote('Your own location isn’t used. Nothing here touches any real circle.'),
+      ),
+    ),
+  );
+}
+
+function renderDemoEnded() {
+  mount(
+    h(
+      'main',
+      { class: 'onboard' },
+      h(
+        'div',
+        { class: 'card' },
+        brandRow(),
+        h('h1', {}, 'Demo ended'),
+        h('p', { class: 'muted' }, 'That family and everything in it are gone. Start again for a fresh copy of the day.'),
+        h('button', { class: 'btn primary block', onclick: () => renderDemoStart() }, 'Start again'),
+      ),
+    ),
+  );
+}
+
+/** "Demo ends in N min" at the top of the side panel. */
+function demoBanner() {
+  const bar = h('div', { class: 'demo-bar', role: 'status' });
+  const show = () => {
+    const left = Math.max(0, Math.ceil(((client.demo?.endsAt ?? 0) - Date.now()) / 60_000));
+    bar.textContent = left > 1 ? `Demo ends in ${left} min` : 'Demo ends in a minute';
+  };
+  show();
+  setInterval(show, 15_000);
+  return bar;
+}
+
 function renderNoAccount() {
+  if (info.demo) return renderDemoStart();
   mount(
     h(
       'main',
@@ -718,6 +804,7 @@ async function startApp() {
         'aside',
         { class: 'side' },
         h('div', { class: 'side-head' }, h('img', { src: '/app/icon.svg', alt: '' }), title, status),
+        client.demo ? demoBanner() : null,
         h('nav', { class: 'tabs', role: 'tablist' }, tabs),
         panel,
       ),
@@ -790,6 +877,13 @@ async function startApp() {
   });
   client.on('rejoinRequests', loadRejoins);
   client.on('removed', () => {
+    // A demo copy only ever goes for one reason. Nothing else in this browser changes.
+    if (client.demo) {
+      circles = circles.filter((c) => c !== client);
+      saveCircles(circles[0]?.accountKey ?? ACCOUNT_KEY);
+      client = makeClient(ACCOUNT_KEY);
+      return renderDemoEnded();
+    }
     if (circles.length > 1) {
       toast(`You’re no longer in ${client.circle.name}`);
       return setTimeout(() => switchCircle(circles.find((c) => c !== client).accountKey), 1500);
@@ -805,6 +899,7 @@ async function startApp() {
   } catch (e) {
     // The server doesn't know this browser in that circle: removed, deleted,
     // or the server lost its data. Keep the keys until the person decides.
+    if (e.status === 401 && client.demo) return client.demoEnded();
     if (e.status === 401) return renderUnrecognized();
     toast(errorText(e));
   }
@@ -1858,16 +1953,18 @@ function settingsView() {
         h('div', { class: 'grow' }, nameInput),
         h('button', { class: 'btn', type: 'submit' }, 'Save'),
       ),
-      h(
-        'label',
-        { class: 'switch row' },
-        h('input', {
-          type: 'checkbox',
-          checked: sharingEnabled(),
-          onchange: (e) => (e.target.checked ? startSharing(true) : stopSharing()),
-        }),
-        h('span', {}, 'Share this browser’s location while it’s open'),
-      ),
+      client.demo
+        ? null
+        : h(
+            'label',
+            { class: 'switch row' },
+            h('input', {
+              type: 'checkbox',
+              checked: sharingEnabled(),
+              onchange: (e) => (e.target.checked ? startSharing(true) : stopSharing()),
+            }),
+            h('span', {}, 'Share this browser’s location while it’s open'),
+          ),
       h(
         'label',
         { class: 'switch row' },
@@ -2166,6 +2263,8 @@ let lastSent = 0;
 let lastSentPos = null;
 
 function sharingEnabled() {
+  // A demo family never gets your real location.
+  if (client.demo) return false;
   try {
     return localStorage.getItem(SHARE_KEY) === '1';
   } catch {

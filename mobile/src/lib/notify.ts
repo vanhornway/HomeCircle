@@ -183,7 +183,7 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
     if (!s?.open || !client.callbackAsks(s)) continue;
     // Night here, or Do Not Disturb on: no sound, and she's told we're asleep (PRD CUJ 6).
     const asleep = iAmAsleep();
-    if (asleep && !s.replies.some((r) => r.memberId === me)) await client.replyCallback(s.id, 'asleep').catch(() => {});
+    if (asleep && !client.demo && !s.replies.some((r) => r.memberId === me)) await client.replyCallback(s.id, 'asleep').catch(() => {});
     if (conversationKey(id, null) !== reading) await notifyCallback(client, s, showPreviews, { quiet: asleep }).catch(() => {});
   }
   await syncCallbackReminders(client, showPreviews).catch(() => {});

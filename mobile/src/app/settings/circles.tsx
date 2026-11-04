@@ -107,6 +107,7 @@ export default function CirclesSettings() {
             ) : null}
             <Button small title="Join a circle" onPress={() => router.push('/join')} style={{ flex: 1 }} />
           </View>
+          {clients.some((c) => c.demo) ? null : <Button small variant="ghost" title="Try a demo family" onPress={() => router.push('/demo')} />}
         </GroupBody>
       </SettingsGroup>
 

@@ -462,7 +462,18 @@ export const ACCOUNT_KEY: string;
 /** Why a device's keys were deleted, as passed with the 'signedOut' event. */
 export type SignOutReason = 'signed_out' | 'left' | 'deleted_circle' | 'removed' | 'circle_deleted' | 'unrecognized';
 
+export interface DemoStart {
+  link: string;
+  expiresAt: number;
+  minutes: number;
+}
+
 export class CircleClient {
+  /** On a demo server: when this copy of the demo family goes away. */
+  readonly demo: { endsAt: number } | null;
+  static startDemo(serverUrl: string, options?: { device?: string; fetchImpl?: typeof fetch }): Promise<DemoStart>;
+  demoEnded(): Promise<void>;
+
   /** `cache`: where opened messages are kept between launches (one entry per circle; can be a few MB). */
   constructor(opts: { storage: Storage; cache?: Storage; accountKey?: string; fetchImpl?: typeof fetch; binaryFetchImpl?: (url: string, init?: any) => Promise<any>; WebSocketImpl?: any; onError?: (e: Error) => void });
   /** Where this circle's account is stored. */

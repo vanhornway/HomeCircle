@@ -94,6 +94,7 @@ export class Api {
 
   info = () => this.req('GET', '/info');
   setup = (body) => this.req('POST', '/setup', body);
+  demoStart = (body) => this.req('POST', '/demo/start', body);
   /** Server admins only: create another circle on this server. */
   createCircle = (body) => this.req('POST', '/circles', body);
   deleteCircle = () => this.req('DELETE', '/circle');

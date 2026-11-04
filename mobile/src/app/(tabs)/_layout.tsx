@@ -8,7 +8,7 @@ import { SKINS, useSkin } from '../../skins';
 import { recordNewElders, syncSkinFromRecords } from '../../skins/sync';
 import { checkInactivity } from '../../lib/inactivity';
 import { CircleClient } from '@homecircle/core';
-import { allClients, clientForCircle, errorText, getClient, startupDiag, useCircles } from '../../lib/circle';
+import { allClients, takeDemoEnded, clientForCircle, errorText, getClient, startupDiag, useCircles } from '../../lib/circle';
 import { mark, takeStartup } from '../../lib/startup';
 import { getServerState, isUnreachable, RECONNECT_GRACE_MS, setRetryHandler, setServerState } from '../../lib/connection';
 import { registerPush } from '../../lib/push';
@@ -54,10 +54,12 @@ async function inBatches<T>(items: T[], limit: number, fn: (item: T) => Promise<
 function useCircleLifecycle(circlesKey: string) {
   useEffect(() => {
     const clients = allClients();
+    const demoOver = takeDemoEnded();
     if (!clients.length) {
-      router.replace('/welcome');
+      router.replace(demoOver ? '/demo-ended' : '/welcome');
       return;
     }
+    if (demoOver) router.push('/demo-ended');
     let alive = true;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let attempt = 0;
@@ -96,6 +98,10 @@ function useCircleLifecycle(circlesKey: string) {
         // removed, the circle was deleted, or the server lost its data. Keep the
         // keys (deleting them can't be undone); the banner lets the person
         // remove the circle from this phone.
+        if (e?.status === 401 && client.demo) {
+          await client.demoEnded();
+          return null;
+        }
         if (e?.status === 401) diag('server:unrecognized', { via: 'http' });
         return e;
       }

@@ -200,7 +200,7 @@ export class Brain {
    * @param {import('../../../packages/core/src/agent.js').AgentClient} o.agent
    * @param {import('./memory.js').Memory} o.memory
    */
-  constructor({ agent, memory, now = () => new Date(), llm = llmComplete, llmOptions = {}, fetchImpl = fetch, allowPrivateFetch = false, log = () => {} }) {
+  constructor({ agent, memory, now = () => new Date(), llm = llmComplete, llmOptions = {}, fetchImpl = fetch, allowPrivateFetch = false, log = () => {}, demo = false }) {
     this.agent = agent;
     this.memory = memory;
     this.now = now;
@@ -209,6 +209,8 @@ export class Brain {
     this.fetchImpl = fetchImpl;
     this.allowPrivateFetch = allowPrivateFetch;
     this.log = log;
+    // On a demo server: lets the director seed prices and note details.
+    this.demo = demo;
     this.queue = Promise.resolve();
   }
 
@@ -1514,7 +1516,7 @@ export class Brain {
       case 'update':
         return this._rpcReply(msg, true, brief(this.memory.update(args.id, pick(args.patch, ['title', 'body', 'people', 'tags', 'start', 'end', 'type']), { by, now })));
       case 'add':
-        return this._rpcReply(msg, true, brief(this.memory.add(pick(args.note, ['title', 'body', 'people', 'tags', 'start', 'end', 'type']), { scope: args.private ? by : 'circle', by, now })));
+        return this._rpcReply(msg, true, brief(this.memory.add(pick(args.note, ['title', 'body', 'people', 'tags', 'start', 'end', 'type', ...(this.demo ? ['data'] : [])]), { scope: args.private ? by : 'circle', by, now })));
       case 'remove':
         this.memory.remove(args.id, { by, now });
         return this._rpcReply(msg, true, null);
@@ -1568,7 +1570,8 @@ export class Brain {
       case 'itemTick':
       case 'itemQty':
       case 'itemRemove':
-      case 'doneShopping': {
+      case 'doneShopping':
+      case 'demoBought': {
         if (!this.agent.feature('shoppingLists')) throw new BrainError('Shopping lists are turned off in this circle');
         const state = this._lists();
         const list = op === 'lists' || op === 'listCreate' ? null : (state.lists.find((l) => l.id === args.listId) ?? null);
@@ -1591,6 +1594,11 @@ export class Brain {
         }
         if (op === 'itemRemove') list.items = list.items.filter((i) => i.id !== args.itemId);
         if (op === 'doneShopping') doneShopping(state, list, now);
+        if (op === 'demoBought') {
+          adminOnly();
+          if (!this.demo) throw new BrainError('Only on a demo server');
+          recordBought(state, list, args.items, Number(args.at), { currency: args.currency, at: Number(args.at) });
+        }
         if (op !== 'lists') this._saveLists(state);
         return this._rpcReply(msg, true, state.lists.map((l) => viewList(state, l)));
       }

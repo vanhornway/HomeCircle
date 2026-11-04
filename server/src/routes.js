@@ -21,6 +21,7 @@ import { isPushToken } from './push.js';
 import { MAX_FILE_BYTES } from './files.js';
 import { PLUGINS, mountPlugins } from './plugins/index.js';
 import { IceServers } from './ice.js';
+import { mountDemo } from './demo.js';
 import { allFeatures, cleanFeatures, hasFeature, resolveFeatures } from '../../packages/core/src/features.js';
 
 const MAX_MEMBERS = 50;
@@ -48,9 +49,9 @@ const isAdmin = (m) => m.role === 'owner' || m.role === 'admin';
 
 const requireAdmin = (m) => isAdmin(m) || fail(403, 'forbidden', 'Only circle admins can do that');
 
-export function buildRoutes({ config, store, hub, push, log, agentHost = null, files = null, calls = null }) {
+export function buildRoutes({ config, store, hub, push, log, agentHost = null, files = null, calls = null, demo = null }) {
   const r = new Router();
-  const publicLimiter = new RateLimiter(20, 60_000);
+  const publicLimiter = new RateLimiter(config.publicPerMinute ?? 20, 60_000);
   const requestLimiter = new RateLimiter(1, config.locationRequestCooldown * 1000);
   // Urgent messages skip push coalescing; past this many a minute from one
   // sender they're delivered like any other message, never refused.
@@ -75,10 +76,16 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   };
 
   const limitPublic = (ctx) => {
+    if (ctx.director) return; // the demo director joins some twenty people at a time
     const wait = publicLimiter.take(ctx.ip);
     if (wait) fail(429, 'rate_limited', 'Too many attempts, try again shortly', { retryAfter: wait });
   };
   const checkSetupCode = (body, ctx) => {
+    // A demo server has no setup code: only its director makes circles.
+    if (demo) {
+      if (ctx.director) return;
+      fail(403, 'demo_mode', 'This is a demo server. It doesn’t take circles of its own.');
+    }
     limitPublic(ctx);
     const wait = setupCodeLimiter.take(ctx.ip);
     if (wait) fail(429, 'rate_limited', 'Too many attempts, try again later', { retryAfter: wait });
@@ -133,13 +140,15 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
 
   // --- public --------------------------------------------------------------
 
+  if (demo) mountDemo(r, demo, config, limitPublic);
+
   r.add(
     'GET',
     '/info',
     () => ({
       app: 'homecircle',
       version: config.version,
-      setup: store.isSetup,
+      setup: demo ? true : store.isSetup,
       // Only meaningful on single-circle servers; apps before 0.4 compare it.
       circleId: store.soleCircleId(),
       multiCircle: true,
@@ -147,6 +156,8 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       recovery: true,
       // A throwaway server for load tests: never put real people on it.
       loadTest: !!config.loadTest,
+      // A demo server hands out throwaway copies of a made-up family.
+      ...(demo ? { demo: { minutes: config.demoMinutes } } : {}),
       // Chirps and most-visited places (0.9+).
       chirps: true,
       frequentPlaces: true,
@@ -339,6 +350,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   // parents and siblings). Only server admins can create them; whoever creates
   // a circle owns it and can invite anyone. Circles never see each other.
   r.add('POST', '/circles', ({ me, body }) => {
+    if (demo) fail(403, 'demo_mode', 'This is a demo server. It doesn’t take circles of its own.');
     if (!me.serverAdmin) fail(403, 'forbidden', 'Only the person who set up this server can create circles on it');
     if (store.circleCount() >= MAX_CIRCLES) fail(409, 'too_many_circles', 'This server has reached its circle limit');
     const res = insertCircle(vNewCircle(body));
@@ -378,6 +390,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
         if (!store.useInvite(inv.id, member.id, now)) fail(404, 'invalid_invite', 'This invite was just used');
         store.insertMember({ ...member, circleId, role: 'member', kind: agent ? 'agent' : 'person', tokenHash, now });
       });
+      if (demo && !ctx.director && !agent) demo.joined(circleId, member.id, now);
       hub.broadcast(circleId, { type: 'members_changed' });
       log(agent ? 'agent joined' : 'member joined');
       return { memberId: member.id, token };
@@ -399,6 +412,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       circle: { env: circle.env, by: circle.by },
       me: me.id,
       serverAdmin: me.serverAdmin,
+      ...(demo ? { demo: demo.stateFor(me.circleId) } : {}),
       members: store.members(me.circleId).map((m) => ({
         id: m.id,
         role: m.role,
@@ -488,6 +502,11 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       requireAdmin(me);
       if (target.role === 'owner') fail(403, 'forbidden', 'The owner cannot be removed');
       if (target.role === 'admin' && me.role !== 'owner') fail(403, 'forbidden', 'Only the owner can remove admins');
+    }
+    // The visitor leaving a demo copy ends it, for the next visitor's sake.
+    if (demo?.visitorOf(me.circleId) === target.id) {
+      demo.end(me.circleId, 'left', me.id);
+      return { ok: true, rotationNeeded: false };
     }
     const now = Date.now();
     // An agent never had the circle key, so removing it needs no new key.

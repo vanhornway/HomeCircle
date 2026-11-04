@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
@@ -10,6 +11,7 @@ import { createStatic } from './static.js';
 import { AgentHost } from './agent/host.js';
 import { createFiles } from './files.js';
 import { CallRelay } from './calls.js';
+import { Demo, fromDirector } from './demo.js';
 import { HttpError, sendJson, readJson, readRaw, sha256, clientIp, RateLimiter } from './http.js';
 
 // Logs never include IPs, tokens or payloads.
@@ -36,6 +38,11 @@ export function createApp(config) {
     config.maxMessagesPerDay *= 100;
     config.maxSocketsPerIp = 100_000;
   }
+  // Seeding a copy sends a burst of notes through its owner; a copy is small and short-lived.
+  if (config.demoMode) {
+    config.writesPerMinute *= 5;
+    config.maxCircleBytes = 32 * 1024 * 1024;
+  }
   const store = openDb(config.dataDir);
   ensureSetupToken(config, store);
   const calls = new CallRelay();
@@ -43,15 +50,16 @@ export function createApp(config) {
   const onReady = (id) => {
     for (const s of calls.take(id)) hub.send(id, { type: 'call_signal', from: s.from, id: s.id, env: s.env, at: s.at });
   };
-  const hub = new Hub({ store, log, onReady, authTimeoutMs: config.wsAuthTimeoutMs, maxSocketsPerIp: config.maxSocketsPerIp, ipOf: (req) => clientIp(req, config.trustProxy) });
+  const hub = new Hub({ store, log, onReady, authTimeoutMs: config.wsAuthTimeoutMs, maxSocketsPerIp: config.maxSocketsPerIp, ipOf: (req) => clientIp(req, config.trustProxy), noSocketLimit: (req) => fromDirector(config, req) });
   const requestLimiter = new RateLimiter(config.requestsPerMinute, 60_000);
   const writeLimiter = new RateLimiter(config.writesPerMinute, 60_000);
   // The helper answers in the group once per member, and big answers in parts.
   const agentWriteLimiter = new RateLimiter(config.writesPerMinute * 5, 60_000);
   const push = new Push(config, store, log);
-  const agentHost = config.agent ? new AgentHost({ dataDir: config.dataDir, log, brainOptions: config.agentBrainOptions }) : null;
+  const agentHost = config.agent ? new AgentHost({ dataDir: config.dataDir, log, brainOptions: { ...config.agentBrainOptions, demo: !!config.demoMode } }) : null;
   const files = createFiles({ dataDir: config.dataDir, store });
-  const router = buildRoutes({ config, store, hub, push, log, agentHost, files, calls });
+  const demo = config.demoMode ? new Demo({ config, store, hub, files, agentHost, log }) : null;
+  const router = buildRoutes({ config, store, hub, push, log, agentHost, files, calls, demo });
   const serveStatic = config.webClient ? createStatic(config) : null;
 
   const server = createServer(async (req, res) => {
@@ -90,7 +98,7 @@ export function createApp(config) {
           if (!me.lastSeenAt || now - me.lastSeenAt > 60_000) store.touchMember(me.id, now);
         }
         const body = route.raw ? await readRaw(req, route.raw) : ['POST', 'PUT', 'PATCH'].includes(req.method) ? await readJson(req) : {};
-        const ctx = { ip: clientIp(req, config.trustProxy) };
+        const ctx = { ip: clientIp(req, config.trustProxy), req, director: fromDirector(config, req) };
         const result = await route.handler({ me, body, params, query: url.searchParams, ctx });
         const headers = { ...secureHeaders };
         if (route.cors) headers['Access-Control-Allow-Origin'] = '*';
@@ -134,6 +142,7 @@ export function createApp(config) {
   const pruneTimer = setInterval(prune, 3600_000);
 
   const close = async () => {
+    demo?.close();
     await agentHost?.stop();
     return new Promise((resolve) => {
       clearInterval(pruneTimer);
@@ -147,7 +156,7 @@ export function createApp(config) {
     });
   };
 
-  return { server, store, hub, push, config, close, agentHost };
+  return { server, store, hub, push, config, close, agentHost, demo };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
@@ -165,6 +174,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     if (config.loadTest) {
       log('  LOAD-TEST SERVER (LOAD_TEST=1): for simulated people only. Never put your family on it.');
     }
+    if (config.demoMode) {
+      log('  DEMO SERVER (DEMO_MODE=1): throwaway copies of a made-up family. Never put your family on it.');
+      log('──────────────────────────────────────────────────────────');
+      if (config.demoDirector) startDirector();
+      return;
+    }
     if (!app.store.isSetup) {
       log('  This server has no circle yet.');
       log(`  Open the HomeCircle app, choose "Set up a new server", enter ${where}`);
@@ -180,9 +195,23 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     }
     log('──────────────────────────────────────────────────────────');
   });
+  // The demo director, restarted if it stops. It rebuilds its copies from nothing.
+  let director = null;
+  const startDirector = () => {
+    director = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', fileURLToPath(new URL('../demo/director.mjs', import.meta.url))], {
+      env: { ...process.env, DEMO_SERVER: `http://127.0.0.1:${app.config.port}` },
+      stdio: 'inherit',
+    });
+    director.on('exit', () => {
+      if (director) setTimeout(startDirector, 5000);
+    });
+  };
   for (const sig of ['SIGINT', 'SIGTERM']) {
     process.on(sig, async () => {
       log('shutting down');
+      const child = director;
+      director = null;
+      child?.kill();
       await app.close();
       process.exit(0);
     });

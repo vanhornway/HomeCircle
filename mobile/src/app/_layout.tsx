@@ -33,6 +33,8 @@ export default function RootLayout() {
           <Stack.Screen name="add-place" options={{ headerShown: true, title: 'New place' }} />
           <Stack.Screen name="server" options={{ headerShown: true, title: 'Server address' }} />
           <Stack.Screen name="new-circle" options={{ headerShown: true, title: 'New circle' }} />
+          <Stack.Screen name="demo" options={{ headerShown: true, title: '' }} />
+          <Stack.Screen name="demo-ended" options={{ gestureEnabled: false }} />
           <Stack.Screen name="setup" options={{ headerShown: true, title: '' }} />
           <Stack.Screen name="recover" options={{ headerShown: true, title: 'Use a setup code' }} />
           <Stack.Screen name="conversation" options={{ headerShown: false }} />
