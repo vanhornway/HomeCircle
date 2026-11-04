@@ -42,6 +42,8 @@ export function createApp(config) {
   if (config.demoMode) {
     config.writesPerMinute *= 5;
     config.maxCircleBytes = 32 * 1024 * 1024;
+    // Every copy's helper connects from this machine.
+    config.maxSocketsPerIp = Math.max(config.maxSocketsPerIp, config.demoMaxRunning * 2 + 20);
   }
   const store = openDb(config.dataDir);
   ensureSetupToken(config, store);

@@ -223,6 +223,19 @@ test('a link handed out and never used frees its copy', async () => {
   assert.equal(app.store.circleExists(owner.circleId), false);
 });
 
+test('the director’s many connections don’t use up its address’s limit', async () => {
+  const wsUrl = `${url.replace('http', 'ws')}/api/v1/ws`;
+  const open = (socket) => new Promise((resolve, reject) => {
+    socket.on('open', () => resolve(socket));
+    socket.on('error', reject);
+  });
+  const family = await Promise.all(Array.from({ length: 45 }, () => open(new WebSocket(wsUrl, { headers: { 'x-demo-token': TOKEN } }))));
+  // A helper, say, connecting from the same machine.
+  const helper = await open(new WebSocket(wsUrl));
+  helper.close();
+  for (const s of family) s.close();
+});
+
 test('ready copies wait: the sweep leaves them alone', async () => {
   clear();
   const owner = await readyCopy();

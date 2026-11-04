@@ -67,7 +67,7 @@ export default function SettingsTab() {
           </Text>
           <Text style={{ color: t.muted, fontSize: 14 }} numberOfLines={1}>
             {me?.role && me.role !== 'member' ? `${me.role[0].toUpperCase()}${me.role.slice(1)} of ${circle}` : `In ${circle}`}
-            {settings.sharing ? ' · sharing your location' : ' · sharing paused'}
+            {client.demo ? ' · your location isn’t used' : settings.sharing ? ' · sharing your location' : ' · sharing paused'}
           </Text>
         </View>
         <Text style={{ color: t.muted, fontSize: 22 }}>›</Text>

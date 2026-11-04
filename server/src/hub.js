@@ -30,9 +30,13 @@ export class Hub {
         socket.destroy();
         return;
       }
+      if (this.noSocketLimit(req)) {
+        this.wss.handleUpgrade(req, socket, head, (ws) => this.wss.emit('connection', ws, req));
+        return;
+      }
       const ip = this.ipOf(req);
       const open = this.perIp.get(ip) || 0;
-      if (open >= this.maxSocketsPerIp && !this.noSocketLimit(req)) {
+      if (open >= this.maxSocketsPerIp) {
         socket.end('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
         return;
       }
