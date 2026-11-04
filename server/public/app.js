@@ -421,7 +421,7 @@ function renderDemoEnded() {
         'div',
         { class: 'card' },
         brandRow(),
-        h('h1', {}, 'Demo ended'),
+        h('h1', {}, 'Demo ended. Start again?'),
         h('p', { class: 'muted' }, 'That family and everything in it are gone. Start again for a fresh copy of the day.'),
         h('button', { class: 'btn primary block', onclick: () => renderDemoStart() }, 'Start again'),
       ),
