@@ -175,7 +175,7 @@ export function ShoppingBody() {
         )
       ) : (
         <>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 8, padding: 16, paddingBottom: 8 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0 }} contentContainerStyle={{ gap: 8, padding: 16, paddingBottom: 8 }}>
             {lists.map((l) => {
               const on = l.id === list?.id;
               const open = l.items.filter((i) => !i.ticked).length;

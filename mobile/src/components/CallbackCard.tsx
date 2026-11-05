@@ -4,15 +4,16 @@ import { HighlightCard } from './HighlightCard';
 import { useChatFont } from '../lib/chatZoom';
 import { WhatsAppCallButton } from './CallActions';
 import { askedLine, REPLY_SHORT, timeIn } from '../lib/callbacks';
+import { canCall } from '../lib/calls';
 import { useTheme } from '../theme';
 
 const clock = (ts: number) => new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
 /**
  * A call-back request in the group chat: who asked and who was asked, then
- * where it stands. Long-press (or Reply) opens the replies.
+ * where it stands. A tap calls them back; a long-press opens the replies.
  */
-export function CallbackCard({ client, m, onReply }: { client: CircleClient; m: Message; onReply: () => void }) {
+export function CallbackCard({ client, m, onReply, onCall }: { client: CircleClient; m: Message; onReply: () => void; onCall: () => void }) {
   const t = useTheme();
   const fs = useChatFont();
   const s = client.callbackState(m.id);
@@ -20,6 +21,8 @@ export function CallbackCard({ client, m, onReply }: { client: CircleClient; m: 
   const me = client.account?.memberId;
   const asksMe = client.callbackAsks(s);
   const mine = m.from === me;
+  // Nothing to call them on: a tap opens the replies instead.
+  const callable = canCall(client, s.from) || (client.feature('whatsapp') && !!client.phoneOf(s.from));
   const answered = s.replies.find((r) => r.memberId === me);
   const others = s.replies.filter((r) => r.memberId !== s.takenBy?.memberId);
   // Everyone named as this viewer knows them: "Ammi wants a call back".
@@ -38,9 +41,9 @@ export function CallbackCard({ client, m, onReply }: { client: CircleClient; m: 
         title={title}
         open={s.open}
         onLongPress={onReply}
-        onPress={asksMe ? onReply : undefined}
+        onPress={asksMe ? (callable ? onCall : onReply) : undefined}
         label={`${title}. ${detail}`}
-        hint={asksMe ? 'Opens the replies' : undefined}
+        hint={asksMe ? (callable ? `Calls ${elder}. Long-press for the replies` : 'Opens the replies') : undefined}
       >
         {s.takenBy && others.length ? (
           <Text style={{ color: t.muted, fontSize: fs(14), lineHeight: fs(19) }}>{others.map((r) => `${nameOf(r.memberId)}: ${REPLY_SHORT[r.reply]}`).join(' · ')}</Text>
@@ -53,7 +56,7 @@ export function CallbackCard({ client, m, onReply }: { client: CircleClient; m: 
         ) : null}
         {s.open && asksMe ? (
           <Text style={{ alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, overflow: 'hidden', backgroundColor: t.brandSoft, color: t.brand, fontSize: fs(14), fontWeight: '700' }}>
-            {answered ? `You said ${REPLY_SHORT[answered.reply]} · tap to change` : 'Tap or long-press to reply'}
+            {callable ? 'Tap to call · hold to reply' : answered ? `You said ${REPLY_SHORT[answered.reply]} · tap to change` : 'Tap to reply'}
           </Text>
         ) : null}
       </HighlightCard>

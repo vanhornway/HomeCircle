@@ -14,6 +14,7 @@ import { flushOutbox } from '../../companion/outbox';
 import { useJoinGroupCallFromNotification } from '../../lib/groupCalls';
 import { markUsed } from '../../companion/used';
 import { C } from '../../companion/theme';
+import { SpokenCaption } from '../../components/SpokenCaption';
 
 /**
  * The Elderly Companion app. While it's open: a live connection to each of
@@ -108,5 +109,10 @@ export default function CompanionLayout() {
       </View>
     );
   }
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg }, animation: 'fade' }} />;
+  return (
+    <>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg }, animation: 'fade' }} />
+      <SpokenCaption />
+    </>
+  );
 }

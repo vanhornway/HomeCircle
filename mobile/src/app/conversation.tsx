@@ -16,6 +16,8 @@ import { PersonSheet } from '../components/PersonSheet';
 import { HelperAvatar } from '../components/HelperAvatar';
 import { MemberAvatar } from '../components/MemberAvatar';
 import { REPLY_LABELS, syncCallbackReminders, timeIn } from '../lib/callbacks';
+import { canCall, startCall } from '../lib/calls';
+import { openChat, showOutcome } from '../lib/whatsapp';
 import { CreatePoll } from '../components/CreatePoll';
 import { askedText, helperQuestion, isHelperStatusLine, parseHelperReply, type HelperReply } from '../lib/helperChat';
 import { LinkedText } from '../components/LinkedText';
@@ -193,6 +195,18 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
       .catch((e) => setError(errorText(e)));
   };
 
+  // Tap on a call-back card: says "I'm calling you now" so she hears it, then calls. In HomeCircle when that works, otherwise WhatsApp.
+  const callBack = (m: Message) => {
+    const s = client.callbackState(m.id);
+    if (!s) return;
+    const phone = client.feature('whatsapp') ? client.phoneOf(s.from) : null;
+    const inApp = canCall(client, s.from);
+    if (!inApp && !phone) return setReactingTo(m);
+    if (!s.takenBy) replyCallback(s.id, 'now');
+    if (inApp) startCall(client, s.from).catch((e) => setError(errorText(e)));
+    else void openChat(phone!).then(showOutcome);
+  };
+
   const react = (messageId: string, emoji: string) => {
     setReactingTo(null);
     client.react(messageId, emoji).catch((e) => setError(errorText(e)));
@@ -304,7 +318,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     // Poll results and spins read as a line across the chat, like alerts.
     if (m.body?.pollResult || m.body?.pollSpin) return <Text style={[pill, { color: t.text }]}>{m.body.text}</Text>;
     // Call-back requests from the Elderly Companion app, and the replies (a line each).
-    if (!peer && m.body?.callback?.state === 'ask') return <CallbackCard client={client} m={m} onReply={() => setReactingTo(m)} />;
+    if (!peer && m.body?.callback?.state === 'ask') return <CallbackCard client={client} m={m} onReply={() => setReactingTo(m)} onCall={() => callBack(m)} />;
     if (!peer && m.body?.callback?.state === 'reply') return <Text style={pill}>{String(m.body.text ?? '').replace(/^📞\s*/, '')}</Text>;
     // The WhatsApp group call: a card with Join while it's on, then one line. Joins show on the card, not as lines.
     if (!peer && m.body?.groupCall?.state === 'start') return <GroupCallCard client={client} m={m} />;

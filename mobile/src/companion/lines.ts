@@ -12,6 +12,7 @@ import catalog from '../../assets/phrases/phrases.json';
 import placeholderList from '../../assets/phrases/placeholders.json';
 import { diag } from '../lib/diagnostics';
 import { playSequence, stopSequence } from '../../modules/hc-attention/src/HcAttentionModule';
+import { captionMs, watchStart } from './speechWatch';
 
 export type Gender = 'm' | 'f';
 type Part = { clip?: string; slot?: string };
@@ -65,47 +66,72 @@ async function voiceFor(lang: string): Promise<string | null> {
 /** Whether this phone can speak her language aloud (for the admin's setup check). */
 export const canSpeak = (lang = language) => voiceFor(lang).then((v) => !!v);
 
-// How long the phone's voice has to start before the tones play instead.
-const START_WITHIN_MS = 2500;
+// What she's hearing, shown on her screen while it plays.
+let caption: string | null = null;
+let captionTimer: ReturnType<typeof setTimeout> | null = null;
+const captionSubs = new Set<() => void>();
+const setCaption = (next: string | null) => {
+  if (captionTimer) clearTimeout(captionTimer);
+  captionTimer = next ? setTimeout(() => setCaption(null), captionMs(next)) : null;
+  caption = next;
+  captionSubs.forEach((fn) => fn());
+};
+/** The line being said now, or null (for useSyncExternalStore). */
+export const spokenLine = () => caption;
+export function onSpokenLine(fn: () => void) {
+  captionSubs.add(fn);
+  return () => {
+    captionSubs.delete(fn);
+  };
+}
 
-/** Say lines one after the other. Whatever goes wrong, she still hears the recordings (tones for now). */
+/** A name goes where its slot is, and there are no name clips yet: only the phone's voice can say the whole line. */
+const needsVoice = (l: Line) => (form(l)?.parts ?? []).some((p) => p.slot && (l as Record<string, unknown>)[p.slot]);
+
+// The newest line wins: an older one's checks stop counting once another has started.
+let current: ReturnType<typeof watchStart> | null = null;
+let turn = 0;
+
+/** Say lines one after the other, and show them. Whatever goes wrong, she still hears the recordings (tones for now). */
 export function say(...lines: Line[]): boolean {
+  const me = ++turn;
+  current?.cancel();
+  setCaption(lines.map(text).filter(Boolean).join('\n') || null);
   const clips = lines.flatMap((l) => (form(l)?.parts ?? []).map((p) => p.clip).filter((c): c is string => !!c));
-  if (!clips.some((c) => placeholders.has(c))) {
+  if (!clips.some((c) => placeholders.has(c)) && !lines.some(needsVoice)) {
     diag('say', { how: 'clips', n: clips.length });
     return playSequence(clips);
   }
   // Not recorded yet: the phone's voice says it; the tones play if it has no voice for her
-  // language, can't start, or reports an error (the speech engine can drop out after the
+  // language, never starts, or reports an error (the speech engine can drop out after the
   // app has been in the background for a while).
   const lang = language;
-  let done = false;
   const fallback = (why: string) => {
-    if (done) return;
-    done = true;
+    if (me !== turn) return;
+    turn++;
+    current?.cancel();
     diag('say:fallback', { why });
     Speech.stop();
     playSequence(clips);
   };
   voiceFor(lang)
     .then((voice) => {
+      if (me !== turn) return;
       if (!voice) return fallback('no-voice');
       stopSequence();
       Speech.stop();
-      const watchdog = setTimeout(() => fallback('no-start'), START_WITHIN_MS);
+      current = watchStart(Speech.isSpeakingAsync, () => fallback('no-start'));
       lines.forEach((l, i) =>
         Speech.speak(text(l), {
           voice,
+          language: lang,
           rate: 0.9,
           onStart: () => {
-            if (i !== 0) return;
-            clearTimeout(watchdog);
+            if (i !== 0 || me !== turn) return;
+            current?.started();
             diag('say', { how: 'voice' }).catch(() => {});
           },
-          onError: () => {
-            clearTimeout(watchdog);
-            fallback('error');
-          },
+          onError: () => fallback('error'),
         }),
       );
     })
@@ -114,6 +140,9 @@ export function say(...lines: Line[]): boolean {
 }
 
 export function hush() {
+  turn++;
+  current?.cancel();
+  setCaption(null);
   stopSequence();
   Speech.stop();
 }
