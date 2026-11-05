@@ -153,7 +153,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       circleId: store.soleCircleId(),
       multiCircle: true,
       // Setup-code recovery: /recover/* and rejoin requests (0.8+).
-      recovery: true,
+      recovery: !demo,
       // A throwaway server for load tests: never put real people on it.
       loadTest: !!config.loadTest,
       // A demo server hands out throwaway copies of a made-up family.

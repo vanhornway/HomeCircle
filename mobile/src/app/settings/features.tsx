@@ -19,6 +19,8 @@ export default function FeatureSettings() {
   // While a change is on its way, show it straight away.
   const [pending, setPending] = useState<Features | null>(null);
   const value = pending ?? client.features;
+  // A demo lists only what its made-up family has.
+  const shown = client.demo ? (Object.fromEntries(Object.entries(value).filter(([, on]) => on)) as Features) : value;
   const change = (next: Features) => {
     setPending(next);
     client
@@ -38,7 +40,7 @@ export default function FeatureSettings() {
         </GroupBody>
       </SettingsGroup>
       <FeaturePicker
-        value={value}
+        value={shown}
         onChange={change}
         readOnly={!admin}
         // Plugins with settings: filled in here once they're on (prayer times:

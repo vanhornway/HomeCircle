@@ -29,6 +29,7 @@ test('no demo routes, no demo fields, no demo table', async () => {
   assert.equal(start.status, 404);
   const info = await (await fetch(`${url}/api/v1/info`)).json();
   assert.equal('demo' in info, false);
+  assert.equal(info.recovery, true);
   const m = new Map();
   const storage = { getItem: async (k) => m.get(k) ?? null, setItem: async (k, v) => void m.set(k, v), removeItem: async (k) => void m.delete(k) };
   const owner = new CircleClient({ storage, onError: () => {} });

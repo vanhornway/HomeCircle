@@ -2093,19 +2093,21 @@ function settingsView() {
   }
 
   // What this circle has: admins tick features on and off; others see the list.
+  // A demo lists only what its made-up family has.
   const features = client.features;
+  const shownFeatures = FEATURES.filter((f) => !client.demo || features[f.id]);
   sections.push(
     h(
       'div',
       { class: 'section' },
       h('h3', {}, 'Features'),
       h('p', { class: 'muted small' }, client.isAdmin ? 'Turn off what your circle doesn’t want; it disappears from everyone’s phone.' : 'Chosen by the circle’s admins.'),
-      FEATURE_GROUPS.map((group) =>
+      FEATURE_GROUPS.filter((group) => shownFeatures.some((f) => f.group === group)).map((group) =>
         h(
           'fieldset',
           { class: 'feature-group' },
           h('legend', {}, group),
-          FEATURES.filter((f) => f.group === group).map((f) => [
+          shownFeatures.filter((f) => f.group === group).map((f) => [
             h(
               'label',
               { class: 'feature-row', title: f.detail },
@@ -2163,7 +2165,7 @@ function settingsView() {
               {
                 class: 'btn danger',
                 onclick: async () => {
-                  if (!confirm(`Leave ${client.circle.name}? Your location will stop being shared and your data removed.`)) return;
+                  if (!confirm(client.demo ? 'Leave the demo? This copy of the family is deleted. You can start a new one any time.' : `Leave ${client.circle.name}? Your location will stop being shared and your data removed.`)) return;
                   stopSharing();
                   try {
                     await client.leave();
@@ -2173,7 +2175,7 @@ function settingsView() {
                   }
                 },
               },
-              'Leave circle',
+              client.demo ? 'Leave the demo' : 'Leave circle',
             )
           : h(
               'button',

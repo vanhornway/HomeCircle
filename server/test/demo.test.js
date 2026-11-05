@@ -92,6 +92,7 @@ const clear = () => {
 test('a demo server says so, and takes no circles of its own', async () => {
   const info = await (await fetch(`${url}/api/v1/info`)).json();
   assert.deepEqual(info.demo, { minutes: 60 });
+  assert.equal(info.recovery, false);
   for (const path of ['/setup', '/recover', '/recover/delete', '/recover/rejoin']) {
     const res = await post(url, path, { setupToken: 'test-setup-token-demo' });
     assert.equal(res.status, 403, path);
