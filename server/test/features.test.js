@@ -62,7 +62,7 @@ test('the defaults: chat, photos, check-ins, low battery, circle health, lists a
   const on = Object.entries(defaultFeatures())
     .filter(([, v]) => v)
     .map(([k]) => k);
-  assert.deepEqual(on, ['locationSharing', 'checkIns', 'lowBattery', 'groupChat', 'directMessages', 'photos', 'readReceipts', 'circleHealth', 'shoppingLists', 'reminders']);
+  assert.deepEqual(on, ['locationSharing', 'checkIns', 'lowBattery', 'groupChat', 'directMessages', 'plans', 'busyTimes', 'photos', 'readReceipts', 'circleHealth', 'shoppingLists', 'reminders']);
   // Lists and reminders need the helper, which starts off.
   assert.equal(hasFeature(defaultFeatures(), 'shoppingLists'), false);
   assert.equal(hasFeature({ ...defaultFeatures(), agent: true }, 'shoppingLists'), true);
