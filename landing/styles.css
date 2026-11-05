@@ -57,7 +57,7 @@ p { margin: 0 0 12px; }
 .nav nav { display: flex; gap: 22px; align-items: center; }
 .nav nav a { color: var(--muted); text-decoration: none; font-size: 15px; font-weight: 550; }
 .nav nav a:hover { color: var(--text); }
-.nav nav a.pill { background: var(--brand); color: var(--brand-ink); padding: 8px 14px; border-radius: 999px; }
+.nav nav a.pill { background: var(--brand); color: var(--brand-ink); padding: 8px 14px; border-radius: 999px; white-space: nowrap; }
 
 main > section, .hero { padding-left: max(16px, calc((100% - 1120px) / 2)); padding-right: max(16px, calc((100% - 1120px) / 2)); }
 .section { padding-top: 88px; padding-bottom: 8px; }
@@ -161,6 +161,31 @@ main > section, .hero { padding-left: max(16px, calc((100% - 1120px) / 2)); padd
 .faq details p { color: var(--muted); margin: 10px 0 0; }
 .footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 48px max(16px, calc((100% - 1120px) / 2)) 40px; margin-top: 64px; border-top: 1px solid var(--line); font-size: 15px; }
 .footer span { display: flex; align-items: center; gap: 8px; }
+
+.demo-dialog { width: min(460px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 28px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.demo-dialog::backdrop { background: rgb(0 0 0 / 50%); }
+.demo-dialog h2 { margin: 0 32px 8px 0; font-size: 28px; }
+.demo-dialog p { margin: 0; }
+.demo-close { position: absolute; top: 14px; right: 14px; width: 44px; height: 44px; border: 0; border-radius: 50%; background: none; color: var(--muted); font-size: 26px; cursor: pointer; }
+.demo-close:hover { background: var(--bg-2); }
+.demo-steps { list-style: none; counter-reset: step; margin: 20px 0; padding: 0; display: grid; gap: 20px; }
+.demo-steps li { counter-increment: step; position: relative; padding-left: 42px; }
+.demo-steps li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--brand-soft); color: var(--brand); font-weight: 700; display: grid; place-items: center; }
+.demo-steps h3 { margin: 2px 0 10px; font-size: 18px; }
+.demo-steps .small { margin-top: 8px; }
+.demo-scan img { display: block; border-radius: 12px; image-rendering: pixelated; margin-bottom: 10px; }
+.demo-scan img[hidden], .demo-tap { display: none; }
+@media (pointer: coarse) {
+  .demo-scan { display: none; }
+  .demo-tap { display: inline-flex; }
+}
+@media (max-width: 520px) {
+  .nav nav { gap: 8px; }
+  .nav nav a.pill { padding: 7px 12px; font-size: 14px; }
+}
+@media (max-width: 420px) {
+  .nav .brand { font-size: 0; }
+}
 
 @media (max-width: 980px) {
   .hosts { grid-template-columns: repeat(4, 1fr); }

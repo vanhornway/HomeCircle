@@ -345,6 +345,63 @@ fly secrets list   # remember the SETUP_TOKEN you set`,
     link(cfg.playStore, '▶ Google Play') +
     (cfg.setupGuide ? `<a class="btn" href="${esc(cfg.setupGuide)}" target="_blank" rel="noopener noreferrer">Step-by-step guide</a>` : '');
 
+  // --- demo ------------------------------------------------------------------
+  const demo = $('#demo-dialog');
+  $('#demo-apk').href = cfg.androidApk;
+  $('#demo-join').href = `${cfg.demoServer}/#app`;
+  $('#demo-web').href = cfg.demoServer;
+  const demoCode = $('#demo-code');
+  const demoNote = $('#demo-code-note');
+  const SCAN_HELP = 'In HomeCircle, tap <strong>Join my family</strong>, or <strong>Settings → Your circles → Join a circle</strong> if you’re already in one. Then tap <strong>Scan invite QR code</strong>. The code refreshes by itself.';
+  const canScan = !matchMedia('(pointer: coarse)').matches;
+  let qrcode = null;
+  let codeTimer = null;
+  let shownCode;
+  const noCode = (text) => {
+    shownCode = undefined;
+    demoCode.hidden = true;
+    demoNote.textContent = text;
+  };
+  // A real invite each time: the first to join takes that copy, and the next code is another one.
+  const drawCode = async () => {
+    try {
+      qrcode ??= (await import('./vendor/qrcode.mjs')).default;
+      const res = await fetch(`${cfg.demoServer}/api/v1/demo/code`);
+      const { link } = await res.json();
+      if (!link) return noCode('Every demo family is in use right now. Try again in a few minutes.');
+      if (link === shownCode) return;
+      const qr = qrcode(0, 'M');
+      qr.addData(link);
+      qr.make();
+      demoCode.src = qr.createDataURL(8, 4);
+      demoCode.hidden = false;
+      demoNote.innerHTML = SCAN_HELP;
+      shownCode = link;
+    } catch {
+      noCode('The demo can’t be reached right now. Try again in a minute.');
+    }
+  };
+  const openDemo = () => {
+    demo.showModal();
+    if (!canScan) return;
+    drawCode();
+    codeTimer = setInterval(() => document.hidden || drawCode(), 20_000);
+  };
+  demo.addEventListener('close', () => clearInterval(codeTimer));
+  document.addEventListener('visibilitychange', () => {
+    if (demo.open && canScan && !document.hidden) drawCode();
+  });
+  $('#demo-open').addEventListener('click', (e) => {
+    e.preventDefault();
+    openDemo();
+  });
+  $('#demo-close').addEventListener('click', () => demo.close());
+  // A click on the backdrop lands on the dialog itself.
+  demo.addEventListener('click', (e) => {
+    if (e.target === demo) demo.close();
+  });
+  if (location.hash === '#demo') openDemo();
+
   // --- what's new ------------------------------------------------------------
   // Only versions that have been released, so the list never gets ahead of
   // the download button. Re-drawn once the latest release loads from GitHub.

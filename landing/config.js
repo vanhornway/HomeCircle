@@ -9,6 +9,8 @@ window.HOMECIRCLE = {
   androidApk: 'https://github.com/vanhornway/HomeCircle/releases/latest/download/HomeCircle.apk',
   // Shown on the download button until the latest release's version loads from GitHub.
   androidVersion: '0.23.0',
+  // The public demo: the Demo button's QR code comes from here.
+  demoServer: 'https://demo.homecircle.umair.us',
   // Step-by-step setup guide.
   setupGuide: 'https://github.com/vanhornway/HomeCircle/blob/main/docs/SETUP.md',
   // App store links, once the app is published.

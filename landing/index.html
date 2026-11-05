@@ -24,6 +24,7 @@
       <a href="#privacy">Privacy</a>
       <a href="#changelog">What’s new</a>
       <a href="#servers" class="pill">Get your server</a>
+      <a href="#demo" class="pill" id="demo-open">Demo</a>
     </nav>
   </header>
 
@@ -294,6 +295,28 @@
       <details><summary>Can people on other servers find me?</summary><p>No. There’s no directory and no federation. Each server is its own closed circle.</p></details>
     </section>
   </main>
+
+  <dialog id="demo-dialog" class="demo-dialog" aria-labelledby="demo-title">
+    <button type="button" class="demo-close" id="demo-close" aria-label="Close">×</button>
+    <h2 id="demo-title">Try a demo family</h2>
+    <p class="muted">Twenty made-up people go through a whole day in an hour, in the real app. You join as yourself, and your own location isn’t used.</p>
+    <ol class="demo-steps">
+      <li>
+        <h3>Get the app</h3>
+        <a class="btn primary" id="demo-apk">⬇ Android app (APK)</a>
+        <p class="muted small">Already have it? Go to step 2. Your own circles aren’t touched.</p>
+      </li>
+      <li>
+        <h3>Join the demo</h3>
+        <div class="demo-scan">
+          <img id="demo-code" width="220" height="220" alt="QR code that joins the demo" hidden>
+          <p class="muted small" id="demo-code-note" role="status">Getting a code…</p>
+        </div>
+        <a class="btn primary demo-tap" id="demo-join">Join the demo</a>
+      </li>
+    </ol>
+    <p class="muted small">A demo lasts an hour and is deleted when you leave. No Android phone? <a id="demo-web">Try it in your browser</a>.</p>
+  </dialog>
 
   <footer class="footer">
     <span><img src="icon.svg" alt="" width="20" height="20"> HomeCircle</span>
