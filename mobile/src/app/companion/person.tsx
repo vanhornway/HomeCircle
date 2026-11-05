@@ -117,7 +117,6 @@ export default function Person() {
         </View>
         {placing ? (
           <View style={{ alignSelf: 'stretch', flex: 1, gap: 14 }}>
-            <Text style={[URDU, { color: C.ink, fontSize: 28, lineHeight: 60, textAlign: 'center' }]}>{text({ key: 'call.placing', name: label })}</Text>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Don't call"
