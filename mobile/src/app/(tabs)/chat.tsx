@@ -37,7 +37,7 @@ function preview(client: CircleClient, m: Message | undefined, group: boolean, h
   if (!m) return group ? 'No messages yet' : helper ? 'Ask anything' : 'Say hello';
   // A group call is one short line, without naming who started it twice.
   const gc = m.kind === 'chat' ? m.body?.groupCall : null;
-  if (gc) return client.groupCallState(gc.state === 'join' ? gc.of : m.id)?.open ? 'Group call · tap to join' : 'Group call ended';
+  if (gc) return client.groupCallState(gc.state === 'start' ? m.id : gc.of)?.open ? 'Group call · tap to join' : 'Group call ended';
   const mine = m.from === client.account?.memberId;
   const name = mine ? 'You' : client.members.get(m.from)?.name || 'Someone';
   if (m.kind === 'event') return `${name} ${m.body?.action === 'left' ? 'left' : 'arrived at'} ${m.body?.placeName || 'a place'}`;

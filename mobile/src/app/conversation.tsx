@@ -328,7 +328,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     if (!peer && m.body?.callback?.state === 'reply') return <Text style={pill}>{String(m.body.text ?? '').replace(/^📞\s*/, '')}</Text>;
     // The WhatsApp group call: a card with Join while it's on, then one line. Joins show on the card, not as lines.
     if (!peer && m.body?.groupCall?.state === 'start') return <GroupCallCard client={client} m={m} />;
-    if (!peer && m.body?.groupCall?.state === 'join') return null;
+    if (!peer && (m.body?.groupCall?.state === 'join' || m.body?.groupCall?.state === 'leave')) return null;
     const fromHelper = who?.kind === 'agent';
     // "↩️ Undone." from the helper: a line, like alerts.
     if (fromHelper && isHelperStatusLine(String(m.body?.text ?? ''))) return <Text style={pill}>{m.body!.text}</Text>;

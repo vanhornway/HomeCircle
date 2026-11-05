@@ -5,15 +5,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CircleClient } from '@homecircle/core';
 import { Button } from './ui';
 import { errorText } from '../lib/circle';
-import { inAppCalls } from '../lib/inAppCalls';
 import { joinGroupCall } from '../lib/groupCalls';
 import { callLinkFrom } from '../lib/whatsappCore';
 import { useTheme } from '../theme';
 
 /**
- * The circle's WhatsApp group call link, in a bottom sheet. An admin pastes
- * it (it is checked, then sealed in the circle's record like the circle's
- * name, so only the circle can read it); everyone else just joins.
+ * The circle's WhatsApp group call link, the fallback for calls in HomeCircle,
+ * in a bottom sheet. An admin pastes it (it is checked, then sealed in the
+ * circle's record like the circle's name, so only the circle can read it);
+ * everyone else just joins.
  */
 export function GroupCallSheet({ client, visible, onClose }: { client: CircleClient; visible: boolean; onClose: () => void }) {
   const t = useTheme();
@@ -24,7 +24,6 @@ export function GroupCallSheet({ client, visible, onClose }: { client: CircleCli
   const [problem, setProblem] = useState<string | null>(null);
   const [changing, setChanging] = useState(false);
   const editing = admin && (!link || changing);
-  const inApp = inAppCalls();
   const on = client.activeGroupCall();
 
   const close = () => {
@@ -67,7 +66,7 @@ export function GroupCallSheet({ client, visible, onClose }: { client: CircleCli
       <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={close} style={{ flex: 1, backgroundColor: t.scrim, justifyContent: 'flex-end' }}>
         <Pressable accessible={false} onPress={() => {}} style={{ backgroundColor: t.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
           <SafeAreaView edges={['bottom']} style={{ padding: 18, gap: 14 }}>
-            <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>Group call</Text>
+            <Text style={{ color: t.text, fontSize: 20, fontWeight: '700' }}>Group call on WhatsApp</Text>
             {link && !editing ? (
               <>
                 <Text style={{ color: t.muted, fontSize: 14, lineHeight: 20 }}>
@@ -118,15 +117,6 @@ export function GroupCallSheet({ client, visible, onClose }: { client: CircleCli
             ) : (
               <Text style={{ color: t.muted, fontSize: 15, lineHeight: 21 }}>No group call link is saved yet. Ask a circle admin to add one: long-press Group call.</Text>
             )}
-            {inApp ? (
-              <Button
-                title="Start an in-app call room"
-                onPress={() => {
-                  close();
-                  inApp.startGroup(client);
-                }}
-              />
-            ) : null}
           </SafeAreaView>
         </Pressable>
       </Pressable>

@@ -9,9 +9,8 @@ import { useTheme } from '../theme';
 const clock = (ts: number) => new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
 /**
- * "Maya started the group call" in the group chat: who's on it, and Join,
- * which opens WhatsApp in the call. After 30 minutes without anyone joining
- * it's over, and shrinks to one quiet line: "Group call · 9:57 PM · Maya, you".
+ * "Maya started the group call" in the group chat: who's on it, and Join. Once
+ * it's over it shrinks to one quiet line: "Group call · 9:57 PM · Maya, you".
  */
 export function GroupCallCard({ client, m }: { client: CircleClient; m: Message }) {
   const t = useTheme();
@@ -32,16 +31,17 @@ export function GroupCallCard({ client, m }: { client: CircleClient; m: Message 
       </Text>
     );
   }
-  const inIt = s.joined.includes(me ?? '');
+  const onIt = s.mesh ? s.present : s.joined;
+  const inIt = onIt.includes(me ?? '');
   const title = `${mine ? 'You' : client.displayName(s.from)} started the group call`;
-  const who = s.joined.map(nameOf).join(', ');
+  const who = onIt.map(nameOf).join(', ');
   const detail = `On it: ${who}`;
   const join = () => void joinGroupCall(client, s.id);
   return (
     <View style={{ alignSelf: mine ? 'flex-end' : 'flex-start', width: '84%', marginVertical: 4 }}>
-      <HighlightCard icon="phone" title={title} open onPress={join} label={`${title}. ${detail}`} hint="Opens WhatsApp in the call">
+      <HighlightCard icon="phone" title={title} open onPress={join} label={`${title}. ${detail}`} hint={s.mesh ? 'Joins the call' : 'Opens WhatsApp in the call'}>
         <Text style={{ color: t.muted, fontSize: fs(14), lineHeight: fs(19) }}>{detail}</Text>
-        <Button small variant="primary" title={inIt ? 'Back to the call' : 'Join in WhatsApp'} onPress={join} />
+        <Button small variant="primary" title={inIt ? 'Back to the call' : s.mesh ? 'Join the call' : 'Join in WhatsApp'} onPress={join} />
       </HighlightCard>
       <Text style={{ color: t.muted, fontSize: fs(14), marginTop: 2, marginHorizontal: 6 }}>{clock(s.ts)}</Text>
     </View>

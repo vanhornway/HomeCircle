@@ -4,6 +4,7 @@ import { useCircles } from '../lib/circle';
 import { attachCalls, pickUpCalls, startCallHost } from '../lib/calls';
 import { useSkin } from '../skins';
 import { CallScreen } from './CallScreen';
+import { GroupCallScreen } from './GroupCallScreen';
 
 /**
  * Calls for the whole app: listens in every circle, shows the call screen over
@@ -28,5 +29,10 @@ export function CallHost() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [circlesKey]);
-  return <CallScreen elder={skin === 'elderly'} />;
+  return (
+    <>
+      <CallScreen elder={skin === 'elderly'} />
+      <GroupCallScreen elder={skin === 'elderly'} />
+    </>
+  );
 }

@@ -55,9 +55,9 @@ function lastRead(circleId: string, peer: string | null) {
   return state.read[conversationKey(circleId, peer)] ?? state.base[circleId] ?? Number.MAX_SAFE_INTEGER;
 }
 
-// A "joined the group call" line isn't shown in the chat, so it isn't unread either.
+// "Joined" and "left the group call" lines aren't shown in the chat, so they aren't unread either.
 const counts = (m: Message, me: string | undefined) =>
-  m.from !== me && m.body?.groupCall?.state !== 'join' && (m.kind === 'chat' || (m.kind === 'event' && currentSettings().showPlaceAlerts));
+  m.from !== me && m.body?.groupCall?.state !== 'join' && m.body?.groupCall?.state !== 'leave' && (m.kind === 'chat' || (m.kind === 'event' && currentSettings().showPlaceAlerts));
 
 export function unreadIn(client: CircleClient, peer: string | null): number {
   const id = client.circleId;

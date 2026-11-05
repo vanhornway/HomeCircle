@@ -57,6 +57,8 @@ const MAX_MEMBERS_ASKED = 50;
 export const CALLBACK_ANSWERS = [...CALLBACK_REPLIES, 'asleep'];
 /** A group call is on this long after it started or someone last joined. */
 export const GROUP_CALL_OPEN_MS = 30 * 60_000;
+// A call in HomeCircle ends when everyone has left. This is for phones that vanished without saying so.
+const MESH_CALL_OPEN_MS = 4 * 60 * 60_000;
 
 const AGENT_NAME = /^[\p{L}\p{N}][\p{L}\p{N} _-]{0,23}$/u;
 /** An agent's name: what people call it (/Name), so letters, digits, space, _ and - only. */
@@ -1979,11 +1981,12 @@ export class CircleClient {
   }
 
   // --- group calls ---------------------------------------------------------
-  // Anyone starts the circle's WhatsApp group call: a group chat message with
+  // Anyone starts the circle's group call: a group chat message with
   // `body.groupCall` { state: 'start' }, sent urgent so every phone wakes and
-  // shows "join" (the link itself stays in the circle record). Joining adds a
-  // quiet { state: 'join', of } line. A call counts as on for 30 minutes after
-  // it started or someone last joined.
+  // shows "join". Joining adds a quiet { state: 'join', of } line. A call in
+  // HomeCircle has `mesh: true`, and people say when they leave it, so it's on
+  // while someone is on it. On WhatsApp the link stays in the circle record, and
+  // a call counts as on for 30 minutes after it started or someone last joined.
 
   /** Start the group call (or join the one that's on). Returns its id. */
   async startGroupCall() {
@@ -1998,26 +2001,52 @@ export class CircleClient {
     return id;
   }
 
-  /** Say you joined a group call (once per call). */
+  /** Start a group call in HomeCircle (or join the one that's on). Returns its id. */
+  async startMeshCall() {
+    if (!this.feature('calls')) throw new Error('Voice calls are off for this circle.');
+    const on = this.activeGroupCall();
+    if (on) {
+      await this.joinGroupCall(on.id);
+      return on.id;
+    }
+    const id = randomId(12);
+    await this._post('chat', { text: `📞 ${this.myName} started a group call. Tap to join.`, groupCall: { state: 'start', mesh: true } }, { id, urgent: true });
+    return id;
+  }
+
+  /** Say you joined a group call (once, unless you left it). */
   async joinGroupCall(callId) {
     const s = this.groupCallState(callId);
     const me = this.account?.memberId;
-    if (!s || s.joined.includes(me)) return;
+    if (!s || s.present.includes(me)) return;
     await this._post('chat', { text: `📞 ${this.myName} joined the group call.`, groupCall: { state: 'join', of: callId } });
   }
 
-  /** A group call: { id, from, ts, joined (member ids, the starter first), last, open }. */
+  /** Say you left a group call in HomeCircle. */
+  async leaveGroupCall(callId) {
+    await this._post('chat', { text: `📞 ${this.myName} left the group call.`, groupCall: { state: 'leave', of: callId } }, { silent: true });
+  }
+
+  /** A group call: { id, from, ts, joined (member ids, the starter first), present (those still on it), mesh, last, open }. */
   groupCallState(callId, now = Date.now()) {
     const start = this.messages.find((m) => m.id === callId && m.kind === 'chat' && !m.peer && m.body?.groupCall?.state === 'start');
     if (!start) return null;
     const joined = [start.from];
+    const present = new Set(joined);
     let last = start.ts;
     for (const m of this.messages) {
-      if (m.kind !== 'chat' || m.peer || m.seq <= start.seq || m.body?.groupCall?.state !== 'join' || m.body.groupCall.of !== callId) continue;
+      const g = m.body?.groupCall;
+      if (m.kind !== 'chat' || m.peer || m.seq <= start.seq || (g?.state !== 'join' && g?.state !== 'leave') || g.of !== callId) continue;
+      if (g.state === 'leave') {
+        present.delete(m.from);
+        continue;
+      }
       if (!joined.includes(m.from)) joined.push(m.from);
+      present.add(m.from);
       last = Math.max(last, m.ts);
     }
-    return { id: callId, from: start.from, ts: start.ts, joined, last, open: now - last < GROUP_CALL_OPEN_MS };
+    const mesh = start.body.groupCall.mesh === true;
+    return { id: callId, from: start.from, ts: start.ts, joined, present: [...present], mesh, last, open: mesh ? present.size > 0 && now - last < MESH_CALL_OPEN_MS : now - last < GROUP_CALL_OPEN_MS };
   }
 
   /** The group call that's on now (the newest), or null. */

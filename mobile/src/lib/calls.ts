@@ -8,6 +8,7 @@ import { AppState, Platform } from 'react-native';
 import * as Network from 'expo-network';
 import { randomId, type CircleClient, type CallSignal } from '@homecircle/core';
 import { VoiceCallEngine, type CallSnapshot, type EndInfo, type IceServer } from './callEngine';
+import { MESH_MAX, MeshCall, type MeshSnapshot } from './meshCall';
 import { FALLBACK_STUN, createPeerConnection, ensureBluetooth, ensureMicrophone, getLocalAudio, rtcAvailable } from './rtc';
 import { allClients, clientForCircle, errorText } from './circle';
 import { sasWords } from './callSas';
@@ -243,6 +244,15 @@ export function attachCalls(client: CircleClient) {
 }
 
 function onSignal(client: CircleClient, s: CallSignal) {
+  // For the group call.
+  if (String(s.op).startsWith('m-')) {
+    if (client === meshClient) void mesh.handleSignal(s as never);
+    return;
+  }
+  if (s.op === 'offer' && mesh.snapshot.phase !== 'idle') {
+    client.sendCallSignal(s.from, { callId: s.callId, op: 'busy' }).catch(() => {});
+    return;
+  }
   const busy = engine.snapshot.phase !== 'idle';
   if (busy && active !== client) {
     // On a call in another circle: the other phone is told, nothing else happens.
@@ -275,7 +285,7 @@ export async function startCall(client: CircleClient, peerId: string): Promise<v
   const snap = engine.snapshot;
   // Calling the person who is calling you: that is answering.
   if (snap.phase === 'incoming' && snap.peerId === peerId && active === client) return answerCall();
-  if (snap.phase !== 'idle') throw new Error('You’re already on a call.');
+  if (snap.phase !== 'idle' || mesh.snapshot.phase !== 'idle') throw new Error('You’re already on a call.');
   // The microphone first: the service that keeps a call going (started as the
   // call begins) is a microphone service, and Android stops the app if it
   // starts without the permission.
@@ -332,6 +342,160 @@ export function setMuted(muted: boolean) {
 }
 export function chooseRoute(route: AudioRoute) {
   if (setAudioRoute(route)) publish({ routes: { ...getAudioRoutes(), current: route } });
+}
+
+// --- group calls -------------------------------------------------------------
+
+/** The circle the group call is in. */
+let meshClient: CircleClient | null = null;
+let meshOff: (() => void) | null = null;
+// On your own for this long: the call ends for you, so a phone left on a call doesn't sit there recording.
+const ALONE_MS = 10 * 60_000;
+
+const mesh = new MeshCall({
+  get selfId() {
+    return meshClient?.account?.memberId ?? '';
+  },
+  send: (to, body) => meshClient!.sendCallSignal(to, body as never),
+  createPeerConnection: (ice) => createPeerConnection(ice, { relayOnly }),
+  getLocalAudio,
+  iceServers: async () => {
+    try {
+      const cfg = await meshClient!.callsConfig();
+      relayOnly = !!cfg.relayOnly;
+      return cfg.iceServers?.length ? cfg.iceServers : FALLBACK_STUN;
+    } catch {
+      relayOnly = false;
+      return FALLBACK_STUN;
+    }
+  },
+  log: (...a) => diag('mesh', { what: a.join(' ').slice(0, 120) }),
+});
+
+type MeshUi = { snap: MeshSnapshot; circleId: string | null; route: AudioRoute };
+let meshUi: MeshUi = { snap: mesh.snapshot, circleId: null, route: 'speaker' };
+const meshSubs = new Set<() => void>();
+const publishMesh = (patch: Partial<MeshUi>) => {
+  meshUi = { ...meshUi, ...patch };
+  meshSubs.forEach((fn) => fn());
+};
+mesh.subscribe((snap) => publishMesh({ snap }));
+
+/** What the group call screen shows. */
+export const useMesh = () =>
+  useSyncExternalStore(
+    (fn) => {
+      meshSubs.add(fn);
+      return () => meshSubs.delete(fn);
+    },
+    () => meshUi,
+  );
+
+/** Whether this phone can be on a group call in HomeCircle in this circle. */
+export function meshAvailable(client: CircleClient): boolean {
+  return Platform.OS === 'android' && client.feature('calls') && rtcAvailable();
+}
+
+/** Who's talking, from each connection's audio level. */
+async function readSpeaking() {
+  const talking = new Set<string>();
+  await Promise.all(
+    mesh.connections.map(async ({ id, pc }) => {
+      const report: any = await (pc as any).getStats?.().catch(() => null);
+      report?.forEach?.((r: any) => {
+        if (r.type === 'inbound-rtp' && r.kind !== 'video' && (r.audioLevel ?? 0) > 0.03) talking.add(id);
+      });
+    }),
+  );
+  mesh.setSpeaking(talking);
+}
+
+function endMeshAudio() {
+  meshOff?.();
+  meshOff = null;
+  stopCallService();
+  setCallAudio(false);
+  showOverLockScreen(false);
+  meshClient = null;
+  publishMesh({ circleId: null });
+}
+
+/** Join the group call (or start one: `callId` null). Throws a readable message if it can't. */
+export async function joinMesh(client: CircleClient, callId: string | null): Promise<void> {
+  if (mesh.snapshot.phase !== 'idle') {
+    if (client === meshClient) return; // already on it: the screen is showing
+    throw new Error('You’re already on a call.');
+  }
+  if (engine.snapshot.phase !== 'idle') throw new Error('You’re already on a call.');
+  const on = callId ? client.groupCallState(callId) : client.activeGroupCall();
+  if (on && on.present.length >= MESH_MAX) throw new Error(`This call is full: ${MESH_MAX} people at most.`);
+  buzz();
+  await whenOnScreen();
+  await ensureMicrophone();
+  attachCalls(client);
+  const id = on?.id ?? (await client.startMeshCall());
+  const me = client.account?.memberId;
+  const others = (client.groupCallState(id)?.present ?? []).filter((x) => x !== me);
+  meshClient = client;
+  publishMesh({ circleId: client.circleId, route: 'speaker' });
+  setCallAudio(true);
+  startCallService('HomeCircle group call', `${client.circle.name}. Tap to return to the call.`);
+  setAudioRoute('speaker');
+  showOverLockScreen(true);
+  ensureBluetooth().catch(() => {});
+
+  // Who comes and goes, from the chat. Network changes find new paths.
+  const offMessages = client.on('newMessage', (m) => {
+    const g = m.body?.groupCall;
+    if (g?.of !== id || m.from === me) return;
+    if (g.state === 'join') mesh.peerJoined(m.from);
+    if (g.state === 'leave') mesh.peerLeft(m.from);
+  });
+  let lastNet: string | null = null;
+  const net = Network.addNetworkStateListener((state) => {
+    const key = `${state.type}|${state.isConnected}`;
+    if (lastNet !== null && key !== lastNet && state.isConnected) mesh.networkChanged();
+    lastNet = key;
+  });
+  const talk = setInterval(() => void readSpeaking(), 800);
+  let alone: ReturnType<typeof setTimeout> | null = null;
+  const offAlone = mesh.subscribe((s) => {
+    if (s.phase === 'idle') return;
+    if (s.peers.length) {
+      if (alone) clearTimeout(alone);
+      alone = null;
+    } else alone ??= setTimeout(() => void leaveMesh(), ALONE_MS);
+  });
+  meshOff = () => {
+    offMessages();
+    net.remove();
+    clearInterval(talk);
+    offAlone();
+    if (alone) clearTimeout(alone);
+  };
+  try {
+    await client.joinGroupCall(id);
+    await mesh.join(id, others);
+    diag('mesh:join', { others: others.length });
+  } catch (e) {
+    mesh.leave({ notify: false });
+    client.leaveGroupCall(id).catch(() => {});
+    endMeshAudio();
+    throw e;
+  }
+}
+
+/** Leave the group call. It goes on for everyone else. */
+export async function leaveMesh() {
+  const client = meshClient;
+  const id = mesh.snapshot.callId;
+  mesh.leave();
+  endMeshAudio();
+  if (client && id) await client.leaveGroupCall(id).catch(() => {});
+}
+export const setMeshMuted = (muted: boolean) => mesh.setMuted(muted);
+export function chooseGroupRoute(route: AudioRoute) {
+  if (setAudioRoute(route)) publishMesh({ route });
 }
 
 /** Handle the answer / decline button of the incoming-call notification. */

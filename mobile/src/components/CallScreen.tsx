@@ -21,7 +21,7 @@ const GLYPH = {
   bluetooth: 'M7 7.5l10 9-5 4.5V3l5 4.5-10 9',
 };
 
-function Glyph({ name, color, size = 26 }: { name: keyof typeof GLYPH; color: string; size?: number }) {
+export function Glyph({ name, color, size = 26 }: { name: keyof typeof GLYPH; color: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path d={GLYPH[name]} stroke={color} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
@@ -29,7 +29,7 @@ function Glyph({ name, color, size = 26 }: { name: keyof typeof GLYPH; color: st
   );
 }
 
-function Round({ label, onPress, bg, border, children, size = 64, on }: { label: string; onPress: () => void; bg: string; border?: string; children: React.ReactNode; size?: number; on?: boolean }) {
+export function Round({ label, onPress, bg, border, children, size = 64, on }: { label: string; onPress: () => void; bg: string; border?: string; children: React.ReactNode; size?: number; on?: boolean }) {
   return (
     <Pressable
       accessibilityRole="button"

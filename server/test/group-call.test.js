@@ -125,3 +125,38 @@ test('the server never sees the link or who joined: only sealed messages', async
   assert.ok(!raw.includes('groupCall'));
   assert.ok(!raw.includes('joined the group call'));
 });
+
+test('a call in HomeCircle: on while someone is on it, and people can leave and come back', async () => {
+  // A circle of its own: the calls above are still open.
+  const sam = client();
+  const zara = client();
+  await sam.createCircle({ features: allFeatures(), serverUrl: url, setupToken: SETUP, name: 'Sam', circleName: 'Parkers' });
+  await zara.joinWithInvite((await sam.createInvite()).link, { name: 'Zara' });
+  await Promise.all([sam.refresh(), zara.refresh()]);
+  const settle = async (done) => {
+    for (let i = 0; i < 200; i++) {
+      await Promise.all([sam.fetchMessages(), zara.fetchMessages()]);
+      if (done()) return;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    throw new Error('timed out');
+  };
+  const id = await sam.startMeshCall();
+  await settle(() => zara.groupCallState(id));
+  const s = zara.groupCallState(id);
+  assert.equal(s.mesh, true);
+  assert.deepEqual(s.present, [sam.account.memberId]);
+  assert.equal(zara.activeGroupCall().id, id);
+  await zara.joinGroupCall(id);
+  await settle(() => sam.groupCallState(id).present.length === 2);
+  await zara.leaveGroupCall(id);
+  await settle(() => sam.groupCallState(id).present.length === 1);
+  assert.deepEqual(sam.groupCallState(id).joined, [sam.account.memberId, zara.account.memberId]);
+  await zara.joinGroupCall(id);
+  await settle(() => sam.groupCallState(id).present.length === 2);
+  await zara.leaveGroupCall(id);
+  await sam.leaveGroupCall(id);
+  await settle(() => !sam.groupCallState(id).open);
+  assert.equal(sam.activeGroupCall(), null);
+  assert.equal(zara.activeGroupCall(), null);
+});

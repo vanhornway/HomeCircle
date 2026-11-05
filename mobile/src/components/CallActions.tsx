@@ -4,8 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { CircleClient } from '@homecircle/core';
 import { Button, Icon } from './ui';
 import { GroupCallSheet } from './GroupCallSheet';
-import { canCall, startCall } from '../lib/calls';
+import { canCall, meshAvailable, startCall } from '../lib/calls';
 import { errorText } from '../lib/circle';
+import { joinGroupCall } from '../lib/groupCalls';
 import { openChat, openGroupCallLink, showOutcome } from '../lib/whatsapp';
 import { useSkin } from '../skins';
 import { useTheme } from '../theme';
@@ -141,9 +142,9 @@ export function CallButton({ client, memberId }: { client: CircleClient; memberI
 }
 
 /**
- * Group call, in a group chat's header. With the circle's WhatsApp call link
- * saved, one tap opens WhatsApp's call lobby. Without one (or on a long press)
- * a sheet lets an admin paste it.
+ * Group call, in a group chat's header. A tap joins or starts it in HomeCircle.
+ * Where that can't work, the circle's WhatsApp link opens WhatsApp's call lobby;
+ * with no link yet (or on a long press) a sheet lets an admin paste it.
  */
 export function GroupCallButton({ client }: { client: CircleClient }) {
   const t = useTheme();
@@ -151,15 +152,16 @@ export function GroupCallButton({ client }: { client: CircleClient }) {
   const [sheet, setSheet] = useState(false);
   const [, bump] = useState(0);
   useEffect(() => client.on('circle', () => bump((n) => n + 1)), [client]);
-  if (!client.feature('whatsapp') || skin === 'elderly') return null;
+  const mesh = meshAvailable(client);
+  if (!(mesh || client.feature('whatsapp')) || skin === 'elderly') return null;
   const link = client.groupCallLink;
   return (
     <>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Group call"
-        accessibilityHint={link ? 'Opens the group call on WhatsApp. Long-press to change the link' : 'Sets up the group call link'}
-        onPress={() => (link ? void openGroupCallLink(link).then(showOutcome) : setSheet(true))}
+        accessibilityHint={mesh ? 'Starts or joins the call in HomeCircle. Long-press for WhatsApp' : link ? 'Opens the group call on WhatsApp. Long-press to change the link' : 'Sets up the group call link'}
+        onPress={() => (mesh ? void joinGroupCall(client, null) : link ? void openGroupCallLink(link).then(showOutcome) : setSheet(true))}
         onLongPress={() => setSheet(true)}
         delayLongPress={400}
         hitSlop={4}

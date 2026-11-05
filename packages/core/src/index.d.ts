@@ -340,6 +340,10 @@ export interface GroupCallState {
   ts: number;
   /** Who said they joined, the starter first. */
   joined: string[];
+  /** Who's still on it (a call in HomeCircle: people say when they leave). */
+  present: string[];
+  /** A call in HomeCircle, not on WhatsApp. */
+  mesh: boolean;
   /** When it started or someone last joined. */
   last: number;
   /** Still on: under 30 minutes since `last`. */
@@ -705,6 +709,8 @@ export class CircleClient {
   /** Say you joined a group call (once per call). */
   joinGroupCall(callId: string): Promise<void>;
   groupCallState(callId: string, now?: number): GroupCallState | null;
+  startMeshCall(): Promise<string>;
+  leaveGroupCall(callId: string): Promise<void>;
   /** The group call that's on now, or null. */
   activeGroupCall(now?: number): GroupCallState | null;
   /** An elder's phone, once joined: tell the circle, so an admin's phone saves her settings. */
