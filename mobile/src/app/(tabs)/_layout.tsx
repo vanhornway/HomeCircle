@@ -14,6 +14,7 @@ import { getServerState, isUnreachable, RECONNECT_GRACE_MS, setRetryHandler, set
 import { registerPush } from '../../lib/push';
 import { askNotificationsOnce } from '../../lib/firstRun';
 import { clearBackupAlerts, ensureNotificationChannels, markSeen, notifyNewMessages } from '../../lib/notify';
+import { keepsConnection } from '../../lib/calls';
 import { useJoinGroupCallFromNotification } from '../../lib/groupCalls';
 import { ensureReadBase, unreadInCircle } from '../../lib/unread';
 import { useAllCircles } from '../../lib/useCircle';
@@ -270,7 +271,7 @@ function useCircleLifecycle(circlesKey: string) {
         allClients().forEach((c) => c.flushCache().catch(() => {}));
         if (state === 'background') {
           if (retryTimer) clearTimeout(retryTimer);
-          allClients().forEach((c) => c.disconnect());
+          allClients().forEach((c) => keepsConnection(c) || c.disconnect());
         }
       }
     });

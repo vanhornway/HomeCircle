@@ -11,6 +11,7 @@ import { ensureNotificationChannels, notifyNewMessages } from '../../lib/notify'
 import { shareNow, startBackgroundUpdates } from '../../lib/location';
 import { loadPages, settingsOf } from '../../companion/people';
 import { flushOutbox } from '../../companion/outbox';
+import { keepsConnection } from '../../lib/calls';
 import { useJoinGroupCallFromNotification } from '../../lib/groupCalls';
 import { markUsed } from '../../companion/used';
 import { C } from '../../companion/theme';
@@ -86,7 +87,7 @@ export default function CompanionLayout() {
       else {
         // Leaving the app: written down now, in case it's closed.
         clients.forEach((c) => c.flushCache().catch(() => {}));
-        if (state === 'background') clients.forEach((c) => c.disconnect());
+        if (state === 'background') clients.forEach((c) => keepsConnection(c) || c.disconnect());
       }
     });
     return () => {

@@ -391,6 +391,9 @@ export const useMesh = () =>
     () => meshUi,
   );
 
+/** A group call needs its connection in the background too: people join and answer through it at any moment. */
+export const keepsConnection = (client: CircleClient) => client === meshClient && mesh.snapshot.phase !== 'idle';
+
 /** Whether this phone can be on a group call in HomeCircle in this circle. */
 export function meshAvailable(client: CircleClient): boolean {
   return Platform.OS === 'android' && client.feature('calls') && rtcAvailable();
@@ -432,6 +435,8 @@ export async function joinMesh(client: CircleClient, callId: string | null): Pro
   buzz();
   await whenOnScreen();
   await ensureMicrophone();
+  // Asked now, not during the call: a permission prompt puts the app in the background.
+  await ensureBluetooth().catch(() => false);
   attachCalls(client);
   const id = on?.id ?? (await client.startMeshCall());
   const me = client.account?.memberId;
@@ -442,7 +447,6 @@ export async function joinMesh(client: CircleClient, callId: string | null): Pro
   startCallService('HomeCircle group call', `${client.circle.name}. Tap to return to the call.`);
   setAudioRoute('speaker');
   showOverLockScreen(true);
-  ensureBluetooth().catch(() => {});
 
   // Who comes and goes, from the chat. Network changes find new paths.
   const offMessages = client.on('newMessage', (m) => {
