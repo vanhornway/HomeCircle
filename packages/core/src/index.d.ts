@@ -466,6 +466,7 @@ export interface DemoStart {
   link: string;
   expiresAt: number;
   minutes: number;
+  unusedMinutes: number;
 }
 
 export class CircleClient {

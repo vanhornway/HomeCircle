@@ -218,6 +218,8 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 .row .grow { flex: 1; min-width: 0; }
 .qr { background: #fff; border-radius: 12px; padding: 10px; width: max-content; margin: 10px 0; }
 .qr img { display: block; width: 200px; height: 200px; image-rendering: pixelated; }
+.demo-qr { margin-top: 8px; }
+.demo-qr .qr { margin: 10px auto; }
 .link-box { display: flex; gap: 6px; }
 .link-box .input { font-size: 12px; }
 .switch { display: flex; align-items: center; gap: 10px; cursor: pointer; }

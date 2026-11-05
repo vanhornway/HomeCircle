@@ -166,6 +166,18 @@ test('the visitor sees the time left, can’t invite anyone, and leaving ends th
   assert.equal(app.demo.copy(owner.circleId), null);
 });
 
+test('a visitor’s real whereabouts never reach the family, whatever their app sends', async () => {
+  clear();
+  const owner = await readyCopy();
+  const { link } = (await start()).body;
+  const me = visitor();
+  await me.joinWithInvite(link, { name: 'Sam' });
+  await me.shareLocation({ lat: 40.7, lng: -74 });
+  assert.deepEqual(app.store.locations(owner.circleId), []);
+  await me.shareFrequent([{ id: 'p1', name: 'Work', kind: 'work', lat: 40.7, lng: -74, visits: 3, hours: 9, lastAt: Date.now() }]);
+  assert.deepEqual(app.store.frequent(owner.circleId), []);
+});
+
 test('a member of the family leaving doesn’t end the copy', async () => {
   clear();
   const owner = await readyCopy();

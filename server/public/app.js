@@ -373,6 +373,35 @@ function renderDemoStart() {
   const name = h('input', { class: 'input', placeholder: 'Your first name', autocomplete: 'given-name', maxlength: 40, 'aria-label': 'Your first name' });
   const btn = h('button', { class: 'btn primary block', type: 'submit' }, 'Try a demo family');
   const error = h('p', { class: 'error', role: 'alert' });
+  // For a phone with the app: a fresh one-time link each time, so a code left
+  // on the screen goes back to the button once its link has lapsed.
+  const qrBox = h('div', { class: 'demo-qr' });
+  const qrButton = () =>
+    h(
+      'button',
+      {
+        class: 'btn block',
+        type: 'button',
+        onclick: async (e) => {
+          e.target.disabled = true;
+          error.textContent = '';
+          try {
+            const { link, unusedMinutes } = await CircleClient.startDemo(SERVER, { device: demoDevice() });
+            qrBox.replaceChildren(
+              qrImage(link),
+              h('p', { class: 'muted small' }, `In the HomeCircle app, open Settings → Your circles → Join a circle, then scan this. It works once, for ${unusedMinutes} minutes. Your other circles aren’t touched.`),
+              h('div', { class: 'link-box' }, h('input', { class: 'input mono', readonly: true, value: link, 'aria-label': 'Invite link', onfocus: (ev) => ev.target.select() }), copyButton(link)),
+            );
+            setTimeout(() => qrBox.replaceChildren(qrButton()), unusedMinutes * 60_000);
+          } catch (err) {
+            error.textContent = errorText(err);
+            e.target.disabled = false;
+          }
+        },
+      },
+      'Show a QR code for your phone',
+    );
+  qrBox.append(qrButton());
   mount(
     h(
       'main',
@@ -406,6 +435,7 @@ function renderDemoStart() {
           btn,
         ),
         error,
+        qrBox,
         lockNote('Your own location isn’t used. Nothing here touches any real circle.'),
       ),
     ),

@@ -152,7 +152,7 @@ export function mountDemo(r, demo, config, limitPublic) {
       // The director builds copies over loopback; visitors reach this address.
       const proto = ctx.req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
       const origin = config.publicUrl || `${proto}://${ctx.req.headers.host}`;
-      return { link: link.replace(/^https?:\/\/[^/#]+/, origin), expiresAt, minutes: config.demoMinutes };
+      return { link: link.replace(/^https?:\/\/[^/#]+/, origin), expiresAt, minutes: config.demoMinutes, unusedMinutes: config.demoUnusedMinutes };
     },
     { auth: false, cors: true },
   );

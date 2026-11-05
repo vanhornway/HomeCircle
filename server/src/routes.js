@@ -658,10 +658,15 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
 
   r.add('GET', '/locations', ({ me }) => ({ locations: store.locations(me.circleId) }));
 
+  // A demo family never gets a visitor's real whereabouts. An app from before
+  // demos doesn't know it's in one and shares as usual, so they stop here.
+  const isDemoVisitor = (me) => demo?.visitorOf(me.circleId) === me.id;
+
   r.add('PUT', '/locations/me', ({ me, body }) => {
     const env = vEnvelope(body, 'location', 4096);
     currentEpoch(me.circleId, env.epoch);
     const now = Date.now();
+    if (isDemoVisitor(me)) return { ok: true, updatedAt: now };
     store.putLocation(me.id, env, now);
     hub.broadcast(me.circleId, { type: 'location', memberId: me.id, env, updatedAt: now }, me.id);
     return { ok: true, updatedAt: now };
@@ -787,6 +792,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     const env = vEnvelope(body, 'frequent', 8192);
     currentEpoch(me.circleId, env.epoch);
     const now = Date.now();
+    if (isDemoVisitor(me)) return { ok: true, updatedAt: now };
     store.putFrequent(me.id, env, now);
     hub.broadcast(me.circleId, { type: 'frequent', memberId: me.id }, me.id);
     return { ok: true, updatedAt: now };

@@ -550,7 +550,7 @@ export class CircleClient {
   }
 
   /**
-   * Ask a demo server for a copy of its demo family: { link, expiresAt, minutes }.
+   * Ask a demo server for a copy of its demo family: { link, expiresAt, minutes, unusedMinutes }.
    * `device` is a random id this phone keeps, counted against the starts a device gets.
    */
   static async startDemo(serverUrl, { device, fetchImpl } = {}) {
