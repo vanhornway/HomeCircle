@@ -245,7 +245,184 @@ function lockNote(text) {
 
 // --- onboarding ----------------------------------------------------------
 
+const APK_URL = 'https://github.com/vanhornway/HomeCircle/releases/latest/download/HomeCircle.apk';
+const onPhone = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const ticketLabel = (code) => `${code.slice(0, 4)}-${code.slice(4)}`;
+const minutesLeft = (t) => Math.max(1, Math.ceil((t.expiresAt - Date.now()) / 60_000));
+
+/** The server's first page: the phone sets up first, or its owner ends up in the circle twice. */
 function renderSetup() {
+  if (onPhone()) return renderStart();
+  const err = h('p', { class: 'error', role: 'alert' });
+  const code = h('input', { class: 'input mono', id: 'code', required: true, autocomplete: 'off', spellcheck: 'false', placeholder: 'From your server logs' });
+  const btn = h('button', { class: 'btn primary', type: 'submit' }, 'Show the QR code');
+  const second = h('div', {});
+  const form = h(
+    'form',
+    {
+      onsubmit: async (e) => {
+        e.preventDefault();
+        btn.disabled = true;
+        err.textContent = '';
+        try {
+          showTicket(await CircleClient.setupTicket(SERVER, code.value));
+          btn.textContent = 'Make a new QR code';
+        } catch (ex) {
+          err.textContent = errorText(ex);
+        }
+        btn.disabled = false;
+      },
+    },
+    h('div', { class: 'field' }, h('label', { for: 'code' }, 'Setup code'), code),
+    btn,
+    err,
+  );
+  const showTicket = (t) => {
+    const host = location.host;
+    second.replaceChildren(
+      h(
+        'section',
+        { class: 'setup-step' },
+        h('h2', {}, h('span', { class: 'step-num' }, '2'), 'Scan this code with your phone'),
+        h(
+          'div',
+          { class: 'qr-steps' },
+          h('div', {}, qrImage(`${SERVER}/start#t=${t.code}`, 'QR code to set up HomeCircle on your phone'), h('p', { class: 'muted small' }, `Works once, for ${minutesLeft(t)} minutes`)),
+          h(
+            'ol',
+            { class: 'how-steps' },
+            h('li', {}, 'Unlock your ', h('strong', {}, 'Android phone'), ' and open the ', h('strong', {}, 'Camera'), ' app.'),
+            h('li', {}, 'Point it at the square code so the whole code fits on screen. Hold still for a second. ', h('strong', {}, 'Don’t take a photo.')),
+            h('li', {}, 'A link appears on the screen, starting with ', h('span', { class: 'mono' }, host), '. ', h('strong', {}, 'Tap that link.')),
+            h('li', {}, 'Your phone opens a HomeCircle page. Follow its two steps there: install the app, then finish setup.'),
+          ),
+        ),
+        h('div', { class: 'typed-code' }, 'No camera, or the scan won’t work? On your phone, open Chrome and go to ', h('br'), h('span', { class: 'mono' }, `${host}/start`), h('br'), 'then type this code: ', h('span', { class: 'mono' }, h('strong', {}, ticketLabel(t.code)))),
+        h(
+          'details',
+          { class: 'setup-help', open: true },
+          h('summary', {}, 'No link appears when I point the camera'),
+          h(
+            'ul',
+            {},
+            h('li', {}, 'Move the phone a little closer or farther until the whole square is on screen.'),
+            h('li', {}, 'Turn up this screen’s brightness, or tilt the phone to get rid of glare.'),
+            h('li', {}, 'Some phones need QR scanning turned on: in the Camera app, open ', h('strong', {}, 'Settings'), ' and turn on ', h('strong', {}, 'Scan QR codes'), ' (on some phones it’s called ', h('strong', {}, 'Google Lens suggestions'), ').'),
+            h('li', {}, 'Still nothing? Open the ', h('strong', {}, 'Google'), ' app, tap the ', h('strong', {}, 'camera icon'), ' in the search bar (Google Lens), and point it at the code.'),
+          ),
+        ),
+        h('details', { class: 'setup-help' }, h('summary', {}, 'The code says it has expired'), h('p', { class: 'muted' }, 'Each code works once, for 15 minutes. Press Make a new QR code above.')),
+        h('details', { class: 'setup-help' }, h('summary', {}, 'I have an iPhone'), h('p', { class: 'muted' }, 'HomeCircle runs on Android phones for now. Set up the circle from an Android phone first; family members can then join from a browser.')),
+      ),
+    );
+  };
+  mount(
+    h(
+      'main',
+      { class: 'onboard' },
+      h(
+        'div',
+        { class: 'card wide' },
+        brandRow(),
+        h('h1', {}, 'Your server is running'),
+        h('p', { class: 'muted' }, 'Now set up your family’s circle ', h('strong', {}, 'on your Android phone'), '. The phone is where HomeCircle shares location, so it should be the first thing you set up. This page gets the app onto your phone and starts setup there.'),
+        h(
+          'section',
+          { class: 'setup-step' },
+          h('h2', {}, h('span', { class: 'step-num' }, '1'), 'Enter your setup code'),
+          form,
+          h('p', { class: 'muted small' }, 'It’s in your server’s log, or where you host it: Render’s Environment tab (SETUP_TOKEN), or setup_code in Home Assistant.'),
+        ),
+        second,
+        h(
+          'p',
+          { class: 'muted small center' },
+          'Can’t use a phone right now? ',
+          h('button', { class: 'linkish', type: 'button', onclick: renderBrowserSetup }, 'Set up in this browser instead'),
+        ),
+      ),
+    ),
+  );
+  code.focus();
+}
+
+/** The page the QR code opens on the phone: install the app, then open it with everything filled in. */
+function renderStart() {
+  const given = location.hash.match(/^#t=([\w-]+)/)?.[1] || '';
+  const card = h('div', { class: 'card wide' }, brandRow(), h('p', { class: 'muted' }, 'Checking your code…'));
+  mount(h('main', { class: 'onboard' }, card));
+
+  const ask = (message = '') => {
+    const err = h('p', { class: 'error', role: 'alert' }, message);
+    const code = h('input', { class: 'input mono', id: 'code', required: true, autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', placeholder: 'e.g. 7KQ2-M9PX' });
+    card.replaceChildren(
+      brandRow(),
+      h('h1', {}, 'Set up HomeCircle on this phone'),
+      h('p', { class: 'muted' }, 'Type the code from your computer’s screen, or your server’s setup code.'),
+      h(
+        'form',
+        {
+          onsubmit: (e) => {
+            e.preventDefault();
+            check(code.value);
+          },
+        },
+        h('div', { class: 'field' }, h('label', { for: 'code' }, 'Code'), code),
+        h('button', { class: 'btn primary block', type: 'submit' }, 'Continue'),
+        err,
+      ),
+    );
+    code.focus();
+  };
+
+  const steps = (t) => {
+    const setup = `intent://setup?server=${encodeURIComponent(SERVER)}&t=${t.code}#Intent;scheme=homecircle;package=us.umair.homecircle;S.browser_fallback_url=${encodeURIComponent(APK_URL)};end`;
+    card.replaceChildren(
+      brandRow(),
+      h('h1', {}, 'Set up HomeCircle on this phone'),
+      h('p', { class: 'muted' }, 'Two steps. ', h('strong', {}, 'Keep this page open'), '; you’ll come back to it after the install.'),
+      h('p', { class: 'setup-ok' }, `✓ Setup ticket ready · works ${minutesLeft(t)} more minutes`),
+      h(
+        'section',
+        { class: 'setup-step' },
+        h('h2', {}, h('span', { class: 'step-num' }, '1'), 'Install the app'),
+        h('a', { class: 'btn primary block', href: APK_URL }, '⬇ Download HomeCircle'),
+        h(
+          'ol',
+          { class: 'how-steps' },
+          h('li', {}, 'Tap ', h('strong', {}, 'Download HomeCircle'), '. If Chrome warns about the file, tap ', h('strong', {}, 'Download anyway'), '; it comes from HomeCircle’s GitHub page.'),
+          h('li', {}, 'When it’s done, tap ', h('strong', {}, 'Open'), ' in the message at the bottom (or find ', h('strong', {}, 'HomeCircle.apk'), ' in your notifications).'),
+          h('li', {}, 'If Android says it can’t install apps from this source: tap ', h('strong', {}, 'Settings'), ', turn on ', h('strong', {}, 'Allow from this source'), ', then tap Back.'),
+          h('li', {}, 'Tap ', h('strong', {}, 'Install'), '. When it says ', h('em', {}, 'App installed'), ', tap ', h('strong', {}, 'Done'), ' and come back to this page.'),
+        ),
+      ),
+      h(
+        'section',
+        { class: 'setup-step' },
+        h('h2', {}, h('span', { class: 'step-num' }, '2'), 'Finish setup in the app'),
+        h('a', { class: 'btn primary block', href: setup }, 'Open HomeCircle to finish setup'),
+        h('p', { class: 'muted small' }, 'The app opens with your server and setup code already filled in. Type your name and your circle’s name, then tap ', h('strong', {}, 'Create my circle'), '.'),
+        h('p', { class: 'muted small' }, 'Already have HomeCircle on this phone? Skip step 1.'),
+      ),
+      h('details', { class: 'setup-help' }, h('summary', {}, 'The button starts a download instead'), h('p', { class: 'muted' }, 'The app isn’t installed yet. Finish step 1, then tap the button again. If you closed this page, scan the code on the computer again.')),
+      h('details', { class: 'setup-help' }, h('summary', {}, 'I opened the app from the install screen'), h('p', { class: 'muted' }, 'That’s fine. Come back to this page and tap ', h('strong', {}, 'Open HomeCircle to finish setup'), ' so the app gets your server and setup code.')),
+      lockNote('Your encryption keys are made on this phone and never leave it. You’ll be the circle’s owner and can invite everyone from the app.'),
+    );
+  };
+
+  const check = async (code) => {
+    try {
+      steps(await CircleClient.setupTicket(SERVER, code));
+    } catch (e) {
+      ask(errorText(e));
+    }
+  };
+  if (given) check(given);
+  else ask();
+}
+
+/** Setting up here after all: the warning matters, since the phone would otherwise make a second you. */
+function renderBrowserSetup() {
   const err = h('p', { class: 'error', role: 'alert' });
   const name = h('input', { class: 'input', id: 'name', required: true, maxlength: '40', autocomplete: 'given-name', placeholder: 'e.g. Sam' });
   const circleName = h('input', { class: 'input', id: 'circle', maxlength: '40', placeholder: 'e.g. The Parkers' });
@@ -282,10 +459,10 @@ function renderSetup() {
         'div',
         { class: 'card' },
         brandRow(),
-        h('h1', {}, 'Set up your server'),
-        h('p', { class: 'muted' }, 'You’re the first one here. Create your family’s circle, then invite everyone with a link or QR code.'),
+        h('h1', {}, 'Set up in this browser'),
+        h('p', { class: 'muted' }, 'If you set up here, don’t set up again on your phone: that makes a second you in the circle. Instead, invite your phone from this browser and join as yourself.'),
         form,
-        lockNote('Your keys are created in this browser. The server only stores encrypted data it can’t read. For the best experience, set up from the HomeCircle phone app instead.'),
+        lockNote('Your keys are created in this browser. The server only stores encrypted data it can’t read.'),
       ),
     ),
   );
@@ -1758,11 +1935,11 @@ function placesView() {
 
 // --- settings ------------------------------------------------------------
 
-function qrImage(text) {
+function qrImage(text, alt = 'Invite QR code') {
   const qr = qrcode(0, 'M');
   qr.addData(text);
   qr.make();
-  return h('div', { class: 'qr' }, h('img', { src: qr.createDataURL(6, 2), alt: 'Invite QR code' }));
+  return h('div', { class: 'qr' }, h('img', { src: qr.createDataURL(6, 2), alt }));
 }
 
 function copyButton(text) {
@@ -2262,6 +2439,10 @@ async function boot() {
 
   const invite = location.pathname.startsWith('/join') && location.hash.length > 1 ? `${SERVER}/join${location.hash}` : null;
   if (invite) return renderJoin(invite);
+  if (location.pathname === '/start') {
+    if (!info.setup) return renderStart();
+    return renderMessage('Already set up', 'This server already has a circle. Ask someone in it for an invite.');
+  }
   if (info.recovery && (location.hash === '#recover' || (!circles.length && pendingRejoin.get()))) return renderRecover();
   if (circles.length) return startApp();
   if (!info.setup) return renderSetup();

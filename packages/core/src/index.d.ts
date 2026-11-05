@@ -470,6 +470,7 @@ export class CircleClient {
   /** Where this circle's account is stored. */
   readonly accountKey: string;
   static serverInfo(serverUrl: string, fetchImpl?: typeof fetch): Promise<ServerInfo>;
+  static setupTicket(serverUrl: string, setupToken: string, fetchImpl?: typeof fetch): Promise<{ code: string; expiresAt: number }>;
   /** With the server's setup code: every circle on it. */
   static recoverCircles(serverUrl: string, setupToken: string, fetchImpl?: typeof fetch): Promise<{ server: string; circles: RecoverableCircle[] }>;
   /** With the server's setup code: delete a circle for everyone in it. */

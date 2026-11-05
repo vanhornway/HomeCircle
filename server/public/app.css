@@ -250,3 +250,20 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 .chat-top .conversation-picker { margin: 0; flex: 1; }
 .checked-in { color: var(--brand); font-size: 13px; font-weight: 600; margin-top: 4px; }
 .bubble-row .btn.small.primary { margin-top: 6px; }
+
+/* The first page: set up from the phone */
+.card.wide { max-width: 560px; }
+.setup-step { border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin-top: 14px; }
+.setup-step h2 { display: flex; align-items: center; gap: 10px; font-size: 18px; margin: 0 0 12px; }
+.step-num { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--brand); color: var(--brand-ink); font-size: 15px; }
+.qr-steps { display: grid; grid-template-columns: 224px 1fr; gap: 18px; align-items: start; }
+.how-steps { margin: 12px 0 0; padding-left: 22px; display: grid; gap: 10px; }
+.typed-code { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); font-size: 14px; }
+.setup-help { margin-top: 10px; font-size: 14px; }
+.setup-help summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.setup-help ul { padding-left: 18px; color: var(--muted); }
+.setup-ok { color: var(--brand); font-weight: 600; font-size: 14px; }
+.linkish { background: none; border: 0; padding: 0; color: var(--brand); font: inherit; text-decoration: underline; cursor: pointer; }
+.center { text-align: center; }
+@media (max-width: 560px) { .qr-steps { grid-template-columns: 1fr; } }
+.setup-step a.btn { text-decoration: none; }

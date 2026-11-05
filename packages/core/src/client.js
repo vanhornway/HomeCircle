@@ -304,6 +304,11 @@ export class CircleClient {
     return { server, ...info };
   }
 
+  /** A one-time ticket for setting up from a phone, from the setup code, or a check of one: { code, expiresAt }. */
+  static setupTicket(serverUrl, setupToken, fetchImpl) {
+    return new Api(normalizeServerUrl(serverUrl), { fetchImpl }).setupTicket({ setupToken: String(setupToken || '').trim() });
+  }
+
   _seal(kind, body, epoch = this.account.epoch, { to = null, id } = {}) {
     const a = this.account;
     return seal({

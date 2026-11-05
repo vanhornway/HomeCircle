@@ -72,7 +72,7 @@ export function createStatic(config) {
     let key = path;
     let transform;
     let maxAge = 0;
-    if (path === '/' || path === '/join' || path === '/join/') {
+    if (path === '/' || path === '/join' || path === '/join/' || path === '/start') {
       file = join(publicDir, 'index.html');
       key = '/index.html';
     } else if (path.startsWith('/app/')) {

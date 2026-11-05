@@ -90,6 +90,13 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       );
     }
   };
+  // A one-time ticket for setting up from the phone: the QR code on the first
+  // page carries this instead of the setup code. It only creates the first
+  // circle, once, within 15 minutes, and it isn't kept anywhere but here.
+  const TICKET_MS = 15 * 60_000;
+  let setupTicket = null;
+  const ticketText = (v) => (typeof v === 'string' ? v.toUpperCase().replace(/[^0-9A-Z]/g, '') : '');
+  const ticketValid = (v) => !!setupTicket && !store.isSetup && setupTicket.expiresAt > Date.now() && safeEqual(ticketText(v), setupTicket.code);
   const vName = (v) => {
     const name = typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 40) : '';
     if (!name) fail(400, 'invalid', 'name is required');
@@ -199,12 +206,38 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     'POST',
     '/setup',
     ({ body, ctx }) => {
-      checkSetupCode(body, ctx);
+      if (ticketValid(body.setupToken)) limitPublic(ctx);
+      else checkSetupCode(body, ctx);
       const first = !store.isSetup;
       if (store.circleCount() >= MAX_CIRCLES) fail(409, 'too_many_circles', 'This server has reached its circle limit');
       const res = insertCircle(vNewCircle(body));
       log(first ? 'setup complete: first circle created' : 'new circle created with the setup code');
       return res;
+    },
+    { auth: false },
+  );
+
+  // The first page asks for the setup code and gets a ticket to put in its QR
+  // code; the phone's page checks a ticket it was given or had typed in.
+  r.add(
+    'POST',
+    '/setup/ticket',
+    ({ body, ctx }) => {
+      if (store.isSetup) fail(409, 'already_set_up', 'This server is already set up. Open it and sign in, or ask for an invite.');
+      if (ticketValid(body.setupToken)) {
+        limitPublic(ctx);
+        return setupTicket;
+      }
+      try {
+        checkSetupCode(body, ctx);
+      } catch (e) {
+        if (e.status === 403) fail(403, 'bad_setup_token', 'That code isn’t right, or it has expired. Check it, or make a new one on the computer.');
+        throw e;
+      }
+      const LETTERS = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+      const code = [...randomBytes(8)].map((b) => LETTERS[b % LETTERS.length]).join('');
+      setupTicket = { code, expiresAt: Date.now() + TICKET_MS };
+      return setupTicket;
     },
     { auth: false },
   );
