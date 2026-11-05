@@ -385,6 +385,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       if (agent && store.activeMembers(circleId).some((m) => m.kind === 'agent')) fail(409, 'agent_exists', 'This circle already has an agent');
       if (store.memberExists(member.id)) fail(409, 'conflict', 'Member id already exists');
       if (store.activeMembers(circleId).length >= MAX_MEMBERS) fail(409, 'circle_full', 'This circle is full');
+      if (demo && !ctx.director && !agent) demo.admit(circleId, ctx.ip, now);
       const { token, tokenHash } = newToken();
       store.tx(() => {
         if (!store.useInvite(inv.id, member.id, now)) fail(404, 'invalid_invite', 'This invite was just used');

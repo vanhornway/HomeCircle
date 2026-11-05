@@ -178,6 +178,40 @@ test('a visitor’s real whereabouts never reach the family, whatever their app 
   assert.deepEqual(app.store.frequent(owner.circleId), []);
 });
 
+test('a code on a page takes nothing; the first to join gets the copy, and the next scan fails', async () => {
+  clear();
+  const owner = await readyCopy();
+  const res = await fetch(`${url}/api/v1/demo/code`);
+  assert.equal(res.headers.get('access-control-allow-origin'), '*');
+  const { link } = await res.json();
+  assert.ok(link.includes('/join#'));
+  assert.equal(app.demo.counts().running, 0);
+  assert.equal((await (await fetch(`${url}/api/v1/demo/code`)).json()).link, link);
+
+  const me = visitor();
+  await me.joinWithInvite(link, { name: 'Sam' });
+  assert.ok(me.demo.endsAt > Date.now() + 59 * 60_000);
+  assert.equal(app.demo.visitorOf(owner.circleId), me.account.memberId);
+  assert.equal(app.demo.counts().running, 1);
+  assert.equal((await (await fetch(`${url}/api/v1/demo/code`)).json()).link, null);
+  await assert.rejects(visitor().joinWithInvite(link, { name: 'Pat' }), (e) => e.status === 404);
+  app.demo.sweep(Date.now() + 6 * 60_000);
+  assert.ok(app.demo.copy(owner.circleId), 'an unclaimed start’s timer doesn’t apply to someone who joined');
+});
+
+test('a code joined past the limit is refused and the copy stays ready', async () => {
+  clear();
+  await readyCopy();
+  await readyCopy();
+  await readyCopy();
+  for (let i = 0; i < 2; i++) await visitor().joinWithInvite((await start()).body.link, { name: 'Sam' });
+  assert.equal(app.demo.counts().running, 2);
+  assert.equal((await (await fetch(`${url}/api/v1/demo/code`)).json()).link, null);
+  const open = app.demo.copies().find((c) => !c.claimed_at);
+  await assert.rejects(visitor().joinWithInvite(open.link, { name: 'Pat' }), (e) => e.status === 503);
+  assert.equal(app.demo.copy(open.circle_id).claimed_at, null);
+});
+
 test('a member of the family leaving doesn’t end the copy', async () => {
   clear();
   const owner = await readyCopy();

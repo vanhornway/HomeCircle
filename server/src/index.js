@@ -58,7 +58,9 @@ export function createApp(config) {
   // The helper answers in the group once per member, and big answers in parts.
   const agentWriteLimiter = new RateLimiter(config.writesPerMinute * 5, 60_000);
   const push = new Push(config, store, log);
-  const agentHost = config.agent ? new AgentHost({ dataDir: config.dataDir, log, brainOptions: { ...config.agentBrainOptions, demo: !!config.demoMode } }) : null;
+  // Birdie joins each demo copy over loopback, as the director's: it isn't a visitor at that address's limits.
+  const agentFetch = config.demoMode ? (url, init = {}) => fetch(url, { ...init, headers: { ...init.headers, 'x-demo-token': config.demoToken } }) : undefined;
+  const agentHost = config.agent ? new AgentHost({ dataDir: config.dataDir, log, fetchImpl: agentFetch, brainOptions: { ...config.agentBrainOptions, demo: !!config.demoMode } }) : null;
   const files = createFiles({ dataDir: config.dataDir, store });
   const demo = config.demoMode ? new Demo({ config, store, hub, files, agentHost, log }) : null;
   const router = buildRoutes({ config, store, hub, push, log, agentHost, files, calls, demo });

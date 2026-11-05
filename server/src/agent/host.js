@@ -38,7 +38,8 @@ class FileStorage {
 }
 
 export class AgentHost {
-  constructor({ dataDir, log = () => {}, brainOptions = {}, refreshEveryMs = 30 * 60_000 }) {
+  constructor({ dataDir, log = () => {}, brainOptions = {}, refreshEveryMs = 30 * 60_000, fetchImpl }) {
+    this.fetchImpl = fetchImpl;
     this.dir = join(dataDir, 'agent');
     mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     this.log = log;
@@ -107,7 +108,7 @@ export class AgentHost {
     const { link } = JSON.parse(Buffer.from(plain).toString('utf8'));
     const dir = join(this.dir, circleId);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const agent = new AgentClient({ storage: new FileStorage(join(dir, 'agent.json')), onError: (e) => this.log('agent:', e.message) });
+    const agent = new AgentClient({ storage: new FileStorage(join(dir, 'agent.json')), fetchImpl: this.fetchImpl, onError: (e) => this.log('agent:', e.message) });
     // Join through this server, whatever address the link names.
     const local = String(link).replace(/^https?:\/\/[^/#]+/, this.url);
     try {
@@ -124,7 +125,7 @@ export class AgentHost {
 
   async _run(circleId, existing = null) {
     const dir = join(this.dir, circleId);
-    const agent = existing ?? new AgentClient({ storage: new FileStorage(join(dir, 'agent.json')), onError: (e) => this.log('agent:', e.message) });
+    const agent = existing ?? new AgentClient({ storage: new FileStorage(join(dir, 'agent.json')), fetchImpl: this.fetchImpl, onError: (e) => this.log('agent:', e.message) });
     if (!existing) {
       await agent.load();
       // Talk to this server locally, whatever address it had when it joined.

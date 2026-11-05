@@ -93,8 +93,30 @@ export class Demo {
     return copy;
   }
 
+  /**
+   * The invite of a ready copy, for a QR code on a page, without taking the
+   * copy: a page left open shouldn't hold a family up. A random one, so two
+   * people looking at once rarely see the same code. Null when none can start.
+   */
+  peek() {
+    if (this.counts().running >= this.config.demoMaxRunning) return null;
+    const ready = this.store.q('SELECT link FROM demo_copies WHERE claimed_at IS NULL').all();
+    return ready[Math.floor(Math.random() * ready.length)]?.link ?? null;
+  }
+
+  /** A visitor is about to join: one who came by peek() counts against the limits here. */
+  admit(circleId, ip, now = Date.now()) {
+    if (this.copy(circleId)?.claimed_at) return;
+    const { running, maxRunning } = this.counts();
+    if (running >= maxRunning) throw new HttpError(503, 'demo_busy', 'Every demo family is in use right now. Try again in a few minutes.', { retryAfter: 120 });
+    const wait = this.ipStarts.take(ip, now);
+    if (wait) throw new HttpError(429, 'demo_limit', 'That’s all the demos for today. Come back tomorrow.', { retryAfter: wait });
+  }
+
   /** Someone joined a copy without the director's token: that's its visitor. */
   joined(circleId, memberId, now = Date.now()) {
+    const expiresAt = now + this.config.demoMinutes * 60_000;
+    this.store.q('UPDATE demo_copies SET link = NULL, claimed_at = ?, expires_at = ? WHERE circle_id = ? AND claimed_at IS NULL').run(now, expiresAt, circleId);
     this.store.q('UPDATE demo_copies SET visitor_id = ?, active_at = ? WHERE circle_id = ? AND visitor_id IS NULL').run(memberId, now, circleId);
   }
 
@@ -141,6 +163,13 @@ export class Demo {
 export function mountDemo(r, demo, config, limitPublic) {
   const requireDirector = (ctx) => ctx.director || fail(403, 'forbidden', 'Only the demo director can do that');
 
+  // The director builds copies over loopback; visitors reach this address.
+  const forVisitors = (link, ctx) => {
+    const proto = ctx.req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+    const origin = config.publicUrl || `${proto}://${ctx.req.headers.host}`;
+    return link.replace(/^https?:\/\/[^/#]+/, origin);
+  };
+
   // Anyone: one ready copy, and the link to join it.
   r.add(
     'POST',
@@ -149,10 +178,19 @@ export function mountDemo(r, demo, config, limitPublic) {
       limitPublic(ctx);
       const device = typeof body.device === 'string' && body.device ? body.device.slice(0, 64) : null;
       const { link, expiresAt } = demo.claim({ ip: ctx.ip, device });
-      // The director builds copies over loopback; visitors reach this address.
-      const proto = ctx.req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
-      const origin = config.publicUrl || `${proto}://${ctx.req.headers.host}`;
-      return { link: link.replace(/^https?:\/\/[^/#]+/, origin), expiresAt, minutes: config.demoMinutes, unusedMinutes: config.demoUnusedMinutes };
+      return { link: forVisitors(link, ctx), expiresAt, minutes: config.demoMinutes, unusedMinutes: config.demoUnusedMinutes };
+    },
+    { auth: false, cors: true },
+  );
+
+  // For the QR code on the site, asked for again and again: the first to join takes the copy.
+  r.add(
+    'GET',
+    '/demo/code',
+    ({ ctx }) => {
+      limitPublic(ctx);
+      const link = demo.peek();
+      return { link: link && forVisitors(link, ctx) };
     },
     { auth: false, cors: true },
   );
