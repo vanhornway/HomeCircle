@@ -84,7 +84,7 @@ export default function Setup() {
     <Screen>
       <H1 style={{ marginTop: 12 }}>{filled ? 'Create your circle' : 'Set up your server'}</H1>
       {filled ? (
-        <Text style={{ color: t.brand, fontWeight: '600', fontSize: 15, marginTop: 8, marginBottom: 18 }}>✓ Connected to {server.replace(/^https?:\/\//, '')}</Text>
+        <Text style={{ color: t.brand, fontWeight: '600', fontSize: 15, marginTop: 8, marginBottom: 18 }}>✓ Your server: {server.replace(/^https?:\/\//, '')}</Text>
       ) : (
         <>
           <P muted style={{ marginTop: 8, marginBottom: 14 }}>
