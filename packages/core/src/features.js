@@ -13,6 +13,8 @@ export const FEATURES = [
   { id: 'groupChat', group: 'Chat', label: 'Group chat', detail: 'The circle’s shared chat.', on: true },
   { id: 'directMessages', group: 'Chat', label: 'Direct messages', detail: 'One-to-one chats inside the circle.', on: true },
   { id: 'polls', group: 'Chat', label: 'Polls', detail: 'Ask the group with options to vote on.', on: false },
+  { id: 'plans', group: 'Chat', label: 'Plans', detail: 'Suggest a time in the chat; everyone answers, and can add it to their own calendar.', on: true },
+  { id: 'busyTimes', group: 'Chat', label: 'Busy times', detail: 'Each person can share when they’re busy, from their phone’s calendar. Only the times, never what for.', on: true },
   { id: 'calls', group: 'Chat', label: 'Voice calls', detail: 'One-to-one calls between members, in the app. Voice goes phone to phone, end-to-end encrypted.', on: false },
   { id: 'photos', group: 'Chat', label: 'Photos', detail: 'Profile photos, and photos for an elder’s tiles.', on: true },
   { id: 'readReceipts', group: 'Chat', label: 'Read receipts', detail: 'Read ticks (each person can still turn theirs off).', on: true },

@@ -84,6 +84,11 @@ CREATE TABLE IF NOT EXISTS frequent_places (
   env TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS busy_times (
+  member_id TEXT PRIMARY KEY,
+  env TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS records (
   circle_id TEXT NOT NULL,
   kind TEXT NOT NULL,
@@ -340,6 +345,7 @@ export class Store {
     for (const m of members) {
       this.q('DELETE FROM locations WHERE member_id = ?').run(m);
       this.q('DELETE FROM frequent_places WHERE member_id = ?').run(m);
+      this.q('DELETE FROM busy_times WHERE member_id = ?').run(m);
       this.q('DELETE FROM key_envelopes WHERE member_id = ?').run(m);
     }
     for (const t of ['messages', 'places', 'invites', 'rejoin_requests', 'chirps', 'records', 'members']) this.q(`DELETE FROM ${t} WHERE circle_id = ?`).run(id);
@@ -402,6 +408,7 @@ export class Store {
     this.q('UPDATE members SET removed_at = ?, token_hash = NULL, push_token = NULL WHERE id = ?').run(now, id);
     this.q('DELETE FROM locations WHERE member_id = ?').run(id);
     this.q('DELETE FROM frequent_places WHERE member_id = ?').run(id);
+    this.q('DELETE FROM busy_times WHERE member_id = ?').run(id);
     this.q('DELETE FROM chirps WHERE to_id = ? OR from_id = ?').run(id, id);
     this.deleteRecordsAbout(id);
   }
@@ -511,6 +518,21 @@ export class Store {
   }
   deleteFrequent(memberId) {
     this.q('DELETE FROM frequent_places WHERE member_id = ?').run(memberId);
+  }
+  // busy times: each member's latest sealed blocks, like most visited places
+  putBusy(memberId, env, now) {
+    this.q(
+      `INSERT INTO busy_times (member_id, env, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(member_id) DO UPDATE SET env = excluded.env, updated_at = excluded.updated_at`,
+    ).run(memberId, JSON.stringify(env), now);
+  }
+  deleteBusy(memberId) {
+    this.q('DELETE FROM busy_times WHERE member_id = ?').run(memberId);
+  }
+  busy(circleId) {
+    return this.q(`SELECT b.* FROM busy_times b JOIN members m ON m.id = b.member_id WHERE m.circle_id = ? AND m.removed_at IS NULL`)
+      .all(circleId)
+      .map((r) => ({ memberId: r.member_id, env: parse(r.env), updatedAt: r.updated_at }));
   }
   frequent(circleId) {
     return this.q(

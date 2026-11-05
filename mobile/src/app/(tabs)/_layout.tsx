@@ -82,6 +82,7 @@ function useCircleLifecycle(circlesKey: string) {
         applyMyChirp(client).catch(() => {});
         // Everyone's most visited places (servers before 0.9 don't have them).
         client.fetchFrequent().catch(() => {});
+        client.fetchBusy().catch(() => {});
         if (!started.has(client)) {
           started.add(client);
           if (client === clients[0] && client.serverUrl) {

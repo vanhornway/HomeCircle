@@ -30,6 +30,7 @@ import {
 } from './crypto.js';
 import { isValidReaction } from './emoji.js';
 import { quickReturns } from './places.js';
+import { FREE_RE, PLAN_ANSWERS, TRAVEL_RE, busyDays, cleanBusy, cleanPlan, travelStats, tripsFrom } from './schedule.js';
 import { allFeatures, cleanFeatures, defaultFeatures, hasFeature, resolveFeatures } from './features.js';
 
 // Storage key for the account. A device in several circles keeps one
@@ -143,6 +144,8 @@ export class CircleClient {
     this.places = new Map();
     // memberId -> { places: [...], ts } for members who share their most visited places
     this.frequent = new Map();
+    this.busy = new Map();
+    this.plans = new Map();
     // Sealed records (fetchRecords): member settings by member id, and
     // family names by "caller.member".
     this.records = { member: new Map(), alias: new Map() };
@@ -967,6 +970,7 @@ export class CircleClient {
         return { kind: 'reaction', id: m.id, from: m.from, to, peer, seq: m.seq, body: msg.body };
       }
       if (isPollUpdate(msg.body)) this._applyPollUpdate(m.from, m.seq, msg.body);
+      else if (isPlanUpdate(msg.body)) this._applyPlanUpdate(m.from, m.seq, msg.body);
       else this._applyReaction(m.from, m.seq, msg.body);
       return { kind: 'reaction', id: m.id, from: m.from, to, peer, seq: m.seq, body: msg.body };
     }
@@ -1093,6 +1097,52 @@ export class CircleClient {
 
   _pollMessage(pollId) {
     return this.messages.find((m) => m.id === pollId && m.kind === 'chat' && m.body?.poll);
+  }
+
+  // --- plans ---------------------------------------------------------------
+  // A time suggested in the chat. Answers are reactions; nothing goes into
+  // anyone's calendar unless they ask their own phone to put it there.
+
+  _applyPlanUpdate(from, seq, body) {
+    let p = this.plans.get(body.target);
+    if (!p) this.plans.set(body.target, (p = { answers: new Map(), cancels: new Set() }));
+    if (body.cancelPlan === true) p.cancels.add(from);
+    else if (seq >= (p.answers.get(from)?.seq ?? 0)) p.answers.set(from, { answer: body.rsvp, seq });
+  }
+
+  /** Suggest a time: { title, start, end, allDay, where }. Returns its id. */
+  async createPlan(details) {
+    const plan = cleanPlan(details);
+    if (!plan) throw new Error('A plan needs a name and a time');
+    const id = randomId(12);
+    await this._post('chat', { text: `📅 ${plan.title}`, plan }, { id });
+    return id;
+  }
+
+  /** Your answer: 'going', 'maybe' or 'no'. */
+  answerPlan(planId, rsvp) {
+    const s = this.planState(planId);
+    if (!s) return Promise.reject(new Error('No such plan'));
+    if (s.cancelled) return Promise.reject(new Error('This plan was cancelled'));
+    if (!PLAN_ANSWERS.includes(rsvp)) return Promise.reject(new Error('Going, maybe or no'));
+    return this._post('reaction', { target: planId, rsvp }, { silent: true });
+  }
+
+  cancelPlan(planId) {
+    const s = this.planState(planId);
+    if (!s) return Promise.reject(new Error('No such plan'));
+    if (s.from !== this.account.memberId) return Promise.reject(new Error('Only whoever made a plan can cancel it'));
+    return this._post('reaction', { target: planId, cancelPlan: true }, { silent: true });
+  }
+
+  /** A plan and where it stands: its details, from, cancelled, answers [{ memberId, answer }], mine. Null if there's no such plan. */
+  planState(planId) {
+    const m = this.messages.find((x) => x.id === planId && x.kind === 'chat' && x.body?.plan);
+    const plan = m ? cleanPlan(m.body.plan) : null;
+    if (!plan) return null;
+    const p = this.plans.get(planId);
+    const answers = [...(p?.answers ?? [])].map(([memberId, a]) => ({ memberId, answer: a.answer }));
+    return { ...plan, id: planId, from: m.from, cancelled: !!p?.cancels.has(m.from), answers, mine: answers.find((a) => a.memberId === this.account?.memberId)?.answer ?? null };
   }
 
   /** Vote: the option ids you pick (one, unless the poll allows several; [] withdraws). */
@@ -1473,6 +1523,26 @@ export class CircleClient {
    * "/Name …" and the answer; only the agent gets the question sealed for it.
    * In a direct chat with the agent (`peer` = its id), only you do.
    */
+  /**
+   * What a question needs that the helper can't read for itself (it has no
+   * circle key): only summaries this phone worked out, and only for a question
+   * that calls for them. Travel times and busy days, never positions or titles.
+   */
+  _agentFacts(q) {
+    const name = (id) => this.members.get(id)?.name;
+    const facts = {};
+    if (TRAVEL_RE.test(q)) {
+      facts.travel = travelStats(tripsFrom(this.messages))
+        .slice(0, 40)
+        .map(({ memberId, ...r }) => ({ ...r, who: name(memberId) }))
+        .filter((r) => r.who);
+    }
+    if (FREE_RE.test(q) && this.busy.size) {
+      facts.busyDays = [...this.busy].map(([id, b]) => ({ who: name(id), days: busyDays(b.blocks) })).filter((b) => b.who && b.days.length);
+    }
+    return facts;
+  }
+
   async askAgent(text, { peer = null } = {}) {
     const agent = this.agent;
     if (!agent) throw new Error('This circle has no agent');
@@ -1481,12 +1551,12 @@ export class CircleClient {
     if (peer && peer !== agent.id) throw new Error('Ask the agent in the group or in a chat with it');
     if (peer) {
       const id = randomId(12);
-      await this._post('chat', { text: q, ask: q, thread: 'dm', ...this._agentContext() }, { to: agent.id, id });
+      await this._post('chat', { text: q, ask: q, thread: 'dm', ...this._agentContext(), ...this._agentFacts(q) }, { to: agent.id, id });
       return id;
     }
     const id = randomId(12);
     await this._post('chat', { text: `/${agent.name} ${q}`, agentAsk: true }, { id });
-    await this._post('chat', { ask: q, thread: 'group', replyTo: id, agentCopy: true, ...this._agentContext() }, { to: agent.id, silent: true });
+    await this._post('chat', { ask: q, thread: 'group', replyTo: id, agentCopy: true, ...this._agentContext(), ...this._agentFacts(q) }, { to: agent.id, silent: true });
     return id;
   }
 
@@ -2536,6 +2606,32 @@ export class CircleClient {
   }
 
   /** Stop sharing most visited places with this circle. */
+  /** Share when you're busy: { s, e } blocks only, sealed to the circle. */
+  async shareBusy(blocks) {
+    if (!this.feature('busyTimes')) return;
+    const clean = cleanBusy(blocks);
+    await this.api.putBusy(this._seal('busy', { blocks: clean }));
+    this.busy.set(this.account.memberId, { blocks: clean, ts: Date.now() });
+    this.emit('busy', this.busy);
+  }
+
+  async clearBusy() {
+    await this.api.deleteBusy();
+    this.busy.delete(this.account.memberId);
+    this.emit('busy', this.busy);
+  }
+
+  async fetchBusy() {
+    const { busy } = await this.api.busy();
+    this.busy = new Map();
+    for (const b of busy) {
+      const msg = this._open(b.env, b.memberId, ['busy']);
+      if (msg) this.busy.set(b.memberId, { blocks: cleanBusy(msg.body?.blocks), ts: msg.ts });
+    }
+    this.emit('busy', this.busy);
+    return this.busy;
+  }
+
   async clearFrequent() {
     await this.api.deleteFrequent();
   }
@@ -2793,6 +2889,9 @@ export class CircleClient {
       case 'frequent':
         await this.fetchFrequent();
         break;
+      case 'busy':
+        await this.fetchBusy();
+        break;
       case 'records':
         await this.fetchRecords().catch(() => {});
         break;
@@ -2938,6 +3037,10 @@ function cleanName(s) {
 const MAX_POLL_OPTIONS = 12; // 8 to start with, plus suggestions
 
 /** A poll update riding on a reaction: a vote, a suggested option, or closing it. */
+function isPlanUpdate(b) {
+  return !!b && typeof b.target === 'string' && b.emoji === undefined && (b.cancelPlan === true || PLAN_ANSWERS.includes(b.rsvp));
+}
+
 function isPollUpdate(b) {
   return !!b && typeof b.target === 'string' && b.emoji === undefined && (Array.isArray(b.vote) || !!b.add || b.close === true);
 }

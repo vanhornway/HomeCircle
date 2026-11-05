@@ -8,6 +8,8 @@ import { HeaderBar } from '../components/Header';
 import { shareNow } from '../lib/location';
 import { ServerBanner } from '../components/ServerBanner';
 import { PollCard } from '../components/PollCard';
+import { PlanCard } from '../components/PlanCard';
+import { CreatePlan } from '../components/CreatePlan';
 import { CallbackCard } from '../components/CallbackCard';
 import { GroupCallCard } from '../components/GroupCallCard';
 import { ReminderCard } from '../components/ReminderCard';
@@ -93,6 +95,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   const withAgent = !!agent && peer === agent.id;
   const [asking, setAsking] = useState(false);
   const [pollOpen, setPollOpen] = useState(false);
+  const [planOpen, setPlanOpen] = useState(false);
   const [reactingTo, setReactingTo] = useState<Message | null>(null);
   // Lists from the agent (dates in a PDF) answered on this screen: no buttons twice.
   const [savedLists, setSavedLists] = useState<Set<string>>(() => new Set());
@@ -184,6 +187,9 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     } else if (key === 'poll') {
       setMenuOpen(false);
       setPollOpen(true);
+    } else if (key === 'plan') {
+      setMenuOpen(false);
+      setPlanOpen(true);
     } else attach(key as 'camera' | 'library' | 'file');
   };
 
@@ -331,6 +337,14 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
       return (
         <View style={{ marginVertical: 3 }}>
           <PollCard client={client} pollId={m.id} />
+          <Text style={{ color: t.muted, fontSize: fs(14), marginHorizontal: 6, alignSelf: mine ? 'flex-end' : 'flex-start' }}>{clock(m.ts)}</Text>
+        </View>
+      );
+    }
+    if (m.body?.plan && client.planState(m.id)) {
+      return (
+        <View style={{ marginVertical: 3 }}>
+          <PlanCard client={client} planId={m.id} />
           <Text style={{ color: t.muted, fontSize: fs(14), marginHorizontal: 6, alignSelf: mine ? 'flex-end' : 'flex-start' }}>{clock(m.ts)}</Text>
         </View>
       );
@@ -591,6 +605,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
                     ]
                   : []),
                 ...(canPoll ? [{ key: 'poll', icon: '📊', label: 'New poll' }] : []),
+                ...(!peer && client.feature('plans') ? [{ key: 'plan', icon: '📅', label: 'New plan' }] : []),
               ] as { key: string; icon: string; label: string }[]
             ).map((item) => (
               <Pressable
@@ -687,6 +702,15 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
         onClose={() => setPollOpen(false)}
         onCreated={() => {
           setPollOpen(false);
+          list.current?.scrollToOffset({ offset: 0, animated: true });
+        }}
+      />
+      <CreatePlan
+        client={client}
+        visible={planOpen}
+        onClose={() => setPlanOpen(false)}
+        onCreated={() => {
+          setPlanOpen(false);
           list.current?.scrollToOffset({ offset: 0, animated: true });
         }}
       />

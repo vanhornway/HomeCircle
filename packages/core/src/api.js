@@ -134,6 +134,9 @@ export class Api {
   deleteRecord = (kind, subject) => this.req('DELETE', `/records/${kind}/${encodeURIComponent(subject)}`);
   putFrequent = (env) => this.req('PUT', '/frequent/me', env);
   deleteFrequent = () => this.req('DELETE', '/frequent/me');
+  busy = () => this.req('GET', '/busy');
+  putBusy = (env) => this.req('PUT', '/busy/me', env);
+  deleteBusy = () => this.req('DELETE', '/busy/me');
   chirp = (body) => this.req('POST', '/chirps', body);
   agentHost = () => this.req('GET', '/agent-host');
   agentSetup = (body) => this.req('POST', '/agent-host/setup', body);

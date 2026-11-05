@@ -53,6 +53,12 @@
     "plugins": [
       "expo-router",
       [
+        "expo-calendar",
+        {
+          "calendarPermission": "HomeCircle reads when you're busy, only if you turn that on, and shares the times with your circle. Never what for."
+        }
+      ],
+      [
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "HomeCircle shares your location only with your family circle, end-to-end encrypted, about every 15 minutes or when someone asks.",

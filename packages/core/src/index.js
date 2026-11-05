@@ -4,6 +4,7 @@ export * from './api.js';
 export * from './client.js';
 export * from './emoji.js';
 export * from './places.js';
+export * from './schedule.js';
 export * from './agent.js';
 export * from './features.js';
 export * from './prayer.js';

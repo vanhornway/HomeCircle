@@ -22,6 +22,7 @@ import { diag } from './diagnostics';
 import { APP_VERSION } from './updates';
 import { phoneHealth } from './health';
 import { recordFix, shareMyPlaces } from './visits';
+import { shareBusyTimes } from './busy';
 import { loadedClients } from './circle';
 import { isDoNotDisturbOn } from '../../modules/hc-attention/src/HcAttentionModule';
 import { loadSkin } from '../skins';
@@ -256,7 +257,7 @@ export async function report(loc: Location.LocationObject, trigger: string, { fo
   const sent = await upload(loc, check.changed && check.action ? check.action : trigger, { force: force || check.changed, placeIds: check.placeIds });
   // At most every 6 hours; every circle, so paused and approximate ones get them withdrawn.
   loadedClients()
-    .then((clients) => shareMyPlaces(clients))
+    .then((clients) => shareBusyTimes(clients).catch(() => {}).then(() => shareMyPlaces(clients)))
     .catch(() => {});
   return sent;
 }

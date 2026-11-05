@@ -157,6 +157,8 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       // Chirps and most-visited places (0.9+).
       chirps: true,
       frequentPlaces: true,
+      // Busy times from people's phones, sealed (0.24+).
+      busyTimes: true,
       // Urgent messages skip push coalescing (0.20+).
       urgent: true,
       // Voice calls: sealed signals relayed and never stored (0.22+).
@@ -809,6 +811,24 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   r.add('DELETE', '/frequent/me', ({ me }) => {
     store.deleteFrequent(me.id);
     hub.broadcast(me.circleId, { type: 'frequent', memberId: me.id }, me.id);
+    return { ok: true };
+  });
+
+  r.add('GET', '/busy', ({ me }) => ({ busy: store.busy(me.circleId) }));
+
+  r.add('PUT', '/busy/me', ({ me, body }) => {
+    requireFeature(me, 'busyTimes', 'Busy times');
+    const env = vEnvelope(body, 'busy', 32768);
+    currentEpoch(me.circleId, env.epoch);
+    const now = Date.now();
+    store.putBusy(me.id, env, now);
+    hub.broadcast(me.circleId, { type: 'busy', memberId: me.id }, me.id);
+    return { ok: true, updatedAt: now };
+  });
+
+  r.add('DELETE', '/busy/me', ({ me }) => {
+    store.deleteBusy(me.id);
+    hub.broadcast(me.circleId, { type: 'busy', memberId: me.id }, me.id);
     return { ok: true };
   });
 

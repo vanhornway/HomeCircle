@@ -12,6 +12,7 @@ import { calendarUrl, fetchPublic, parseIcs, freeStretches, isDayOff } from './c
 import { isPdf, pdfText } from './pdf.js';
 import { readFile } from './read-file.js';
 import { addItems, cleanCurrency, cleanPrice, createList, doneShopping, emptyLists, findList, itemKey, listText, parseListCommand, recipeWanted, recordBought, removeItems, setQty, shoppingName, splitItems, viewList } from './lists.js';
+import { travelAnswer } from './travel.js';
 import { addMonths, addReminder, canSeeReminder, cleanReminder, dueMessage, fmtDue, markDone, reminderLine, repeatText } from './reminders.js';
 import { exportVault, zipVault } from './export.js';
 
@@ -580,6 +581,11 @@ export class Brain {
     if (/^(list|show)( (me|my|the))? (sources|calendars)\b/i.test(text)) return this._listSources(msg);
     if (/^(usage|budget|spending|how much)\b/i.test(text)) return this._usage(msg);
     if (/^undo\b/i.test(text)) return this._undo(msg, this.memory.getSetting(`last:${msg.from}`) ?? []);
+    // How long a trip takes: from the numbers the asker's phone sent, no AI needed.
+    if (Array.isArray(msg.body.travel)) {
+      const answer = travelAnswer(text, msg.body.travel, this._nameOf(msg.from));
+      if (answer) return this.reply(msg, answer);
+    }
     if (KEEP_PRIVATE_RE.test(text)) return this._shareLast(msg, null);
     if (SHARE_LAST_RE.test(text)) return this._shareLast(msg, text.match(SHARE_LAST_RE)[1]);
     if (/^forget (the )?(.+)$/i.test(text)) return this._forget(msg, text.match(/^forget (?:the )?(.+)$/i)[1]);
@@ -627,7 +633,7 @@ export class Brain {
       by: msg.from,
       archived: !!(plan.to && plan.to < this.today()),
     });
-    const worked = plan.intent === 'free_time' ? this._freeTime(who, plan.days ?? 1, msg.from) : null;
+    const worked = plan.intent === 'free_time' ? this._freeTime(who, plan.days ?? 1, msg.from, msg.body.busyDays) : null;
 
     const answer = await this._ai(msg.from, {
       system: this._answerPrompt(),
@@ -706,7 +712,7 @@ export class Brain {
   }
 
   /** When everyone asked about is free, from their calendars and booked events. */
-  _freeTime(who, days, by) {
+  _freeTime(who, days, by, shared = []) {
     if (!who.length) return 'Nobody to check: say who (for example “the kids”), and tell me who the kids are.';
     const sources = this.memory.list({ by, type: 'source' });
     // Trips count as booked days too.
@@ -721,6 +727,8 @@ export class Brain {
         // Other calendars: all-day events block a day; a weekly practice doesn't.
         ...mine.filter((s) => s.data?.kind !== 'school').flatMap((s) => (s.data.events ?? []).filter((e) => e.allDay)),
         ...events.filter((e) => e.start && (e.people.some((p) => p.toLowerCase() === key) || (e.body || '').toLowerCase().includes(`[[${key}]]`))).map((e) => ({ start: e.start, end: e.end || e.start })),
+        // Days their own phone says are taken (only the dates, never what for).
+        ...(Array.isArray(shared) ? shared : []).filter((b) => String(b?.who).toLowerCase() === key).flatMap((b) => (Array.isArray(b.days) ? b.days : []).map((d) => ({ start: d, end: d }))),
       ];
       return { school, busy };
     });

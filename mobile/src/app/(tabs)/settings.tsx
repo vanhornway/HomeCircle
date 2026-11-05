@@ -87,6 +87,7 @@ export default function SettingsTab() {
       <SettingsGroup title="You">
         <SettingsRow icon="locate" title="Location sharing" detail={settings.sharing ? `On · ${locationProfileOf(settings) === 'custom' ? 'Custom' : STOP_NAMES[locationProfileOf(settings) as Stop]} · place alerts` : 'Paused · place alerts, most visited'} href="/settings/location" />
         <SettingsRow icon="bell" title="Notifications" detail={settings.showPreviews ? 'Showing message text' : 'Hiding message text'} href="/settings/notifications" />
+        {clients.some((c) => c.feature('busyTimes')) ? <SettingsRow icon="calendar" title="Calendar" detail={settings.shareBusy ? 'Sharing when you’re busy, never what for' : 'Not shared'} href="/settings/calendar" /> : null}
         {clients.some((c) => c.feature('chirps') || c.feature('sos')) ? (
           <SettingsRow
             icon="bird"

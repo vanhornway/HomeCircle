@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { BackHandler, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
-import type { CircleClient } from '@homecircle/core';
+import { travelStats, tripsFrom, type CircleClient } from '@homecircle/core';
 import { Icon } from './ui';
 import { AlertRuleSheet } from './AlertRuleSheet';
 import { CallChoiceSheet } from './CallActions';
+import { busyLine } from '../lib/busy';
 import { errorText } from '../lib/circle';
 import { chirpWithChoice } from '../lib/chirp';
 import { KIND_EMOJI } from '../lib/visits';
@@ -13,6 +14,15 @@ import { MemberAvatar } from './MemberAvatar';
 import { cadenceLine, canLocate, locatePerson, locateState, openDirections, statusLine, useLocateVersion } from '../lib/people';
 import { useTheme } from '../theme';
 import { showSheet } from '../lib/sheet';
+
+const clockOf = (mins: number) => new Date(2000, 0, 1, 0, mins).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
+/** Their most-made trip: "Usually leaves Home 7:35 AM, at EVHS 7:52 AM (17 min, weekdays)". */
+function routeLine(client: CircleClient, memberId: string): string | null {
+  if (!client.feature('placeAlerts')) return null;
+  const r = travelStats(tripsFrom(client.messages)).find((x) => x.memberId === memberId);
+  return r ? `Usually leaves ${r.from} ${clockOf(r.leaves)}, at ${r.to} ${clockOf(r.arrives)} (${r.mins} min${r.days === 'weekdays' ? ', weekdays' : ''})` : null;
+}
 
 /**
  * Everything you can do about one person, in a bottom sheet. It isn't a
@@ -135,6 +145,8 @@ export function PersonSheet({
                     {client.displayName(m.id) !== m.name ? <Text style={{ color: t.muted, fontSize: 14 }}>{m.name}</Text> : null}
                     <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>{statusLine(client, m)}</Text>
                     {m.isMe && cadenceLine(loc) ? <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>{sentence(cadenceLine(loc)!)}</Text> : null}
+                    {busyLine(client, m.id) ? <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>{busyLine(client, m.id)}</Text> : null}
+                    {routeLine(client, m.id) ? <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>{routeLine(client, m.id)}</Text> : null}
                   </View>
                   <Pressable accessibilityRole="button" accessibilityLabel="Close" hitSlop={8} onPress={onClose} style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: t.surface2 }}>
                     <Text style={{ color: t.muted, fontSize: 20, lineHeight: 22 }}>✕</Text>

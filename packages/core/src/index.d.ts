@@ -517,6 +517,7 @@ export class CircleClient {
   on(event: 'chirp', fn: () => void): () => void;
   /** A call signal from a member (opened, verified and fresh); see sendCallSignal(). */
   on(event: 'callSignal', fn: (s: CallSignal) => void): () => void;
+  on(event: 'busy', fn: (b: Map<string, { blocks: BusyBlock[]; ts: number }>) => void): () => void;
   on(event: 'frequent', fn: (f: Map<string, { places: FrequentPlace[]; ts: number }>) => void): () => void;
   on(event: 'signedOut', fn: (d: { reason: SignOutReason }) => void): () => void;
   on(event: 'circle' | 'removed', fn: (d?: any) => void): () => void;
@@ -763,6 +764,15 @@ export class CircleClient {
   /** memberId -> their shared most visited places. */
   frequent: Map<string, { places: FrequentPlace[]; ts: number }>;
   fetchFrequent(): Promise<Map<string, { places: FrequentPlace[]; ts: number }>>;
+  /** memberId -> when they're busy (times only). */
+  busy: Map<string, { blocks: BusyBlock[]; ts: number }>;
+  shareBusy(blocks: BusyBlock[]): Promise<void>;
+  clearBusy(): Promise<void>;
+  fetchBusy(): Promise<Map<string, { blocks: BusyBlock[]; ts: number }>>;
+  createPlan(details: { title: string; start: number; end?: number; allDay?: boolean; where?: string }): Promise<string>;
+  answerPlan(planId: string, rsvp: PlanAnswer): Promise<void>;
+  cancelPlan(planId: string): Promise<void>;
+  planState(planId: string): PlanState | null;
   shareFrequent(places: FrequentPlace[]): Promise<void>;
   clearFrequent(): Promise<void>;
   removeMember(id: string): Promise<void>;
@@ -790,6 +800,16 @@ export const EMOJI_GROUPS: { name: string; emojis: string[] }[];
 export function isEmojiOnly(text: string, max?: number): boolean;
 export function isValidReaction(emoji: string): boolean;
 
+export type BusyBlock = { s: number; e: number };
+export type PlanAnswer = 'going' | 'maybe' | 'no';
+export type PlanState = { id: string; title: string; start: number; end: number; allDay: boolean; where: string; from: string; cancelled: boolean; answers: { memberId: string; answer: PlanAnswer }[]; mine: PlanAnswer | null };
+export type TravelRoute = { memberId: string; from: string; to: string; n: number; mins: number; low: number; high: number; leaves: number; arrives: number; days: 'weekdays' | 'all'; trend: number };
+export const BUSY_DAYS: number;
+export function cleanBusy(blocks: unknown): BusyBlock[];
+export function busyNow(blocks: BusyBlock[], now?: number): { busy: boolean; until: number | null };
+export function busyDays(blocks: BusyBlock[], enough?: number): string[];
+export function tripsFrom(messages: Message[]): { memberId: string; from: string; to: string; left: number; arrived: number }[];
+export function travelStats(trips: { memberId: string; from: string; to: string; left: number; arrived: number }[], opts?: { atLeast?: number; now?: number }): TravelRoute[];
 export const QUICK_RETURN_MS: number;
 /** Ids of "left" and "arrived" messages that cancel out: back within QUICK_RETURN_MS. */
 export function quickReturns(messages: { id: string; kind: string; from: string; ts: number; body?: any }[], withinMs?: number): Set<string>;
@@ -808,6 +828,8 @@ export function utf8Decode(bytes: Uint8Array): string;
 /** Every feature a circle can turn on or off. */
 export type FeatureId =
   | 'locationSharing'
+  | 'plans'
+  | 'busyTimes'
   | 'locate'
   | 'placeAlerts'
   | 'checkIns'

@@ -92,6 +92,8 @@ export interface Settings {
   alertRules: AlertRule[];
   /** Share your most visited places with circles that see your exact location. */
   shareFrequent: boolean;
+  /** Share when you're busy, from this phone's calendars: times only. */
+  shareBusy: boolean;
   /** Your chirp: the sound others hear when you chirp them. */
   myChirp: ChirpSound | null;
   /** Play chirps' sounds (off: they still show, silently). Do Not Disturb always applies. */
@@ -133,6 +135,7 @@ export const DEFAULT_SETTINGS: Settings = {
   pauseReasons: {},
   alertRules: [],
   shareFrequent: true,
+  shareBusy: false,
   myChirp: null,
   chirpSound: true,
   chirpFlash: true,
