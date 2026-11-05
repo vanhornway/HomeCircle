@@ -58,6 +58,7 @@ export type HelperReply = {
 const SHORT_NOTES: [RegExp, string][] = [
   [/^I left out a password/i, 'Left out a password or full number'],
   [/^Health notes are just for you/i, 'Health notes stay private to you'],
+  [/^Only you can see what you send/i, 'Only you can see this'],
 ];
 
 /** "🔒 Long reason…" → its short line. Unknown notes keep their first sentence. */

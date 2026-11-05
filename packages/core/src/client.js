@@ -1467,6 +1467,13 @@ export class CircleClient {
     await this._post('chat', { undo: noteIds, thread: peer ? 'dm' : 'group', agentCopy: true, ...this._agentContext() }, { to: agent.id, silent: true });
   }
 
+  /** Share something kept private with the circle (the button on its "📌 Saved" message). */
+  async shareAgentNotes(noteIds, { peer = null } = {}) {
+    const agent = this.agent;
+    if (!agent) throw new Error('This circle has no agent');
+    await this._post('chat', { shareNotes: noteIds, thread: peer ? 'dm' : 'group', agentCopy: true, ...this._agentContext() }, { to: agent.id, silent: true });
+  }
+
   /**
    * Send the agent a file (a photo, a PDF, a document, a spreadsheet). It's
    * encrypted here with a key of its own; the server stores only that, and

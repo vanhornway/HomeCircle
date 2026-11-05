@@ -269,6 +269,19 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     });
   };
 
+  const shareNotes = (m: Message) => {
+    const key = `share:${m.id}`;
+    setSavedLists((s) => new Set(s).add(key));
+    client.shareAgentNotes(m.body!.shareNotes, { peer }).catch((e) => {
+      setSavedLists((s) => {
+        const next = new Set(s);
+        next.delete(key);
+        return next;
+      });
+      setError(errorText(e));
+    });
+  };
+
   const eventLabel = (m: Message) =>
     `${client.members.get(m.from)?.name || 'Former member'} ${m.body?.action === 'left' ? 'left' : 'arrived at'} ${m.body?.placeName || 'a place'} · ${clock(typeof m.body?.at === 'number' ? m.body.at : m.ts)}`;
   const pill = { alignSelf: 'center', color: t.muted, backgroundColor: t.surface2, fontSize: fs(14), paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, overflow: 'hidden', marginVertical: 4 } as const;
@@ -408,6 +421,9 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
           <KeptChip kept={reply.kept} undoable={undoable} undone={undone} onUndo={() => undo(m)} onLongPress={longPress} fs={fs} style={bubbleText ? { marginTop: 6 } : null} />
         ) : null}
         {reply && (reply.extra.length || reply.notes.length) ? <ReplyNotes reply={reply} fs={fs} /> : null}
+        {fromHelper && Array.isArray(m.body?.shareNotes) && m.body.shareNotes.length && !undone && !savedLists.has(`share:${m.id}`) ? (
+          <Button small title="Share with the circle" onPress={() => shareNotes(m)} style={{ alignSelf: 'flex-start', marginTop: 6 }} />
+        ) : null}
         {who?.kind === 'agent' && m.body?.save?.by === me && typeof m.body.save.id === 'string' && !savedLists.has(m.body.save.id) ? (
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
             {[true, false].map((ok) => (

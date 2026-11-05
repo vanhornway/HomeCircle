@@ -648,7 +648,7 @@ test('recipes: kept whole from chat, a long-pressed message and a photo; asked f
   const found = await until(mom, (c) => fromAgentDm(c, /I’d keep/));
   assert.equal(found.body.text, '📄 Nihari recipe card: A handwritten nihari recipe.\nI’d keep:\n• Nihari: recipe, serves 4, 6 hours: 5 ingredients and 3 steps\nDoes this look right? Save it (you can fix anything later in Memory) or Discard.');
   await mom.saveAgentFound(found.body.save.id, true, { peer });
-  await until(mom, (c) => fromAgentDm(c, /^📌 Saved: Nihari$/));
+  const savedNihari = await until(mom, (c) => fromAgentDm(c, /^📌 Saved: Nihari\n🔒 Only you can see what you send me here\./));
   const ask = await until(mom, (c) => fromAgentDm(c, /^Delete “nihari-recipe\.jpg”/));
   await mom.answerAgentFile(ask.body.fileChoice.id, false, { peer });
   await until(mom, (c) => fromAgentDm(c, /Deleted “nihari-recipe\.jpg”/));
@@ -670,7 +670,10 @@ test('recipes: kept whole from chat, a long-pressed message and a photo; asked f
   assert.equal(sentToAi.length, calls);
   await dad.askAgent('add the ingredients for lasagna to the Costco list');
   await until(dad, (c) => (lastFromAgent(c)?.body.text.startsWith('I don’t have a recipe for lasagna.') ? 1 : null));
-  // What Mom saved in her own chat is the circle's: Dad can ask about it, until she keeps it to herself.
+  // A photo sent in her own chat stays hers: Dad can't ask about it until she shares it.
+  assert.equal((await recipes(dad)).Nihari, undefined);
+  await mom.shareAgentNotes(savedNihari.body.shareNotes, { peer });
+  await until(mom, (c) => fromAgentDm(c, /^👨‍👩‍👧 Everyone in the circle can ask about Nihari now\.$/));
   assert.ok((await recipes(dad)).Nihari);
   await mom.askAgent('keep that private', { peer });
   await until(mom, (c) => fromAgentDm(c, /^🔒 Nihari is just for you now\.$/));
@@ -877,13 +880,13 @@ test('Download memory: an Obsidian vault zipped, with calendars, lists, reminder
   assert.ok(!paths.some((p) => p.startsWith('Health/')));
   assert.doesNotMatch(text('Reminders.md'), /Amoxicillin/);
 
-  // Dad's download has the circle's notes, not Mom's private ones: the party
-  // stays hers, and the photo she sent the helper is the circle's like the rest.
+  // Dad's download has the circle's notes, not Mom's private ones: the party,
+  // and the photo she sent the helper in their own chat.
   const dadsDownload = await download(dad);
   assert.ok(Object.keys(dadsDownload.zip).includes('Lists/Costco.md'));
   assert.ok(!Object.keys(dadsDownload.zip).includes('Facts/Surprise party.md'));
   assert.match(strFromU8(dadsDownload.zip['Health/Amoxicillin.md']), /^dose: "250 mg"\n[\s\S]*refill-by: "2026-11-20"\n/m);
-  assert.ok(Object.keys(dadsDownload.zip).includes('Files/team-sheet.jpg'));
+  assert.ok(!Object.keys(dadsDownload.zip).some((p) => p.startsWith('Files/')));
 
   // Tidy up for the next test: the kept photo goes too.
   const kept = (await mom.agentRpc('list')).find((n) => n.data?.file?.name === 'team-sheet.jpg');

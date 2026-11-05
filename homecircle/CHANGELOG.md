@@ -8,9 +8,10 @@ See the full list of changes on <https://homecircle.umair.us/#changelog>.
   circle, including what you tell it in a direct chat, so anyone can ask about
   it. Tag people on any note or reminder, and choose who sees it: everyone,
   only the people tagged, or only you. Health notes stay private unless you
-  share them, and a calendar sent in a direct chat stays yours. Say "keep that
-  private" or "share that with Sara" after saving something. Private notes from
-  before stay private; Memory offers to share them with one tap.
+  share them. Photos, documents and calendars sent to the helper in a direct
+  chat stay yours too, with a Share with the circle button on the reply. Say
+  "keep that private" or "share that with Sara" after saving something. Private
+  notes from before stay private; Memory offers to share them with one tap.
 - Group calls in HomeCircle: phone to phone, up to six people, audio only. Join
   late, leave any time, and see who's on and who's talking. WhatsApp's call
   link stays as the fallback.

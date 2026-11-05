@@ -18,7 +18,7 @@ const ACCESS: { id: Access; label: string }[] = [
   { id: 'people', label: 'Only the people tagged' },
   { id: 'me', label: 'Only me' },
 ];
-const KEPT_PRIVATE = ['health', 'source'];
+const KEPT_PRIVATE = ['health', 'document', 'source'];
 const accessOf = (n: { scope: string; sharedWith?: string[] }): Access => (n.scope === 'circle' ? 'circle' : n.sharedWith?.length ? 'people' : 'me');
 
 type Note = {
@@ -110,11 +110,11 @@ export function MemoryBody() {
   useFocusEffect(load);
 
   // Notes from before everything was shared by default: what was said in a direct chat stayed private.
-  const onlyMine = (notes ?? []).filter((n) => n.scope === me && !n.sharedWith?.length && !KEPT_PRIVATE.includes(n.type)).length;
+  const onlyMine = (notes ?? []).filter((n) => n.scope === me && !n.sharedWith?.length && !KEPT_PRIVATE.includes(n.type) && !n.data?.file).length;
   const shareMine = () =>
     showSheet(
       `Share ${onlyMine} private note${onlyMine === 1 ? '' : 's'}?`,
-      `Everyone in the circle will be able to read them and ask ${name} about them. Health notes stay yours.`,
+      `Everyone in the circle will be able to read them and ask ${name} about them. Health notes, documents and files you sent stay yours until you share each one.`,
       [
         { text: 'Not now', style: 'cancel' },
         { text: 'Share them', onPress: () => client.agentRpc('shareMine').then(load).catch((e) => setError(errorText(e))) },

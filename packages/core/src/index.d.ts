@@ -737,6 +737,7 @@ export class CircleClient {
   rememberWithAgent(messageId: string): Promise<void>;
   /** Undo what the agent just remembered. */
   undoAgent(noteIds: string[], opts?: { peer?: string | null }): Promise<void>;
+  shareAgentNotes(noteIds: string[], opts?: { peer?: string | null }): Promise<void>;
   /** Send the agent a photo, PDF, document or spreadsheet, encrypted for it. Returns the visible message's id. */
   sendFileToAgent(bytes: Uint8Array, file: { name: string; mime: string }, opts?: { peer?: string | null }): Promise<string>;
   /** After a file was read and saved: delete it from the server, or keep it. */

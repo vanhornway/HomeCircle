@@ -418,6 +418,7 @@ export class Brain {
       const chat = this._chat(msg);
       this._log(msg, msg.from, said(b));
       if (b.undo) return await this._undo(msg, b.undo);
+      if (b.shareNotes) return await this._shareNotes(msg, b.shareNotes);
       if (b.saveFound) return await this._saveFound(msg, b.saveFound);
       if (b.upload) return await this._readUpload(msg, chat);
       if (b.fileChoice) return await this._fileChoice(msg, b.fileChoice);
@@ -441,8 +442,13 @@ export class Brain {
     return PRIVATE_RE.test(msg.body.ask || '') ? msg.from : 'circle';
   }
 
-  /** A calendar sent in a direct chat stays that person's: its address reads every title on it. */
-  _calendarScope(msg) {
+  /**
+   * What's sent to the helper in a direct chat, rather than said to it, stays
+   * that person's until they share it: a photo or document can hold far more
+   * than they meant to pass on (a passport scan), and a calendar's address reads
+   * every title on it.
+   */
+  _sentScope(msg) {
     return msg.body.thread === 'dm' && !SHARE_RE.test(msg.body.ask || '') ? msg.from : 'circle';
   }
 
@@ -485,6 +491,7 @@ export class Brain {
       lines.push('👨‍👩‍👧 Everyone in the circle can ask me about this. Say “keep that private” if it’s just for you.');
     }
     if (scope === 'circle' && saved.some((n) => n.type === 'health' && n.scope === by)) lines.push('🔒 Health notes are just for you. Say “share it with the circle” to keep one for everyone.');
+    if (verb === 'Saved' && scope === by) lines.push('🔒 Only you can see what you send me here. Tap Share with the circle, or say “share that with Sara”.');
     if (this.agent.feature('reminders')) {
       const list = this._reminders();
       let added = 0;
@@ -548,6 +555,19 @@ export class Brain {
     }
     this.memory.setSetting(`last:${msg.from}`, saved.map((n) => n.id));
     await this.reply(msg, this._keptText(saved, msg.from, { scope, secret, dm: msg.body.thread === 'dm' }), { undo: saved.map((n) => n.id) });
+  }
+
+  /** Share with the circle, tapped under something kept private. */
+  async _shareNotes(msg, ids) {
+    const opts = { by: msg.from, admin: this.agent.isAdmin(msg.from), now: this.now().getTime() };
+    const shared = (Array.isArray(ids) ? ids : [ids]).flatMap((id) => {
+      try {
+        return [this.memory.setAccess(String(id), { access: 'circle' }, opts).title];
+      } catch {
+        return []; // already gone, or not theirs to share
+      }
+    });
+    await this.reply(msg, shared.length ? `👨‍👩‍👧 Everyone in the circle can ask about ${shared.join('; ')} now.` : 'There’s nothing to share.');
   }
 
   async _undo(msg, ids) {
@@ -760,7 +780,7 @@ export class Brain {
     // A year back, so a school calendar's first day (months ago) still marks where the school year starts.
     const events = parseIcs(text, { from: iso(new Date(t.getTime() - 365 * DAY)), to: iso(new Date(t.getTime() + 450 * DAY)) });
     if (!events.length) throw new BrainError('That calendar has no events around now.');
-    const pending = { url: link.url, events, fetchedAt: t.getTime(), thread: msg.body.thread, replyTo: msg.body.replyTo ?? null, scope: this._calendarScope(msg) };
+    const pending = { url: link.url, events, fetchedAt: t.getTime(), thread: msg.body.thread, replyTo: msg.body.replyTo ?? null, scope: this._sentScope(msg) };
     const forWho = rest.match(/\bfor\s+([^.?!]+)/i)?.[1];
     if (forWho) return this._storeSource(msg, pending, forWho);
     this.memory.setSetting(`pending:${msg.from}`, pending);
@@ -1039,7 +1059,7 @@ export class Brain {
       fetchedAt: this.now().getTime(),
       thread: msg.body.thread,
       replyTo: msg.body.replyTo ?? null,
-      scope: this._calendarScope(msg),
+      scope: this._sentScope(msg),
       by: msg.from,
       forWho: rest.match(/\bfor\s+([^.?!]+)/i)?.[1]?.trim() || null,
     });
@@ -1076,7 +1096,8 @@ export class Brain {
       const saved = this._save(found.notes, { scope: found.scope, by: msg.from, share: found.share });
       this.memory.setSetting(`last:${msg.from}`, saved.map((n) => n.id));
       this.memory.setSetting(`last:${msg.from}`, saved.map((n) => n.id));
-      await this.reply(back, this._keptText(saved, msg.from, { verb: 'Saved', scope: found.scope, secret: found.secret, dm: found.thread === 'dm' }), { undo: saved.map((n) => n.id) });
+      const mine = saved.filter((n) => n.scope === msg.from).map((n) => n.id);
+      await this.reply(back, this._keptText(saved, msg.from, { verb: 'Saved', scope: found.scope, secret: found.secret, dm: found.thread === 'dm' }), { undo: saved.map((n) => n.id), ...(mine.length ? { shareNotes: mine } : {}) });
       return this._askAboutFile(back, found.file, saved.map((n) => n.id), msg.from);
     }
     if (found.replaces) {
@@ -1346,7 +1367,7 @@ export class Brain {
       // A receipt dated in the future (a misread) counts as today's.
       const at = Number.isFinite(date) && date <= this.now().getTime() ? date : null;
       const id = randomBytes(6).toString('base64url');
-      this.memory.setSetting(`found:${id}`, { file, title: store, receipt: { store, items: receiptItems, buys, currency, at }, thread: msg.body.thread, replyTo: msg.body.replyTo ?? null, scope: this._scopeFor(msg), by: msg.from });
+      this.memory.setSetting(`found:${id}`, { file, title: store, receipt: { store, items: receiptItems, buys, currency, at }, thread: msg.body.thread, replyTo: msg.body.replyTo ?? null, scope: this._sentScope(msg), by: msg.from });
       this.memory.setSetting(`lastFound:${msg.from}`, id);
       const shown = receiptItems.slice(0, 25).join(', ');
       const priced = buys.filter((i) => i.price !== null).length;
@@ -1374,7 +1395,7 @@ export class Brain {
       fetchedAt: this.now().getTime(),
       thread: msg.body.thread,
       replyTo: msg.body.replyTo ?? null,
-      scope: this._scopeFor(msg),
+      scope: this._sentScope(msg),
       share: SHARE_RE.test(msg.body.ask || ''),
       secret: ask.found || readText.found || (out.notes ?? []).some(hasSecret),
       by: msg.from,
@@ -1560,8 +1581,8 @@ export class Brain {
       case 'access':
         return this._rpcReply(msg, true, brief(this.memory.setAccess(args.id, { access: args.access, people: args.people ?? [] }, { by, admin: this.agent.isAdmin(by), now })));
       case 'shareMine': {
-        // Everything of theirs that was kept private only because it was said in a direct chat. Health stays theirs.
-        const mine = this.memory.list({ by }).filter((n) => n.scope === by && !n.sharedWith?.length && n.type !== 'health' && n.type !== 'source');
+        // What was kept private only because it was said in a direct chat. Health, documents and kept files stay theirs: those are shared one at a time.
+        const mine = this.memory.list({ by }).filter((n) => n.scope === by && !n.sharedWith?.length && !['health', 'document', 'source'].includes(n.type) && !n.data?.file);
         for (const n of mine) this.memory.setAccess(n.id, { access: 'circle' }, { by, now });
         return this._rpcReply(msg, true, { shared: mine.length });
       }
@@ -1696,6 +1717,7 @@ function said(b) {
   if (b.fileChoice) return b.fileChoice.keep ? '[tapped Keep the file]' : '[tapped Delete the file]';
   if (b.reminderDone) return '[tapped Done on a reminder]';
   if (b.undo) return '[tapped Undo]';
+  if (b.shareNotes) return '[tapped Share with the circle]';
   if (b.remember) return `[asked you to remember a message] ${scrubSecrets(String(b.remember.text ?? '').slice(0, 500)).text}`;
   return null;
 }
