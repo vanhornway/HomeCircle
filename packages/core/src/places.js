@@ -1,6 +1,32 @@
 // Place detection helpers shared by the apps and tests. All of this runs on
 // the phone; the server never sees positions or places.
 
+/** Left a place and back within this long: someone walking along its edge, not a trip. */
+export const QUICK_RETURN_MS = 3 * 60_000;
+
+/**
+ * The ids of arrived/left messages that cancel out: a "left" followed by an
+ * "arrived" at the same place, by the same person, within QUICK_RETURN_MS. Both
+ * still post as they happen; every viewer hides the pair once the return comes.
+ */
+export function quickReturns(messages, withinMs = QUICK_RETURN_MS) {
+  const hidden = new Set();
+  const lastLeft = new Map();
+  for (const m of messages) {
+    if (m.kind !== 'event' || m.body?.type !== 'place') continue;
+    const key = `${m.from}|${m.body.placeId}`;
+    const at = Number(m.body.at) || m.ts;
+    if (m.body.action === 'left') {
+      lastLeft.set(key, { id: m.id, at });
+      continue;
+    }
+    const out = lastLeft.get(key);
+    lastLeft.delete(key);
+    if (out && at >= out.at && at - out.at <= withinMs) hidden.add(out.id).add(m.id);
+  }
+  return hidden;
+}
+
 /** Great-circle distance in meters. */
 export function distanceM(a, b) {
   const R = 6371000;

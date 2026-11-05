@@ -65,6 +65,8 @@ export interface MemberRecord {
   page: 'care' | 'grandkids' | null;
   ringEveryone: boolean | null;
   games: boolean | null;
+  /** She can place calls herself (default on); off leaves only Call me. */
+  canDial: boolean | null;
   /** Her tiles' order (member ids). */
   tiles: string[] | null;
   /** Her sleep hours, "HH:MM" her time. */
@@ -787,6 +789,9 @@ export const EMOJI_GROUPS: { name: string; emojis: string[] }[];
 export function isEmojiOnly(text: string, max?: number): boolean;
 export function isValidReaction(emoji: string): boolean;
 
+export const QUICK_RETURN_MS: number;
+/** Ids of "left" and "arrived" messages that cancel out: back within QUICK_RETURN_MS. */
+export function quickReturns(messages: { id: string; kind: string; from: string; ts: number; body?: any }[], withinMs?: number): Set<string>;
 export function distanceM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number;
 /** 'inside' | 'outside' | null (too close to the edge or too imprecise to tell). */
 export function placeState(p: { distance: number; accuracy?: number | null; radius: number }): 'inside' | 'outside' | null;

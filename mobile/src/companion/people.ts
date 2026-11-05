@@ -40,6 +40,7 @@ export function settingsOf(client: CircleClient) {
     care,
     ringEveryone: r?.ringEveryone ?? care,
     games: r?.games ?? true,
+    canDial: r?.canDial ?? true,
     // Grandkids circles get one notification and no reminders (decided).
     remindEvery: care ? (r?.remindEvery ?? 10) : 0,
     sleep: r?.sleep ?? null,

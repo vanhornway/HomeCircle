@@ -29,6 +29,7 @@ import {
   appInviteLink,
 } from './crypto.js';
 import { isValidReaction } from './emoji.js';
+import { quickReturns } from './places.js';
 import { allFeatures, cleanFeatures, defaultFeatures, hasFeature, resolveFeatures } from './features.js';
 
 // Storage key for the account. A device in several circles keeps one
@@ -1202,7 +1203,10 @@ export class CircleClient {
 
   /** Messages in one conversation: the group (peer null) or a direct chat with `peer`. */
   conversation(peer = null) {
-    return this.messages.filter((m) => (m.peer ?? null) === peer);
+    const list = this.messages.filter((m) => (m.peer ?? null) === peer);
+    if (peer) return list;
+    const hidden = quickReturns(list);
+    return hidden.size ? list.filter((m) => !hidden.has(m.id)) : list;
   }
 
   // --- ticks ---------------------------------------------------------------
@@ -1755,7 +1759,7 @@ export class CircleClient {
     await this.fetchRecords();
   }
 
-  /** Admin settings about a member, or null: { member, skin, page, ringEveryone, games, tiles, sleep, remindEvery, inactiveHours, lang, g }. */
+  /** Admin settings about a member, or null: { member, skin, page, ringEveryone, games, canDial, tiles, sleep, remindEvery, inactiveHours, lang, g }. */
   memberRecord(memberId) {
     return this.records.member.get(memberId) ?? null;
   }
@@ -2831,6 +2835,7 @@ function cleanMemberRecord(b) {
     page: b.page === 'care' || b.page === 'grandkids' ? b.page : null,
     ringEveryone: bool(b.ringEveryone),
     games: bool(b.games),
+    canDial: bool(b.canDial),
     tiles: Array.isArray(b.tiles) ? [...new Set(b.tiles.filter((x) => typeof x === 'string'))].slice(0, MAX_TILES) : null,
     sleep,
     remindEvery: int(b.remindEvery, 1, 240),

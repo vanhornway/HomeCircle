@@ -3,6 +3,8 @@
   "ur_asleep_many_1_f",
   "ur_asleep_one_1",
   "ur_asleep_one_1_f",
+  "ur_call_failed_1",
+  "ur_call_placing_1",
   "ur_game_draw_1",
   "ur_game_invite_1",
   "ur_game_invite_1_f",
@@ -43,5 +45,7 @@
   "ur_reply_morning_1",
   "ur_reply_morning_1_f",
   "ur_sos_safe_1",
-  "ur_sos_sent_1"
+  "ur_sos_sent_1",
+  "ur_ui_call_person_1",
+  "ur_ui_cancel_1"
 ]

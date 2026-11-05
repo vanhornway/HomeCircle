@@ -753,6 +753,68 @@
      ]
     }
    }
+  },
+  "ui.call_person": {
+   "en": "Call {name}",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "{name} کو فون کریں",
+     "parts": [
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_ui_call_person_1"
+      }
+     ]
+    }
+   }
+  },
+  "ui.cancel": {
+   "en": "Don't call",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "رہنے دیں",
+     "parts": [
+      {
+       "clip": "ur_ui_cancel_1"
+      }
+     ]
+    }
+   }
+  },
+  "call.placing": {
+   "en": "Calling {name}…",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "{name} کو فون کر رہے ہیں…",
+     "parts": [
+      {
+       "slot": "name"
+      },
+      {
+       "clip": "ur_call_placing_1"
+      }
+     ]
+    }
+   }
+  },
+  "call.failed": {
+   "en": "The call didn't go through. Please try again in a little while.",
+   "gender": null,
+   "ur": {
+    "m": {
+     "text": "فون نہیں مل سکا۔ تھوڑی دیر بعد دوبارہ کوشش کریں۔",
+     "parts": [
+      {
+       "clip": "ur_call_failed_1"
+      }
+     ]
+    }
+   }
   }
  }
 }

@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { ensureChirpChannels } from './chirp';
 import { AndroidImportance, AndroidNotificationVisibility } from 'expo-notifications';
-import { ACCOUNT_KEY, type CircleClient, type Message } from '@homecircle/core';
+import { ACCOUNT_KEY, quickReturns, type CircleClient, type Message } from '@homecircle/core';
 import { getSettings } from './storage';
 import { allClients } from './circle';
 import { conversationKey } from './unread';
@@ -194,10 +194,14 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
     const s = client.groupCallState(m.id);
     if (s?.open && !s.joined.includes(me) && conversationKey(id, null) !== reading) await notifyGroupCall(client, s, { previews: showPreviews }).catch(() => {});
   }
+  // Left and came straight back: no alert for the return, and the "left" one comes down.
+  const returned = quickReturns(client.messages);
+  if (showPreviews) await dismissQuickReturns(client, messages.filter((m) => m.seq > last && m.from !== me && returned.has(m.id))).catch(() => {});
   const fresh = messages.filter(
     (m) =>
       m.seq > last &&
       m.from !== me &&
+      !returned.has(m.id) &&
       sosOf(m) !== 'start' &&
       !callbackAsk(m) &&
       !groupCall(m) &&
@@ -221,6 +225,16 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
     });
   }
   return { shown: groups.length, quiet: groups.filter((g) => !g.loud).length };
+}
+
+/** Take down a "left" alert when that person is already back. */
+async function dismissQuickReturns(client: CircleClient, back: Message[]) {
+  if (!back.length) return;
+  const shown = await Notifications.getPresentedNotificationsAsync();
+  const lines = back.map((m) => `${nameOf(client, m.from)} left ${m.body?.placeName || 'a place'}`);
+  for (const n of shown) {
+    if (lines.some((l) => n.request.content.body?.endsWith(l))) await Notifications.dismissNotificationAsync(n.request.identifier);
+  }
 }
 
 /** Whether this phone's person is likely asleep: Do Not Disturb on, or 10 pm to 7 am here. */

@@ -103,6 +103,13 @@ export default function ElderSettings() {
           onChange={(v) => save({ games: v })}
           disabled={!admin || busy}
         />
+        <ToggleRow
+          title="She can call people herself"
+          detail={(rec?.canDial ?? true) ? 'On · a big Call button on each person, with a moment to change her mind' : 'Off · she can only ask someone to call her'}
+          value={rec?.canDial ?? true}
+          onChange={(v) => save({ canDial: v })}
+          disabled={!admin || busy}
+        />
         <SettingsRow icon="users" title="People on her tiles" detail="Order and the names she knows them by" href={{ pathname: '/elder-tiles', params: { member } }} />
       </SettingsGroup>
 

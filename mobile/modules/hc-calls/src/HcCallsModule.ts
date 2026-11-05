@@ -7,6 +7,7 @@ import { requireOptionalNativeModule } from 'expo';
 export type AudioRoute = 'earpiece' | 'speaker' | 'bluetooth';
 export type Routes = { available: AudioRoute[]; current: AudioRoute };
 /** The button pressed on the incoming-call notification (or 'open': the notification itself). */
+export type EndTone = 'busy' | 'declined' | 'failed';
 export type LaunchAction = { action: 'answer' | 'decline' | 'open'; callId: string; circleId: string; peerId: string };
 
 type Native = {
@@ -17,6 +18,10 @@ type Native = {
   getRoutes(): Routes;
   startRinging(): void;
   stopRinging(): void;
+  startRingback(loud: boolean): void;
+  stopRingback(): void;
+  playEndTone(kind: EndTone): void;
+  buzz(): void;
   showIncoming(callId: string, name: string, circleId: string, peerId: string): void;
   cancelIncoming(): void;
   showMissed(name: string): void;
@@ -49,6 +54,11 @@ export const setAudioRoute = (route: AudioRoute) => quiet(() => native!.setRoute
 export const getAudioRoutes = (): Routes => quiet(() => native!.getRoutes(), { available: ['earpiece', 'speaker'], current: 'earpiece' });
 export const startRinging = () => quiet(() => native!.startRinging(), undefined);
 export const stopRinging = () => quiet(() => native!.stopRinging(), undefined);
+/** What the caller hears: soft while the call goes out, full once the other phone rings. */
+export const startRingback = (loud: boolean) => quiet(() => native!.startRingback(loud), undefined);
+export const stopRingback = () => quiet(() => native!.stopRingback(), undefined);
+export const playEndTone = (kind: EndTone) => quiet(() => native!.playEndTone(kind), undefined);
+export const buzz = () => quiet(() => native!.buzz(), undefined);
 export const showIncomingCall = (callId: string, name: string, circleId: string, peerId: string) => quiet(() => native!.showIncoming(callId, name, circleId, peerId), undefined);
 export const cancelIncomingCall = () => quiet(() => native!.cancelIncoming(), undefined);
 export const showMissedCall = (name: string) => quiet(() => native!.showMissed(name), undefined);

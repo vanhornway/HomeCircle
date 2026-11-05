@@ -47,3 +47,7 @@ family.inactive,Family app: inactivity check-in,elder,{elder} hasn't used her ph
 family.game_invite,Family app: she starts a game,elder,{elder} wants to play {game} with you,,
 sos.safe,Her app: I'm safe now button (added; Urdu from the owner's 27 Oct review),,I'm safe now,اب میں ٹھیک ہوں,
 groupcall.started,Her app: someone in the family started the WhatsApp group call (wording from the owner's 31 Oct review),name,The family call has started. {name} is waiting for you.,فیملی کال شروع ہو گئی ہے۔ {name} آپ کا انتظار کر رہے ہیں۔,فیملی کال شروع ہو گئی ہے۔ {name} آپ کا انتظار کر رہی ہیں۔
+ui.call_person,Her app: big button to call someone herself (Urdu drafted for the owner's review),,Call {name},{name} کو فون کریں,
+ui.cancel,Her app: big button to stop a call before it rings (Urdu drafted for the owner's review),,Don't call,رہنے دیں,
+call.placing,Her app: spoken before her call rings (Urdu drafted for the owner's review),,Calling {name}…,{name} کو فون کر رہے ہیں…,
+call.failed,Her app: her call couldn't be placed (Urdu drafted for the owner's review),,The call didn't go through. Please try again in a little while.,فون نہیں مل سکا۔ تھوڑی دیر بعد دوبارہ کوشش کریں۔,

@@ -13,19 +13,23 @@ import { allClients, clientForCircle, errorText } from './circle';
 import { sasWords } from './callSas';
 import { diag } from './diagnostics';
 import {
+  buzz,
   cancelIncomingCall,
   consumeLaunchAction,
   getAudioRoutes,
   onCallAction,
   onRoutesChanged,
+  playEndTone,
   setAudioRoute,
   setCallAudio,
   showIncomingCall,
   showMissedCall,
   showOverLockScreen,
   startCallService,
+  startRingback,
   startRinging,
   stopCallService,
+  stopRingback,
   stopRinging,
   type AudioRoute,
   type LaunchAction,
@@ -95,6 +99,8 @@ let lastPhase = engine.snapshot.phase;
 engine.subscribe((snap) => {
   const prev = lastPhase;
   lastPhase = snap.phase;
+  // The other phone is ringing now: the soft ring becomes the full one.
+  if (snap.phase === 'outgoing' && prev === 'outgoing' && snap.remoteRinging && !ui.snap.remoteRinging) startRingback(true);
   publish({ snap, circleId: active?.circleId ?? ui.circleId });
   if (snap.phase === 'active' && !ui.words) {
     const fp = engine.fingerprints;
@@ -106,6 +112,7 @@ engine.subscribe((snap) => {
 /** What the phone does at each step of a call: ring, audio mode, the service that keeps it alive. */
 function applyPhase(prev: CallSnapshot['phase'], snap: CallSnapshot) {
   const { phase } = snap;
+  if (prev === 'outgoing') stopRingback();
   if (phase === 'incoming') {
     if (endedTimer) clearTimeout(endedTimer);
     publish({ ended: null });
@@ -127,6 +134,7 @@ function applyPhase(prev: CallSnapshot['phase'], snap: CallSnapshot) {
     if (endedTimer) clearTimeout(endedTimer);
     publish({ ended: null });
     beginAudio(snap);
+    startRingback(snap.remoteRinging);
     return;
   }
   if (phase === 'connecting' && prev === 'incoming') {
@@ -177,6 +185,11 @@ function beginAudio(snap: CallSnapshot) {
 function ended(info: EndInfo) {
   diag('call:end', { reason: info.reason, incoming: info.incoming, sec: Math.round(info.durationMs / 1000) });
   if (info.reason === 'missed' && active) showMissedCall(nameOf(active, info.peerId));
+  if (!info.incoming && !info.durationMs) {
+    if (info.reason === 'busy') playEndTone('busy');
+    else if (info.reason === 'declined') playEndTone('declined');
+    else if (info.reason === 'failed' || info.reason === 'unreachable') playEndTone('failed');
+  }
   const text = endText(info);
   // The caller leaves a line in the chat: missed (the push tells them), or how long it lasted (no push).
   if (active && !info.incoming && active.feature('directMessages') && (info.reason === 'no_answer' || info.durationMs > 0)) {
@@ -257,6 +270,7 @@ export function canCall(client: CircleClient, memberId: string): boolean {
 
 /** Call a person. Throws a readable message if it can't start. */
 export async function startCall(client: CircleClient, peerId: string): Promise<void> {
+  buzz();
   if (!rtcAvailable()) throw new Error('Calls need the latest version of the app.');
   const snap = engine.snapshot;
   // Calling the person who is calling you: that is answering.

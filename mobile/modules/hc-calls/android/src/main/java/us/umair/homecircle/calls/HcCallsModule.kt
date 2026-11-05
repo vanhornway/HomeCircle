@@ -13,6 +13,7 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
+import android.media.ToneGenerator
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -45,6 +46,7 @@ class HcCallsModule : Module() {
   private var deviceCallback: AudioDeviceCallback? = null
   private var ringtone: MediaPlayer? = null
   private var vibrator: Vibrator? = null
+  private var tone: ToneGenerator? = null
 
   override fun definition() = ModuleDefinition {
     Name("HcCalls")
@@ -104,6 +106,27 @@ class HcCallsModule : Module() {
     // Ring inside the app (it is open): the ringtone and a vibration, until stopRinging.
     Function("startRinging") { startRinging() }
     Function("stopRinging") { stopRinging() }
+
+    // What the caller hears: a soft ring from the moment the call goes out, the
+    // full ring once the other phone is ringing, on the call's audio route.
+    Function("startRingback") { loud: Boolean -> playTone(ToneGenerator.TONE_SUP_RINGTONE, if (loud) 70 else 30, -1) }
+    Function("stopRingback") { stopTone() }
+    // How a call that never connected ended: 'busy', 'declined' or 'failed'.
+    Function("playEndTone") { kind: String ->
+      val id = when (kind) {
+        "busy" -> ToneGenerator.TONE_SUP_BUSY
+        "declined" -> ToneGenerator.TONE_SUP_CONGESTION
+        else -> ToneGenerator.TONE_SUP_ERROR
+      }
+      playTone(id, 60, 1500)
+    }
+    // A short buzz when Call is tapped.
+    Function("buzz") {
+      val v = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+      if (v != null && v.hasVibrator()) {
+        if (Build.VERSION.SDK_INT >= 26) v.vibrate(VibrationEffect.createOneShot(40, VibrationEffect.DEFAULT_AMPLITUDE)) else @Suppress("DEPRECATION") v.vibrate(40)
+      }
+    }
 
     // A call from someone, as a full-screen notification (over the lock screen)
     // that rings until answered, declined, or 45 seconds.
@@ -305,6 +328,34 @@ class HcCallsModule : Module() {
         vibrator = v
       }
     }
+  }
+
+  private fun playTone(id: Int, volume: Int, ms: Int) {
+    stopTone()
+    try {
+      val gen = ToneGenerator(AudioManager.STREAM_VOICE_CALL, volume)
+      gen.startTone(id, ms)
+      tone = gen
+      if (ms > 0) {
+        Handler(Looper.getMainLooper()).postDelayed({
+          gen.release()
+          if (tone === gen) tone = null
+        }, ms + 100L)
+      }
+    } catch (_: Exception) {
+      tone = null
+    }
+  }
+
+  private fun stopTone() {
+    tone?.let {
+      try {
+        it.stopTone()
+      } catch (_: Exception) {
+      }
+      it.release()
+    }
+    tone = null
   }
 
   private fun stopRinging() {
