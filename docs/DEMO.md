@@ -9,7 +9,9 @@ A separate HomeCircle server where anyone can try a made-up family of twenty for
 
 Each visitor gets their own copy, so strangers never see each other. The visitor's real location is never shared with a demo family: the app leaves demo circles out of location sharing, and the server drops any location or most-visited places a visitor sends, so an app from before demos stays out too.
 
-Visitors start in the app, in a browser, or from the demo page's "Show a QR code for your phone", which gives a one-time link to scan with Settings → Your circles → Join a circle. That works in any version of the app, alongside the person's other circles. An app from before demos has no countdown or end screen: when the copy ends, its banner offers to remove the circle.
+The site's Demo button shows a download link and a QR code for `https://demo.homecircle.umair.us/#app` (the image is `landing/demo-qr.svg`; change it if the address changes). The code never expires, because a copy is only claimed when the person taps "Open in the HomeCircle app" on that page. That page needs a phone's camera, not the app's scanner.
+
+Visitors can also start in the app, in a browser, or from the demo page's "Show a QR code for your phone", which gives a one-time link to scan with Settings → Your circles → Join a circle. That works in any version of the app, alongside the person's other circles. An app from before demos has no countdown or end screen: when the copy ends, its banner offers to remove the circle.
 
 ## Settings
 

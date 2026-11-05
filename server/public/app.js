@@ -309,8 +309,7 @@ async function renderJoin(link) {
     toast(`This browser is already in ${preview.circleName || 'that circle'}`);
     return switchCircle(already.accountKey);
   }
-  const parsed = link.match(/#([\w-]+)\.([\w-]+)$/);
-  const appLink = `homecircle://join?server=${encodeURIComponent(SERVER)}&i=${parsed[1]}&s=${parsed[2]}`;
+  const appLink = appJoinLink(link);
   const err = h('p', { class: 'error', role: 'alert' });
   const name = h('input', { class: 'input', id: 'name', required: true, maxlength: '40', autocomplete: 'given-name', placeholder: 'Your name' });
   const btn = h('button', { class: 'btn block', type: 'submit', disabled: true }, 'Join in this browser');
@@ -357,6 +356,12 @@ async function renderJoin(link) {
 }
 
 // --- demo server -----------------------------------------------------------
+
+/** An invite link as the deep link that opens it in the app. */
+function appJoinLink(link) {
+  const parsed = link.match(/#([\w-]+)\.([\w-]+)$/);
+  return `homecircle://join?server=${encodeURIComponent(SERVER)}&i=${parsed[1]}&s=${parsed[2]}`;
+}
 
 const DEMO_DEVICE_KEY = 'homecircle.demoDevice';
 function demoDevice() {
@@ -437,6 +442,58 @@ function renderDemoStart() {
         error,
         qrBox,
         lockNote('Your own location isn’t used. Nothing here touches any real circle.'),
+      ),
+    ),
+  );
+}
+
+/**
+ * Where the site's QR code lands. A copy is only claimed on the tap, so the
+ * code itself never expires and a passer-by doesn't hold one up.
+ */
+function renderDemoPhone() {
+  let appLink = null;
+  const hint = h('p', { class: 'muted small', role: 'status' });
+  const error = h('p', { class: 'error', role: 'alert' });
+  const btn = h(
+    'button',
+    {
+      class: 'btn primary block',
+      type: 'button',
+      onclick: async () => {
+        btn.disabled = true;
+        error.textContent = '';
+        try {
+          if (!appLink) {
+            const { link, unusedMinutes } = await CircleClient.startDemo(SERVER, { device: demoDevice() });
+            appLink = appJoinLink(link);
+            setTimeout(() => (appLink = null), unusedMinutes * 60_000);
+          }
+          location.href = appLink;
+          hint.textContent = 'Nothing opened? Tap it again, or get the app below.';
+        } catch (err) {
+          error.textContent = errorText(err);
+        }
+        btn.disabled = false;
+      },
+    },
+    'Open in the HomeCircle app',
+  );
+  mount(
+    h(
+      'main',
+      { class: 'onboard' },
+      h(
+        'div',
+        { class: 'card' },
+        brandRow(),
+        h('h1', {}, 'Meet a family for an hour'),
+        h('p', { class: 'muted' }, `Twenty made-up people go through a whole day in ${info.demo.minutes} minutes, in the real app. You join as yourself. Your copy is deleted when the hour is up or when you leave.`),
+        btn,
+        error,
+        hint,
+        h('p', { class: 'muted small' }, 'Don’t have the app yet? ', h('a', { href: 'https://homecircle.umair.us/#app' }, 'Get it here'), '. Or ', h('a', { href: '/' }, 'try it in this browser'), '.'),
+        lockNote('Your own location isn’t used. Your own circles aren’t touched.'),
       ),
     ),
   );
@@ -2393,6 +2450,7 @@ async function boot() {
 
   const invite = location.pathname.startsWith('/join') && location.hash.length > 1 ? `${SERVER}/join${location.hash}` : null;
   if (invite) return renderJoin(invite);
+  if (info.demo && location.hash === '#app') return renderDemoPhone();
   if (info.recovery && (location.hash === '#recover' || (!circles.length && pendingRejoin.get()))) return renderRecover();
   if (circles.length) return startApp();
   if (!info.setup) return renderSetup();
