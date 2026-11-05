@@ -5,13 +5,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ADD_BUTTON_SPACE, AddButton, useAddButtonScroll, Button, EmptyState, ErrorText, Tag } from '../components/ui';
 import { DatePicker } from '../components/DatePicker';
 import { HowThisWorks } from '../components/HowThisWorks';
+import { Choice, circlePeople, PeopleChips } from '../components/PeopleChips';
 import { errorText } from '../lib/circle';
 import { daysUntil, parseDueDate, prettyDate } from '../lib/dueDate';
 import { useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
 import { showSheet } from '../lib/sheet';
 
-type Reminder = { id: string; title: string; due: string; repeat: 'none' | 'yearly' | 'months'; months?: number; note: string; createdBy: string; createdByName: string; done: boolean };
+type Reminder = { id: string; title: string; due: string; repeat: 'none' | 'yearly' | 'months'; months?: number; note: string; createdBy: string; createdByName: string; done: boolean; only?: string; people?: string[] };
 
 const whenText = (r: Reminder) => {
   if (r.done) return 'Done';
@@ -119,12 +120,17 @@ function ReminderSheet({ reminder, onClose, run }: { reminder: Reminder | null; 
   const [repeat, setRepeat] = useState<Reminder['repeat']>(reminder ? reminder.repeat : 'yearly');
   const [months, setMonths] = useState(reminder?.months ?? 6);
   const [note, setNote] = useState(reminder?.note ?? '');
+  const [people, setPeople] = useState<string[]>(reminder?.people ?? []);
+  const [mine, setMine] = useState(!!reminder?.only);
   const [busy, setBusy] = useState(false);
+  const client = useCircle();
+  const family = circlePeople(client);
+  const canChoose = !reminder || reminder.createdBy === client.account?.memberId;
   const due = parseDueDate(date);
   const save = async () => {
     if (!due) return;
     setBusy(true);
-    const fields = { title: title.trim(), due, repeat, ...(repeat === 'months' ? { months } : {}), note: note.trim() };
+    const fields = { title: title.trim(), due, repeat, ...(repeat === 'months' ? { months } : {}), note: note.trim(), people, ...(canChoose ? { private: mine } : {}) };
     const ok = await run(reminder ? 'reminderUpdate' : 'reminderAdd', reminder ? { id: reminder.id, ...fields } : fields);
     setBusy(false);
     if (ok) onClose();
@@ -187,6 +193,23 @@ function ReminderSheet({ reminder, onClose, run }: { reminder: Reminder | null; 
               </View>
             ) : null}
             <TextInput accessibilityLabel="A note, like where to renew (optional)" value={note} onChangeText={setNote} placeholder="A note, like where to renew (optional)" placeholderTextColor={t.muted} multiline style={[input, { minHeight: 80, textAlignVertical: 'top' }]} />
+            <Text style={{ color: t.text, fontSize: 15, fontWeight: '700' }}>Who it’s for</Text>
+            <Text style={{ color: t.muted, fontSize: 14 }}>People you tag hear about it too, and can ask about it.</Text>
+            <PeopleChips
+              people={family.map((p) => ({ key: p.id, label: p.name }))}
+              selected={people}
+              onToggle={(id) => setPeople((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]))}
+            />
+            {canChoose ? (
+              <Choice
+                options={[
+                  { id: 'circle', label: 'Everyone in the circle can see it' },
+                  { id: 'me', label: people.length ? 'Only me and who’s tagged' : 'Only me' },
+                ]}
+                value={mine ? 'me' : 'circle'}
+                onPick={(v) => setMine(v === 'me')}
+              />
+            ) : null}
             <Button variant="primary" title="Save" loading={busy} disabled={!title.trim() || !due} onPress={save} />
             {reminder ? <Button variant="danger" title="Delete" onPress={remove} /> : null}
           </ScrollView>

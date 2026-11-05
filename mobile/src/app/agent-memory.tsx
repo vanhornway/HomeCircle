@@ -6,14 +6,27 @@ import { Stack, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ADD_BUTTON_SPACE, AddButton, useAddButtonScroll, Button, EmptyState, ErrorText, Tag } from '../components/ui';
 import { HowThisWorks } from '../components/HowThisWorks';
+import { Choice, circlePeople, PeopleChips } from '../components/PeopleChips';
 import { errorText } from '../lib/circle';
 import { useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
 import { showSheet } from '../lib/sheet';
 
+type Access = 'circle' | 'people' | 'me';
+const ACCESS: { id: Access; label: string }[] = [
+  { id: 'circle', label: 'Everyone in the circle' },
+  { id: 'people', label: 'Only the people tagged' },
+  { id: 'me', label: 'Only me' },
+];
+const KEPT_PRIVATE = ['health', 'source'];
+const accessOf = (n: { scope: string; sharedWith?: string[] }): Access => (n.scope === 'circle' ? 'circle' : n.sharedWith?.length ? 'people' : 'me');
+
 type Note = {
   id: string;
   scope: string;
+  createdBy?: string | null;
+  byName?: string | null;
+  sharedWith?: string[];
   type: string;
   title: string;
   body: string;
@@ -96,6 +109,18 @@ export function MemoryBody() {
   }, [client, query, type]);
   useFocusEffect(load);
 
+  // Notes from before everything was shared by default: what was said in a direct chat stayed private.
+  const onlyMine = (notes ?? []).filter((n) => n.scope === me && !n.sharedWith?.length && !KEPT_PRIVATE.includes(n.type)).length;
+  const shareMine = () =>
+    showSheet(
+      `Share ${onlyMine} private note${onlyMine === 1 ? '' : 's'}?`,
+      `Everyone in the circle will be able to read them and ask ${name} about them. Health notes stay yours.`,
+      [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Share them', onPress: () => client.agentRpc('shareMine').then(load).catch((e) => setError(errorText(e))) },
+      ],
+    );
+
   // "Tidy up memory" (the helper's "dream" command): it answers in your chat with it.
   const dream = () =>
     showSheet(
@@ -149,6 +174,14 @@ export function MemoryBody() {
           })}
         </ScrollView>
         {client.isAdmin ? <Button small variant="ghost" title="Tidy up memory" onPress={dream} style={{ alignSelf: 'flex-start' }} /> : null}
+        {onlyMine && !type && !query.trim() ? (
+          <View style={{ gap: 8, padding: 12, borderRadius: 14, backgroundColor: t.brandSoft }}>
+            <Text style={{ color: t.text, fontSize: 15 }}>
+              {onlyMine} of your notes {onlyMine === 1 ? 'is' : 'are'} private, so nobody else can ask {name} about {onlyMine === 1 ? 'it' : 'them'}.
+            </Text>
+            <Button small variant="primary" title="Share with the circle" onPress={shareMine} style={{ alignSelf: 'flex-start' }} />
+          </View>
+        ) : null}
       </View>
       {error ? (
         <View style={{ paddingHorizontal: 16 }}>
@@ -201,7 +234,7 @@ export function MemoryBody() {
                   <Text style={{ color: t.text, fontSize: 16, fontWeight: '600' }} numberOfLines={1}>
                     {n.title}
                   </Text>
-                  {n.scope === me ? <Tag label="Private" /> : null}
+                  {accessOf(n) === 'me' ? <Tag label="Private" /> : accessOf(n) === 'people' ? <Tag label="Shared with some" /> : null}
                   {n.data?.role ? <Tag label={n.data.role} /> : null}
                   {n.data?.file ? <Tag label="📎 file" /> : null}
                 </View>
@@ -211,6 +244,11 @@ export function MemoryBody() {
                     ? `${n.data?.format === 'pdf' ? `PDF · ${n.data?.count ?? 0} dates` : `${n.data?.count ?? 0} events`} · checked every 6 hours`
                     : (detailLine(n) ?? n.body.replace(/\[\[([^\]]+)\]\]/g, '$1'))}
                 </Text>
+                {n.people.length ? (
+                  <Text style={{ color: t.brand, fontSize: 14 }} numberOfLines={1}>
+                    {n.people.join(', ')}
+                  </Text>
+                ) : null}
               </View>
             </Pressable>
           )}
@@ -230,7 +268,8 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
   const [detail, setDetail] = useState<Detail | null>(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [priv, setPriv] = useState(false);
+  const [access, setAccess] = useState<Access>('circle');
+  const [people, setPeople] = useState<string[]>([]);
   const [tags, setTags] = useState('');
   const [busy, setBusy] = useState(false);
   // A kept file being opened: an image is shown here, anything else goes to another app.
@@ -261,6 +300,8 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
         setTitle(d.note.title);
         setBody(d.note.body);
         setTags((d.note.tags ?? []).join(', '));
+        setPeople(d.note.people ?? []);
+        setAccess(accessOf(d.note));
       })
       .catch((e) => {
         showSheet('Couldn’t open it', errorText(e));
@@ -281,11 +322,18 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
     .split(',')
     .map((x) => x.trim())
     .filter(Boolean);
+  const me = client.account?.memberId;
+  const family = circlePeople(client);
+  // Tagged people who are in the circle, by id: what "only the people tagged" opens it to.
+  const taggedIds = family.filter((p) => people.includes(p.name)).map((p) => p.id);
+  // Whoever added it says who sees it; an admin can also narrow something that's already the circle's.
+  const note = detail?.note;
+  const canChoose = !note || (note.scope === 'circle' ? note.createdBy === me || !note.createdBy || client.isAdmin : note.scope === me);
   const save = () =>
     run(
       id
-        ? client.agentRpc('update', { id, patch: { title: title.trim(), body, tags: tagList } })
-        : client.agentRpc('add', { note: { type: 'fact', title: title.trim(), body, tags: tagList }, private: priv }),
+        ? client.agentRpc('update', { id, patch: { title: title.trim(), body, tags: tagList, people } }).then(() => (canChoose ? client.agentRpc('access', { id, access, people: taggedIds }) : null))
+        : client.agentRpc('add', { note: { type: 'fact', title: title.trim(), body, tags: tagList, people }, access, sharedWith: taggedIds }),
     );
   const file = detail?.note.data?.file ?? null;
   const openFile = async () => {
@@ -369,11 +417,22 @@ function NoteSheet({ id, onClose, onChanged }: { id: string | null; onClose: () 
                   </View>
                 </View>
               ) : null}
-              {!id ? (
-                <Pressable accessibilityRole="switch" accessibilityState={{ checked: priv }} onPress={() => setPriv((v) => !v)} style={{ flexDirection: 'row', gap: 10, alignItems: 'center', minHeight: 44 }}>
-                  <Text style={{ fontSize: 18 }}>{priv ? '☑️' : '⬜️'}</Text>
-                  <Text style={{ color: t.text, fontSize: 15, flex: 1 }}>Private: only I can recall it</Text>
-                </Pressable>
+              <View style={{ gap: 6 }}>
+                <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700' }}>TAG PEOPLE</Text>
+                <PeopleChips
+                  people={[...family.map((p) => ({ key: p.name, label: p.name })), ...people.filter((n) => !family.some((p) => p.name === n)).map((n) => ({ key: n, label: n }))]}
+                  selected={people}
+                  onToggle={(n) => setPeople((list) => (list.includes(n) ? list.filter((x) => x !== n) : [...list, n]))}
+                />
+              </View>
+              {canChoose ? (
+                <View style={{ gap: 6 }}>
+                  <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700' }}>WHO CAN SEE IT AND ASK ABOUT IT</Text>
+                  <Choice options={ACCESS} value={access} onPick={setAccess} />
+                  {access === 'people' && !taggedIds.length ? <Text style={{ color: t.muted, fontSize: 14 }}>Tag someone above, or it stays just yours.</Text> : null}
+                </View>
+              ) : note?.byName ? (
+                <Text style={{ color: t.muted, fontSize: 14 }}>Added by {note.byName}</Text>
               ) : null}
               <Button variant="primary" title="Save" loading={busy} disabled={!title.trim()} onPress={save} />
 

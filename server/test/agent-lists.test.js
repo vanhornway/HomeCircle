@@ -220,3 +220,11 @@ test('prices: lists with no prices show none; currencies never mix', () => {
   assert.equal(money(4.2, ''), '4.20');
   assert.equal(rangeText(62.6, 77.1, 'USD'), '~$62 to $78');
 });
+
+test('a reminder can be tagged: those people see it too', () => {
+  const r = cleanReminder({ title: 'Passport', due: '2027-03-01', only: 'mom', people: ['kid', 'kid'] });
+  assert.deepEqual(r.people, ['kid']);
+  assert.ok(canSeeReminder(r, 'mom') && canSeeReminder(r, 'kid') && !canSeeReminder(r, 'dad'));
+  assert.ok(canSeeReminder(cleanReminder({ title: 'Car', due: '2027-03-01' }), 'dad'));
+  assert.equal('people' in cleanReminder({ title: 'Car', due: '2027-03-01', people: [] }), false);
+});

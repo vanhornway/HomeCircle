@@ -4,7 +4,8 @@
 // dates) so lookups take milliseconds and cost nothing.
 //
 // A note is circle memory (scope 'circle', anyone in the circle can recall
-// it) or one person's private note (scope = their member id). Every change
+// it), which is what most things are, or one person's own (scope = their
+// member id), which they can open to chosen people (sharedWith). Every change
 // keeps the version before it, with who made it, so any edit can be undone.
 import { DatabaseSync } from 'node:sqlite';
 import nacl from 'tweetnacl';
@@ -180,6 +181,7 @@ export function cleanNote(n) {
     people,
     // Words to find it by later: its topic, other words for it, who, where.
     tags: cleanTags(n?.tags),
+    sharedWith: Array.isArray(n?.sharedWith) ? [...new Set(n.sharedWith.map(String))].slice(0, 50) : [],
     start,
     end: start && end && end < start ? start : end,
     // Anything structured (a calendar's events, a source's URL): kept as is.
@@ -281,7 +283,7 @@ export class Memory {
   }
 
   _canSee(note, memberId) {
-    return note.scope === 'circle' || note.scope === memberId;
+    return note.scope === 'circle' || note.scope === memberId || (note.sharedWith ?? []).includes(memberId);
   }
 
   /** Save a new note. Returns it. */
@@ -308,6 +310,27 @@ export class Memory {
     return full;
   }
 
+  /**
+   * Who can see a note: 'circle' everyone, 'me' only its owner, 'people' its
+   * owner and those people (member ids). The owner is whoever made it; an
+   * admin can change a note that's already the circle's.
+   */
+  setAccess(id, { access, people = [] }, { by, admin = false, now = Date.now() } = {}) {
+    const old = this.notes.get(id);
+    if (!old || !this._canSee(old, by)) throw new Error('No such note');
+    const owner = old.scope === 'circle' ? old.createdBy : old.scope;
+    if (owner !== by && !(admin && old.scope === 'circle')) throw new Error('Only whoever added it can change who sees it');
+    const others = [...new Set(people.map(String))].filter((p) => p !== owner).slice(0, 50);
+    const shared = access === 'people' && others.length;
+    const scope = access === 'circle' || !owner ? 'circle' : owner;
+    const { id: _i, scope: _s, createdBy, createdAt, updatedAt, ...rest } = old;
+    const n = { ...rest, sharedWith: shared ? others : [] };
+    this.db.prepare('UPDATE notes SET scope = ?, sealed = ?, updated_at = ? WHERE id = ?').run(scope, this._seal(n), now, id);
+    const full = { ...old, ...n, scope, updatedAt: now };
+    this._index(full);
+    return full;
+  }
+
   /** Delete a note someone can see (it can still be brought back with undo). */
   remove(id, { by, now = Date.now() } = {}) {
     const old = this.notes.get(id);
@@ -322,7 +345,7 @@ export class Memory {
   undo(id, { by, now = Date.now() } = {}) {
     const row = this.db.prepare('SELECT * FROM notes WHERE id = ?').get(id);
     if (!row) throw new Error('No such note');
-    if (row.scope !== 'circle' && row.scope !== by) throw new Error('No such note');
+    if (!this._canSee(this._row(row), by)) throw new Error('No such note');
     const last = this.db.prepare('SELECT rowid, * FROM history WHERE note_id = ? ORDER BY at DESC, rowid DESC LIMIT 1').get(id);
     if (!last) throw new Error('Nothing to undo');
     this.db.prepare('DELETE FROM history WHERE rowid = ?').run(last.rowid);

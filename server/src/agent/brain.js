@@ -436,8 +436,29 @@ export class Brain {
   _scopeFor(msg, explicit) {
     if (explicit === 'private') return msg.from;
     if (explicit === 'circle') return 'circle';
-    // In a direct chat with the agent, private unless they say to share.
-    return msg.body.thread === 'dm' && !/share (it )?with (the )?(circle|family|everyone)/i.test(msg.body.ask || '') ? msg.from : 'circle';
+    // This is the family's memory: what anyone tells the helper is for everyone, wherever they said it, unless they say otherwise.
+    return PRIVATE_RE.test(msg.body.ask || '') ? msg.from : 'circle';
+  }
+
+  /** A calendar sent in a direct chat stays that person's: its address reads every title on it. */
+  _calendarScope(msg) {
+    return msg.body.thread === 'dm' && !SHARE_RE.test(msg.body.ask || '') ? msg.from : 'circle';
+  }
+
+  /** "Keep that private", "share that with Sara and Leo", "share it with everyone": about what they last saved. */
+  async _shareLast(msg, who) {
+    const now = this.now().getTime();
+    const notes = (this.memory.getSetting(`last:${msg.from}`) ?? []).map((id) => this.memory.get(id, { by: msg.from })).filter(Boolean);
+    if (!notes.length) return this.reply(msg, 'I haven’t just saved anything to change. Open it in Memory to choose who can see it.');
+    const everyone = /^(?:the\s+|all\s+of\s+)?(?:circle|family|everyone|everybody|us\s+all)/i.test(who ?? '');
+    const names = who && !everyone ? who.split(/\s*(?:,|&|\band\b)\s*/i).filter(Boolean) : [];
+    const people = this._idsFor(names);
+    if (names.length && people.length < names.length) return this.reply(msg, `I don’t know who ${names.join(' and ')} is in this circle. Use the names people have here.`);
+    const access = everyone ? 'circle' : names.length ? 'people' : 'me';
+    const opts = { by: msg.from, admin: this.agent.isAdmin(msg.from), now };
+    for (const n of notes) this.memory.setAccess(n.id, { access, people }, opts);
+    const list = notes.map((n) => n.title).join('; ');
+    await this.reply(msg, everyone ? `👨‍👩‍👧 Everyone in the circle can ask about ${list} now.` : names.length ? `👥 ${list} is shared with ${names.join(' and ')}.` : `🔒 ${list} is just for you now.`);
   }
 
   /** Save notes as the AI gave them. Health notes are private unless `share` (they said it's for the circle). */
@@ -455,8 +476,13 @@ export class Brain {
    * document expiring, a refill, upkeep that repeats), health notes kept
    * private, and why a secret wasn't kept.
    */
-  _keptText(saved, by, { verb = 'Remembered', scope = 'circle', secret = false } = {}) {
+  _keptText(saved, by, { verb = 'Remembered', scope = 'circle', secret = false, dm = false } = {}) {
     const lines = [`📌 ${verb}: ${saved.map((n) => n.title).join('; ')}`];
+    // Said once: a direct chat feels private, and from here on what's said in one isn't.
+    if (dm && scope === 'circle' && !this.memory.getSetting(`toldShared:${by}`)) {
+      this.memory.setSetting(`toldShared:${by}`, true);
+      lines.push('👨‍👩‍👧 Everyone in the circle can ask me about this. Say “keep that private” if it’s just for you.');
+    }
     if (scope === 'circle' && saved.some((n) => n.type === 'health' && n.scope === by)) lines.push('🔒 Health notes are just for you. Say “share it with the circle” to keep one for everyone.');
     if (this.agent.feature('reminders')) {
       const list = this._reminders();
@@ -520,7 +546,7 @@ export class Brain {
       saved = this._save([rawNote(clean.text, r.by)], opts);
     }
     this.memory.setSetting(`last:${msg.from}`, saved.map((n) => n.id));
-    await this.reply(msg, this._keptText(saved, msg.from, { scope, secret }), { undo: saved.map((n) => n.id) });
+    await this.reply(msg, this._keptText(saved, msg.from, { scope, secret, dm: msg.body.thread === 'dm' }), { undo: saved.map((n) => n.id) });
   }
 
   async _undo(msg, ids) {
@@ -554,6 +580,8 @@ export class Brain {
     if (/^(list|show)( (me|my|the))? (sources|calendars)\b/i.test(text)) return this._listSources(msg);
     if (/^(usage|budget|spending|how much)\b/i.test(text)) return this._usage(msg);
     if (/^undo\b/i.test(text)) return this._undo(msg, this.memory.getSetting(`last:${msg.from}`) ?? []);
+    if (KEEP_PRIVATE_RE.test(text)) return this._shareLast(msg, null);
+    if (SHARE_LAST_RE.test(text)) return this._shareLast(msg, text.match(SHARE_LAST_RE)[1]);
     if (/^forget (the )?(.+)$/i.test(text)) return this._forget(msg, text.match(/^forget (?:the )?(.+)$/i)[1]);
     if (DREAM_RE.test(text)) return this._dream(msg);
     if (this.agent.feature('shoppingLists')) {
@@ -580,7 +608,7 @@ export class Brain {
     const remember = (plan.remember ?? []).map((n) => unmaskNote(n, s));
     const scope = this._scopeFor(msg);
     const saved = remember.length ? this._save(remember, { scope, by: msg.from, share: SHARE_RE.test(text) }) : [];
-    const kept = saved.length ? this._keptText(saved, msg.from, { scope, secret: clean.found || remember.some(hasSecret) }) : '';
+    const kept = saved.length ? this._keptText(saved, msg.from, { scope, secret: clean.found || remember.some(hasSecret), dm: msg.body.thread === 'dm' }) : '';
     if (saved.length) this.memory.setSetting(`last:${msg.from}`, saved.map((n) => n.id));
     // "Can you tidy up your memory?", "re-tag everything": the same as dream.
     if (plan.intent === 'tidy') return this._dream(msg);
@@ -724,7 +752,7 @@ export class Brain {
     // A year back, so a school calendar's first day (months ago) still marks where the school year starts.
     const events = parseIcs(text, { from: iso(new Date(t.getTime() - 365 * DAY)), to: iso(new Date(t.getTime() + 450 * DAY)) });
     if (!events.length) throw new BrainError('That calendar has no events around now.');
-    const pending = { url: link.url, events, fetchedAt: t.getTime(), thread: msg.body.thread, replyTo: msg.body.replyTo ?? null, scope: this._scopeFor(msg) };
+    const pending = { url: link.url, events, fetchedAt: t.getTime(), thread: msg.body.thread, replyTo: msg.body.replyTo ?? null, scope: this._calendarScope(msg) };
     const forWho = rest.match(/\bfor\s+([^.?!]+)/i)?.[1];
     if (forWho) return this._storeSource(msg, pending, forWho);
     this.memory.setSetting(`pending:${msg.from}`, pending);
@@ -1003,7 +1031,7 @@ export class Brain {
       fetchedAt: this.now().getTime(),
       thread: msg.body.thread,
       replyTo: msg.body.replyTo ?? null,
-      scope: this._scopeFor(msg),
+      scope: this._calendarScope(msg),
       by: msg.from,
       forWho: rest.match(/\bfor\s+([^.?!]+)/i)?.[1]?.trim() || null,
     });
@@ -1039,7 +1067,8 @@ export class Brain {
     if (found.file && !found.calendar) {
       const saved = this._save(found.notes, { scope: found.scope, by: msg.from, share: found.share });
       this.memory.setSetting(`last:${msg.from}`, saved.map((n) => n.id));
-      await this.reply(back, this._keptText(saved, msg.from, { verb: 'Saved', scope: found.scope, secret: found.secret }), { undo: saved.map((n) => n.id) });
+      this.memory.setSetting(`last:${msg.from}`, saved.map((n) => n.id));
+      await this.reply(back, this._keptText(saved, msg.from, { verb: 'Saved', scope: found.scope, secret: found.secret, dm: found.thread === 'dm' }), { undo: saved.map((n) => n.id) });
       return this._askAboutFile(back, found.file, saved.map((n) => n.id), msg.from);
     }
     if (found.replaces) {
@@ -1221,10 +1250,10 @@ export class Brain {
     this._saveReminders(list);
   }
 
-  /** Who hears about a reminder: every admin and whoever added it; a private one (a refill) only its person. */
+  /** Who hears about a reminder: every admin and whoever added it (a private one, like a refill, only its person), and anyone tagged on it. */
   _reminderPeople(r) {
     const admins = this.agent.people().filter((p) => this.agent.isAdmin(p.id)).map((p) => p.id);
-    return new Set((r.only ? [r.only] : [...admins, r.createdBy]).filter((id) => this.agent.people().some((p) => p.id === id)));
+    return new Set([...(r.only ? [r.only] : [...admins, r.createdBy]), ...(r.people ?? [])].filter((id) => this.agent.people().some((p) => p.id === id)));
   }
 
   /**
@@ -1495,7 +1524,7 @@ export class Brain {
   async _rpc(msg) {
     const { op, args = {} } = msg.body.rpc;
     const by = msg.from;
-    const brief = (n) => ({ ...n, data: n.data?.events ? { ...n.data, url: undefined, events: undefined, count: n.data.events.length } : n.data });
+    const brief = (n) => ({ ...n, byName: n.createdBy ? this._nameOf(n.createdBy) : null, data: n.data?.events ? { ...n.data, url: undefined, events: undefined, count: n.data.events.length } : n.data });
     const now = this.now().getTime();
     const adminOnly = () => {
       if (!this.agent.isAdmin(by)) throw new BrainError('Only circle admins can do that');
@@ -1513,8 +1542,21 @@ export class Brain {
       }
       case 'update':
         return this._rpcReply(msg, true, brief(this.memory.update(args.id, pick(args.patch, ['title', 'body', 'people', 'tags', 'start', 'end', 'type']), { by, now })));
-      case 'add':
-        return this._rpcReply(msg, true, brief(this.memory.add(pick(args.note, ['title', 'body', 'people', 'tags', 'start', 'end', 'type']), { scope: args.private ? by : 'circle', by, now })));
+      case 'add': {
+        // Older apps say private; newer ones say who: 'circle', 'me', or 'people' with sharedWith.
+        const access = args.access ?? (args.private ? 'me' : 'circle');
+        const note = this.memory.add(pick(args.note, ['title', 'body', 'people', 'tags', 'start', 'end', 'type']), { scope: access === 'circle' ? 'circle' : by, by, now });
+        const shared = access === 'people' ? this.memory.setAccess(note.id, { access, people: args.sharedWith ?? [] }, { by, now }) : note;
+        return this._rpcReply(msg, true, brief(shared));
+      }
+      case 'access':
+        return this._rpcReply(msg, true, brief(this.memory.setAccess(args.id, { access: args.access, people: args.people ?? [] }, { by, admin: this.agent.isAdmin(by), now })));
+      case 'shareMine': {
+        // Everything of theirs that was kept private only because it was said in a direct chat. Health stays theirs.
+        const mine = this.memory.list({ by }).filter((n) => n.scope === by && !n.sharedWith.length && n.type !== 'health' && n.type !== 'source');
+        for (const n of mine) this.memory.setAccess(n.id, { access: 'circle' }, { by, now });
+        return this._rpcReply(msg, true, { shared: mine.length });
+      }
       case 'remove':
         this.memory.remove(args.id, { by, now });
         return this._rpcReply(msg, true, null);
@@ -1604,11 +1646,17 @@ export class Brain {
         const list = this._reminders();
         const r = op === 'reminders' || op === 'reminderAdd' ? null : (list.find((x) => x.id === args.id && canSeeReminder(x, by)) ?? null);
         if (op !== 'reminders' && op !== 'reminderAdd' && !r) throw new BrainError('That reminder is gone');
-        if (op === 'reminderAdd') addReminder(list, { ...args, only: null }, by, now);
+        if (op === 'reminderAdd') addReminder(list, { ...args, only: args.private ? by : null }, by, now);
         if (op === 'reminderUpdate') {
-          const next = cleanReminder({ ...r, ...pick(args, ['title', 'due', 'repeat', 'months', 'note']) });
+          const next = cleanReminder({ ...r, ...pick(args, ['title', 'due', 'repeat', 'months', 'note', 'people']) });
           if (next.due !== r.due) Object.assign(r, { sent: [], lastNag: null, done: false });
+          if (!next.people) delete r.people;
           Object.assign(r, next);
+          // Only whoever added it says whether it's theirs alone.
+          if (r.createdBy === by && 'private' in args) {
+            if (args.private) r.only = by;
+            else delete r.only;
+          }
         }
         if (op === 'reminderDone') markDone(r, by, now);
         if (op === 'reminderRemove') list.splice(list.indexOf(r), 1);
@@ -1658,6 +1706,11 @@ function rawNote(text, by) {
 // Kinds of note kept word for word: given back whole, never rewritten by a dream.
 const WHOLE_TYPES = ['recipe', 'howto', 'trip'];
 // "Share it with the circle", "this is for the family": a health note for everyone.
+// "Just for me", "keep this private": the note isn't for the circle.
+const PRIVATE_RE = /\b(?:just|only) for me\b|\bkeep (?:it|this|that) (?:private|to myself)\b|\b(?:it'?s|this is) private\b|\bprivately\b|\bdon'?t share\b/i;
+// About what was just saved: "keep that private", "share that with Sara".
+const KEEP_PRIVATE_RE = /^(?:please\s+)?(?:keep|make)\s+(?:that|it|this)\s+(?:private|just for me|only for me|to myself)\b/i;
+const SHARE_LAST_RE = /^(?:please\s+)?share\s+(?:that|it|this)\s+with\s+(.+?)[.!]?$/i;
 const SHARE_RE = /\b(?:share|for|with)\s+(?:it\s+|this\s+)?(?:with\s+)?(?:the\s+|all\s+of\s+)?(?:circle|family|everyone|everybody|us\s+all)\b/i;
 
 /** A note's data from what the AI gave: a recipe's, a person's role, the details its kind keeps. */

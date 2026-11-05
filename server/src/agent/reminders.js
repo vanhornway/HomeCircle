@@ -38,11 +38,12 @@ export function cleanReminder(r) {
   const months = Math.round(Number(r?.months));
   // Every 12 months is every year.
   const repeat = r.repeat === 'yearly' || (r.repeat === 'months' && months === 12) ? 'yearly' : r.repeat === 'months' && months >= 1 && months <= 60 ? 'months' : 'none';
-  return { title, due: r.due, repeat, ...(repeat === 'months' ? { months } : {}), note: String(r?.note || '').slice(0, 300), ...(r?.only ? { only: String(r.only) } : {}) };
+  const people = Array.isArray(r?.people) ? [...new Set(r.people.map(String))].slice(0, 50) : [];
+  return { title, due: r.due, repeat, ...(repeat === 'months' ? { months } : {}), note: String(r?.note || '').slice(0, 300), ...(r?.only ? { only: String(r.only) } : {}), ...(people.length ? { people } : {}) };
 }
 
-/** Whether `by` sees a reminder: everyone, unless it's private to someone. */
-export const canSeeReminder = (r, by) => !r.only || r.only === by;
+/** Whether `by` sees a reminder: everyone, unless it's private to someone and they weren't tagged on it. */
+export const canSeeReminder = (r, by) => !r.only || r.only === by || (r.people ?? []).includes(by);
 
 export function addReminder(list, r, by, now) {
   if (list.length >= MAX_REMINDERS) throw new Error('That’s a lot of reminders. Mark some done or delete them first.');

@@ -200,3 +200,38 @@ test('a long answer (a whole recipe) goes in parts that each fit a message, spli
   // Urdu takes more bytes per character: still within a message.
   for (const p of replyParts('نہاری '.repeat(8000))) assert.ok(Buffer.byteLength(p) <= 24_000);
 });
+
+test('who sees a note: the circle, only its owner, or people they chose', () => {
+  const KID = 'kid-member-id';
+  const n = mem.add({ type: 'recipe', title: 'Haleem', body: 'Slow cooked.', people: ['Nani'] }, { scope: 'circle', by: MOM });
+  const seen = (who) => !!mem.get(n.id, { by: who });
+  assert.ok(seen(DAD) && seen(KID));
+  // Only whoever added it chooses, or an admin for a note that's the circle's.
+  assert.throws(() => mem.setAccess(n.id, { access: 'me' }, { by: DAD }), /Only whoever added it/);
+  mem.setAccess(n.id, { access: 'people', people: [KID] }, { by: MOM });
+  assert.ok(seen(MOM) && seen(KID) && !seen(DAD));
+  assert.equal(mem.lookup({ text: 'haleem', by: DAD }).length, 0);
+  assert.equal(mem.lookup({ text: 'haleem', by: KID }).length, 1);
+  // Shared with someone isn't owned by them.
+  assert.throws(() => mem.setAccess(n.id, { access: 'circle' }, { by: KID }), /Only whoever added it/);
+  // An edit keeps who it's shared with, and whoever it's shared with can still undo.
+  mem.update(n.id, { body: 'Slow cooked overnight.' }, { by: KID });
+  assert.ok(seen(KID) && !seen(DAD));
+  mem.undo(n.id, { by: KID });
+  mem.setAccess(n.id, { access: 'me' }, { by: MOM });
+  assert.ok(seen(MOM) && !seen(KID));
+  assert.throws(() => mem.setAccess(n.id, { access: 'circle' }, { by: DAD, admin: true }), /No such note/);
+  mem.setAccess(n.id, { access: 'circle' }, { by: MOM });
+  assert.ok(seen(DAD));
+  mem.setAccess(n.id, { access: 'me' }, { by: DAD, admin: true });
+  assert.ok(seen(MOM) && !seen(DAD));
+  mem.setAccess(n.id, { access: 'circle' }, { by: MOM });
+});
+
+test('"only the people tagged" with nobody tagged stays with its owner', () => {
+  const n = mem.add({ type: 'fact', title: 'Quiet note', body: 'Nothing much.' }, { scope: 'circle', by: MOM });
+  const after = mem.setAccess(n.id, { access: 'people', people: [MOM] }, { by: MOM });
+  assert.equal(after.scope, MOM);
+  assert.deepEqual(after.sharedWith, []);
+  mem.setAccess(n.id, { access: 'circle' }, { by: MOM });
+});

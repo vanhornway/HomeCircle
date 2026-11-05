@@ -670,7 +670,11 @@ test('recipes: kept whole from chat, a long-pressed message and a photo; asked f
   assert.equal(sentToAi.length, calls);
   await dad.askAgent('add the ingredients for lasagna to the Costco list');
   await until(dad, (c) => (lastFromAgent(c)?.body.text.startsWith('I don’t have a recipe for lasagna.') ? 1 : null));
-  // Other wording goes through the AI; a private recipe (Mom sent it in her own chat) is only for her.
+  // What Mom saved in her own chat is the circle's: Dad can ask about it, until she keeps it to herself.
+  assert.ok((await recipes(dad)).Nihari);
+  await mom.askAgent('keep that private', { peer });
+  await until(mom, (c) => fromAgentDm(c, /^🔒 Nihari is just for you now\.$/));
+  // Other wording goes through the AI; a private recipe is only for its owner.
   await mom.askAgent('buy the nihari ingredients at the desi store', { peer });
   await until(mom, (c) => fromAgentDm(c, /^🛒 Added to desi store for Nihari: beef shank, nihari masala, ghee, onions, atta\.$/));
   const lists = await mom.agentRpc('lists');
@@ -866,13 +870,13 @@ test('Download memory: an Obsidian vault zipped, with calendars, lists, reminder
   assert.ok(!paths.some((p) => p.startsWith('Health/')));
   assert.doesNotMatch(text('Reminders.md'), /Amoxicillin/);
 
-  // Dad's download has the circle's notes, not Mom's private ones: the party,
-  // and the photo she sent the helper in their own chat.
+  // Dad's download has the circle's notes, not Mom's private ones: the party
+  // stays hers, and the photo she sent the helper is the circle's like the rest.
   const dadsDownload = await download(dad);
   assert.ok(Object.keys(dadsDownload.zip).includes('Lists/Costco.md'));
   assert.ok(!Object.keys(dadsDownload.zip).includes('Facts/Surprise party.md'));
   assert.match(strFromU8(dadsDownload.zip['Health/Amoxicillin.md']), /^dose: "250 mg"\n[\s\S]*refill-by: "2026-11-20"\n/m);
-  assert.ok(!Object.keys(dadsDownload.zip).some((p) => p.startsWith('Files/')));
+  assert.ok(Object.keys(dadsDownload.zip).includes('Files/team-sheet.jpg'));
 
   // Tidy up for the next test: the kept photo goes too.
   const kept = (await mom.agentRpc('list')).find((n) => n.data?.file?.name === 'team-sheet.jpg');
