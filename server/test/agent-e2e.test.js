@@ -680,6 +680,13 @@ test('recipes: kept whole from chat, a long-pressed message and a photo; asked f
   const lists = await mom.agentRpc('lists');
   assert.deepEqual(lists.find((l) => l.name === 'Costco').items.map((i) => i.name), ['Eggs', 'batteries', 'basmati rice', 'chicken', 'yogurt', 'onions']);
   assert.equal((await recipes(dad)).Nihari, undefined);
+  // "Share that with Dad" opens it to him alone, and only its owner can say so.
+  await mom.askAgent('share that with Dad', { peer });
+  await until(mom, (c) => fromAgentDm(c, /^👥 Nihari is shared with Dad\.$/));
+  assert.ok((await recipes(dad)).Nihari);
+  await mom.askAgent('keep that private', { peer });
+  await until(mom, (c) => [...c.conversation(c.agent.id)].filter((m) => /^🔒 Nihari is just for you now\.$/.test(m.body?.text ?? '')).length === 2);
+  assert.equal((await recipes(dad)).Nihari, undefined);
 });
 
 test('reminders: set in chat, sent to admins and whoever set it in the morning, Done moves a yearly one on', async () => {

@@ -34,6 +34,7 @@ export async function shareBusyTimes(clients: CircleClient[], { force = false } 
   const last = Number((await AsyncStorage.getItem(SHARED_KEY)) || 0);
   if (!force && Date.now() - last < SHARE_EVERY_MS) return;
   const { shareBusy } = await getSettings();
+  if (!shareBusy && !force) return;
   const mine = clients.filter((c) => c.account && c.feature('busyTimes'));
   const blocks = shareBusy ? await readBusy() : [];
   const results = await Promise.allSettled(mine.map((c) => (shareBusy ? c.shareBusy(blocks) : c.clearBusy())));

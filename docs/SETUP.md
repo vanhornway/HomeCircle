@@ -139,6 +139,9 @@ On each Android phone:
    - **Your name:** what your family calls you.
 3. Tap **Create my circle**.
 
+Easier: open your server's address on a computer, type the setup code there, and scan the QR
+code with your phone. It installs the app and opens this screen with everything filled in.
+
 ---
 
 ## Step 4. Allow location and notifications

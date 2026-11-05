@@ -160,9 +160,9 @@ export function GroupCallButton({ client }: { client: CircleClient }) {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Group call"
-        accessibilityHint={mesh ? 'Starts or joins the call in HomeCircle. Long-press for WhatsApp' : link ? 'Opens the group call on WhatsApp. Long-press to change the link' : 'Sets up the group call link'}
+        accessibilityHint={mesh ? 'Starts or joins the call in HomeCircle' : link ? 'Opens the group call on WhatsApp. Long-press to change the link' : 'Sets up the group call link'}
         onPress={() => (mesh ? void joinGroupCall(client, null) : link ? void openGroupCallLink(link).then(showOutcome) : setSheet(true))}
-        onLongPress={() => setSheet(true)}
+        onLongPress={client.feature('whatsapp') ? () => setSheet(true) : undefined}
         delayLongPress={400}
         hitSlop={4}
         style={({ pressed }) => ({ minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, borderRadius: 22, borderWidth: 1, borderColor: t.line, backgroundColor: pressed ? t.surface2 : t.surface })}

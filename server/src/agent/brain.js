@@ -1561,7 +1561,7 @@ export class Brain {
         return this._rpcReply(msg, true, brief(this.memory.setAccess(args.id, { access: args.access, people: args.people ?? [] }, { by, admin: this.agent.isAdmin(by), now })));
       case 'shareMine': {
         // Everything of theirs that was kept private only because it was said in a direct chat. Health stays theirs.
-        const mine = this.memory.list({ by }).filter((n) => n.scope === by && !n.sharedWith.length && n.type !== 'health' && n.type !== 'source');
+        const mine = this.memory.list({ by }).filter((n) => n.scope === by && !n.sharedWith?.length && n.type !== 'health' && n.type !== 'source');
         for (const n of mine) this.memory.setAccess(n.id, { access: 'circle' }, { by, now });
         return this._rpcReply(msg, true, { shared: mine.length });
       }

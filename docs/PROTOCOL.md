@@ -82,6 +82,13 @@ server cannot inject a fake member with its own keys. Members can also compare
    info (circle name). The server records them as `owner` and returns a device token.
 3. The setup endpoint is permanently closed after this.
 
+**Setting up from the phone (0.24.0).** A new server's first page sends the setup code to
+`POST /setup/ticket` and draws the ticket it gets back as a QR code: `https://<server>/start#t=<ticket>`.
+After the `#`, it never reaches the server or its logs. A ticket is 8 characters, works for 15
+minutes, replaces any earlier one, is kept only in memory, and works only in place of the setup
+code on `POST /setup` for the first circle. `POST /setup/ticket` with a ticket checks it. The
+page on the phone offers the app, then opens it with `intent://setup?server=…&t=…`.
+
 ## Invites
 
 ```
@@ -336,6 +343,33 @@ ordinary sealed direct message with a body `call: { state: "missed" }` or
 `call: { state: "ended", seconds }` (plus readable `text`), which the app
 shows as a line in the chat. A missed one notifies; an ended one is silent.
 
+## Group calls (0.24.0, with the `calls` feature)
+
+A group chat message `{ groupCall: { state: 'start', mesh: true } }`, sent urgent, starts a
+call in HomeCircle. `{ state: 'join', of }` and `{ state: 'leave', of }` say who's on it; the
+call is on while someone is (at most four hours after the last join, for phones that vanished).
+
+Phones connect directly, up to six. Whoever joins sends `m-offer` to everyone on the call;
+the others answer with `m-answer`, and `m-ice` carries candidates, all as ordinary sealed call
+signals. `m-bye` says a phone left. If two phones call each other at once, the lower member id's
+call stands. If a phone hears of someone joining and isn't called within 3 s, the lower id calls.
+Only the phone that called restarts a dropped connection.
+
+## Busy times and plans (0.24.0)
+
+`PUT /busy/me` stores one sealed envelope of kind `busy` per member: `{ blocks: [{ s, e }] }`,
+start and end in ms for the coming 14 days. Nothing else is in it, and each person turns it on
+for themselves. `GET /busy` lists the circle's; a `busy` event says one changed.
+
+A plan is a group chat message with `body.plan` `{ title, start, end, allDay, where }`. Answers
+are reactions `{ target, rsvp: 'going' | 'maybe' | 'no' }`, and whoever made it can send
+`{ target, cancelPlan: true }`.
+
+When someone asks the helper about travel or free time, the message to it may carry
+`travel` (per person and route: trips counted, usual, low and high minutes, usual leaving and
+arriving times, weekdays or not, the recent trend) and `busyDays` (`{ who, days }`), worked
+out on the phone. The helper has no circle key and sees nothing else about movement.
+
 ## Places
 
 Places (Home, School…) are sealed `place` envelopes. Each phone registers them
@@ -355,6 +389,9 @@ circle that has it. Addresses are looked up with the phone's own geocoder
 |---|---|---|
 | GET | `/info` | public: version, whether setup is done |
 | POST | `/setup` | public + setup token, once |
+| POST | `/setup/ticket` | public + setup token or ticket, until the first circle exists |
+| GET | `/busy` | |
+| PUT, DELETE | `/busy/me` | |
 | POST | `/join/preview` | public + invite auth |
 | POST | `/join` | public + invite auth |
 | GET | `/state` | circle info, members, current epoch, rotationNeeded, retention |

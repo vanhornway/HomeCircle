@@ -1,6 +1,21 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.24.0',
+    date: '2026-11-05',
+    title: 'Shared with the family, on your terms',
+    items: [
+      'What you add to Birdie is for the whole circle, so anyone can ask about it. Tag people on notes and reminders, and keep anything to yourself or just the people you choose.',
+      'Group calls in HomeCircle: phone to phone, up to six people. WhatsApp stays as the fallback.',
+      'Share when you’re busy from your phone’s calendar, the times only and never what for. Suggest a plan in the chat, and add it to your calendar with one tap.',
+      'Usual trips: see how long the school run takes, or ask Birdie.',
+      'Elders can call people themselves, with one big button and a moment to change their mind.',
+      'One QR code sets up a new server: it installs the app and starts setup on your phone.',
+      'Quick walks past the edge of a place no longer show as leaving and arriving.',
+      'Fixed: Urdu messages on an elder’s phone are spoken every time, and shown on screen.',
+    ],
+  },
+  {
     version: '0.23.0',
     date: '2026-11-01',
     title: 'Everything you had, easier to use',

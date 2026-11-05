@@ -145,8 +145,11 @@ export function PersonSheet({
                     {client.displayName(m.id) !== m.name ? <Text style={{ color: t.muted, fontSize: 14 }}>{m.name}</Text> : null}
                     <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>{statusLine(client, m)}</Text>
                     {m.isMe && cadenceLine(loc) ? <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>{sentence(cadenceLine(loc)!)}</Text> : null}
-                    {busyLine(client, m.id) ? <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>{busyLine(client, m.id)}</Text> : null}
-                    {routeLine(client, m.id) ? <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>{routeLine(client, m.id)}</Text> : null}
+                    {[busyLine(client, m.id), routeLine(client, m.id)].filter(Boolean).map((line) => (
+                      <Text key={line} style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>
+                        {line}
+                      </Text>
+                    ))}
                   </View>
                   <Pressable accessibilityRole="button" accessibilityLabel="Close" hitSlop={8} onPress={onClose} style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: t.surface2 }}>
                     <Text style={{ color: t.muted, fontSize: 20, lineHeight: 22 }}>✕</Text>

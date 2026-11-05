@@ -57,6 +57,11 @@ export async function clearGroupCallNotice(client: CircleClient, callId: string)
  */
 export async function joinGroupCall(client: CircleClient, callId: string | null) {
   const current = callId ? client.groupCallState(callId) : client.activeGroupCall();
+  if (callId && current?.mesh && !current.open) {
+    showSheet('That call has ended');
+    await clearGroupCallNotice(client, callId);
+    return;
+  }
   if (current?.open ? current.mesh : meshAvailable(client)) {
     try {
       await joinMesh(client, current?.open ? current.id : null);

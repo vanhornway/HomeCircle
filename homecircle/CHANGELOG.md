@@ -2,6 +2,39 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.24.0
+
+- The helper's memory is the family's. What you add is for everyone in the
+  circle, including what you tell it in a direct chat, so anyone can ask about
+  it. Tag people on any note or reminder, and choose who sees it: everyone,
+  only the people tagged, or only you. Health notes stay private unless you
+  share them, and a calendar sent in a direct chat stays yours. Say "keep that
+  private" or "share that with Sara" after saving something. Private notes from
+  before stay private; Memory offers to share them with one tap.
+- Group calls in HomeCircle: phone to phone, up to six people, audio only. Join
+  late, leave any time, and see who's on and who's talking. WhatsApp's call
+  link stays as the fallback.
+- Calendars: each person can share when they're busy from their phone's
+  calendars, the times only and never what for. Suggest a plan in the group
+  chat; everyone answers, and it goes into a calendar only when they tap Add to
+  my calendar.
+- Travel times: a person's sheet shows their usual trip, and you can ask the
+  helper "how long does it take Nyel to get to EVHS?". The numbers are worked
+  out on the phone.
+- First setup happens on the phone. A new server's first page shows one QR code
+  that installs the app and starts setup with everything filled in, so nobody
+  ends up in the circle twice. The code is a one-time ticket that lasts 15
+  minutes. Setting up in a browser is still there as a small link.
+- Elders can call people themselves: a big Call button on each person, a moment
+  to change their mind, and the same big call screen. Admins can turn it off.
+- Calling: tap a call-back card to call back straight away (hold it for the
+  replies), and hear a ring while your call goes out.
+- Leaving a place and coming back within 3 minutes no longer shows either
+  entry, so kids changing classes near the edge of school stop filling the chat.
+- Fixed: on an elder's phone, only the first Urdu message was spoken and later
+  ones were beeps. Every line is spoken now, and shown on her screen.
+- Fixed: a shopping list's store tabs were cut off when the list was long.
+
 ## 0.23.0
 
 A redesign that keeps every feature and makes each one easier to find and use.

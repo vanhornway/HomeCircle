@@ -42,7 +42,7 @@ What the server learns: that member A sent a signal to member B at time T, how b
 - Busy while in another call (any circle). A phone cellular call in progress is not detected in phase 1.
 - Missed calls: the callee's phone shows a local "Missed call" notification when a ring ends unanswered. A "missed call" line in the chat (an ordinary sealed DM from the caller) is not built; open decision in the build notes.
 - One device per member in HomeCircle (each phone is its own member), so there is no "answered on another phone" case to handle.
-- No video, no group calls, no screen sharing.
+- No video, no screen sharing. Group calls came later: see Group calls in `PROTOCOL.md`.
 
 ## Differences from the spec
 

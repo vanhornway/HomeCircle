@@ -319,7 +319,7 @@ export class Memory {
     const old = this.notes.get(id);
     if (!old || !this._canSee(old, by)) throw new Error('No such note');
     const owner = old.scope === 'circle' ? old.createdBy : old.scope;
-    if (owner !== by && !(admin && old.scope === 'circle')) throw new Error('Only whoever added it can change who sees it');
+    if (owner && owner !== by && !(admin && old.scope === 'circle')) throw new Error('Only whoever added it can change who sees it');
     const others = [...new Set(people.map(String))].filter((p) => p !== owner).slice(0, 50);
     const shared = access === 'people' && others.length;
     const scope = access === 'circle' || !owner ? 'circle' : owner;
