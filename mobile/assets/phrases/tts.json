@@ -1,6 +1,9 @@
 {
  "ur_reply_calling_now_1": "gemini-3.8-flash-tts Sulafat Urdu with a Pakistani accent, calm and warm, a little slower than normal, as if speaking to an elderly grandparent: {name} ابھی آپ کو فون کر رہے ہیں۔",
  "ur_reply_calling_now_1_f": "gemini-3.8-flash-tts Sulafat Urdu with a Pakistani accent, calm and warm, a little slower than normal, as if speaking to an elderly grandparent: {name} ابھی آپ کو فون کر رہی ہیں۔",
+ "ur_reply_five_min_1": "gemini-3.8-flash-tts Sulafat Urdu with a Pakistani accent, calm and warm, a little slower than normal, as if speaking to an elderly grandparent: {name} پانچ منٹ میں آپ کو فون کریں گے۔",
+ "ur_reply_five_min_1_f": "gemini-3.8-flash-tts Sulafat Urdu with a Pakistani accent, calm and warm, a little slower than normal, as if speaking to an elderly grandparent: {name} پانچ منٹ میں آپ کو فون کریں گی۔",
+ "ur_reply_morning_1": "gemini-3.8-flash-tts Sulafat Urdu with a Pakistani accent, calm and warm, a little slower than normal, as if speaking to an elderly grandparent: {name} صبح آپ کو فون کریں گے۔",
  "ur_sent_everyone_1": "gemini-3.8-flash-tts Sulafat Urdu with a Pakistani accent, calm and warm, a little slower than normal, as if speaking to an elderly grandparent: آپ کا پیغام سب کو بھیج دیا گیا ہے۔",
  "ur_sent_one_1": "gemini-3.8-flash-tts Sulafat Urdu with a Pakistani accent, calm and warm, a little slower than normal, as if speaking to an elderly grandparent: آپ کا پیغام {name} کو بھیج دیا گیا ہے۔",
  "ur_sent_one_2": "gemini-3.8-flash-tts Sulafat Urdu with a Pakistani accent, calm and warm, a little slower than normal, as if speaking to an elderly grandparent: آپ کا پیغام {name} کو بھیج دیا گیا ہے۔",
