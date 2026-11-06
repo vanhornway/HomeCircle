@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import type { CircleClient, PlanAnswer } from '@homecircle/core';
 import { Button } from './ui';
@@ -25,11 +26,12 @@ export function planWhen(p: { start: number; end: number; allDay: boolean }) {
 export function PlanCard({ client, planId }: { client: CircleClient; planId: string }) {
   const t = useTheme();
   const fs = useChatFont();
+  const [now] = useState(() => Date.now());
   const s = client.planState(planId);
   if (!s) return null;
   const fail = (e: unknown) => showSheet('Plan', errorText(e));
   const mine = s.from === client.account?.memberId;
-  const past = s.end < Date.now();
+  const past = s.end < now;
   const open = !s.cancelled && !past;
   const who = (id: string) => (id === client.account?.memberId ? 'You' : client.displayName(id));
   const going = s.answers.filter((a) => a.answer === 'going').map((a) => who(a.memberId));
