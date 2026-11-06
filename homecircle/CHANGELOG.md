@@ -2,6 +2,10 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.24.1
+
+- Three more of an elder's Urdu replies are recorded voices. No server change.
+
 ## 0.24.0
 
 - The helper's memory is the family's. What you add is for everyone in the
