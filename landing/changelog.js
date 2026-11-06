@@ -2,7 +2,7 @@
 window.HOMECIRCLE_CHANGELOG = [
   {
     version: '0.24.0',
-    date: '2026-11-05',
+    date: '2026-11-06',
     title: 'Shared with the family, on your terms',
     items: [
       'What you add to Birdie is for the whole circle, so anyone can ask about it. Tag people on notes and reminders, and keep anything to yourself or just the people you choose.',
