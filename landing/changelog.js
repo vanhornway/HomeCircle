@@ -1,6 +1,14 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.24.1',
+    date: '2026-11-06',
+    title: 'More Urdu in a real voice',
+    items: [
+      'Three more of an elder’s Urdu replies are recorded voices.',
+    ],
+  },
+  {
     version: '0.24.0',
     date: '2026-11-06',
     title: 'Shared with the family, on your terms',
