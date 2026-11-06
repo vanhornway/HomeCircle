@@ -35,6 +35,8 @@ See the full list of changes on <https://homecircle.umair.us/#changelog>.
 - Fixed: on an elder's phone, only the first Urdu message was spoken and later
   ones were beeps. Every line is spoken now, and shown on her screen.
 - Fixed: a shopping list's store tabs were cut off when the list was long.
+- Needs the HomeCircle app 0.24.0 for group calls, calendars and tagging. Older
+  apps keep working with this server.
 
 ## 0.23.0
 
