@@ -1,6 +1,15 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.25.1',
+    date: '2026-11-12',
+    title: 'Your home base, at a glance',
+    items: [
+      'The home base checks in every minute. See its power, Wi-Fi and GPS, and each tracker’s battery and signal, in Settings → Circle → Trackers.',
+      'Turning the trackers plugin back on takes effect within a minute.',
+    ],
+  },
+  {
     version: '0.25.0',
     date: '2026-11-12',
     title: 'Trackers on the family map',
