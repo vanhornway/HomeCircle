@@ -1,6 +1,16 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.27.0',
+    date: '2026-11-12',
+    title: 'Messages without internet',
+    items: [
+      'No signal? Your message goes through your tracker, over the radio, to the family. Tap 📡 to send that way any time.',
+      'See how each tracker’s signal reaches home, as a line on the map. Switch it off whenever you like.',
+      'Trackers and the home base keep each other’s routes, so messages get through faster.',
+    ],
+  },
+  {
     version: '0.26.0',
     date: '2026-11-12',
     title: 'Trackers, set up from the app',
