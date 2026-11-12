@@ -468,6 +468,8 @@ Status Device::refresh() {
     err_ = "this device was removed from the circle";
     return Status::Removed;
   }
+  features_.clear();
+  for (JsonPairConst kv : st["features"].as<JsonObjectConst>()) features_[kv.key().c_str()] = kv.value() | false;
   trustMembers(members);
   long epoch = st["epoch"] | 0L;
   if (!acct_.keyring.count(epoch)) {
@@ -499,7 +501,7 @@ Status Device::refresh() {
 // --- what the tracker sends ---------------------------------------------------
 
 Status Device::shareLocation(const Fix& fix, const char* trigger, int movingMin, int stillMin, const char* app, bool viaRadio,
-                             int64_t fixTimeMs) {
+                             int64_t fixTimeMs, JsonVariantConst extra) {
   JsonDocument b;
   b["lat"] = fix.lat;
   b["lng"] = fix.lng;
@@ -508,10 +510,11 @@ Status Device::shareLocation(const Fix& fix, const char* trigger, int movingMin,
   b["charging"] = fix.charging;
   if (fix.speed >= 0) b["speed"] = fix.speed; else b["speed"] = nullptr;
   b["trigger"] = trigger;
-  b["placeId"] = nullptr;
+  if (fix.placeId.empty()) b["placeId"] = nullptr; else b["placeId"] = fix.placeId;
   b["app"] = app;
   b["skin"] = "tracker";
   if (viaRadio) b["via"] = "radio";
+  for (JsonPairConst kv : extra.as<JsonObjectConst>()) b[kv.key()] = kv.value();
   JsonObject c = b["cadence"].to<JsonObject>();
   c["stop"] = "custom";
   c["moving"] = movingMin;
@@ -786,6 +789,7 @@ Status Device::fetchDirect(std::vector<Direct>& out) {
     d.from = from;
     d.fromName = k->second.name;
     d.text = msg["body"]["text"] | "";
+    d.checkin = msg["body"]["checkin"] | "";
     d.fromAdmin = isAdmin(from);
     if (!d.text.empty()) out.push_back(d);
   }
@@ -793,10 +797,11 @@ Status Device::fetchDirect(std::vector<Direct>& out) {
   return Status::Ok;
 }
 
-Status Device::sendDirect(const std::string& to, const std::string& text) {
+Status Device::sendDirect(const std::string& to, const std::string& text, bool checkinOk) {
   if (!acct_.known.count(to)) return fail("that member's keys aren't known yet");
   JsonDocument b;
   b["text"] = text.substr(0, 4000);
+  if (checkinOk) b["checkin"] = "ok";
   std::string id = randomId(12);
   for (int attempt = 0; attempt < 2; attempt++) {
     JsonDocument req = seal("chat", b.as<JsonVariantConst>(), id, to);
@@ -931,6 +936,81 @@ Status Device::rename(const std::string& name) {
   std::string body;
   serializeJson(p, body);
   return call("PUT", "/members/me/profile", body, nullptr);
+}
+
+Status Device::fetchPlaces(std::vector<Place>& out) {
+  out.clear();
+  JsonDocument res;
+  Status s = call("GET", "/places", "", &res);
+  if (s != Status::Ok) return s;
+  for (JsonObjectConst p : res["places"].as<JsonArrayConst>()) {
+    std::string id = p["id"] | "", by = p["updatedBy"] | "";
+    auto k = acct_.known.find(by);
+    Bytes signPub = by == acct_.memberId ? acct_.id.signPub : k == acct_.known.end() ? Bytes() : k->second.signPub;
+    JsonDocument msg;
+    if (signPub.empty() || !open(p["env"], signPub, "place", by, msg)) continue;
+    JsonObjectConst b = msg["body"];
+    if (id != (b["id"] | "") || !b["lat"].is<double>() || !b["lng"].is<double>()) continue;
+    Place pl;
+    pl.id = id;
+    pl.name = std::string(b["name"] | "a place").substr(0, 40);
+    pl.lat = b["lat"].as<double>();
+    pl.lng = b["lng"].as<double>();
+    double r = b["radius"] | 150.0;
+    pl.radius = r < 50 ? 50 : r > 5000 ? 5000 : r;  // as the apps read it
+    out.push_back(pl);
+  }
+  return Status::Ok;
+}
+
+Status Device::postEvent(JsonVariantConst body) {
+  std::string id = randomId(12);
+  for (int attempt = 0; attempt < 2; attempt++) {
+    JsonDocument req = seal("event", body, id);
+    req["id"] = id;
+    req["silent"] = false;
+    std::string out;
+    serializeJson(req, out);
+    HttpResponse raw;
+    Status s = call("POST", "/messages", out, nullptr, &raw);
+    if (s == Status::Ok || (raw.status == 409 && errorCode(raw) == "conflict")) return Status::Ok;
+    if (raw.status == 409 && errorCode(raw) == "stale_epoch" && attempt == 0) {
+      Status r = refresh();
+      if (r != Status::Ok) return r;
+      continue;
+    }
+    return s;
+  }
+  return Status::Failed;
+}
+
+Status Device::pluginSettings(const char* id, JsonDocument& out) {
+  std::string path = std::string("/plugins/") + id + "/settings";
+  return call("GET", path.c_str(), "", &out);
+}
+
+Status Device::registerKeeper(const std::string& keeper) {
+  JsonDocument req;
+  req["keeper"] = keeper;
+  std::string body;
+  serializeJson(req, body);
+  return call("PUT", "/members/me/keeper", body, nullptr);
+}
+
+Status Device::keeperPending(std::vector<Pending>& out) {
+  out.clear();
+  JsonDocument res;
+  Status s = call("GET", "/keeper/pending", "", &res);
+  if (s != Status::Ok) return s;
+  for (JsonObjectConst i : res["pending"].as<JsonArrayConst>()) {
+    Pending p;
+    p.type = i["type"] | "";
+    p.member = i["member"] | "";
+    p.from = i["from"] | "";
+    p.seq = i["seq"] | 0L;
+    out.push_back(p);
+  }
+  return Status::Ok;
 }
 
 Status Device::leave() {

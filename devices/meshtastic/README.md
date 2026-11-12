@@ -24,7 +24,17 @@ server can be anywhere: Render, a VPS, or at home.
 - **When someone's phone goes quiet**, the home base asks the tracker they
   carry for a fresh position over the mesh.
 - **An SOS** from a tracker (a text with "SOS" or the alert bell) becomes an
-  SOS in the circle. "OK" or "safe" ends it.
+  SOS in the circle. "OK" or "safe" ends it. On a SenseCAP T1000-E with the
+  HomeCircle build, **press the button 5 times** (up to 2 s apart): a long
+  beep means the SOS went out; 5 presses again end it.
+- **The app's buttons reach the tracker:**
+  - **Locate** asks it for a position over the mesh.
+  - **Chirp** and **Ask to check in** make it beep. Its "OK" answers the
+    check-in.
+  - **Arrived and left** alerts for places work as they do for phones.
+- **The radio path:** tapping the tracker shows how its position reached
+  home, for example `UT1 → meshunit1 → meshunit2 → Home base`, with the
+  signal on each hop (a Meshtastic traceroute).
 - **Admins manage it by chatting with "Home base"** in the HomeCircle app. No
   new app is needed.
 
@@ -51,6 +61,7 @@ server can be anywhere: Render, a VPS, or at home.
 |---|---|---|
 | **Heltec WiFi LoRa 32 V4** | the home base: indoors, on USB power and Wi-Fi, with a good antenna | `heltec-v4-homebase` |
 | Any Meshtastic tracker: SenseCAP T1000-E, Heltec Wireless Tracker, LilyGO T-Beam or T-Echo, RAK… | carried by a person or kept in a car | stock Meshtastic |
+| SenseCAP T1000-E (optional) | stock Meshtastic plus a 5-press SOS | `tracker-t1000-e-homecircle` (a `.uf2`: copy it onto the T1000-E drive in update mode) |
 | Heltec Wireless Tracker (optional) | a tracker that seals at the source and also reports over Wi-Fi | `heltec-wireless-tracker-homecircle` |
 
 ## Building and flashing the home base
@@ -63,9 +74,12 @@ devices/meshtastic/build.sh ~/meshtastic-homecircle heltec-v4-homebase
 `build.sh` does the following:
 1. Clones the Meshtastic release the modules are written against (v2.7.26).
 2. Copies in the HomeCircle modules and the shared tracker library.
-3. Registers the modules and builds.
+3. Registers the modules (`register.py`).
+4. Adds one line to Meshtastic's GPS driver that passes the raw GPS data to
+   the home base, so it can list satellites.
+5. Builds.
 
-Flash the printed `…factory.bin` with the Meshtastic web flasher
+To update a home base that's already set up, write only the app (`firmware-….bin` at 0x10000). That keeps its circle membership and settings. For a new board, flash the printed `…factory.bin` with the Meshtastic web flasher
 (flasher.meshtastic.org, "Open custom firmware"), or run
 `pio run -d ~/meshtastic-homecircle -e heltec-v4-homebase -t upload`.
 
@@ -87,7 +101,21 @@ The firmware is GPL-3.0, because Meshtastic is. The module files say so.
    The home base joins your circle as **Home base**. It creates the private
    HomeCircle channel, shows the link that puts trackers on it, and restarts
    on your Wi-Fi.
+
+   If setup is interrupted, the home base finishes it at its next start:
+   - If it joined the circle but has no Wi-Fi saved, the hotspot comes back
+     asking only for Wi-Fi.
+   - A missing private channel is made again.
 4. **Make "Home base" an admin** in the app, so it can add trackers by itself.
+5. **Turn on the plugin:** Settings → Features → Plugins → **Meshtastic
+   trackers**.
+   - Until it's on, the server takes no tracker packets or requests for the
+     circle, and the home base stays idle.
+   - Its settings are optional: after how long a phone counts as quiet (30
+     minutes), how often to trace each tracker's path (30 minutes; 0 for only
+     on Locate), and the words that start an SOS ("SOS, help").
+   - The home base reads them within 10 minutes. A server older than 0.25
+     doesn't know the plugin, and the home base then runs with the defaults.
 
 ## Adding a tracker
 
@@ -114,6 +142,7 @@ The firmware is GPL-3.0, because Meshtastic is. The module files say so.
 | `remove Name` | Takes the tracker out of the circle |
 | `channel` | The link that puts a tracker on the private channel |
 | `status` | Shows the circle, how many trackers, and whether Home base is an admin |
+| `gps` | Where the home base is (if it has a GPS module, like the Heltec V4's L76K), how good the fix is, the satellites it can see by system with their signal, and a map link. It also puts Home base on the map, refreshed hourly while it has a fix |
 
 Anyone can ask for `list` and `status`; only admins can change trackers.
 
@@ -123,6 +152,44 @@ Anyone can ask for `list` and `status`; only admins can change trackers.
   for a child out alone.
 - On the T1000-E, its button's alert set to send a message containing
   "SOS".
+
+## In the app
+
+- **Settings → your circle → Trackers:**
+  - Shows the home base (online or offline, when it last checked in) and each
+    tracker: who carries it, its last position, and how many hops away it is.
+  - Admins can add a tracker from the nodes the home base hears (name, a car
+    or someone carrying it, and who), rename it, change who carries it, or
+    remove it.
+  - Underneath, it sends the same commands you could type to Home base.
+- **On the map:** a tracker is a rounded square with 🚗 or 🎒. When someone's
+  phone has been quiet for 30 minutes and the tracker they carry has reported
+  since, their own pin moves to the tracker's position, marked 📡. That
+  tracker's pin then steps aside.
+- **A tracker's sheet** has no Call or Message. Locate, Chirp and Ask to
+  check in are worded for a radio. It shows who carries the tracker and the
+  radio path.
+
+## What the app's buttons do for a tracker
+
+| In the app | What the home base does |
+|---|---|
+| Locate | Asks the tracker for its position over the mesh and traces its path |
+| Chirp | Sends it a message with the alert bell: it beeps |
+| Ask to check in | Makes it beep and asks for its position. "OK" from the tracker sends you "✅ I'm OK" |
+| Alert me when they arrive or leave | Works as for phones: the home base checks each position against the circle's places |
+
+How these reach the home base:
+- **Locate, Chirp and Ask to check in** go through the server. A tracker tells
+  the server which home base keeps it (`PUT /members/me/keeper`). The server
+  queues requests for that tracker, and the home base collects them every
+  few seconds (`GET /keeper/pending`).
+- **The tracker must beep for messages.** In the Meshtastic app on the
+  tracker, turn on External notification with a buzzer for messages or for
+  the alert bell.
+- **The path** is traced when you tap Locate, and every 30 minutes while
+  the tracker reports. It goes into the tracker's sealed location, so the
+  server can't read it.
 
 ## How "phone offline" works
 
@@ -166,8 +233,10 @@ base above.
 - **The app doesn't yet show** "via radio", or a person at their tracker
   when their phone is quiet. The data is there: the location's `via` and the
   tracker's `carriedBy` in its member record. This needs an app release.
-- **Locate in the app** doesn't reach a stock tracker. The home base asks it
-  only when its person's phone is quiet. Sending a Locate to the home base
-  needs a small server change.
+- **Locate, Chirp and Ask to check in need a server from this branch.**
+  Older servers answer 404, and the home base then tries again every 10
+  minutes.
+- **The path view** needs the app release that has it. Older apps just
+  don't show it.
 - **Phones on the mesh** (a Meshtastic node paired with the phone) are still
   to do.

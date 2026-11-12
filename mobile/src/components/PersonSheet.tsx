@@ -11,8 +11,10 @@ import { chirpWithChoice } from '../lib/chirp';
 import { KIND_EMOJI } from '../lib/visits';
 import { spotName, type Anchor } from '../lib/visitsCore';
 import { MemberAvatar } from './MemberAvatar';
-import { cadenceLine, canLocate, locatePerson, locateState, openDirections, statusLine, useLocateVersion } from '../lib/people';
+import { cadenceLine, canLocate, locatePerson, locateState, openDirections, radioLine, statusLine, useLocateVersion } from '../lib/people';
 import { useTheme } from '../theme';
+import { carriedFallback, trackerEmoji, trackerOf } from '../lib/trackers';
+import { timeAgo } from '../lib/useCircle';
 import { showSheet } from '../lib/sheet';
 
 const clockOf = (mins: number) => new Date(2000, 0, 1, 0, mins).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
@@ -52,7 +54,16 @@ export function PersonSheet({
   const [checking, setChecking] = useState(false);
   const { height } = useWindowDimensions();
   const m = memberId ? client.members.get(memberId) : null;
-  const loc = m ? client.locations.get(m.id) : undefined;
+  // A Meshtastic tracker (kept by a home base): no phone to call or message.
+  const tracker = m ? trackerOf(client, m.id) : null;
+  // Someone whose phone has gone quiet: shown at the tracker they carry.
+  const via = m && !tracker ? carriedFallback(client, m.id, Date.now()) : null;
+  const loc = m ? (via?.loc ?? client.locations.get(m.id)) : undefined;
+  const carrier = tracker?.carriedBy ? client.members.get(tracker.carriedBy) : null;
+  const trackerLine = tracker
+    ? `${trackerEmoji(tracker)} ${tracker.mode === 'car' ? 'Car tracker' : carrier ? `Tracker carried by ${carrier.name}` : 'Tracker'} · Meshtastic`
+    : null;
+  const viaLine = via ? `📡 Phone quiet since ${timeAgo(client.locations.get(m!.id)?.ts)} · shown where ${via.trackerName} is` : null;
   const paused = m ? client.paused.get(m.id) : undefined;
   const state = m ? locateState(client, m.id) : 'idle';
 
@@ -145,7 +156,7 @@ export function PersonSheet({
                     {client.displayName(m.id) !== m.name ? <Text style={{ color: t.muted, fontSize: 14 }}>{m.name}</Text> : null}
                     <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>{statusLine(client, m)}</Text>
                     {m.isMe && cadenceLine(loc) ? <Text style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>{sentence(cadenceLine(loc)!)}</Text> : null}
-                    {[busyLine(client, m.id), routeLine(client, m.id)].filter(Boolean).map((line) => (
+                    {[trackerLine, viaLine, busyLine(client, m.id), routeLine(client, m.id), radioLine(loc)].filter(Boolean).map((line) => (
                       <Text key={line} style={{ color: t.muted, fontSize: 14, marginTop: 2 }}>
                         {line}
                       </Text>
@@ -162,8 +173,8 @@ export function PersonSheet({
                     {/* Only what this circle has on. */}
                     {(() => {
                       const main: ReactNode[] = [];
-                      if ((client.feature('calls') || client.feature('whatsapp')) && m.kind !== 'agent') main.push(primary('phone', 'Call', () => setChoosingCall(true), false, 'In HomeCircle or on WhatsApp'));
-                      if (client.feature('directMessages'))
+                      if ((client.feature('calls') || client.feature('whatsapp')) && m.kind !== 'agent' && !tracker) main.push(primary('phone', 'Call', () => setChoosingCall(true), false, 'In HomeCircle or on WhatsApp'));
+                      if (client.feature('directMessages') && !tracker)
                         main.push(primary('chat', 'Message', go(() => router.push({ pathname: '/conversation', params: { circle: client.circleId!, peer: m.id } })), false, 'Only you two can read it'));
                       if (client.feature('locationSharing'))
                         main.push(
@@ -178,23 +189,27 @@ export function PersonSheet({
                           'Locate now',
                           paused
                             ? 'Sharing is paused'
-                            : state === 'sent'
-                              ? 'Sent · waiting for their phone…'
+                            : state === 'sent' || (tracker && state === 'delivered')
+                              ? tracker
+                                ? 'Asked over the radio · waiting…'
+                                : 'Sent · waiting for their phone…'
                               : state === 'delivered'
                                 ? 'Delivered · locating…'
                                 : state === 'updated'
                                   ? 'Updated just now'
                                   : state === 'no-reply'
-                                    ? 'No reply yet · try again'
+                                    ? tracker
+                                      ? 'No answer from the tracker yet · it may be out of range'
+                                      : 'No reply yet · try again'
                                     : state === 'cooldown'
                                       ? 'Asked recently'
                                       : 'Get a fresh location',
                           () => locatePerson(client, m.id),
                           !!paused || !canLocate(state),
                         )}
-                      {client.feature('checkIns') && row('checkin', checking ? 'Sending…' : 'Ask to check in', 'Ask “where are you?”', askCheckIn, checking)}
+                      {client.feature('checkIns') && row('checkin', checking ? 'Sending…' : 'Ask to check in', tracker ? 'It beeps; an “OK” from it answers' : 'Ask “where are you?”', askCheckIn, checking)}
                       {client.feature('placeAlerts') && row('bell', 'Alert me when they arrive or leave', 'At a place you pick', () => setAlerting(true))}
-                      {client.feature('chirps') && row('bird', 'Chirp', 'A sound they’ll know is you', go(() => chirpWithChoice(client, m.id)))}
+                      {client.feature('chirps') && row('bird', 'Chirp', tracker ? 'Makes the tracker beep' : 'A sound they’ll know is you', go(() => chirpWithChoice(client, m.id)))}
                     </View>
                   </>
                 )}

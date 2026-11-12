@@ -5,7 +5,7 @@ import { WhatsAppSetup } from '../../components/CallActions';
 import { FeaturePicker } from '../../components/FeaturePicker';
 import { PluginSetup } from '../../components/PluginSetup';
 import { PrayerSetup } from '../../components/PrayerSetup';
-import { GroupBody, SettingsGroup, SettingsPage } from '../../components/SettingsKit';
+import { GroupBody, SettingsGroup, SettingsPage, SettingsRow } from '../../components/SettingsKit';
 import { errorText } from '../../lib/circle';
 import { useCircle } from '../../lib/useCircle';
 import { useTheme } from '../../theme';
@@ -50,6 +50,12 @@ export default function FeatureSettings() {
             <WhatsAppSetup client={client} />
           ) : admin && !pending && client.feature(id) && (id === 'homeAssistant' || id === 'air') ? (
             <PluginSetup client={client} id={id} />
+          ) : !pending && id === 'meshtastic' && client.feature(id) ? (
+            // The home base follows these settings; its trackers are managed on their own screen.
+            <>
+              {admin ? <PluginSetup client={client} id={id} /> : null}
+              <SettingsRow icon="locate" title="Trackers" detail="The home base and its trackers" href="/trackers" />
+            </>
           ) : null
         }
       />

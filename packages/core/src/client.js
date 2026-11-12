@@ -887,6 +887,8 @@ export class CircleClient {
       page: b.page === 'care' || b.page === 'grandkids' ? b.page : null,
       // Came over the mesh radio from a tracker, through a home base.
       via: b.via === 'radio' ? 'radio' : null,
+      // How it came: hops, and the path from the tracker to the home base.
+      mesh: cleanMeshPath(b.mesh),
       ts: msg.ts,
       receivedAt: updatedAt,
     };
@@ -2955,6 +2957,25 @@ export class CircleClient {
 }
 
 /** { stop, moving, still, charging, limited } or null: what a phone said about how often it updates. */
+/**
+ * A tracker's radio path, from its home base: { hops, at, path: [{ id, name,
+ * snr }] } from the tracker to the home base (a Meshtastic traceroute), or
+ * just hops. Null when there's none.
+ */
+function cleanMeshPath(m) {
+  if (!m || typeof m !== 'object') return null;
+  const hops = Number.isInteger(m.hops) && m.hops >= 0 && m.hops <= 10 ? m.hops : null;
+  const path = Array.isArray(m.path)
+    ? m.path.slice(0, 10).map((h) => ({
+        id: typeof h?.id === 'string' && /^(![0-9a-f]{8}|\?)$/.test(h.id) ? h.id : null,
+        name: typeof h?.name === 'string' ? h.name.replace(/[\u0000-\u001f]/g, '').trim().slice(0, 40) || null : null,
+        snr: Number.isFinite(h?.snr) ? Math.round(h.snr * 4) / 4 : null,
+      }))
+    : null;
+  if (hops == null && !path) return null;
+  return { hops, at: Number.isFinite(m.at) ? m.at : null, path: path && path.length >= 2 ? path : null };
+}
+
 function cleanCadence(c) {
   if (!c || typeof c !== 'object') return null;
   const min = (v) => (Number.isFinite(v) && v > 0 && v <= 24 * 60 ? Math.round(v * 10) / 10 : null);
@@ -3002,6 +3023,30 @@ function cleanMemberRecord(b) {
     photos: cleanPhotoMap(b.photos),
     phone: cleanPhone(b.phone),
     tracker: cleanTracker(b.tracker),
+    homeBase: cleanHomeBase(b.homeBase),
+  };
+}
+
+/**
+ * A home base's own status, in the member record about itself (it is an
+ * admin): when it last checked in, the Meshtastic nodes it hears, and its
+ * trackers. Null for anyone else.
+ */
+function cleanHomeBase(h) {
+  if (!h || typeof h !== 'object' || !Number.isFinite(h.at)) return null;
+  const node = (v) => (typeof v === 'string' && /^![0-9a-f]{8}$/.test(v) ? v : null);
+  const text = (v) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, '').trim().slice(0, 40) : '');
+  const list = (a, f) => (Array.isArray(a) ? a.slice(0, 40).map(f).filter(Boolean) : []);
+  return {
+    at: h.at,
+    // After how long a phone counts as quiet (the Meshtastic plugin's setting).
+    quietMinutes: Number.isInteger(h.quietMinutes) && h.quietMinutes >= 10 && h.quietMinutes <= 720 ? h.quietMinutes : null,
+    heard: list(h.heard, (n) =>
+      node(n?.node) ? { node: n.node, name: text(n.name) || null, at: Number.isFinite(n.at) ? n.at : null, hops: Number.isInteger(n.hops) ? n.hops : null } : null,
+    ),
+    trackers: list(h.trackers, (t) =>
+      node(t?.node) && typeof t.member === 'string' ? { node: t.node, member: t.member, at: Number.isFinite(t.at) ? t.at : null } : null,
+    ),
   };
 }
 

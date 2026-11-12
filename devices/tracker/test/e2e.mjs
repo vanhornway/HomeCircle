@@ -73,7 +73,7 @@ try {
   const admin = client();
   await admin.createCircle({ serverUrl, setupToken, name: 'Maya', circleName: 'Test family' });
   // SOS is a circle feature an admin turns on; a family with a tracker would.
-  await admin.setFeatures({ ...admin.features, sos: true });
+  await admin.setFeatures({ ...admin.features, sos: true, meshtastic: true });
   const { link } = await admin.createInvite({ hours: 1 });
 
   // Join.

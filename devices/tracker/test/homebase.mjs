@@ -87,7 +87,7 @@ try {
   // A family: Maya (owner) and Leo, whose phone shares its location.
   const maya = client();
   await maya.createCircle({ serverUrl, setupToken, name: 'Maya', circleName: 'Family' });
-  await maya.setFeatures({ ...maya.features, sos: true });
+  await maya.setFeatures({ ...maya.features, sos: true, placeAlerts: true, chirps: true, locate: true, meshtastic: true });
   const leo = client();
   await leo.joinWithInvite((await maya.createInvite({ hours: 1 })).link, { name: 'Leo' });
   await leo.refresh();
@@ -150,6 +150,16 @@ try {
   assert.deepEqual({ node: rec?.node, carriedBy: rec?.carriedBy, mode: rec?.mode }, { node: TRACKER, carriedBy: leo.account.memberId, mode: 'carried' });
   pass('“link” records who carries it, signed by the home base as an admin');
 
+  // Its own status, for the app's Trackers screen: alive, what it hears, its trackers.
+  await radio('advance 301');
+  await radio('tick');
+  await maya.fetchRecords();
+  const status = maya.memberRecord(hbId)?.homeBase;
+  assert.ok(status && Date.now() - status.at < 3600_000 * 2, 'a recent status');
+  assert.ok(status.heard.some((h) => h.node === TRACKER && h.name === 'T1000-E'), 'the nodes it hears');
+  assert.deepEqual(status.trackers.map((t) => [t.node, t.member]), [[TRACKER, tracker.id]]);
+  pass('the home base publishes its status: when it checked in, the nodes it hears, its trackers');
+
   // Leo's phone goes quiet for an hour: the home base asks his tracker where it is.
   let out = await radio('advance 3600');
   out = await radio('tick');
@@ -181,6 +191,104 @@ try {
   assert.ok(!maya.activeSos().some((s) => s.memberId === tracker.id), 'closed by "ok"');
   pass('an “SOS” text from the tracker opens an SOS for it; “ok” closes it');
 
+  // The Meshtastic plugin: its settings reach the home base, and off means idle.
+  await maya.api.putPluginSettings('meshtastic', { quietMinutes: '45', traceMinutes: '0', sosWords: 'Mayday, SOS' });
+  await radio('advance 601');
+  await radio('tick');
+  await radio(`text ${TRACKER} MAYDAY mayday`);
+  await radio('tick');
+  await maya._fetchMessages();
+  assert.ok(maya.activeSos().some((s) => s.memberId === tracker.id), 'the plugin’s own SOS word');
+  await radio(`text ${TRACKER} ok`);
+  await radio('tick');
+  await radio('advance 301');
+  await radio('tick');
+  await maya.fetchRecords();
+  assert.equal(maya.memberRecord(hbId)?.homeBase?.quietMinutes, 45, 'its status carries the plugin’s quiet time for the app');
+  await assert.rejects(maya.api.putPluginSettings('meshtastic', { quietMinutes: '5' }), /10 to 720/);
+  await maya.setFeatures({ ...maya.features, meshtastic: false });
+  await radio('advance 601');
+  await radio('tick');
+  assert.match(await ask('list'), /turned off in this circle/);
+  await maya.setFeatures({ ...maya.features, meshtastic: true });
+  await radio('advance 601');
+  await radio('tick');
+  pass('Meshtastic is a plugin: its settings reach the home base, and switched off it stays idle');
+
+  // The app's buttons, aimed at the tracker: the server hands them to the home base.
+  const located = await maya.requestLocations([tracker.id]);
+  assert.equal(located.delivery[tracker.id], 'pushed', 'Locate goes somewhere, not "unreachable"');
+  await radio('advance 9');
+  out = await radio('tick');
+  assert.ok(out.includes(`request ${TRACKER}`), `Locate asks the tracker over the mesh: ${out.join(' | ')}`);
+  await radio(`position ${TRACKER} 37.63 -122.07 69`);
+  await radio('tick');
+  await maya.fetchLocations();
+  assert.equal(maya.locations.get(tracker.id).lat, 37.63);
+  pass('Locate on the tracker asks it over the mesh, and the new position comes back');
+
+  // The radio path: Locate also traces the route; the answer goes onto the tracker's pin.
+  assert.ok(out.includes(`trace ${TRACKER}`), `Locate traces the path: ${out.join(' | ')}`);
+  await radio('heard !11111111 meshunit1');
+  await radio('heard !22222222 meshunit2');
+  await radio(`route ${TRACKER} !11111111,!22222222 24,-10,41`);
+  await radio('tick');
+  await maya.fetchLocations();
+  const mesh = maya.locations.get(tracker.id).mesh;
+  assert.equal(mesh.hops, 2);
+  assert.deepEqual(
+    mesh.path.map((h) => [h.id, h.name, h.snr]),
+    [
+      [TRACKER, "Leo's tracker", null],
+      ['!11111111', 'meshunit1', 6],
+      ['!22222222', 'meshunit2', -2.5],
+      [null, 'Home base', 10.25],
+    ],
+  );
+  assert.equal(maya.locations.get(tracker.id).lat, 37.63, 'the same position, now with its path');
+  pass('the path from the tracker to the home base (tracker → meshunit1 → meshunit2 → Home base) reaches the app');
+
+  await maya.chirp(tracker.id);
+  await radio('advance 9');
+  out = await radio('tick');
+  assert.ok(out.some((l) => l === `alert ${TRACKER} \\aMaya chirped you`), `a chirp beeps the tracker: ${out.join(' | ')}`);
+  pass('a chirp to the tracker makes it beep (the alert bell)');
+
+  await maya.askToCheckIn(tracker.id);
+  await radio('advance 9');
+  out = await radio('tick');
+  assert.ok(out.some((l) => l.startsWith(`alert ${TRACKER} \\aCheck in, please: Maya asked`)), `check-in beeps it: ${out.join(' | ')}`);
+  assert.ok(out.includes(`request ${TRACKER}`), 'and asks for a position');
+  const beforeOk = maya.messages.length;
+  await radio(`text ${TRACKER} OK`);
+  await radio('tick');
+  await maya._fetchMessages();
+  const ok = maya.messages.slice(beforeOk).find((m) => m.from === tracker.id);
+  assert.equal(ok?.body.checkin, 'ok', 'Maya gets "I’m OK" from the tracker');
+  pass('“Ask to check in” beeps the tracker; “OK” from it answers Maya’s check-in');
+
+  // Arrived and left, worked out by the home base as a phone would.
+  await maya.savePlace({ name: 'School', lat: 37.7, lng: -122.1, radius: 150 });
+  await radio('advance 601'); // places are read every 10 minutes
+  await radio(`position ${TRACKER} 37.65 -122.08 68`); // away from school: noted, not announced
+  await radio('tick');
+  const placeEvents = async () => {
+    await maya._fetchMessages();
+    return maya.messages.filter((m) => m.from === tracker.id && m.kind === 'event' && m.body?.type === 'place').map((m) => m.body.action);
+  };
+  assert.deepEqual(await placeEvents(), []);
+  await radio('advance 61');
+  await radio(`position ${TRACKER} 37.7001 -122.1001 67`);
+  await radio('tick');
+  assert.deepEqual(await placeEvents(), ['arrived']);
+  await maya.fetchLocations();
+  assert.equal(maya.locations.get(tracker.id).placeId, [...maya.places.values()].find((p) => p.name === 'School').id);
+  await radio('advance 61');
+  await radio(`position ${TRACKER} 37.66 -122.09 66`);
+  await radio('tick');
+  assert.deepEqual(await placeEvents(), ['arrived', 'left']);
+  pass('arriving at and leaving a place send the same alerts a phone does');
+
   // Renaming, and a car.
   answer = await ask("rename Leo's tracker to Leo (backpack)");
   assert.match(answer, /is now Leo \(backpack\)/);
@@ -204,6 +312,35 @@ try {
   const refusal = leo.messages.slice(before).find((m) => m.from === hbId)?.body.text;
   assert.match(refusal ?? '', /Only the circle's admins/);
   pass('someone who isn’t an admin can’t change trackers');
+
+  // The home base's own GPS: where it is, what it can see, and its own pin.
+  const nmea = (body) => {
+    let sum = 0;
+    for (const c of body) sum ^= c.charCodeAt(0);
+    return `$${body}*${sum.toString(16).toUpperCase().padStart(2, '0')}`;
+  };
+  answer = await ask('gps');
+  assert.match(answer, /no GPS/);
+  await radio('selfgps 37.548271 -121.988571 9 0.9');
+  for (const s of [
+    'GPGSV,2,1,07,02,62,045,42,12,48,310,39,25,33,120,36,29,15,200,28',
+    'GPGSV,2,2,07,05,10,075,,13,08,250,,31,05,330,',
+    'BDGSV,1,1,03,08,55,020,40,23,40,180,35,30,12,090,22',
+    'GNGSA,A,3,02,12,25,29,,,,,,,,,1.6,0.9,1.3,1',
+    'GNGSA,A,3,08,23,,,,,,,,,,,1.6,0.9,1.3,4',
+    'GPGSV,1,1,01,99,10,010,30*00', // a bad checksum: ignored
+  ])
+    await radio(`nmea ${s.endsWith('*00') ? `$${s}` : nmea(s)}`);
+  answer = await ask('gps');
+  assert.match(answer, /GPS fix: 37\.548271, -121\.988571/, answer);
+  assert.match(answer, /3D fix from 9 satellites, HDOP 0\.9 \(excellent\)/, answer);
+  assert.match(answer, /Satellites in view: 10, 7 with a signal, 6 used \(BeiDou 3, GPS 7\)/, answer);
+  assert.match(answer, /• GPS 2: 42 dB, 62° up, NE, in the fix/, answer);
+  assert.doesNotMatch(answer, / 99:/);
+  assert.match(answer, /openstreetmap\.org\/\?mlat=37\.548271/);
+  await maya.fetchLocations();
+  assert.equal(maya.locations.get(hbId)?.lat, 37.548271);
+  pass('“gps” answers with its fix and the satellites it sees, and puts the home base on the map');
 
   answer = await ask('remove Honda CR-V');
   assert.match(answer, /Removed Honda CR-V/);

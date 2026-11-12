@@ -102,7 +102,7 @@ export function PluginSetup({ client, id }: { client: CircleClient; id: string }
             autoCorrect={false}
             autoComplete="off"
             spellCheck={false}
-            keyboardType={f.id === 'url' ? 'url' : 'default'}
+            keyboardType={f.numeric ? 'number-pad' : f.id === 'url' ? 'url' : 'default'}
             style={{ fontSize: 15, minHeight: 48 }}
           />
           {f.help ? (
@@ -122,7 +122,11 @@ export function PluginSetup({ client, id }: { client: CircleClient; id: string }
       ))}
       <ErrorText>{error}</ErrorText>
       <Button small variant="primary" title={info.ready ? 'Save' : id === 'homeAssistant' ? 'Connect' : 'Save'} loading={saving} disabled={missing} onPress={save} />
-      {info.ready || id === 'air' ? (
+      {id === 'meshtastic' ? (
+        <Text style={{ color: t.muted, fontSize: 14, lineHeight: 18, marginTop: 6 }}>
+          {saved ? 'Saved. ' : ''}Empty fields use the defaults. The home base picks up changes within 10 minutes.
+        </Text>
+      ) : info.ready || id === 'air' ? (
         <Text style={{ color: t.muted, fontSize: 14, lineHeight: 18, marginTop: 6 }}>
           {id === 'homeAssistant'
             ? `${saved ? 'Connected. ' : 'Connected · '}${sent ? `${sent} ` : ''}Everyone else shows up in Home Assistant (Settings → Devices & services → Mobile App) once their phone, on HomeCircle 0.15 or newer, next shares its location. Yours: device_tracker.homecircle_${slugName(me)}.`

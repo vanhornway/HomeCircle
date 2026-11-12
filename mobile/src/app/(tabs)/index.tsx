@@ -21,6 +21,7 @@ import { initials, useAllCircles, useCircle } from '../../lib/useCircle';
 import { chirpWithChoice } from '../../lib/chirp';
 import { canLocate, everyoneCoolingDown, isAsking, memberState, locatePerson, locateState, lowBattery, refreshEveryone, settingWarning, statusLine, useLocateVersion } from '../../lib/people';
 import { DEFAULT_SETTINGS, getSettings } from '../../lib/storage';
+import { carriedFallback, trackerEmoji, trackerOf } from '../../lib/trackers';
 import { edgeChips, groups, openingFrame } from '../../lib/mapFrame';
 import { usePlaceNames } from '../../lib/weather';
 import { useTheme } from '../../theme';
@@ -92,26 +93,36 @@ export default function MapTab() {
   const members = client.memberList();
   // Circle data is mutated in place, so memoize on content rather than identity.
   const sharing = client.feature('locationSharing');
+  // Someone whose phone has gone quiet shows at the tracker they carry (📡),
+  // and that tracker's own pin steps aside so they don't sit on top of each other.
+  const viaTracker = new Map(members.map((m) => [m.id, sharing ? carriedFallback(client, m.id, now) : null]));
+  const shownViaTracker = new Set([...viaTracker.values()].flatMap((v) => (v ? [v.trackerId] : [])));
   const mapMembersRaw: MapMember[] = members.flatMap((m) => {
-    const loc = sharing ? client.locations.get(m.id) : null;
+    if (shownViaTracker.has(m.id)) return [];
+    const via = viaTracker.get(m.id);
+    const loc = sharing ? (via?.loc ?? client.locations.get(m.id)) : null;
     if (!loc) return [];
+    const tracker = trackerOf(client, m.id);
     return [
       {
         id: m.id,
-        label: initials(m.name),
-        title: m.name,
+        label: tracker ? trackerEmoji(tracker) : initials(m.name),
+        title: via ? `${m.name} · at ${via.trackerName}` : m.name,
         color: m.color,
         lat: loc.lat,
         lng: loc.lng,
         accuracy: loc.accuracy || 0,
         stale: now - loc.ts > STALE_MS,
-        badge: { saver: '🔋', settings: '⚠️', 'last-gasp': '🪫' }[memberState(client, m, now) as string],
+        badge: via ? '📡' : tracker ? undefined : { saver: '🔋', settings: '⚠️', 'last-gasp': '🪫' }[memberState(client, m, now) as string],
         approximate: loc.approximate,
+        shape: tracker ? 'tracker' : undefined,
       },
     ];
   });
   const membersKey = JSON.stringify(mapMembersRaw);
   const mapMembers = useMemo(() => JSON.parse(membersKey) as MapMember[], [membersKey]);
+  // Where each person's pin is: their phone, or the tracker they carry.
+  const pinAt = (id: string) => mapMembers.find((p: MapMember) => p.id === id) ?? client.locations.get(id);
   const placesRaw = [...client.places.values()];
   const placesKey = JSON.stringify(placesRaw);
   const places = useMemo(() => JSON.parse(placesKey) as Place[], [placesKey]);
@@ -151,7 +162,7 @@ export default function MapTab() {
   const lastFocus = useRef<{ id: string; at: number; bottom: number } | null>(null);
   const focusOn = (id: string) => {
     setSelected(id);
-    const loc = client.locations.get(id);
+    const loc = pinAt(id);
     lastFocus.current = { id, at: Date.now(), bottom: Math.max(sheetH || sheetLast, drawerH) };
     if (loc) setFocus((f) => ({ lat: loc.lat, lng: loc.lng, key: (f?.key ?? 0) + 1 }));
   };
@@ -160,7 +171,7 @@ export default function MapTab() {
     const f = lastFocus.current;
     if (!sheet || !sheetH || !f || f.id !== sheet || Date.now() - f.at > 1500 || Math.abs(coveredBelow - f.bottom) < 24) return;
     f.bottom = coveredBelow;
-    const loc = client.locations.get(f.id);
+    const loc = pinAt(f.id);
     if (loc) setFocus((cur) => ({ lat: loc.lat, lng: loc.lng, key: (cur?.key ?? 0) + 1 }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coveredBelow]);
@@ -186,7 +197,7 @@ export default function MapTab() {
   const flyToChip = (ids: string[]) => {
     if (ids.length === 1) setSelected(ids[0]);
     const points = ids.flatMap((id) => {
-      const loc = client.locations.get(id);
+      const loc = pinAt(id);
       return loc ? [{ lat: loc.lat, lng: loc.lng }] : [];
     });
     if (points.length) setFitTo((f) => ({ points, key: (f?.key ?? 0) + 1 }));

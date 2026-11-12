@@ -108,7 +108,7 @@ const kid = new CircleClient({ storage: new MemoryStorage() });
 
 test('the server lists its plugins; weather is off in a new circle and refused until an admin turns it on', async () => {
   const info = await (await fetch(`${url}/api/v1/info`)).json();
-  assert.deepEqual(info.plugins, ['weather', 'air', 'prayer', 'homeAssistant']);
+  assert.deepEqual(info.plugins, ['weather', 'air', 'prayer', 'homeAssistant', 'meshtastic']);
   await mom.createCircle({ serverUrl: url, setupToken: SETUP, name: 'Mom', circleName: 'Family', features: defaultFeatures() });
   assert.equal(mom.feature('weather'), false);
   await assert.rejects(() => mom.api.weather(37.3382, -121.8863), (e) => e.status === 403 && /Weather is turned off/.test(e.message));

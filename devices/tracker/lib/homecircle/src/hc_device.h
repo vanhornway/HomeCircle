@@ -45,6 +45,22 @@ struct Fix {
   float speed = -1;     // metres a second; below 0 unknown
   int battery = -1;     // percent; below 0 unknown
   bool charging = false;
+  std::string placeId;  // the place it's at, if any
+};
+
+/** A circle's place (Home, School…), opened from its sealed envelope. */
+struct Place {
+  std::string id, name;
+  double lat = 0, lng = 0;
+  double radius = 150;  // metres
+};
+
+/** A request for a tracker that the server passed to its home base. */
+struct Pending {
+  std::string type;    // locate, chirp, message
+  std::string member;  // the tracker
+  std::string from;    // who asked
+  long seq = 0;        // a message's seq
 };
 
 /** How to report, from the admin's member record (defaults until one exists). */
@@ -87,7 +103,7 @@ class Device {
    * the mesh (a home base sending for a Meshtastic tracker).
    */
   Status shareLocation(const Fix& fix, const char* trigger, int movingMin, int stillMin, const char* app = "tracker", bool viaRadio = false,
-                       int64_t fixTimeMs = 0);
+                       int64_t fixTimeMs = 0, JsonVariantConst extra = JsonVariantConst());
 
   /** Start (true) or end (false) an SOS. It is saved first and sent until the server has it. */
   Status sos(bool start, bool sendNow = true);
@@ -121,6 +137,7 @@ class Device {
 
   struct Direct {
     std::string from, fromName, text;
+    std::string checkin;  // "request" for "Where are you? Check in"
     bool fromAdmin = false;
   };
   struct MemberLoc {
@@ -132,7 +149,32 @@ class Device {
 
   /** Direct messages to this device since the last call (the first call only marks where to start). */
   Status fetchDirect(std::vector<Direct>& out);
-  Status sendDirect(const std::string& to, const std::string& text);
+  /** A direct message; `checkinOk` makes it the "✅ I'm OK" answer to a check-in. */
+  Status sendDirect(const std::string& to, const std::string& text, bool checkinOk = false);
+  /** Start reading direct messages after this seq, if reading hasn't started. */
+  void startDirectAt(long seq) {
+    if (acct_.lastSeq < 0) acct_.lastSeq = seq;
+  }
+  /** A feature's switch, or `missing` when the server doesn't know the feature (an older server). */
+  bool featureOr(const std::string& id, bool missing) const {
+    auto f = features_.find(id);
+    return f == features_.end() ? missing : f->second;
+  }
+  /** A plugin's settings for this circle (admins only): { fields, values, ready }. */
+  Status pluginSettings(const char* id, JsonDocument& out);
+  /** Whether the circle has a feature on (from the last refresh). */
+  bool feature(const std::string& id) const {
+    auto f = features_.find(id);
+    return f != features_.end() && f->second;
+  }
+  /** The circle's places. */
+  Status fetchPlaces(std::vector<Place>& out);
+  /** Send an event (an arrival at a place, say) to the circle. */
+  Status postEvent(JsonVariantConst body);
+  /** A tracker: name the home base that keeps it. */
+  Status registerKeeper(const std::string& keeper);
+  /** A home base: collect requests waiting for its trackers. */
+  Status keeperPending(std::vector<Pending>& out);
   /** Every other member's latest location, opened and verified. */
   Status memberLocations(std::vector<MemberLoc>& out);
   /** The id of the member with this name (case doesn't matter); empty if none or several. */
@@ -183,6 +225,7 @@ class Device {
   std::string err_;
   bool refreshed_ = false;
   std::map<std::string, std::string> roles_;  // from the last /state
+  std::map<std::string, bool> features_;      // from the last /state
 
   bool save();
   Status fail(const std::string& why);

@@ -13,6 +13,7 @@ import { useCircle } from '../../lib/useCircle';
 import { profileLabel, profileOf, skinStatus } from '../../skins/profile';
 import { useTheme } from '../../theme';
 import { showSheet } from '../../lib/sheet';
+import { homeBaseOf, trackerList } from '../../lib/trackers';
 
 const RETENTION_LABELS: Record<number, string> = { 1: '1 day', 7: '1 week', 30: '1 month', 90: '3 months', 365: '1 year' };
 
@@ -99,6 +100,17 @@ export default function CircleSettings() {
           </GroupBody>
         ) : null}
       </SettingsGroup>
+
+      {client.feature('meshtastic') && (homeBaseOf(client) || trackerList(client).length) ? (
+        <SettingsGroup title="Trackers">
+          <SettingsRow
+            icon="locate"
+            title="Trackers"
+            detail={`${trackerList(client).length || 'No'} Meshtastic tracker${trackerList(client).length === 1 ? '' : 's'} · the home base`}
+            href="/trackers"
+          />
+        </SettingsGroup>
+      ) : null}
 
       {client.isAdmin ? (
         <SettingsGroup

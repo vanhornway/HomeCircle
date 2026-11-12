@@ -21,6 +21,9 @@
 #include "main.h"
 #include "mesh/generated/meshtastic/apponly.pb.h"
 #include "mesh/mesh-pb-constants.h"
+#if !MESHTASTIC_EXCLUDE_GPS
+#include "gps/GPS.h"
+#endif
 // clang-format off
 #include "HomeCircleIO.h"
 #include "homecircle/hc_homebase.h"
@@ -37,6 +40,11 @@
 extern uint32_t hash(const char *str); // RadioInterface.cpp: how Meshtastic picks a frequency slot from a name
 
 HomeBaseModule *homeBaseModule;
+
+// Meshtastic runs everything, this module included, in Arduino's loop task,
+// which gets 8 KB of stack by default. An HTTPS handshake (mbedTLS) inside a
+// home base command doesn't fit in that: it overflowed while adding a tracker.
+SET_LOOP_TASK_STACK_SIZE(24 * 1024);
 
 namespace
 {
@@ -66,6 +74,52 @@ struct MeshRadio : hc::Radio {
         }
     }
     std::string channelLink() override { return homeBaseModule ? homeBaseModule->channelLink() : ""; }
+    void alert(uint32_t node, const std::string &text) override
+    {
+        if (homeBaseModule)
+            homeBaseModule->textNode(node, text);
+    }
+    void traceroute(uint32_t node) override
+    {
+        if (homeBaseModule)
+            homeBaseModule->traceNode(node);
+    }
+    std::string nodeName(uint32_t num) override
+    {
+        meshtastic_NodeInfoLite *n = nodeDB->getMeshNode(num);
+        return n && n->has_user ? n->user.long_name : "";
+    }
+    int hopsAway(uint32_t node) override
+    {
+        meshtastic_NodeInfoLite *n = nodeDB->getMeshNode(node);
+        return n && n->has_hops_away ? n->hops_away : -1;
+    }
+
+    // This node's own GPS (the Heltec V4 takes a GNSS module), from Meshtastic's latest local position.
+    hc::GnssSky skyView;
+    bool selfGnss(hc::SelfGnss &out) override
+    {
+#if !MESHTASTIC_EXCLUDE_GPS
+        out.present = gps != nullptr || config.position.fixed_position;
+#else
+        out.present = config.position.fixed_position;
+#endif
+        const meshtastic_Position &p = localPosition;
+        out.hasFix = p.latitude_i || p.longitude_i;
+        if (!out.present || !out.hasFix)
+            return out.present;
+        out.lat = p.latitude_i * 1e-7;
+        out.lng = p.longitude_i * 1e-7;
+        out.altitudeM = (float)p.altitude;
+        out.fixAtMs = (int64_t)(p.time ? p.time : p.timestamp) * 1000;
+        out.fixType = (int)p.fix_type;
+        out.satsUsed = (int)p.sats_in_view;
+        out.hdop = p.HDOP ? p.HDOP / 100.0f : (p.PDOP ? p.PDOP / 100.0f : -1);
+        if (p.gps_accuracy && out.hdop > 0)
+            out.accuracyM = p.gps_accuracy * out.hdop / 1000.0f;
+        return true;
+    }
+    const hc::GnssSky *sky() override { return &skyView; }
 };
 
 hcio::FsStore store;
@@ -74,7 +128,8 @@ MeshRadio radio;
 hc::HomeBase hb(http, store, hcio::nowMs, radio);
 
 bool started = false;
-bool configured = false;
+bool configured = false; // in a circle, with home Wi-Fi: doing its job
+bool needInvite = true;  // the setup page asks for an invite (not yet in a circle), or only for Wi-Fi
 uint32_t lastTick = 0, lastPoll = 0;
 std::map<uint32_t, uint32_t> seenFix; // node -> the position time last passed on
 
@@ -163,6 +218,13 @@ const RegionChoice REGIONS[] = {{1, "United States (US 915)"},
                                 {25, "Nepal (NP 865)"}};
 
 } // namespace
+
+// Each character from the GPS module, handed over by the hook register.py
+// adds to GPS.cpp: the satellites in view, which Meshtastic doesn't keep.
+void hcGpsChar(char c)
+{
+    radio.skyView.feed(c, hcio::nowMs());
+}
 
 HomeBaseModule::HomeBaseModule()
     : SinglePortModule("homebase", meshtastic_PortNum_TEXT_MESSAGE_APP), concurrency::OSThread("HomeBase")
@@ -256,12 +318,50 @@ void HomeBaseModule::askPosition(uint32_t node)
     LOG_INFO("HomeCircle home base: asked %08x for a position", (unsigned)node);
 }
 
+// A direct text to a node. One starting with the bell character makes a
+// tracker beep when its External Notification is set to sound for alert bells.
+void HomeBaseModule::textNode(uint32_t node, const std::string &text)
+{
+    meshtastic_MeshPacket *p = allocDataPacket();
+    p->decoded.portnum = meshtastic_PortNum_TEXT_MESSAGE_APP;
+    p->to = node;
+    meshtastic_NodeInfoLite *n = nodeDB->getMeshNode(node);
+    int idx = channelIndex();
+    p->channel = n && n->channel ? n->channel : (idx >= 0 ? idx : channels.getPrimaryIndex());
+    size_t len = std::min(text.size(), sizeof(p->decoded.payload.bytes));
+    memcpy(p->decoded.payload.bytes, text.data(), len);
+    p->decoded.payload.size = len;
+    p->want_ack = true;
+    p->priority = meshtastic_MeshPacket_Priority_RELIABLE;
+    service->sendToMesh(p);
+    LOG_INFO("HomeCircle home base: sent %08x a text (%u bytes)", (unsigned)node, (unsigned)len);
+}
+
+// A traceroute to a node: each relay adds itself on the way there and back
+// (Meshtastic's TraceRouteModule); the answer comes to handleReceived.
+void HomeBaseModule::traceNode(uint32_t node)
+{
+    meshtastic_MeshPacket *p = allocDataPacket();
+    p->decoded.portnum = meshtastic_PortNum_TRACEROUTE_APP;
+    p->to = node;
+    meshtastic_NodeInfoLite *n = nodeDB->getMeshNode(node);
+    int idx = channelIndex();
+    p->channel = n && n->channel ? n->channel : (idx >= 0 ? idx : channels.getPrimaryIndex());
+    p->decoded.want_response = true;
+    p->decoded.payload.size = 0; // an empty RouteDiscovery
+    p->want_ack = false;
+    p->priority = meshtastic_MeshPacket_Priority_RELIABLE;
+    service->sendToMesh(p);
+    LOG_INFO("HomeCircle home base: traceroute to %08x", (unsigned)node);
+}
+
 bool HomeBaseModule::wantPacket(const meshtastic_MeshPacket *p)
 {
     if (!p || p->which_payload_variant != meshtastic_MeshPacket_decoded_tag)
         return false;
     meshtastic_PortNum port = p->decoded.portnum;
-    return port == meshtastic_PortNum_TEXT_MESSAGE_APP || port == meshtastic_PortNum_PRIVATE_APP || port == meshtastic_PortNum_POSITION_APP;
+    return port == meshtastic_PortNum_TEXT_MESSAGE_APP || port == meshtastic_PortNum_PRIVATE_APP || port == meshtastic_PortNum_POSITION_APP ||
+           port == meshtastic_PortNum_TRACEROUTE_APP;
 }
 
 ProcessMessage HomeBaseModule::handleReceived(const meshtastic_MeshPacket &mp)
@@ -279,6 +379,22 @@ ProcessMessage HomeBaseModule::handleReceived(const meshtastic_MeshPacket &mp)
     case meshtastic_PortNum_POSITION_APP:
         lastPoll = 0; // the node database has it now: pass it on soon
         break;
+    case meshtastic_PortNum_TRACEROUTE_APP: {
+        // The answer to our traceroute: route_back lists the relays the answer
+        // passed through, in order, from the tracker towards us.
+        if (!mp.decoded.request_id || mp.to != nodeDB->getNodeNum() || !hb.isTracker(mp.from))
+            break;
+        meshtastic_RouteDiscovery r = meshtastic_RouteDiscovery_init_zero;
+        if (!pb_decode_from_bytes(pl.bytes, pl.size, &meshtastic_RouteDiscovery_msg, &r))
+            break;
+        std::vector<uint32_t> back(r.route_back, r.route_back + r.route_back_count);
+        std::vector<int> snr(r.snr_back, r.snr_back + r.snr_back_count);
+        if (snr.size() <= back.size())
+            snr.resize(back.size() + 1, -128), snr[back.size()] = (int)(mp.rx_snr * 4); // how we heard the last hop
+        hb.onRoute(mp.from, back, snr);
+        LOG_INFO("HomeCircle home base: path from %08x has %u relay(s)", (unsigned)mp.from, (unsigned)back.size());
+        break;
+    }
     default:
         break;
     }
@@ -321,17 +437,23 @@ void HomeBaseModule::startPortal()
     web = new WebServer(80);
     portalStarted = millis();
     region = config.lora.region;
+    needInvite = !hb.ready();
 
     web->on("/", HTTP_GET, []() {
-        String page = String("<!doctype html><title>HomeCircle home base</title>") + STYLE +
-                      "<h1>Set up this home base</h1><p>It joins your HomeCircle circle over your home Wi-Fi and passes on what "
-                      "Meshtastic trackers send. An admin makes an invite in the HomeCircle app (Settings → Your circle → Invite).</p>"
-                      "<form method=post action=/setup>"
-                      "<label for=s>Home Wi-Fi network</label><input id=s name=s required>"
-                      "<label for=p>Wi-Fi password</label><input id=p name=p type=password>"
-                      "<label for=i>Invite link <span class=hint>(it names your HomeCircle server too)</span></label>"
-                      "<textarea id=i name=i rows=3 required></textarea>"
-                      "<label for=r>Where you are <span class=hint>(LoRa radios must use their country's band)</span></label><select id=r name=r>";
+        String page = String("<!doctype html><title>HomeCircle home base</title>") + STYLE;
+        if (needInvite)
+            page += "<h1>Set up this home base</h1><p>It joins your HomeCircle circle over your home Wi-Fi and passes on what "
+                    "Meshtastic trackers send. An admin makes an invite in the HomeCircle app (Settings → your circle → Invite someone).</p>";
+        else
+            page += "<h1>Wi-Fi for this home base</h1><p>It's already in <b>" + esc(hb.base().circleName()) +
+                    "</b>, but it has no home Wi-Fi to reach your server.</p>";
+        page += "<form method=post action=/setup>"
+                "<label for=s>Home Wi-Fi network <span class=hint>(2.4 GHz)</span></label><input id=s name=s required>"
+                "<label for=p>Wi-Fi password</label><input id=p name=p type=password>";
+        if (needInvite)
+            page += "<label for=i>Invite link <span class=hint>(it names your HomeCircle server too)</span></label>"
+                    "<textarea id=i name=i rows=3 required></textarea>";
+        page += "<label for=r>Where you are <span class=hint>(LoRa radios must use their country's band)</span></label><select id=r name=r>";
         for (auto &r : REGIONS)
             page += String("<option value=") + r.code + (r.code == region ? " selected" : "") + ">" + r.name + "</option>";
         page += "</select><button>Set up</button></form>";
@@ -349,7 +471,8 @@ void HomeBaseModule::startPortal()
     web->on("/status", HTTP_GET, []() {
         String body;
         if (job == Job::Joining) {
-            body = "<meta http-equiv=refresh content=3><h1>Setting up…</h1><p>Joining your Wi-Fi and your circle.</p>";
+            body = needInvite ? "<meta http-equiv=refresh content=3><h1>Setting up…</h1><p>Joining your Wi-Fi and your circle. This can take a minute.</p>"
+                              : "<meta http-equiv=refresh content=3><h1>Setting up…</h1><p>Joining your Wi-Fi.</p>";
         } else if (job == Job::Joined) {
             std::string link = homeBaseModule->channelLink();
             body = "<h1>Done</h1><p>This home base is in <b>" + esc(hb.base().circleName()) +
@@ -391,6 +514,7 @@ void HomeBaseModule::portalLoop()
         uint32_t t = millis();
         while (WiFi.status() != WL_CONNECTED && millis() - t < 20000) {
             web->handleClient();
+            hcio::feedWatchdog();
             delay(50);
         }
         if (WiFi.status() != WL_CONNECTED) {
@@ -398,24 +522,32 @@ void HomeBaseModule::portalLoop()
             jobError = "It couldn't join that Wi-Fi network. Check the name and password (2.4 GHz networks only).";
             return;
         }
-        hc::Status s = hb.setup(invite);
-        invite.clear();
-        if (s != hc::Status::Ok) {
-            job = Job::Failed;
-            jobError = "It couldn't join the circle: " + hb.base().error();
-            return;
-        }
-        // Meshtastic's own settings: the region, home Wi-Fi from now on, and the private channel.
+        // Meshtastic's own settings first, so they're kept whatever happens
+        // next: the region, home Wi-Fi from now on, and the private channel.
         if (region > 0)
             config.lora.region = (meshtastic_Config_LoRaConfig_RegionCode)region;
         config.network.wifi_enabled = true;
+        memset(config.network.wifi_ssid, 0, sizeof config.network.wifi_ssid);
+        memset(config.network.wifi_psk, 0, sizeof config.network.wifi_psk);
         strncpy(config.network.wifi_ssid, wifiSsid.c_str(), sizeof config.network.wifi_ssid - 1);
         strncpy(config.network.wifi_psk, wifiPass.c_str(), sizeof config.network.wifi_psk - 1);
         ensureChannel();
-        nodeDB->saveToDisk(SEGMENT_CONFIG | SEGMENT_CHANNELS);
+        bool saved = nodeDB->saveToDisk(SEGMENT_CONFIG | SEGMENT_CHANNELS);
+        LOG_INFO("HomeCircle home base: settings %s", saved ? "saved" : "NOT saved");
+        hcio::feedWatchdog();
+        if (needInvite) {
+            hc::Status s = hb.setup(invite);
+            invite.clear();
+            hcio::feedWatchdog();
+            if (s != hc::Status::Ok) {
+                job = Job::Failed;
+                jobError = "It joined your Wi-Fi but couldn't join the circle: " + hb.base().error();
+                return;
+            }
+        }
         job = Job::Joined;
         joinedAt = millis();
-        LOG_INFO("HomeCircle home base: joined %s", hb.base().circleName().c_str());
+        LOG_INFO("HomeCircle home base: set up in %s", hb.base().circleName().c_str());
     }
     if (job == Job::Joined && millis() - joinedAt > 60000 && !rebootAtMsec)
         rebootAtMsec = millis() + 1000; // start again on the home Wi-Fi
@@ -428,11 +560,21 @@ int32_t HomeBaseModule::runOnce()
     if (!started) {
         started = true;
         hc::cryptoInit();
-        configured = hb.load();
-        if (!configured)
+        bool joined = hb.load();
+        bool wifi = config.network.wifi_enabled && config.network.wifi_ssid[0];
+        // Repair what an interrupted setup may have left out.
+        if (joined && channelIndex() < 0) {
+            ensureChannel();
+            nodeDB->saveToDisk(SEGMENT_CHANNELS);
+            LOG_INFO("HomeCircle home base: made the private HomeCircle channel");
+        }
+        configured = joined && wifi;
+        if (!configured) {
+            // Not in a circle yet, or in one with no home Wi-Fi: the setup page asks for what's missing.
             startPortal();
-        else
+        } else {
             LOG_INFO("HomeCircle home base: in %s with %u tracker(s)", hb.base().circleName().c_str(), (unsigned)hb.trackerCount());
+        }
     }
     if (!configured) {
         portalLoop();
@@ -444,8 +586,10 @@ int32_t HomeBaseModule::runOnce()
     }
     if (hcio::online() && millis() - lastTick > 5000) {
         hb.tick();
-        if (!hb.log.empty())
-            LOG_INFO("HomeCircle home base: %s", hb.log.c_str());
+        if (!hb.log.empty()) {
+            LOG_INFO("HomeCircle home base: %s (stack never below %u bytes free)", hb.log.c_str(),
+                     (unsigned)uxTaskGetStackHighWaterMark(NULL));
+        }
         hb.log.clear();
         lastTick = millis();
     }

@@ -70,6 +70,15 @@ export interface TrackerSettings {
   carriedBy: string | null;
 }
 
+/** What a Meshtastic home base says about itself: when it last checked in, the nodes it hears, its trackers. */
+export interface HomeBaseStatus {
+  at: number;
+  /** After how long a phone counts as quiet (the Meshtastic plugin's setting), or null for the default. */
+  quietMinutes: number | null;
+  heard: { node: string; name: string | null; at: number | null; hops: number | null }[];
+  trackers: { node: string; member: string; at: number | null }[];
+}
+
 /** Admin settings about one member (her skin and Elderly Companion settings, someone's he/she). */
 export interface MemberRecord {
   member: string;
@@ -94,6 +103,8 @@ export interface MemberRecord {
   phone: string | null;
   /** How a tracker reports (a tracker phone or a small tracker device), or null. */
   tracker: TrackerSettings | null;
+  /** A home base's own status, in the record about itself, or null. */
+  homeBase: HomeBaseStatus | null;
   /** Who signed it (an admin) and when. */
   by: string;
   ts: number;
@@ -180,8 +191,20 @@ export interface MemberLocation {
   page?: 'care' | 'grandkids' | null;
   /** 'radio': a tracker's location that came over the mesh through a home base. */
   via?: 'radio' | null;
+  /** A tracker's radio path to its home base: hops, and the nodes from the tracker to the home base. */
+  mesh?: MeshPath | null;
   ts: number;
   receivedAt: number;
+}
+
+/** The way a tracker's position reached its home base (a Meshtastic traceroute). */
+export interface MeshPath {
+  /** Relays between the tracker and the home base (0: heard directly). */
+  hops: number | null;
+  /** When the path was traced. */
+  at: number | null;
+  /** From the tracker to the home base; snr is how the next node heard each one (dB). */
+  path: { id: string | null; name: string | null; snr: number | null }[] | null;
 }
 
 /** A tracker's mesh packet, opened (see mesh.js). */
@@ -485,7 +508,7 @@ export type PrayerSlot = { id: PrayerId; name: string; until: string; date: stri
 export function prayerNow(days: { date: string; times: PrayerTimes }[], now?: number): { current: PrayerSlot | null; next: PrayerSlot | null };
 
 /** A plugin's settings, as an admin sees them. */
-export type PluginField = { id: string; label: string; secret?: boolean; optional?: boolean; placeholder?: string; help?: string };
+export type PluginField = { id: string; label: string; secret?: boolean; optional?: boolean; placeholder?: string; help?: string; numeric?: boolean };
 export type PluginSettings = {
   fields: PluginField[];
   values: Record<string, string | { set: boolean }>;
@@ -892,7 +915,8 @@ export type FeatureId =
   | 'air'
   | 'prayer'
   | 'whatsapp'
-  | 'homeAssistant';
+  | 'homeAssistant'
+  | 'meshtastic';
 export type Features = Record<FeatureId, boolean>;
 export type FeatureInfo = { id: FeatureId; group: 'Location' | 'Chat' | 'Alerts' | 'Helper' | 'Plugins'; label: string; detail: string; on: boolean; needs?: FeatureId };
 export const FEATURES: FeatureInfo[];

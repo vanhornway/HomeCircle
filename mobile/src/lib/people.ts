@@ -89,6 +89,25 @@ export function cadenceLine(loc: MemberLocation | undefined | null): string | nu
   return `${c.charging ? 'Charging · ' : ''}updates about every ${m(c.moving)} while moving, ${m(c.still)} when still${c.limited ? ' (saving battery)' : ''}`;
 }
 
+/**
+ * How a Meshtastic tracker's position reached its home base, from the home
+ * base's traceroute: "Via radio: UT1 → meshunit1 (6 dB) → Home base (10 dB) ·
+ * 1 hop, traced 4 min ago". Null for anything that didn't come by radio.
+ */
+export function radioLine(loc: MemberLocation | undefined | null): string | null {
+  if (loc?.via !== 'radio') return null;
+  const mesh = loc.mesh;
+  const hops = mesh?.hops;
+  const count = hops == null ? '' : hops === 0 ? 'heard directly' : `${hops} hop${hops === 1 ? '' : 's'}`;
+  if (!mesh?.path) return count ? `Via radio, ${count}` : 'Via radio';
+  const nodes = mesh.path.map((h, i) => {
+    const name = h.name || (h.id && h.id !== '?' ? h.id : 'a relay');
+    return i > 0 && h.snr != null ? `${name} (${h.snr} dB)` : name;
+  });
+  const when = mesh.at ? `traced ${timeAgo(mesh.at)}` : '';
+  return `Via radio: ${nodes.join(' → ')}${count || when ? ` · ${[count, when].filter(Boolean).join(', ')}` : ''}`;
+}
+
 /** Open Google Maps (Android) or Apple Maps (iOS) with directions to someone's last location. */
 export function openDirections(name: string, loc: MemberLocation, onLocate?: () => void) {
   const go = () => {

@@ -456,6 +456,27 @@ private `HomeCircle` channel, it seals it as that member's `location`, with
   This doesn't happen while they've paused sharing.
 - **A tracker's text** containing "SOS" (or the alert bell) is sent as an SOS
   from that tracker; "ok" or "safe" ends it.
+- **Requests for a tracker.** A tracker names its keeper, the home base
+  (`PUT /members/me/keeper`). After that the server queues requests for it in
+  memory, and the home base collects them (`GET /keeper/pending`):
+  - Locate on the tracker. The delivery shows as "pushed".
+  - A chirp to it.
+  - A direct message to it, which is how "Ask to check in" travels.
+
+  The home base asks the tracker for a position, makes it beep (a text with
+  the alert bell), and answers check-ins with `checkin: "ok"` when the tracker
+  sends "ok". The server learns which member keeps which, but nothing more.
+- **Its own status:** every 5 minutes the home base writes the member record
+  about itself, with `homeBase: { at, heard: [{ node, name, at, hops }],
+  trackers: [{ node, member, at }] }`. It's sealed like any record, and the
+  app's Trackers screen reads it.
+- **Arrived and left:** the home base reads the circle's places and checks
+  each tracker position with the apps' rule. It sends the same
+  `{ type: "place", action, placeId, placeName, at }` events a phone sends.
+- **The radio path:** the home base runs a Meshtastic traceroute when someone
+  locates a tracker, and every 30 minutes. The sealed location then carries
+  `mesh: { hops, at, path: [{ id, name, snr }] }`, listing the nodes from the
+  tracker to the home base, each with the signal it was heard with.
 
 ## API summary (`/api/v1`, Bearer device token unless noted)
 
@@ -483,6 +504,8 @@ private `HomeCircle` channel, it seals it as that member's `location`, with
 | GET / PUT | `/locations`, `/locations/me` | latest sealed locations |
 | PUT / DELETE | `/members/me/mesh` | a tracker's mesh key `{ key }` (32 bytes) |
 | POST | `/mesh/packets` | public: up to 20 mesh packets a home base heard; each proves its sender (Mesh packets) |
+| PUT / DELETE | `/members/me/keeper` | a tracker names the home base that keeps it `{ keeper }` |
+| GET | `/keeper/pending` | a home base collects Locate, chirps and direct messages waiting for its trackers |
 | GET | `/records` | sealed member settings and family names (`?kind=member` or `alias`) |
 | PUT / DELETE | `/records/:kind/:subject` | `member`: admins; `alias` (`caller.member`): either of them or an admin |
 | POST / GET / DELETE | `/files`, `/files/:id` | encrypted files; `?purpose=photo` for a member's photo (kept) |

@@ -1,6 +1,7 @@
 #include "hc_homebase.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -13,7 +14,6 @@ const int64_t DIRECT_EVERY = 20 * 1000;      // read admins' messages
 const int64_t WATCH_EVERY = 5 * MIN;         // look for quiet phones
 const int64_t SEND_GAP = 1 * MIN;            // at most one location a minute per tracker (unless SOS or asked)
 const int64_t ASK_GAP = 10 * MIN;            // at most one position request per tracker every 10 minutes
-const int64_t QUIET_FLOOR = 30 * MIN;        // a phone is quiet after at least this long
 const char* const HELP =
     "Home base commands:\n"
     "• list: trackers, and nodes I can hear\n"
@@ -23,7 +23,36 @@ const char* const HELP =
     "• unlink Name\n"
     "• remove Name\n"
     "• channel: the link that puts a tracker on our private channel\n"
+    "• gps: where I am, and the satellites I can see\n"
     "• status";
+const int64_t SELF_EVERY = 60 * MIN;  // the home base's own pin, from its GPS
+const int64_t PENDING_EVERY = 8 * 1000;  // collect Locate, chirps and check-ins for trackers
+const int64_t PLACES_EVERY = 10 * MIN;   // the circle's places, for arrived and left
+const int64_t CHECKIN_FOR = 2 * 60 * MIN;  // how long an "ok" from the tracker answers a check-in
+const int64_t TRACE_GAP = 1 * MIN;         // at most one traceroute a minute per tracker (airtime)
+const int64_t PATH_FOR = 6 * 60 * MIN;     // a path older than this isn't shown
+const int64_t STATUS_EVERY = 5 * MIN;      // its own status for the app's Trackers screen
+
+double metres(double lat1, double lng1, double lat2, double lng2) {
+  const double r = 6371000.0, rad = M_PI / 180.0;
+  double dLat = (lat2 - lat1) * rad, dLng = (lng2 - lng1) * rad;
+  double a = sin(dLat / 2) * sin(dLat / 2) + cos(lat1 * rad) * cos(lat2 * rad) * sin(dLng / 2) * sin(dLng / 2);
+  return 2 * r * atan2(sqrt(a), sqrt(1 - a));
+}
+
+// Inside, outside, or too close to the edge to tell: the apps' rule (packages/core places.js).
+const char* placeState(double distance, double accuracy, double radius) {
+  double acc = accuracy > 0 ? accuracy : 50;
+  if (acc > 250) {
+    if (distance + acc < radius) return "inside";
+    if (distance - acc > radius) return "outside";
+    return nullptr;
+  }
+  if (distance <= radius) return "inside";
+  double margin = std::max(30.0, std::min(acc, 100.0));
+  if (distance >= radius + margin) return "outside";
+  return nullptr;
+}
 
 std::string lower(std::string s) {
   for (auto& c : s) c = (char)tolower((unsigned char)c);
@@ -103,6 +132,7 @@ bool HomeBase::load() {
       t.name = o["name"] | "";
       t.kind = o["kind"] | "person";
       t.carriedBy = o["carriedBy"] | "";
+      t.keeperSet = o["keeper"] | false;
       if (!t.dev->load()) trackers_.pop_back();  // its account is gone: drop it
     }
   }
@@ -118,6 +148,7 @@ void HomeBase::saveTrackers() {
     o["name"] = t->name;
     o["kind"] = t->kind;
     if (!t->carriedBy.empty()) o["carriedBy"] = t->carriedBy;
+    if (t->keeperSet) o["keeper"] = true;
   }
   std::string raw;
   serializeJson(d, raw);
@@ -189,7 +220,8 @@ void HomeBase::onText(uint32_t node, const std::string& text) {
   Tracker* t = byNode(node);
   if (!t) return;
   std::string l = lower(text);
-  bool alert = l.find("sos") != std::string::npos || l.find('\a') != std::string::npos || l.find("help") != std::string::npos;
+  bool alert = l.find('\a') != std::string::npos;
+  for (auto& w : sosWords_) alert = alert || l.find(w) != std::string::npos;
   bool safe = l == "safe" || l == "ok" || l == "i'm ok" || l == "im ok" || l.find("i'm safe") != std::string::npos;
   if (alert && !t->dev->sosActive()) {
     t->dev->sos(true, false);
@@ -197,6 +229,8 @@ void HomeBase::onText(uint32_t node, const std::string& text) {
   } else if (safe && t->dev->sosActive()) {
     t->dev->sos(false, false);
     t->sosChanged = true;
+  } else if (safe && !t->checkins.empty()) {
+    t->okPressed = true;  // answered in tick(): "I'm OK" to whoever asked
   }
 }
 
@@ -227,22 +261,154 @@ void HomeBase::upload(Tracker& t) {
   if (t.sosChanged) {
     if (t.dev->flushSos() == Status::Ok) t.sosChanged = false;
   }
+  if (t.okPressed) {
+    int64_t at = now_();
+    for (auto& c : t.checkins)
+      if (at - c.second < CHECKIN_FOR) t.dev->sendDirect(c.first, "\xE2\x9C\x85 I\xE2\x80\x99m OK", true);
+    t.checkins.clear();
+    t.okPressed = false;
+    log = t.name + " checked in";
+  }
+  if (!t.pending && t.pathDirty && t.sentFixAt) {
+    // A new path for the position already on the map: send it again with the path.
+    JsonDocument extra;
+    meshInfo(t, extra);
+    if (t.dev->shareLocation(t.sentFix, "update", 15, 15, "meshtastic", true, t.sentFixAt, extra.as<JsonVariantConst>()) == Status::Ok) {
+      t.pathDirty = false;
+      log = "sent " + t.name + "'s radio path";
+    }
+  }
   if (!t.pending) return;
   int64_t now = now_();
+  if (traceEveryMs_ > 0 && now - t.tracedAt >= traceEveryMs_) {
+    radio_.traceroute(t.node);
+    t.tracedAt = now;
+  }
   bool asked = t.askedAt && t.askedAt > t.sentFixAt;
   if (!t.dev->sosActive() && !asked && now - t.sentAt < SEND_GAP) return;
   const char* trigger = t.dev->sosActive() ? "sos" : asked ? "requested" : "update";
   // Stock trackers broadcast their position on their own schedule (15 minutes by default).
-  Status s = t.dev->shareLocation(t.fix, trigger, 15, 15, "meshtastic", true, t.fixAt);
+  std::vector<std::pair<const Place*, std::string>> moves = checkPlaces(t, t.fix);
+  JsonDocument extra;
+  meshInfo(t, extra);
+  Status s = t.dev->shareLocation(t.fix, trigger, 15, 15, "meshtastic", true, t.fixAt, extra.as<JsonVariantConst>());
   if (s == Status::Ok) {
     t.pending = false;
+    t.pathDirty = false;
+    t.sentFix = t.fix;
     t.sentFixAt = t.fixAt;
     t.sentAt = now;
     log = "sent " + t.name + "'s position";
+    // Arrived and left, as a phone announces them (only where the circle has place alerts on).
+    if (base_.feature("placeAlerts")) {
+      for (auto& m : moves) {
+        JsonDocument ev;
+        ev["type"] = "place";
+        ev["action"] = m.second;
+        ev["placeId"] = m.first->id;
+        ev["placeName"] = m.first->name;
+        ev["at"] = t.fixAt;
+        if (t.dev->postEvent(ev.as<JsonVariantConst>()) == Status::Ok) log = t.name + " " + m.second + " " + m.first->name;
+      }
+    }
   } else if (s == Status::Removed) {
     log = t.name + " was removed from the circle";
     t.dev->forget();
     t.pending = false;
+  }
+}
+
+std::vector<std::pair<const Place*, std::string>> HomeBase::checkPlaces(Tracker& t, Fix& fix) {
+  std::vector<std::pair<const Place*, std::string>> moves;
+  fix.placeId.clear();
+  for (auto& p : places_) {
+    const char* state = placeState(metres(fix.lat, fix.lng, p.lat, p.lng), fix.accuracy, p.radius);
+    if (!state) continue;  // too close to the edge: wait for the next position
+    std::string action = strcmp(state, "inside") == 0 ? "arrived" : "left";
+    if (action == "arrived" && fix.placeId.empty()) fix.placeId = p.id;
+    auto prev = t.atPlaces.find(p.id);
+    bool first = prev == t.atPlaces.end();
+    if (!first && prev->second == action) continue;
+    t.atPlaces[p.id] = action;
+    if (!first) moves.push_back({&p, action});  // the first look only notes where it is
+  }
+  return moves;
+}
+
+void HomeBase::onRoute(uint32_t node, const std::vector<uint32_t>& back, const std::vector<int>& snrBack4) {
+  Tracker* t = byNode(node);
+  if (!t) return;
+  std::vector<Tracker::Hop> path;
+  Tracker::Hop first;
+  first.num = node;
+  first.name = t->name;
+  path.push_back(first);
+  for (size_t i = 0; i < back.size(); i++) {
+    Tracker::Hop h;
+    h.num = back[i];
+    h.name = back[i] == 0xffffffff ? "" : radio_.nodeName(back[i]);  // 0xffffffff: a relay that didn't say who it is
+    if (i < snrBack4.size() && snrBack4[i] != -128) h.snr = snrBack4[i] / 4.0f, h.hasSnr = true;
+    path.push_back(h);
+  }
+  Tracker::Hop home;
+  home.name = base_.name();
+  if (snrBack4.size() > back.size() && snrBack4[back.size()] != -128) home.snr = snrBack4[back.size()] / 4.0f, home.hasSnr = true;
+  path.push_back(home);
+  t->path = path;
+  t->pathAt = now_();
+  t->pathDirty = true;
+  log = t->name + "'s radio path: " + std::to_string(back.size()) + " relay(s)";
+}
+
+void HomeBase::meshInfo(Tracker& t, JsonDocument& out) {
+  JsonObject m = out["mesh"].to<JsonObject>();
+  bool fresh = !t.path.empty() && now_() - t.pathAt < PATH_FOR;
+  int hops = fresh ? (int)t.path.size() - 2 : radio_.hopsAway(t.node);
+  if (hops >= 0) m["hops"] = hops;
+  if (!fresh) return;
+  m["at"] = t.pathAt;
+  JsonArray a = m["path"].to<JsonArray>();
+  for (size_t i = 0; i < t.path.size(); i++) {
+    const Tracker::Hop& h = t.path[i];
+    JsonObject o = a.add<JsonObject>();
+    if (i + 1 < t.path.size()) o["id"] = h.num == 0xffffffff ? std::string("?") : nodeId(h.num);  // the home base is the last
+    if (!h.name.empty()) o["name"] = h.name;
+    if (h.hasSnr) o["snr"] = h.snr;
+  }
+}
+
+// A request for a tracker, passed on by the server: Locate, a chirp, or a direct message.
+void HomeBase::handle(const Pending& p) {
+  Tracker* t = nullptr;
+  for (auto& x : trackers_)
+    if (x->dev->memberId() == p.member) t = x.get();
+  if (!t) return;
+  int64_t now = now_();
+  std::string who = base_.nameOf(p.from);
+  if (who.empty()) who = "Someone";
+  if (p.type == "locate") {
+    radio_.requestPosition(t->node);
+    t->askedAt = now;
+    if (now - t->tracedAt >= TRACE_GAP) {
+      radio_.traceroute(t->node);
+      t->tracedAt = now;
+    }
+    log = who + " asked where " + t->name + " is";
+  } else if (p.type == "chirp") {
+    radio_.alert(t->node, "\a" + who + " chirped you");
+    log = who + " chirped " + t->name;
+  } else if (p.type == "message") {
+    t->dev->startDirectAt(p.seq - 1);
+    std::vector<Device::Direct> in;
+    if (t->dev->fetchDirect(in) != Status::Ok) return;
+    for (auto& d : in) {
+      if (d.checkin != "request") continue;
+      radio_.alert(t->node, "\aCheck in, please: " + d.fromName + " asked. Reply OK.");
+      radio_.requestPosition(t->node);
+      t->askedAt = now;
+      t->checkins.push_back({d.from, now});
+      log = d.fromName + " asked " + t->name + " to check in";
+    }
   }
 }
 
@@ -261,7 +427,7 @@ void HomeBase::watch() {
       if (l.memberId == t->carriedBy) phone = &l;
     // Someone who paused sharing chose not to be found: leave their tracker alone.
     if (phone && phone->paused) continue;
-    int64_t quietAfter = std::max(QUIET_FLOOR, (int64_t)(phone && phone->stillMin ? phone->stillMin * 2 + 5 : 45) * MIN);
+    int64_t quietAfter = std::max(quietMs_, (int64_t)(phone && phone->stillMin ? phone->stillMin * 2 + 5 : 0) * MIN);
     bool quiet = !phone || now - phone->ts > quietAfter;
     bool trackerFresh = t->sentFixAt && now - t->sentFixAt < ASK_GAP;
     if (quiet && !trackerFresh && now - t->askedAt >= ASK_GAP) {
@@ -276,6 +442,46 @@ void HomeBase::tick() {
   if (!ready()) return;
   int64_t now = now_();
   forwardMesh();
+  // Trackers added before keepers existed: tell the server who keeps them.
+  // (A server from before keepers says no: try again in a while, not every tick.)
+  if (now >= nextKeeper_) {
+    nextKeeper_ = now + PLACES_EVERY;
+    for (auto& t : trackers_) {
+      if (t->keeperSet || !t->dev->joined()) continue;
+      if (t->dev->registerKeeper(base_.memberId()) == Status::Ok) {
+        t->keeperSet = true;
+        std::vector<Device::Direct> none;
+        t->dev->fetchDirect(none);  // read its direct messages from now on
+        saveTrackers();
+      }
+    }
+  }
+  if (now >= nextPlaces_) {
+    nextPlaces_ = now + PLACES_EVERY;
+    base_.refresh();  // features (place alerts, the plugin) and new members
+    readPlugin();
+    if (enabled_) base_.fetchPlaces(places_);
+  }
+  if (!enabled_) {
+    // Meshtastic trackers are off in this circle: only answer admins.
+    if (now >= nextDirect_) {
+      nextDirect_ = now + DIRECT_EVERY;
+      std::vector<Device::Direct> in;
+      if (base_.fetchDirect(in) == Status::Ok)
+        for (auto& d : in)
+          base_.sendDirect(d.from, "Meshtastic trackers are turned off in this circle. An admin can turn them on in Settings \xE2\x86\x92 Features \xE2\x86\x92 Plugins.");
+    }
+    return;
+  }
+  if (now >= nextPending_ && !trackers_.empty()) {
+    nextPending_ = now + PENDING_EVERY;
+    std::vector<Pending> items;
+    if (base_.keeperPending(items) == Status::Ok) {
+      for (auto& p : items) handle(p);
+    } else {
+      nextPending_ = now + PLACES_EVERY;  // a server without keepers yet: ask again later
+    }
+  }
   for (auto& t : trackers_)
     if (t->dev->joined()) upload(*t);
   // Trackers whose account is gone (removed) leave the list.
@@ -293,6 +499,88 @@ void HomeBase::tick() {
     nextWatch_ = now + WATCH_EVERY;
     watch();
   }
+  if (now - selfSharedAt_ >= SELF_EVERY) shareSelf(false);
+  if (now >= nextStatus_) {
+    nextStatus_ = now + STATUS_EVERY;
+    publishStatus();
+  }
+}
+
+// The Meshtastic plugin (Settings → Features → Plugins): whether it's on, and
+// the settings an admin chose. A server that doesn't know the plugin (older
+// than 0.25) counts as on, with the defaults.
+void HomeBase::readPlugin() {
+  enabled_ = base_.featureOr("meshtastic", true);
+  if (!enabled_ || !base_.amAdmin()) return;
+  JsonDocument s;
+  if (base_.pluginSettings("meshtastic", s) != Status::Ok) return;
+  JsonObjectConst v = s["values"];
+  int quiet = atoi(v["quietMinutes"] | "");
+  quietMs_ = (quiet >= 10 && quiet <= 720 ? quiet : 30) * MIN;
+  std::string trace = v["traceMinutes"] | "";
+  int every = atoi(trace.c_str());
+  traceEveryMs_ = trace == "0" ? 0 : (every >= 10 && every <= 720 ? every : 30) * MIN;
+  std::string words = v["sosWords"] | "";
+  std::vector<std::string> list;
+  for (size_t at = 0; at <= words.size();) {
+    size_t comma = words.find(',', at);
+    std::string w = lower(trim(words.substr(at, comma == std::string::npos ? std::string::npos : comma - at)));
+    if (w.size() >= 2) list.push_back(w);
+    if (comma == std::string::npos) break;
+    at = comma + 1;
+  }
+  sosWords_ = list.empty() ? std::vector<std::string>{"sos", "help"} : list;
+}
+
+// The app's Trackers screen reads this: that the home base is alive, the
+// nodes it hears (to add as trackers), and when it last heard each tracker.
+void HomeBase::publishStatus() {
+  if (!base_.amAdmin()) return;  // only admins write member records
+  JsonDocument p;
+  JsonObject h = p["homeBase"].to<JsonObject>();
+  h["at"] = now_();
+  h["quietMinutes"] = (int)(quietMs_ / MIN);  // the app shows people at their tracker after the same time
+  std::vector<HeardNode> heard;
+  radio_.nodes(heard);
+  std::sort(heard.begin(), heard.end(), [](const HeardNode& a, const HeardNode& b) { return a.heardAtMs > b.heardAtMs; });
+  JsonArray hn = h["heard"].to<JsonArray>();
+  for (size_t i = 0; i < heard.size() && i < 20; i++) {
+    JsonObject o = hn.add<JsonObject>();
+    o["node"] = nodeId(heard[i].num);
+    if (!heard[i].name.empty()) o["name"] = heard[i].name;
+    o["at"] = heard[i].heardAtMs;
+    int hops = radio_.hopsAway(heard[i].num);
+    if (hops >= 0) o["hops"] = hops;
+  }
+  JsonArray tr = h["trackers"].to<JsonArray>();
+  for (auto& t : trackers_) {
+    JsonObject o = tr.add<JsonObject>();
+    o["node"] = nodeId(t->node);
+    o["member"] = t->dev->memberId();
+    if (t->sentFixAt) o["at"] = t->sentFixAt;
+  }
+  base_.mergeMemberRecord(base_.memberId(), p.as<JsonVariantConst>());
+}
+
+bool HomeBase::shareSelf(bool asked) {
+  SelfGnss g;
+  if (!radio_.selfGnss(g) || !g.present || !g.hasFix) return false;
+  int64_t now = now_();
+  // Unchanged since the last time: nothing new for the map (unless someone asked).
+  if (!asked && g.fixAtMs && g.fixAtMs <= selfFixSent_) {
+    selfSharedAt_ = now;
+    return true;
+  }
+  Fix f;
+  f.lat = g.lat;
+  f.lng = g.lng;
+  f.accuracy = g.accuracyM;
+  if (base_.shareLocation(f, asked ? "requested" : "update", 60, 60, "homebase", false, g.fixAtMs) == Status::Ok) {
+    selfSharedAt_ = now;
+    selfFixSent_ = g.fixAtMs;
+    log = "shared the home base's own position";
+  }
+  return true;
 }
 
 // --- admins' commands -------------------------------------------------------------
@@ -338,6 +626,11 @@ void HomeBase::command(const Device::Direct& d) {
   } else if (verb == "status") {
     reply = "Home base in " + base_.circleName() + ". " + std::to_string(trackers_.size()) + " tracker(s). " +
             (base_.amAdmin() ? "I'm an admin, so I can add trackers myself." : "I'm not an admin yet: make me one so I can add trackers.");
+  } else if (verb == "gps" || verb == "where" || verb == "location" || verb == "satellites" || verb == "sats") {
+    SelfGnss g;
+    bool have = radio_.selfGnss(g);
+    reply = describeGnss(have ? &g : nullptr, radio_.sky(), now_());
+    if (have && g.hasFix && shareSelf(true)) reply += "\n\nHome base is on the map at this position.";
   } else if (verb == "channel") {
     reply = "Open this on a phone paired with the tracker in the Meshtastic app to put it on our private channel:\n" + radio_.channelLink();
   } else if (verb == "add") {
@@ -374,6 +667,11 @@ void HomeBase::command(const Device::Direct& d) {
         t.kind = kind;
         st = t.dev->join(link, name);
         if (st == Status::Ok) {
+          if (t.dev->registerKeeper(base_.memberId()) == Status::Ok) {
+            t.keeperSet = true;
+            std::vector<Device::Direct> none;
+            t.dev->fetchDirect(none);
+          }
           saveTrackers();
           writeRecord(t);
           reply = "Added " + name + " (" + nodeId(node) + "). It shows on the map with its next position. Make sure it's on our channel: send \"channel\".";

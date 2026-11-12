@@ -25,6 +25,10 @@
 
 HomeCircleModule *homeCircleModule;
 
+// HTTPS (mbedTLS) runs in Arduino's loop task with the rest of Meshtastic; its
+// default 8 KB of stack is too little for a handshake inside a report.
+SET_LOOP_TASK_STACK_SIZE(16 * 1024);
+
 namespace
 {
 

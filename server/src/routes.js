@@ -671,6 +671,45 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     return { envelopes: store.envelopesFor(me.id, since) };
   });
 
+  // --- trackers kept by a home base ---------------------------------------
+  // A Meshtastic tracker has no app, live connection or push token: its home
+  // base holds its keys and acts for it. Requests for it (Locate, a chirp, a
+  // direct message such as "check in") wait here until the home base
+  // collects them. Kept in memory: a request older than a restart is stale.
+  const keeperQueues = new Map(); // keeper member id -> [{ type, member, from, at, … }]
+  const KEEPER_QUEUE_MAX = 50;
+  const meshOn = (circleId) => hasFeature(resolveFeatures(store.circle(circleId)?.features), 'meshtastic');
+  const relayToKeeper = (member, item) => {
+    if (!member.keeperId || !meshOn(member.circleId)) return false;
+    const keeper = store.member(member.circleId, member.keeperId);
+    if (!keeper || keeper.removed) return false;
+    const q = keeperQueues.get(keeper.id) || [];
+    q.push({ ...item, member: member.id, at: Date.now() });
+    if (q.length > KEEPER_QUEUE_MAX) q.shift();
+    keeperQueues.set(keeper.id, q);
+    return true;
+  };
+
+  // A tracker (signed in as itself, by its home base) names the member that keeps it.
+  r.add('PUT', '/members/me/keeper', ({ me, body }) => {
+    requireFeature(me, 'meshtastic', 'Meshtastic trackers');
+    const keeper = store.member(me.circleId, vId(body.keeper, 'keeper'));
+    if (!keeper || keeper.removed || keeper.id === me.id) fail(404, 'not_found', 'No such member in this circle');
+    store.setKeeper(me.id, keeper.id);
+    return { ok: true };
+  });
+  r.add('DELETE', '/members/me/keeper', ({ me }) => {
+    store.setKeeper(me.id, null);
+    return { ok: true };
+  });
+  // The home base collects what's waiting for its trackers (and clears it).
+  r.add('GET', '/keeper/pending', ({ me }) => {
+    requireFeature(me, 'meshtastic', 'Meshtastic trackers');
+    const items = keeperQueues.get(me.id) || [];
+    keeperQueues.delete(me.id);
+    return { pending: items };
+  });
+
   // --- mesh (trackers on a Meshtastic mesh, through a home base) ----------
 
   // A tracker registers the key its mesh packets are tagged with (over HTTPS,
@@ -703,6 +742,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
         if (!h) return 'invalid';
         const m = store.memberByMeshRef(h.ref);
         if (!m || !m.meshKey || !meshTagOk(Buffer.from(m.meshKey, 'base64url'), buf)) return 'unknown';
+        if (!meshOn(m.circleId)) return 'off'; // the circle has Meshtastic trackers turned off
         const circle = store.circle(m.circleId);
         // An older key is fine: a tracker off the internet may not have the newest yet.
         if (h.epoch < 1 || h.epoch > circle.epoch) return 'invalid';
@@ -769,19 +809,23 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       }
     }
     const offline = [];
+    const kept = new Set();
     let online = 0;
     for (const m of targets) {
       if (hub.isOnline(m.id)) {
         hub.send(m.id, { type: 'location_request', from: me.id });
         online++;
+      } else if (relayToKeeper(m, { type: 'locate', from: me.id })) {
+        kept.add(m.id); // a tracker: its home base asks it over the mesh
       } else if (m.pushToken) {
         offline.push(m);
       }
     }
     push.locationRequest(offline);
-    // Per person: delivered over the live connection, sent as a push, or unreachable.
+    // Per person: delivered over the live connection, sent as a push (or to a
+    // tracker's home base), or unreachable.
     const delivery = Object.fromEntries(
-      targets.map((m) => [m.id, hub.isOnline(m.id) ? 'delivered' : m.pushToken ? 'pushed' : 'unreachable']),
+      targets.map((m) => [m.id, hub.isOnline(m.id) ? 'delivered' : m.pushToken || kept.has(m.id) ? 'pushed' : 'unreachable']),
     );
     return { requested: targets.length, online, pushed: offline.length, delivery, cooldown: config.locationRequestCooldown };
   });
@@ -926,6 +970,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       now,
     );
     for (const m of targets) if (hub.isOnline(m.id)) hub.send(m.id, { type: 'chirp' });
+    for (const m of targets) relayToKeeper(m, { type: 'chirp', from: me.id, flash }); // a tracker beeps
     push.chirp(targets.filter((m) => m.pushToken && !hub.isOnline(m.id)));
     log(to ? 'chirp sent' : `chirp sent to a circle (${targets.length})`);
     return { sent: targets.length, ...limit };
@@ -1130,6 +1175,8 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     }
     const seq = store.insertMessage({ id, circleId: me.circleId, fromId: me.id, toId: to?.id ?? null, env, now });
     const message = { seq, id, from: me.id, to: to?.id ?? null, env, createdAt: now };
+    // A direct message to a tracker (a check-in, say): its home base reads it.
+    if (to) relayToKeeper(to, { type: 'message', from: me.id, seq });
     if (to) hub.send(to.id, { type: 'message', message });
     else hub.broadcast(me.circleId, { type: 'message', message }, me.id);
     // Phones with the app open got it just now: delivered.

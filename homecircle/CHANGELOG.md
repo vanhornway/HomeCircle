@@ -2,6 +2,20 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.25.0
+
+- Meshtastic trackers, a plugin that's off until an admin turns it on. A home
+  base (a Heltec V4 on your Wi-Fi) reads stock Meshtastic trackers such as the
+  SenseCAP T1000-E and puts them on the map as a car or something a person
+  carries. Locate asks the tracker for a fresh position, Chirp and check-ins
+  make it beep, and arrive and leave alerts work for trackers too. A person
+  whose phone goes quiet shows at the tracker they carry. Each position shows
+  the radio path it took to the home base. The plugin's settings choose how
+  long a phone stays quiet before the home base asks, how often the path is
+  checked, and which words in a tracker's text mean SOS.
+- Settings → Features: plugins are one section you open when you need it, with
+  what's on shown at a glance.
+
 ## 0.24.1
 
 - Three more of an elder's Urdu replies are recorded voices. No server change.

@@ -11,10 +11,11 @@
 import { fail } from '../http.js';
 import { air } from './air.js';
 import { homeAssistant } from './homeassistant.js';
+import { meshtastic } from './meshtastic.js';
 import { prayer } from './prayer.js';
 import { weather } from './weather.js';
 
-export const PLUGINS = [weather, air, prayer, homeAssistant];
+export const PLUGINS = [weather, air, prayer, homeAssistant, meshtastic];
 
 const MAX_BYTES = 1024 * 1024;
 const TIMEOUT_MS = 10_000;

@@ -16,6 +16,10 @@ class HomeBaseModule : public SinglePortModule, private concurrency::OSThread
     std::string channelLink();
     /** Ask a node for a fresh position. */
     void askPosition(uint32_t node);
+    /** A direct text to a node (a leading \a makes a tracker beep). */
+    void textNode(uint32_t node, const std::string &text);
+    /** A traceroute to a node: the relays between it and this home base. */
+    void traceNode(uint32_t node);
 
   protected:
     bool wantPacket(const meshtastic_MeshPacket *p) override;

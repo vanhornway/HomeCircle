@@ -16,9 +16,22 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #endif
+#ifdef ARCH_ESP32
+#include "esp_task_wdt.h"
+#endif
 
 namespace hcio
 {
+
+// Meshtastic restarts the node if its loop is stuck for 90 s. A few HTTPS
+// calls in a row (a server waking up, a slow network) can take that long, so
+// anything that waits on the network calls this between steps.
+inline void feedWatchdog()
+{
+#ifdef ARCH_ESP32
+    esp_task_wdt_reset();
+#endif
+}
 
 // One file per key under /prefs/hc (a Meshtastic factory reset deletes /prefs).
 class FsStore : public hc::Store
@@ -78,6 +91,10 @@ class WifiHttp : public hc::Http
         hc::HttpResponse res;
         if (WiFi.status() != WL_CONNECTED)
             return res;
+        feedWatchdog();
+        struct Fed {
+            ~Fed() { feedWatchdog(); }
+        } fed;
         WiFiClientSecure tls;
         WiFiClient plain;
         bool https = url.rfind("https://", 0) == 0;

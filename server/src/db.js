@@ -188,6 +188,9 @@ function migrateToMultiCircle(db) {
   add('members', 'mesh_key', 'TEXT');
   add('members', 'mesh_ref', 'TEXT');
   add('members', 'mesh_counter', 'INTEGER NOT NULL DEFAULT 0');
+  // A Meshtastic tracker's keeper (0.25): the home base that holds its keys and
+  // acts for it. Locate, chirps and direct messages for it go to the keeper.
+  add('members', 'keeper_id', 'TEXT');
   // Which features a circle has (0.13): circles from before keep everything on.
   if (!cols('circles').includes('features')) {
     db.exec('ALTER TABLE circles ADD COLUMN features TEXT');
@@ -230,6 +233,7 @@ function memberRow(r) {
     pushToken: r.push_token,
     pushPlatform: r.push_platform,
     pushFallback: r.push_fallback === 1,
+    keeperId: r.keeper_id ?? null,
     joinedAt: r.joined_at,
     lastSeenAt: r.last_seen_at,
     removed: r.removed_at != null,
@@ -388,6 +392,10 @@ export class Store {
   /** The highest message seq this member's phone has fetched (what the delivered ticks show). */
   deliveredSeqOf(id) {
     return this.q('SELECT delivered_seq FROM members WHERE id = ?').get(id)?.delivered_seq ?? 0;
+  }
+  /** The home base that acts for this member (a tracker), or null. */
+  setKeeper(id, keeperId) {
+    this.q('UPDATE members SET keeper_id = ? WHERE id = ?').run(keeperId, id);
   }
   /** A tracker's mesh key (base64url, 32 bytes) and ref; the counter starts again. */
   setMeshKey(id, key, ref) {

@@ -10,6 +10,8 @@
 //   mesh BASE64                     a HomeCircle-firmware tracker's packet
 //   advance SECONDS                 let time pass
 //   tick                            do what's due; prints "request !id" for position requests
+//   selfgps LAT LNG SATS HDOP       the home base's own GPS fix
+//   nmea SENTENCE                   a line from its GPS module
 //   whoami                          the home base's member id
 #include <cstdio>
 #include <iostream>
@@ -29,6 +31,26 @@ struct FakeRadio : hc::Radio {
     for (auto& kv : heard) out.push_back(kv.second);
   }
   std::string channelLink() override { return "https://meshtastic.org/e/#TEST"; }
+  // The home base's own GPS, set by "selfgps"; its sky, fed by "nmea".
+  hc::SelfGnss self;
+  hc::GnssSky skyView;
+  bool selfGnss(hc::SelfGnss& out) override {
+    out = self;
+    return self.present;
+  }
+  const hc::GnssSky* sky() override { return &skyView; }
+  std::vector<uint32_t> traced;
+  void traceroute(uint32_t node) override { traced.push_back(node); }
+  std::string nodeName(uint32_t num) override {
+    auto h = heard.find(num);
+    return h == heard.end() ? "" : h->second.name;
+  }
+  std::vector<std::string> alerts;
+  void alert(uint32_t node, const std::string& text) override {
+    std::string shown;
+    for (char c : text) shown += c == '\a' ? std::string("\\a") : std::string(1, c);
+    alerts.push_back(hc::nodeId(node) + " " + shown);
+  }
 };
 
 std::string rest(const std::string& line, size_t words) {
@@ -84,6 +106,47 @@ int main(int argc, char** argv) {
       } else {
         hb.onText(node, rest(line, 2));
       }
+    } else if (cmd == "selfgps") {
+      // selfgps LAT LNG SATS HDOP
+      double lat = 0, lng = 0, hdop = 0;
+      int sats = 0;
+      sscanf(rest(line, 1).c_str(), "%lf %lf %d %lf", &lat, &lng, &sats, &hdop);
+      radio.self.present = true;
+      radio.self.hasFix = true;
+      radio.self.lat = lat;
+      radio.self.lng = lng;
+      radio.self.satsUsed = sats;
+      radio.self.hdop = (float)hdop;
+      radio.self.fixType = 3;
+      radio.self.altitudeM = 21;
+      radio.self.fixAtMs = host::nowMs();
+    } else if (cmd == "nmea") {
+      for (char c : rest(line, 1) + "\r\n") radio.skyView.feed(c, host::nowMs());
+    } else if (cmd == "route") {
+      // route !id RELAY,RELAY SNR4,SNR4,SNR4: a traceroute's answer
+      uint32_t node;
+      std::string args = rest(line, 1);
+      size_t sp1 = args.find(' '), sp2 = args.find(' ', sp1 + 1);
+      std::vector<uint32_t> back;
+      std::vector<int> snr;
+      if (hc::parseNodeId(args.substr(0, sp1), node)) {
+        std::string relays = args.substr(sp1 + 1, sp2 - sp1 - 1), snrs = sp2 == std::string::npos ? "" : args.substr(sp2 + 1);
+        for (size_t at = 0; at < relays.size();) {
+          size_t comma = relays.find(',', at);
+          std::string r = relays.substr(at, comma == std::string::npos ? std::string::npos : comma - at);
+          uint32_t n;
+          if (hc::parseNodeId(r, n)) back.push_back(n);
+          if (comma == std::string::npos) break;
+          at = comma + 1;
+        }
+        for (size_t at = 0; at < snrs.size();) {
+          size_t comma = snrs.find(',', at);
+          snr.push_back(atoi(snrs.substr(at, comma == std::string::npos ? std::string::npos : comma - at).c_str()));
+          if (comma == std::string::npos) break;
+          at = comma + 1;
+        }
+        hb.onRoute(node, back, snr);
+      }
     } else if (cmd == "mesh") {
       hc::Bytes b;
       if (hc::fromB64(rest(line, 1), b)) hb.onMeshPacket(b);
@@ -94,6 +157,10 @@ int main(int argc, char** argv) {
       hb.tick();
       for (uint32_t n : radio.asked) printf("request %s\n", hc::nodeId(n).c_str());
       radio.asked.clear();
+      for (auto& a : radio.alerts) printf("alert %s\n", a.c_str());
+      radio.alerts.clear();
+      for (uint32_t n : radio.traced) printf("trace %s\n", hc::nodeId(n).c_str());
+      radio.traced.clear();
       if (!hb.log.empty()) printf("log: %s\n", hb.log.c_str());
     } else {
       printf("unknown command\n");
