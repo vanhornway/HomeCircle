@@ -94,7 +94,7 @@ export function meshRadioText(e: unknown, trackerName: string): string {
  * Send one sealed message (a HomeCircle mesh packet) through the tracker with
  * this node id ("!9e58f8c9"). Resolves once the tracker has taken it.
  */
-export async function sendThroughTracker(node: string, packet: Uint8Array): Promise<void> {
+export async function sendThroughTracker(node: string, packet: Uint8Array, homeBase: string | null = null): Promise<void> {
   if (!(await permitted())) throw new MeshRadioError('no-permission');
   const state = await ble().state();
   if (state === 'PoweredOff') throw new MeshRadioError('bluetooth-off');
@@ -104,7 +104,9 @@ export async function sendThroughTracker(node: string, packet: Uint8Array): Prom
     device = await found.connect({ timeout: 15_000 });
     if (Platform.OS === 'android') await device.requestMTU(512).catch(() => device!);
     device = await device.discoverAllServicesAndCharacteristics();
-    await device.writeCharacteristicWithResponseForService(SERVICE, TO_RADIO, base64(toRadio(packet)));
+    // To the home base, acknowledged, when we know its node id; otherwise to everyone on the channel.
+    const to = homeBase ? parseInt(homeBase.slice(1), 16) >>> 0 : undefined;
+    await device.writeCharacteristicWithResponseForService(SERVICE, TO_RADIO, base64(toRadio(packet, to ? { to, wantAck: true } : {})));
   } catch (e) {
     throw e instanceof MeshRadioError ? e : new MeshRadioError('failed', e instanceof Error ? e.message : String(e));
   } finally {

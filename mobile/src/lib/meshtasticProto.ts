@@ -20,16 +20,22 @@ const lengthDelimited = (field: number, bytes: number[] | Uint8Array) => [...tag
 const fixed32 = (field: number, n: number) => [...tagged(field, 5), n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255];
 const uint = (field: number, n: number) => [...tagged(field, 0), ...varint(n)];
 
-/** ToRadio { packet } with our payload as a PRIVATE_APP broadcast on the primary channel. */
-export function toRadio(payload: Uint8Array): Uint8Array {
+/**
+ * ToRadio { packet } with our payload on PRIVATE_APP, on the primary channel.
+ * Addressed to the home base (`to`, its node number) with `wantAck`, the
+ * tracker retries until it has it, and Meshtastic learns which relay reaches
+ * it and sends there next time instead of flooding; without `to`, a broadcast.
+ */
+export function toRadio(payload: Uint8Array, { to = BROADCAST, wantAck = false }: { to?: number; wantAck?: boolean } = {}): Uint8Array {
   const data = [...uint(1, PRIVATE_APP), ...lengthDelimited(2, payload)];
   const id = (Math.random() * 0xfffffffe + 1) >>> 0;
   const packet = [
-    ...fixed32(2, BROADCAST), // to
+    ...fixed32(2, to), // to
     ...uint(3, 0), // channel 0: the tracker's primary (HomeCircle)
     ...lengthDelimited(4, data), // decoded
     ...fixed32(6, id),
     ...uint(9, 3), // hop limit
+    ...(wantAck ? uint(10, 1) : []), // want_ack
     ...uint(11, 70), // priority: reliable
   ];
   return Uint8Array.from(lengthDelimited(1, packet));

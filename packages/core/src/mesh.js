@@ -39,8 +39,12 @@ const HEADER = 18;
 const ID_BYTES = 12;
 const TO_BYTES = 8;
 const TAG = 8;
-/** Meshtastic's largest payload for one packet. */
-const LORA_MAX = 233;
+/**
+ * The most one packet carries when it's addressed to the home base: Meshtastic
+ * encrypts a packet to one node with both nodes' keys, which takes 12 more
+ * bytes of the 255 a LoRa packet holds (233 for a broadcast).
+ */
+const LORA_MAX = 221;
 /** The most text (UTF-8 bytes) one mesh message carries: a group message, and a direct one (sealed twice). */
 export const MESH_TEXT_MAX = {
   chat: LORA_MAX - (HEADER + ID_BYTES) - 16 - 4 - 64 - TAG,

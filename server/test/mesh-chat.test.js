@@ -81,7 +81,7 @@ test('a phone’s group message over the mesh reaches everyone, marked as sent o
   await kid.prepareMesh(); // online, once
   assert.equal(kid.meshReady, true);
   const { id, packet } = await kid.meshMessage('Battery died, at the library 📚');
-  assert.ok(packet.length <= 233, `one LoRa packet: ${packet.length} bytes`);
+  assert.ok(packet.length <= 221, `one LoRa packet, addressed to the home base: ${packet.length} bytes`);
   assert.equal(await handIn(packet), 'ok');
   assert.equal(await handIn(packet), 'duplicate', 'heard by two home bases: stored once');
   await sync();

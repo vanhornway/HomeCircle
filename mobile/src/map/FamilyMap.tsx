@@ -56,6 +56,13 @@ export interface MapView {
   pts: Record<string, [number, number]>;
 }
 
+export interface MapPath {
+  id: string;
+  points: [number, number][];
+  /** Traced a while ago: drawn fainter. */
+  old?: boolean;
+}
+
 interface Props {
   tileUrl: string;
   attribution: string;
@@ -63,6 +70,8 @@ interface Props {
   fitKey?: string | null;
   members?: MapMember[];
   places?: MapPlace[];
+  /** Radio paths to draw: tracker → relays → home base, as [lat, lng] points. */
+  paths?: MapPath[];
   /** What to fit when the map opens (or shows another circle); everyone, if not given. */
   frame?: { lat: number; lng: number }[];
   /** Fits and fly-tos keep what they show clear of these. */
@@ -125,7 +134,7 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
   window.addEventListener('online', retryMissing);
   // Place names sit under people's pins, so a tap on someone at Home is theirs.
   map.createPane('placeNames').style.zIndex = 550;
-  var people = {}, placeLayer = L.layerGroup().addTo(map), pickLayer = L.layerGroup().addTo(map);
+  var people = {}, placeLayer = L.layerGroup().addTo(map), pickLayer = L.layerGroup().addTo(map), pathLayer = L.layerGroup().addTo(map);
   var pick = false, pad = {t:0, r:0, b:0, l:0};
   function post(m){ window.ReactNativeWebView.postMessage(JSON.stringify(m)); }
   // Where the map is, and everyone on it in pixels (for chips at the edge).
@@ -197,6 +206,18 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
       if (fly && map.getZoom() >= 5) map.flyToBounds(b, L.extend(o, {duration:.8}));
       else map.fitBounds(b, L.extend(o, {animate:false}));
     },
+    // Radio paths: a faint dashed line from each tracker, through the relays
+    // with a known position, to the home base. Older paths are fainter.
+    paths: function(list){
+      pathLayer.clearLayers();
+      list.forEach(function(p){
+        if (!p.points || p.points.length < 2) return;
+        L.polyline(p.points, {color:'#5b6b73', weight:3, opacity:p.old ? .25 : .55, dashArray:'2 7', lineCap:'round', interactive:false}).addTo(pathLayer);
+        p.points.slice(1, -1).forEach(function(pt){
+          L.circleMarker(pt, {radius:3, color:'#5b6b73', weight:1, opacity:p.old ? .3 : .6, fillOpacity:p.old ? .15 : .35, interactive:false}).addTo(pathLayer);
+        });
+      });
+    },
     places: function(list, tap){
       placeLayer.clearLayers();
       list.forEach(function(p){
@@ -236,6 +257,7 @@ export function FamilyMap({
   attribution,
   members = [],
   places = [],
+  paths = [],
   frame,
   inset,
   focus,
@@ -260,6 +282,8 @@ export function FamilyMap({
   // First, so a fit or fly-to in the same render keeps clear of the new inset.
   useEffect(() => void run(insetJs), [run, insetJs]);
   useEffect(() => void run(`hc.members(${JSON.stringify(members)})`), [run, members]);
+  const pathsJs = JSON.stringify(paths);
+  useEffect(() => void run(`hc.paths(${pathsJs})`), [run, pathsJs]);
   const tappable = !!onPlacePress;
   useEffect(() => void run(`hc.places(${JSON.stringify(places)},${tappable})`), [run, places, tappable]);
   useEffect(() => void run(`hc.pickMode(${pickMode})`), [run, pickMode]);

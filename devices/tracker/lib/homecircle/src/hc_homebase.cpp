@@ -434,6 +434,12 @@ void HomeBase::meshInfo(Tracker& t, JsonDocument& out) {
     if (i + 1 < t.path.size()) o["id"] = h.num == 0xffffffff ? std::string("?") : nodeId(h.num);  // the home base is the last
     if (!h.name.empty()) o["name"] = h.name;
     if (h.hasSnr) o["snr"] = h.snr;
+    // A relay's position, rounded to about 100 m: the app draws the path through it.
+    double lat, lng;
+    if (i > 0 && i + 1 < t.path.size() && h.num != 0xffffffff && radio_.nodePosition(h.num, lat, lng)) {
+      o["lat"] = std::round(lat * 1000) / 1000;
+      o["lng"] = std::round(lng * 1000) / 1000;
+    }
   }
 }
 
@@ -659,6 +665,7 @@ void HomeBase::readCustoms(bool alsoWhat) {
 
 void HomeBase::introduce(Tracker& t, int64_t now, bool force) {
   if (!force && t.introducedAt && now - t.introducedAt < INTRODUCE_EVERY) return;
+  radio_.favorite(t.node);
   radio_.introduce(t.node);
   t.introducedAt = now;
 }
@@ -801,6 +808,7 @@ void HomeBase::publishStatus() {
   }
   std::string key = radio_.publicKey();
   if (!key.empty()) h["key"] = key;
+  if (radio_.selfNode()) h["node"] = nodeId(radio_.selfNode());  // phones address their messages over the mesh to it
   std::string channel = radio_.channelLink();
   if (!channel.empty()) h["channel"] = channel;  // sealed like the rest: only the circle reads it
   // Every minute: reuse the rest of its record for a while instead of reading

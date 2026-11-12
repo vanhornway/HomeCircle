@@ -62,6 +62,13 @@ struct FakeRadio : hc::Radio {
   std::vector<uint32_t> traced;
   std::vector<uint32_t> introduced;
   void introduce(uint32_t node) override { introduced.push_back(node); }
+  uint32_t selfNode() override { return 0x69852494; }
+  bool nodePosition(uint32_t node, double& lat, double& lng) override {
+    if (node != 0x11111111) return false;  // meshunit1 has said where it is; meshunit2 hasn't
+    lat = 37.64321;
+    lng = -122.07654;
+    return true;
+  }
   std::vector<hc::Bytes> contacts;
   void addContact(const hc::Bytes& c) override { contacts.push_back(c); }
   void traceroute(uint32_t node) override { traced.push_back(node); }

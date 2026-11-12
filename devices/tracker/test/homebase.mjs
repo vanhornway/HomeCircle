@@ -275,6 +275,16 @@ try {
     ],
   );
   assert.equal(maya.locations.get(tracker.id).lat, 37.63, 'the same position, now with its path');
+  assert.deepEqual(
+    mesh.path.map((h) => [h.lat, h.lng]),
+    [
+      [null, null],
+      [37.643, -122.077],
+      [null, null],
+      [null, null],
+    ],
+    'a relay that said where it is carries its position (rounded), for the line on the map',
+  );
   pass('the path from the tracker to the home base (tracker → meshunit1 → meshunit2 → Home base) reaches the app');
 
   await maya.chirp(tracker.id);
@@ -363,6 +373,7 @@ try {
   let hbStatus = maya.memberRecord(hbId).homeBase;
   assert.equal(hbStatus.trackers.find((x) => x.node === TRACKER)?.settings, 'needs-key', 'the app can say the tracker needs the key');
   assert.equal(hbStatus.key, 'vF3zUvwXwuAElnZ54StHuwcop/EZIIeu0IOKOnbiyA4=', 'and show the key to add');
+  assert.equal(hbStatus.node, '!69852494', 'and its node id, for phones to address messages over the mesh');
   await radio(`configured ${TRACKER} set`);
   await radio('advance 61');
   out = await radio('tick');

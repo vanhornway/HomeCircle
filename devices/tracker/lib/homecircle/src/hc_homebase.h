@@ -98,6 +98,12 @@ class Radio {
   virtual void introduce(uint32_t node) {}
   /** A tracker's contact (Meshtastic "Share contact": a SharedContact protobuf): add it to the node's list, key included. */
   virtual void addContact(const Bytes& contact) {}
+  /** Where a node is, if it has said (a relay on a tracker's path, for the line on the map). */
+  virtual bool nodePosition(uint32_t node, double& lat, double& lng) { return false; }
+  /** This node's own number (0 if unknown). */
+  virtual uint32_t selfNode() { return 0; }
+  /** Keep a node as a favorite: Meshtastic never drops it from its list (its key and route stay). */
+  virtual void favorite(uint32_t node) {}
 };
 
 /** Keys under a prefix, so each tracker's account has its own place in one store. */

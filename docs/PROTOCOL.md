@@ -425,11 +425,14 @@ not the home base, not the server.
   sends it over Bluetooth to the Meshtastic tracker that person carries. The
   tracker broadcasts it as a `PRIVATE_APP` packet on its primary channel, and
   a home base hands it in like any other.
-  - Content is `ts` and the text in UTF-8, at most 111 bytes for a group
-    message (one LoRa packet holds 233).
+  - Content is `ts` and the text in UTF-8, at most 99 bytes for a group
+    message. The tracker addresses it to the home base (its node id is in
+    the home base's status) with `want_ack`, so Meshtastic retries it and
+    learns the next hop. That costs Meshtastic's 12-byte PKI overhead, which
+    leaves 221 bytes per packet.
   - A direct message's text is sealed again: `secretbox(text,
     SHA-512("homecircle/mesh-direct" ‖ header)[0..24], DK)` with the
-    two members' direct key. That leaves 87 bytes, and the rest of the circle
+    two members' direct key. That leaves 75 bytes, and the rest of the circle
     can't read it.
   - The server finds the recipient from the ref after the id, stores it as a
     direct message, and sends it to that person only. The body is
@@ -529,7 +532,7 @@ private `HomeCircle` channel, it seals it as that member's `location`, with
   `{ type: "place", action, placeId, placeName, at }` events a phone sends.
 - **The radio path:** the home base runs a Meshtastic traceroute when someone
   locates a tracker, and every 30 minutes. The sealed location then carries
-  `mesh: { hops, at, path: [{ id, name, snr }] }`, listing the nodes from the
+  `mesh: { hops, at, path: [{ id, name, snr, lat, lng }] }` (a relay's position, rounded to ~100 m, when it has said where it is), listing the nodes from the
   tracker to the home base, each with the signal it was heard with.
 
 ## API summary (`/api/v1`, Bearer device token unless noted)

@@ -62,6 +62,22 @@ void sendKeyTo(uint32_t node);
 struct MeshRadio : hc::Radio {
     bool configure(uint32_t node, const hc::TrackerConfig &c) override { return startConfig(node, c); }
     void introduce(uint32_t node) override { sendKeyTo(node); }
+    bool nodePosition(uint32_t node, double &lat, double &lng) override
+    {
+        meshtastic_NodeInfoLite *n = nodeDB->getMeshNode(node);
+        if (!n || !n->has_position || (!n->position.latitude_i && !n->position.longitude_i))
+            return false;
+        lat = n->position.latitude_i * 1e-7;
+        lng = n->position.longitude_i * 1e-7;
+        return true;
+    }
+    uint32_t selfNode() override { return nodeDB->getNodeNum(); }
+    void favorite(uint32_t node) override
+    {
+        meshtastic_NodeInfoLite *n = nodeDB->getMeshNode(node);
+        if (n && !n->is_favorite)
+            nodeDB->set_favorite(true, node);
+    }
     void addContact(const hc::Bytes &raw) override
     {
         meshtastic_SharedContact c = meshtastic_SharedContact_init_zero;
@@ -344,6 +360,12 @@ void sendConfig(uint32_t node, ConfigJob &job)
     m.which_payload_variant = meshtastic_AdminMessage_set_module_config_tag;
     m.set_module_config.which_payload_variant = meshtastic_ModuleConfig_external_notification_tag;
     m.set_module_config.payload_variant.external_notification = job.alerts;
+    withKey(m);
+    job.ids.push_back(sendAdmin(node, m, false, false));
+
+    m = meshtastic_AdminMessage_init_zero;
+    m.which_payload_variant = meshtastic_AdminMessage_set_favorite_node_tag;
+    m.set_favorite_node = nodeDB->getNodeNum(); // the home base: it keeps our key and route
     withKey(m);
     job.ids.push_back(sendAdmin(node, m, false, false));
 

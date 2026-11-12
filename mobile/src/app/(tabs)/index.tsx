@@ -4,7 +4,8 @@ import { router, useFocusEffect } from 'expo-router';
 import { needsAttention, setupChecklist } from '../../lib/health';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Place } from '@homecircle/core';
-import { FamilyMap, type MapInset, type MapMember, type MapView } from '../../map/FamilyMap';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { FamilyMap, type MapInset, type MapMember, type MapPath, type MapView } from '../../map/FamilyMap';
 import { EmptyState, Icon, IconButton, Tag } from '../../components/ui';
 import { MemberAvatar } from '../../components/MemberAvatar';
 import { ServerBanner } from '../../components/ServerBanner';
@@ -21,7 +22,7 @@ import { initials, useAllCircles, useCircle } from '../../lib/useCircle';
 import { chirpWithChoice } from '../../lib/chirp';
 import { canLocate, everyoneCoolingDown, isAsking, memberState, locatePerson, locateState, lowBattery, refreshEveryone, settingWarning, statusLine, useLocateVersion } from '../../lib/people';
 import { DEFAULT_SETTINGS, getSettings } from '../../lib/storage';
-import { carriedFallback, circleCount, trackerEmoji, trackerOf } from '../../lib/trackers';
+import { carriedFallback, circleCount, homeBaseOf, trackerEmoji, trackerList, trackerOf } from '../../lib/trackers';
 import { edgeChips, groups, openingFrame } from '../../lib/mapFrame';
 import { usePlaceNames } from '../../lib/weather';
 import { useTheme } from '../../theme';
@@ -34,6 +35,8 @@ const SOS_ROOM = 64 + 16 + 8;
 // A chip for people out of view: its box (it hugs the edge it's on).
 const CHIP_W = 168;
 const CHIP_H = 36;
+
+const PATHS_KEY = 'homecircle.radioPaths';
 
 export default function MapTab() {
   const t = useTheme();
@@ -55,6 +58,18 @@ export default function MapTab() {
   const [selected, setSelected] = useState<string | null>(null);
   // Clock for "5 min ago" labels and Locate progress.
   const [now, setNow] = useState(() => Date.now());
+  // Radio paths on the map (trackers → relays → home base): on unless turned off, remembered on this phone.
+  const [showPaths, setShowPaths] = useState(true);
+  useEffect(() => {
+    AsyncStorage.getItem(PATHS_KEY)
+      .then((v) => v === '0' && setShowPaths(false))
+      .catch(() => {});
+  }, []);
+  const togglePaths = () =>
+    setShowPaths((v) => {
+      AsyncStorage.setItem(PATHS_KEY, v ? '0' : '1').catch(() => {});
+      return !v;
+    });
   useLocateVersion();
   // People pull up from the bottom; pushed down, the map has the whole screen.
   const { height: screenH } = useWindowDimensions();
@@ -119,6 +134,23 @@ export default function MapTab() {
       },
     ];
   });
+  // Each tracker's radio path from its last position: the relays with a known
+  // position, then the home base. Only with Meshtastic trackers on.
+  const meshOn = client.feature('meshtastic');
+  const home = meshOn ? homeBaseOf(client) : null;
+  const homeLoc = home ? client.locations.get(home.id) : null;
+  const trackersHere = meshOn ? trackerList(client) : [];
+  const radioPaths: MapPath[] =
+    showPaths && homeLoc && sharing
+      ? trackersHere.flatMap((tr) => {
+          const loc = client.locations.get(tr.id);
+          const path = loc?.mesh?.path;
+          if (!loc || !path) return [];
+          const relays = path.slice(1, -1).flatMap((h) => (h.lat != null && h.lng != null ? [[h.lat, h.lng] as [number, number]] : []));
+          return [{ id: tr.id, points: [[loc.lat, loc.lng], ...relays, [homeLoc.lat, homeLoc.lng]], old: !loc.mesh?.at || now - loc.mesh.at > 6 * 3600_000 }];
+        })
+      : [];
+  const pathsAvailable = !!homeLoc && trackersHere.some((tr) => !!client.locations.get(tr.id)?.mesh?.path);
   // The drawer: people first, then trackers, and a count that tells them apart (read before the memo below).
   const drawerMembers = [...members.filter((m) => !client.isDevice(m.id)), ...members.filter((m) => client.isDevice(m.id))];
   const countLine = circleCount(client).replace(/ people| person/, '');
@@ -222,6 +254,7 @@ export default function MapTab() {
           attribution={tiles.tileAttribution}
           members={mapMembers}
           places={places}
+          paths={radioPaths}
           frame={frame}
           inset={inset}
           focus={focus}
@@ -326,6 +359,35 @@ export default function MapTab() {
           <UpdateBanner style={{ marginTop: 10 }} />
         </SafeAreaView>
       </View>
+      {/* Radio paths on or off: bottom left, above the drawer (only when there are some to show). */}
+      {pathsAvailable ? (
+        <Animated.View pointerEvents="box-none" style={{ position: 'absolute', left: 16, bottom: Animated.add(drawer.motion.height, 16) }}>
+          <Pressable
+            accessibilityRole="switch"
+            accessibilityLabel="Radio paths: how trackers reach the home base"
+            accessibilityState={{ checked: showPaths }}
+            onPress={togglePaths}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              minHeight: 44,
+              paddingHorizontal: 14,
+              borderRadius: 22,
+              backgroundColor: showPaths ? t.brandSoft : t.surface,
+              borderWidth: 1,
+              borderColor: showPaths ? t.brand : t.line,
+              shadowColor: '#000',
+              shadowOpacity: 0.12,
+              shadowRadius: 8,
+              elevation: 3,
+            }}
+          >
+            <Text style={{ fontSize: 16 }}>📡</Text>
+            <Text style={{ color: showPaths ? t.brand : t.text, fontWeight: '700', fontSize: 14 }}>{showPaths ? 'Paths on' : 'Paths off'}</Text>
+          </Pressable>
+        </Animated.View>
+      ) : null}
       {/* The button follows the circle on screen, just above the drawer; an SOS goes to every circle on this phone that has it on. */}
       {sos ? (
         <Animated.View pointerEvents="box-none" style={{ position: 'absolute', right: 16, bottom: Animated.add(drawer.motion.height, 16) }}>

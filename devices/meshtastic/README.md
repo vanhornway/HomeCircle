@@ -192,9 +192,15 @@ on to the circle.
   Bluetooth range.
 - **On purpose:** tap 📡 next to the message box. Everything you send goes
   over the mesh until you tap it again.
-- **Short:** one radio packet holds about 110 characters for the group, or
-  85 for a direct message. Emoji and Urdu letters count as more than one.
+- **Short:** one radio packet holds about 95 characters for the group, or
+  70 for a direct message. Emoji and Urdu letters count as more than one.
   The box counts down.
+- **Straight to the home base:** the tracker addresses it to the home base
+  and asks for an acknowledgement. It tries again until it gets one, and
+  Meshtastic learns which relay reaches the home base and uses only that
+  relay next time, instead of every node passing it on. The home base and
+  your trackers are favorites of each other, so they always keep each
+  other's keys and routes.
 - **Private:** your phone seals the message before the tracker sends it.
   The mesh, the home base and the server can't read it. A direct message is
   sealed twice, so the rest of the circle can't read it either.

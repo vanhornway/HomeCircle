@@ -4,7 +4,7 @@
 import { useSyncExternalStore } from 'react';
 import { ApiError, type CircleClient } from '@homecircle/core';
 import { sendThroughTracker } from './meshRadio';
-import { trackerList } from './trackers';
+import { homeBaseOf, trackerList } from './trackers';
 
 export type MeshOutboxItem = { id: string; circle: string; peer: string | null; text: string; at: number; via: string };
 
@@ -41,7 +41,7 @@ export async function sendOverMesh(client: CircleClient, text: string, peer: str
   const tracker = myTracker(client);
   if (!tracker) throw new Error('No tracker of yours to send through.');
   const { id, packet } = await client.meshMessage(text, { to: peer });
-  await sendThroughTracker(tracker.node, packet);
+  await sendThroughTracker(tracker.node, packet, homeBaseOf(client)?.status.node ?? null);
   const item = { id, circle: client.circleId!, peer, text: text.trim(), at: Date.now(), via: tracker.name };
   items = [...items, item];
   changed();

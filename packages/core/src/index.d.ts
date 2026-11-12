@@ -127,6 +127,8 @@ export interface HomeBaseStatus {
   heard: ({ node: string; name: string | null } & MeshNodeRadio)[];
   /** Its trackers: `at` is their last position on the map; `radio` what the radio last heard from them; `settings` whether HomeCircle's settings are on the tracker. */
   trackers: { node: string; member: string; at: number | null; radio: MeshNodeRadio | null; settings: 'set' | 'sending' | 'needs-key' | null }[];
+  /** Its Meshtastic node id ("!69852494"). */
+  node: string | null;
   /** Its Meshtastic public key (base64): a tracker with it as an admin key takes settings from the home base. */
   key: string | null;
   /** The link (meshtastic.org/e/#…) that puts a tracker on the circle's private channel, opened in the Meshtastic app. */
@@ -258,7 +260,7 @@ export interface MeshPath {
   /** When the path was traced. */
   at: number | null;
   /** From the tracker to the home base; snr is how the next node heard each one (dB). */
-  path: { id: string | null; name: string | null; snr: number | null }[] | null;
+  path: { id: string | null; name: string | null; snr: number | null; lat: number | null; lng: number | null }[] | null;
 }
 
 /** A tracker's mesh packet, opened (see mesh.js). */

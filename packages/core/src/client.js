@@ -3062,6 +3062,9 @@ function cleanMeshPath(m) {
         id: typeof h?.id === 'string' && /^(![0-9a-f]{8}|\?)$/.test(h.id) ? h.id : null,
         name: typeof h?.name === 'string' ? h.name.replace(/[\u0000-\u001f]/g, '').trim().slice(0, 40) || null : null,
         snr: Number.isFinite(h?.snr) ? Math.round(h.snr * 4) / 4 : null,
+        // Where a relay is, if the home base has heard its position (for the line on the map).
+        lat: Number.isFinite(h?.lat) && Math.abs(h.lat) <= 90 && Number.isFinite(h?.lng) && Math.abs(h.lng) <= 180 ? h.lat : null,
+        lng: Number.isFinite(h?.lat) && Math.abs(h.lat) <= 90 && Number.isFinite(h?.lng) && Math.abs(h.lng) <= 180 ? h.lng : null,
       }))
     : null;
   if (hops == null && !path) return null;
@@ -3178,6 +3181,8 @@ function cleanHomeBase(h) {
     // The home base's Meshtastic public key: added on a tracker as its admin key,
     // it lets the home base change the tracker's settings over the radio.
     key: typeof h.key === 'string' && /^[A-Za-z0-9+/]{43}=$/.test(h.key) ? h.key : null,
+    // Its Meshtastic node id ("!69852494"): phones address messages over the mesh to it.
+    node: typeof h.node === 'string' && /^![0-9a-f]{8}$/.test(h.node) ? h.node : null,
     // The link that puts a tracker on the circle's private Meshtastic channel (to open in the Meshtastic app).
     channel: typeof h.channel === 'string' && h.channel.length < 400 && /^https:\/\/meshtastic\.org\/e\/#[A-Za-z0-9_-]+$/.test(h.channel) ? h.channel : null,
   };
