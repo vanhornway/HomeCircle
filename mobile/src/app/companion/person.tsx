@@ -36,7 +36,7 @@ export default function Person() {
   );
   const photo = usePhotoUri(client, client?.account && m ? client.tilePhoto(client.account.memberId, m.id) : null);
   if (!client || !m) return null;
-  const index = client.memberList().filter((x) => !x.isMe).findIndex((x) => x.id === m.id);
+  const index = client.peopleList().filter((x) => !x.isMe).findIndex((x) => x.id === m.id);
   const label = tileName(client, m.id);
 
   const callMe = async () => {

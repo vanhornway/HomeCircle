@@ -283,3 +283,21 @@ test('an address without http:// or https:// gets https://; stray characters go'
   assert.equal(tidy({ url: true }, ' https://abc.ui.na bu.casa '), 'https://abc.ui.nabu.casa');
   assert.equal(tidy({ secret: true }, 'abc​def \n'), 'abcdef');
 });
+
+test('Meshtastic trackers: every tracker’s settings and what each number of presses says, kept in the plugin', async () => {
+  await mom.setFeatures({ ...mom.features, meshtastic: true });
+  const s0 = await mom.api.pluginSettings('meshtastic');
+  assert.deepEqual(
+    s0.fields.filter((f) => f.section === 'trackers').map((f) => f.id),
+    ['movingMinutes', 'stillMinutes', 'batteryMinutes', 'press1', 'press2', 'press3', 'press4', 'press5'],
+  );
+  assert.equal(s0.fields.find((f) => f.id === 'press5').placeholder, '🆘 I need help');
+  await assert.rejects(() => mom.api.putPluginSettings('meshtastic', { movingMinutes: '0' }), (e) => e.status === 400 && /1 to 60/.test(e.message));
+  await assert.rejects(() => mom.api.putPluginSettings('meshtastic', { batteryMinutes: '3' }), (e) => e.status === 400);
+  const saved = await mom.api.putPluginSettings('meshtastic', { stillMinutes: '30', batteryMinutes: '0', press3: '  Come get me\nat the gate  ', press4: 'x'.repeat(120) });
+  assert.equal(saved.values.stillMinutes, '30');
+  assert.equal(saved.values.batteryMinutes, '0');
+  assert.equal(saved.values.press3, 'Come get me at the gate');
+  assert.equal(saved.values.press4.length, 80);
+  assert.equal(saved.values.press2, '', 'empty means the default message');
+});

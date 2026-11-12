@@ -40,7 +40,7 @@ export default function CircleHealth() {
     return () => clearInterval(timer);
   }, []);
 
-  const members = client.memberList();
+  const members = client.peopleList(); // phones' setup: trackers and the home base have none
   const problems = (id: string) => {
     const loc = client.locations.get(id);
     const out: string[] = [];

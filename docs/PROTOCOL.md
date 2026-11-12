@@ -485,6 +485,27 @@ private `HomeCircle` channel, it seals it as that member's `location`, with
   It's sealed like any record, and the app's Trackers screen reads it. It
   reuses the rest of the record for 10 minutes between full reads, so a
   status is one write.
+  - `key` is the home base's Meshtastic public key (base64).
+  - Each tracker's `settings` is `"set"`, `"sending"` or `"needs-key"`: the
+    tracker doesn't list that key as an admin key yet.
+- **Tracker settings:** every tracker follows the Meshtastic plugin's
+  settings: `movingMinutes`, `stillMinutes`, `batteryMinutes` and
+  `press1`…`press5`, where empty means the default. One tracker can differ
+  through its member record:
+  `tracker.custom: { moving, still, battery, presses: { "1"…"5": text } }`,
+  holding only what differs from the circle.
+  - The home base puts the intervals on the tracker with Meshtastic remote
+    admin. Those are PKI-encrypted admin messages: it reads the device,
+    position, telemetry and external-notification configs (whose answers
+    carry the session key), then sets them inside one edit.
+  - The tracker's acknowledgement of the commit means the settings are on
+    it. They're sent only when HomeCircle's settings change.
+- **Button presses:** the HomeCircle T1000-E build sends `#press N` (1 to 4)
+  as a text on its primary channel, with its position for 2 to 4. 5 presses
+  send the SOS text.
+  - The home base posts the message for N to the circle's chat as the
+    tracker. 3 and SOS are urgent.
+  - 1 press only answers a waiting check-in.
 - **Arrived and left:** the home base reads the circle's places and checks
   each tracker position with the apps' rule. It sends the same
   `{ type: "place", action, placeId, placeName, at }` events a phone sends.

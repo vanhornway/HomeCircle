@@ -11,6 +11,7 @@
 #pragma once
 #include <ArduinoJson.h>
 
+#include <functional>
 #include <map>
 #include <vector>
 #include <string>
@@ -151,6 +152,10 @@ class Device {
   Status fetchDirect(std::vector<Direct>& out);
   /** A direct message; `checkinOk` makes it the "✅ I'm OK" answer to a check-in. */
   Status sendDirect(const std::string& to, const std::string& text, bool checkinOk = false);
+  /** A message to the whole circle's chat; `urgent` makes phones alert even when the chat is muted. */
+  Status sendGroup(const std::string& text, bool urgent = false);
+  /** Every member record an admin signed (one read of all of them): fn(subject, body). */
+  Status memberRecords(const std::function<void(const std::string&, JsonObjectConst)>& fn);
   /** Start reading direct messages after this seq, if reading hasn't started. */
   void startDirectAt(long seq) {
     if (acct_.lastSeq < 0) acct_.lastSeq = seq;

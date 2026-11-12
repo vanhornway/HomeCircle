@@ -3,7 +3,7 @@ import type { CircleClient } from '@homecircle/core';
 import { useTheme } from '../theme';
 
 /** Everyone who can be tagged: the circle's people, never its helper. */
-export const circlePeople = (client: CircleClient) => client.memberList().filter((m) => m.kind !== 'agent' && !m.removed);
+export const circlePeople = (client: CircleClient) => client.peopleList().filter((m) => m.kind !== 'agent' && !m.removed);
 
 /** One chip per person; a tap tags or untags them. */
 export function PeopleChips({ people, selected, onToggle }: { people: { key: string; label: string }[]; selected: string[]; onToggle: (key: string) => void }) {

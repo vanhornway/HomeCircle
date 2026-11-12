@@ -47,6 +47,17 @@ struct SelfInfo {
   float airTx = -1;      // its own transmitting, percent of the last hour
 };
 
+/** Settings the home base puts on a tracker over the radio (Meshtastic remote admin). */
+struct TrackerConfig {
+  int movingS = 120;   // at most this often while moving (smart position)
+  int stillS = 900;    // otherwise, every this many seconds
+  int batteryS = 1800; // battery reports; 0: none
+  std::string key() const { return std::to_string(movingS) + "/" + std::to_string(stillS) + "/" + std::to_string(batteryS); }
+};
+
+/** How putting settings on a tracker went. */
+enum class ConfigResult { Set, NeedsKey, Failed };
+
 /** What the home base needs from the Meshtastic node. */
 class Radio {
  public:
@@ -71,6 +82,22 @@ class Radio {
   virtual int hopsAway(uint32_t node) { return -1; }
   /** Its own power, Wi-Fi and radio load: false if it can't tell. */
   virtual bool selfInfo(SelfInfo& out) { return false; }
+  /**
+   * Put these settings on a tracker (the tracker must have this node's public
+   * key as an admin key). The answer comes back through HomeBase::onConfigured.
+   * False if it can't try now.
+   */
+  virtual bool configure(uint32_t node, const TrackerConfig& c) { return false; }
+  /** This node's Meshtastic public key, base64 ("" if it has none). */
+  virtual std::string publicKey() { return ""; }
+  /**
+   * Send this node's key (its node info) straight to a tracker on the private
+   * channel. Direct messages to a tracker (chirps, check-ins) are encrypted to
+   * its key from ours, and it can only open them once it knows ours.
+   */
+  virtual void introduce(uint32_t node) {}
+  /** A tracker's contact (Meshtastic "Share contact": a SharedContact protobuf): add it to the node's list, key included. */
+  virtual void addContact(const Bytes& contact) {}
 };
 
 /** Keys under a prefix, so each tracker's account has its own place in one store. */
@@ -85,6 +112,16 @@ class PrefixStore : public Store {
   Store& inner_;
   std::string prefix_;
 };
+
+/** What a Meshtastic "Share contact" link (meshtastic.org/v/#…) says. */
+struct MeshContact {
+  uint32_t node = 0;
+  std::string longName, shortName;
+  int hwModel = 0;
+  Bytes raw;  // the SharedContact protobuf
+};
+/** Read a contact link (or just its part after #). False if it isn't one. */
+bool parseContactLink(const std::string& link, MeshContact& out);
 
 std::string nodeId(uint32_t num);                       // "!a1b2c3d4"
 bool parseNodeId(const std::string& s, uint32_t& num);  // "!a1b2c3d4" or "a1b2c3d4"
@@ -116,6 +153,10 @@ class HomeBase {
    * (dB × 4); the last signal is this node's.
    */
   void onRoute(uint32_t node, const std::vector<uint32_t>& back, const std::vector<int>& snrBack4);
+  /** The answer to Radio::configure. */
+  void onConfigured(uint32_t node, ConfigResult r);
+  /** A tracker answered a position request with no position: it has no GPS fix. */
+  void onNoFix(uint32_t node);
   bool isTracker(uint32_t node) const;
   size_t trackerCount() const { return trackers_.size(); }
 
@@ -125,7 +166,7 @@ class HomeBase {
  private:
   struct Tracker {
     uint32_t node = 0;
-    std::string name, kind = "person", carriedBy;
+    std::string name, kind = "carried", carriedBy;  // kind: carried, car, pet, luggage, keys or other
     std::unique_ptr<PrefixStore> store;
     std::unique_ptr<Device> dev;
     bool pending = false;
@@ -149,6 +190,15 @@ class HomeBase {
     int64_t pathAt = 0, tracedAt = 0;
     bool pathDirty = false;  // a new path for the map: send the last position again with it
     Fix sentFix;             // the last position sent
+    std::string custom;      // its own settings from its member record (tracker.custom, JSON); "" follows the circle
+    std::string configSet;   // the settings confirmed on the tracker (TrackerConfig::key)
+    std::string configSending;
+    std::string configState; // "set", "sending", "needs-key" or "" (for the app)
+    int64_t configSentAt = 0;
+    int configFails = 0;     // attempts in a row with no answer at all
+    std::vector<int> presses;  // button presses to act on: 2 to 5
+    std::vector<std::pair<std::string, int64_t>> locateFrom;  // who tapped Locate, and when: answered in their chat with it
+    int64_t introducedAt = 0;  // when it was last sent this node's key
   };
 
   Http& http_;
@@ -166,7 +216,17 @@ class HomeBase {
   int64_t quietMs_ = 30 * 60 * 1000;
   int64_t traceEveryMs_ = 30 * 60 * 1000;  // 0: only when someone taps Locate
   std::vector<std::string> sosWords_ = {"sos", "help"};
+  // Every tracker's settings (the plugin's), unless one has its own.
+  int movingMin_ = 2, stillMin_ = 15, batteryMin_ = 30;
+  std::string press_[6];  // the message for 1 to 5 presses; "" for the default
   void readPlugin();
+  /** Each tracker's own settings, from its member record. */
+  void readCustoms(bool alsoWhat = true);
+  /** Send a tracker this node's key, unless that was done lately. */
+  void introduce(Tracker& t, int64_t now, bool force = false);
+  TrackerConfig configFor(const Tracker& t) const;
+  std::string pressText(const Tracker& t, int n) const;
+  void pushConfig(Tracker& t, int64_t now);
   std::vector<Place> places_;
 
   Tracker* find(const std::string& ref);

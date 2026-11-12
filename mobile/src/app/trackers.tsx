@@ -4,48 +4,28 @@
 // in the chat with it (add, rename, link, unlink, remove). Its answers arrive
 // in that chat; this screen follows the records and locations as they change.
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import type { CircleClient } from '@homecircle/core';
+import { router } from 'expo-router';
+import { Text, View } from 'react-native';
+import type { CircleClient, TrackerMode } from '@homecircle/core';
 import { Button, Field, P } from '../components/ui';
+import { Pills } from '../components/Pills';
 import { GroupBody, SettingsGroup, SettingsPage, SettingsRow } from '../components/SettingsKit';
 import { errorText } from '../lib/circle';
 import { radioLine } from '../lib/people';
 import { confirm, notice, showSheet } from '../lib/sheet';
-import { homeBaseHealth, homeBaseOf, homeBaseOnline, radioFacts, tellHomeBase, trackerEmoji, trackerList, useNow } from '../lib/trackers';
+import { homeBaseHealth, homeBaseOf, homeBaseOnline, PRESS_HELP, radioFacts, tellHomeBase, trackerEmoji, trackerList, TRACKER_KINDS, trackerSettingsLine, useNow } from '../lib/trackers';
+import { KeyHelp } from '../components/TrackerKeyHelp';
 import { timeAgo, useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
 
 const EVENTS = ['members', 'locations', 'records', 'status'] as const;
 
-type Kind = 'person' | 'car';
-
-/** Small choice pills: who carries it, person or car. */
-function Pills<T extends string>({ options, value, onChange }: { options: { value: T; label: string }[]; value: T; onChange: (v: T) => void }) {
-  const t = useTheme();
-  return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-      {options.map((o) => {
-        const on = o.value === value;
-        return (
-          <Pressable
-            key={o.value}
-            accessibilityRole="button"
-            accessibilityState={{ selected: on }}
-            onPress={() => onChange(o.value)}
-            style={{ minHeight: 44, paddingHorizontal: 14, borderRadius: 22, justifyContent: 'center', backgroundColor: on ? t.brand : t.surface2 }}
-          >
-            <Text style={{ color: on ? t.brandInk : t.text, fontSize: 15, fontWeight: '600' }}>{o.label}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
+type Kind = TrackerMode;
 
 /** People a tracker can belong to: everyone but trackers and the home base. */
 function people(client: CircleClient, homeBaseId: string | null) {
   const trackers = new Set(trackerList(client).map((t) => t.id));
-  return client.memberList().filter((m) => m.kind !== 'agent' && m.id !== homeBaseId && !trackers.has(m.id));
+  return client.peopleList().filter((m) => m.kind !== 'agent' && m.id !== homeBaseId && !trackers.has(m.id));
 }
 
 export default function Trackers() {
@@ -118,16 +98,23 @@ export default function Trackers() {
         )}
       </SettingsGroup>
 
-      <SettingsGroup title="Trackers" footer={trackers.length ? undefined : 'Trackers you add show here and on the map.'}>
+      <SettingsGroup
+        title="Trackers"
+        footer={trackers.length ? undefined : 'Trackers you add show here and on the map.'}
+        how={PRESS_HELP}
+        howTitle="The tracker’s button"
+      >
         {trackers.map((x) => {
           const loc = client.locations.get(x.id);
           const carrier = x.tracker.carriedBy ? client.members.get(x.tracker.carriedBy) : null;
           const path = radioLine(loc);
           const detail = [
-            x.tracker.mode === 'car' ? 'Car' : carrier ? `Carried by ${carrier.name}` : 'Not linked to anyone',
+            x.tracker.mode !== 'carried' ? (TRACKER_KINDS.find((k) => k.mode === x.tracker.mode)?.label ?? 'Something else') : carrier ? `${carrier.name} has it` : 'No one has it yet',
             loc ? `last position ${timeAgo(loc.ts)}` : 'no position yet',
             path && loc?.mesh?.hops != null ? (loc.mesh.hops === 0 ? 'heard directly' : `${loc.mesh.hops} hop${loc.mesh.hops === 1 ? '' : 's'}`) : null,
             radioFacts(home?.status.trackers.find((s) => s.node === x.tracker.node)?.radio),
+            x.tracker.custom ? 'its own settings' : null,
+            admin ? trackerSettingsLine(home?.status.trackers.find((s) => s.node === x.tracker.node)?.settings) : null,
           ]
             .filter(Boolean)
             .join(' · ');
@@ -141,6 +128,7 @@ export default function Trackers() {
                   admin && home
                     ? () =>
                         showSheet(x.name, path ?? undefined, [
+                          { text: 'Settings', onPress: () => router.push({ pathname: '/tracker-settings', params: { member: x.id } }) },
                           { text: 'Rename', onPress: () => setRenaming({ id: x.id, node: x.tracker.node!, name: x.name }) },
                           { text: 'Who carries it', onPress: () => setLinking({ id: x.id, node: x.tracker.node!, carriedBy: x.tracker.carriedBy ?? '' }) },
                           {
@@ -197,6 +185,35 @@ export default function Trackers() {
       </SettingsGroup>
 
       {admin && home ? (
+        <SettingsGroup title="Add and set up">
+          <SettingsRow
+            icon="qr"
+            title="Add a tracker with its QR code"
+            detail="Its Share contact in the Meshtastic app, scanned or pasted. Or pick one under Heard nearby."
+            href="/add-tracker"
+          />
+          <SettingsRow
+            icon="settings"
+            title="Settings for all trackers"
+            detail="How often they send their position, and what each number of button presses says"
+            href="/tracker-settings"
+          />
+        </SettingsGroup>
+      ) : null}
+
+      {admin && home?.status.key && home.status.trackers.some((x) => x.settings === 'needs-key') ? (
+        <SettingsGroup
+          title="Let the home base set your trackers"
+          footer={`Needed by ${trackers
+            .filter((x) => home.status.trackers.find((s) => s.node === x.tracker.node)?.settings === 'needs-key')
+            .map((x) => x.name)
+            .join(', ')}.`}
+        >
+          <KeyHelp keyText={home.status.key} />
+        </SettingsGroup>
+      ) : null}
+
+      {admin && home ? (
         <SettingsGroup
           title="Heard nearby"
           footer={heard.length ? 'Meshtastic nodes the home base heard in the last two hours. Tap one to add it as a tracker.' : 'No other Meshtastic nodes heard lately. Put the tracker on your private channel first: send “channel” to the home base for the link.'}
@@ -207,20 +224,19 @@ export default function Trackers() {
                 icon="plus"
                 title={h.name || h.node}
                 detail={[h.node, h.at ? `heard ${timeAgo(h.at)}` : null, h.hops != null ? (h.hops === 0 ? 'direct' : `${h.hops} hop${h.hops === 1 ? '' : 's'}`) : null, radioFacts(h)].filter(Boolean).join(' · ')}
-                onPress={() => setAdding({ node: h.node, name: h.name ?? '', kind: 'person', carriedBy: '' })}
+                onPress={() => setAdding({ node: h.node, name: h.name ?? '', kind: 'carried', carriedBy: '' })}
               />
               {adding?.node === h.node ? (
                 <GroupBody>
                   <Field label="Name on the map" value={adding.name} onChangeText={(name) => setAdding({ ...adding, name })} placeholder="Leo’s tracker, Honda CR-V…" autoFocus maxLength={40} />
                   <Pills
                     options={[
-                      { value: 'person' as Kind, label: '🎒 Someone carries it' },
-                      { value: 'car' as Kind, label: '🚗 It’s in a car' },
+                      ...TRACKER_KINDS.map((k) => ({ value: k.mode, label: `${k.emoji} ${k.label}` })),
                     ]}
                     value={adding.kind}
-                    onChange={(kind) => setAdding({ ...adding, kind, carriedBy: kind === 'car' ? '' : adding.carriedBy })}
+                    onChange={(kind) => setAdding({ ...adding, kind, carriedBy: kind === 'carried' ? adding.carriedBy : '' })}
                   />
-                  {adding.kind === 'person' ? pickPerson(adding.carriedBy, (carriedBy) => setAdding({ ...adding, carriedBy })) : null}
+                  {adding.kind === 'carried' ? pickPerson(adding.carriedBy, (carriedBy) => setAdding({ ...adding, carriedBy })) : null}
                   <View style={{ flexDirection: 'row', gap: 10 }}>
                     <Button title="Cancel" variant="ghost" onPress={() => setAdding(null)} style={{ flex: 1 }} />
                     <Button
@@ -231,7 +247,7 @@ export default function Trackers() {
                       onPress={() => {
                         const name = adding.name.trim();
                         const who = adding.carriedBy ? client.members.get(adding.carriedBy)?.name : null;
-                        send([`add ${adding.node} ${name}${adding.kind === 'car' ? ' as car' : ''}`, ...(who ? [`link ${adding.node} to ${who}`] : [])]);
+                        send([`add ${adding.node} ${name}${adding.kind === 'carried' ? '' : ` as ${adding.kind}`}`, ...(who ? [`link ${adding.node} to ${who}`] : [])]);
                       }}
                       style={{ flex: 1 }}
                     />

@@ -59,7 +59,7 @@ const WHERE_FRESH_MS = 2 * 3600_000;
 
 /** Who you'd chirp (one person, or everyone else) that's probably in class right now, by what this phone last heard. */
 export function inClassNow(client: CircleClient, to: string | null): string[] {
-  const ids = to ? [to] : client.memberList().filter((m) => !m.isMe && !m.removed).map((m) => m.id);
+  const ids = to ? [to] : client.peopleList().filter((m) => !m.isMe && !m.removed).map((m) => m.id);
   return ids.filter((id) => {
     const loc = client.locations.get(id);
     return !!loc && Date.now() - loc.ts < WHERE_FRESH_MS && inClass(client, id, loc);

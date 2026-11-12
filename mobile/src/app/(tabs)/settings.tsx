@@ -18,6 +18,7 @@ import { buildNumber } from '../../../modules/hc-attention/src/HcAttentionModule
 import { locationProfileOf, useSettings } from '../../lib/storage';
 import { STOP_NAMES, type Stop } from '../../lib/locationPolicy';
 import { useCircle } from '../../lib/useCircle';
+import { circleCount } from '../../lib/trackers';
 import { useTheme } from '../../theme';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -30,7 +31,6 @@ export default function SettingsTab() {
   const settings = useSettings();
   const me = client.me;
   const circle = client.circle.name;
-  const people = client.memberList().length;
   const agent = client.agent;
   const invited = client.agentInvited;
   const myChirp = settings.myChirp ?? me?.chirp ?? null;
@@ -74,7 +74,7 @@ export default function SettingsTab() {
       </Pressable>
 
       <SettingsGroup title="Circle">
-        <SettingsRow icon="users" title={circle} detail={`${people === 1 ? '1 person' : `${people} people`}${client.isAdmin ? ' · invite, history, members' : ' · people, history, leave'}`} href="/settings/circle" />
+        <SettingsRow icon="users" title={circle} detail={`${circleCount(client)}${client.isAdmin ? ' · invite, history, members' : ' · people, history, leave'}`} href="/settings/circle" />
         <SettingsRow
           icon="grid"
           title="Features"

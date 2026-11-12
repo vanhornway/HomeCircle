@@ -20,7 +20,7 @@ export default function MarkElder() {
   const client = useCircle(EVENTS);
   const [page, setPage] = useState<'care' | 'grandkids'>('care');
   const [busy, setBusy] = useState<string | null>(null);
-  const candidates = client.memberList().filter((m) => !m.isMe && m.role !== 'owner' && client.memberRecord(m.id)?.skin !== 'elderly');
+  const candidates = client.peopleList().filter((m) => !m.isMe && m.role !== 'owner' && client.memberRecord(m.id)?.skin !== 'elderly');
 
   const mark = (id: string, name: string, admin: boolean) => {
     const go = () => {

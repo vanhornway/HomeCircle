@@ -7,6 +7,7 @@ import { ADD_BUTTON_SPACE, AddButton, useAddButtonScroll, Avatar, Button, EmptyS
 import { HelperAvatar } from '../../components/HelperAvatar';
 import { ServerBanner } from '../../components/ServerBanner';
 import { initials, useAllCircles } from '../../lib/useCircle';
+import { circleCount, homeBaseOf } from '../../lib/trackers';
 import { unreadIn } from '../../lib/unread';
 import { useSettings } from '../../lib/storage';
 import { previewText } from '../../lib/polls';
@@ -63,7 +64,7 @@ export default function Chats() {
       client: c,
       peer: null,
       title: c.circle.name,
-      subtitle: `Group · ${c.memberList().length} ${c.memberList().length === 1 ? 'member' : 'members'}`,
+      subtitle: `Group · ${circleCount(c)}`,
       helper: false,
       color: null,
       last: lastOf(c, null),
@@ -176,7 +177,9 @@ export default function Chats() {
               </View>
               <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
                 {clients.map((c) => {
-                  const others = c.memberList().filter((m) => !m.isMe);
+                  // People, and the home base for admins (its commands); trackers don't read messages.
+                  const home = c.isAdmin ? homeBaseOf(c) : null;
+                  const others = c.memberList().filter((m) => !m.isMe && (!c.isDevice(m.id) || m.id === home?.id));
                   return (
                     <View key={c.accountKey}>
                       <Text style={{ color: t.muted, fontSize: 14, fontWeight: '700', marginHorizontal: 18, marginTop: 12, marginBottom: 4 }}>

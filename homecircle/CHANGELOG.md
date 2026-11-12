@@ -2,6 +2,32 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.26.0
+
+- Tracker settings in the app: how often trackers send their position and
+  battery, for every tracker or one of them (Trackers → Settings for all
+  trackers, or a tracker's own Settings). The home base puts them on each
+  tracker over the radio, once a tracker has the home base's key as its admin
+  key; Trackers shows the key and how to add it.
+- The tracker's button (SenseCAP T1000-E with HomeCircle's firmware): 1 press
+  answers a check-in, 2 shares where it is, 3 asks to be picked up, 4 says
+  it's on its way home, 5 is SOS. Each sends a message you can change, and
+  Learn more on Trackers explains them.
+- A tracker can be someone's, or in a car, on a pet, in luggage or on keys,
+  and you can change that or who has it at any time.
+- Add a tracker by scanning its Share contact QR code from the Meshtastic
+  app, or by pasting its link. Picking a node the home base hears and typing
+  "add !id Name" to Home base still work.
+- Locate on a tracker answers in your chat with it: where it is now, with a
+  map link, or that it has no GPS fix yet.
+- Chirps and check-ins reach trackers reliably: the home base sends each
+  tracker its key.
+- Trackers are counted apart from people, "Chirp everyone" leaves them out,
+  and people's settings (family names, profiles, admin) aren't offered for
+  them.
+- The home base firmware in `devices/meshtastic` needs updating for these
+  features, and so does the T1000-E firmware for the button.
+
 ## 0.25.1
 
 - The home base reports every minute, since it's plugged in or on solar.

@@ -21,7 +21,7 @@ import { initials, useAllCircles, useCircle } from '../../lib/useCircle';
 import { chirpWithChoice } from '../../lib/chirp';
 import { canLocate, everyoneCoolingDown, isAsking, memberState, locatePerson, locateState, lowBattery, refreshEveryone, settingWarning, statusLine, useLocateVersion } from '../../lib/people';
 import { DEFAULT_SETTINGS, getSettings } from '../../lib/storage';
-import { carriedFallback, trackerEmoji, trackerOf } from '../../lib/trackers';
+import { carriedFallback, circleCount, trackerEmoji, trackerOf } from '../../lib/trackers';
 import { edgeChips, groups, openingFrame } from '../../lib/mapFrame';
 import { usePlaceNames } from '../../lib/weather';
 import { useTheme } from '../../theme';
@@ -119,6 +119,9 @@ export default function MapTab() {
       },
     ];
   });
+  // The drawer: people first, then trackers, and a count that tells them apart (read before the memo below).
+  const drawerMembers = [...members.filter((m) => !client.isDevice(m.id)), ...members.filter((m) => client.isDevice(m.id))];
+  const countLine = circleCount(client).replace(/ people| person/, '');
   const membersKey = JSON.stringify(mapMembersRaw);
   const mapMembers = useMemo(() => JSON.parse(membersKey) as MapMember[], [membersKey]);
   // Where each person's pin is: their phone, or the tracker they carry.
@@ -334,7 +337,7 @@ export default function MapTab() {
         header={
           <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 8 }}>
             <Text style={{ flex: 1, color: t.text, fontSize: 20, fontWeight: '700' }}>
-              People{members.length > 1 ? <Text style={{ color: t.muted, fontWeight: '600' }}> · {members.length}</Text> : null}
+              People{members.length > 1 ? <Text style={{ color: t.muted, fontWeight: '600' }}> · {countLine}</Text> : null}
             </Text>
             {anySharing ? (
               <View style={{ marginRight: 8 }}>
@@ -361,7 +364,7 @@ export default function MapTab() {
         }
       >
         <FlatList
-          data={members}
+          data={drawerMembers}
           keyExtractor={(m) => m.id}
           contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 24 }}
           ListEmptyComponent={

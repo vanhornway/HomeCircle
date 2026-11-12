@@ -50,7 +50,7 @@ export default function Diagnostics() {
 
   const client = getClient();
   const me = client.me;
-  const admins = client.memberList().filter((m) => !m.isMe && (m.role === 'owner' || m.role === 'admin'));
+  const admins = client.peopleList().filter((m) => !m.isMe && (m.role === 'owner' || m.role === 'admin'));
   const s = entries ? summarize(entries) : null;
   const header = `HomeCircle diagnostics from ${me?.name ?? 'this phone'} (${client.circle.name})`;
 

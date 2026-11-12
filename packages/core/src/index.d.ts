@@ -58,8 +58,11 @@ export interface PhotoRef {
 }
 
 /** How a tracker reports: minutes between reports while moving and while still, quiet hours, SOS on or off. */
+export type TrackerMode = 'carried' | 'car' | 'pet' | 'luggage' | 'keys' | 'other';
+
 export interface TrackerSettings {
-  mode: 'car' | 'carried';
+  /** What it's for: carried by someone (`carriedBy`), in a car, on a pet, in luggage, on keys, or something else. */
+  mode: TrackerMode;
   moving: number;
   still: number;
   quiet: { from: string; to: string } | null;
@@ -68,9 +71,22 @@ export interface TrackerSettings {
   node: string | null;
   /** The member who carries this tracker: their pin falls back to it when their phone is quiet. */
   carriedBy: string | null;
+  /** A Meshtastic tracker's own settings, where an admin chose them; null follows the circle's. */
+  custom: TrackerCustom | null;
 }
 
-/** What a Meshtastic home base says about itself: when it last checked in, the nodes it hears, its trackers. */
+/** One Meshtastic tracker's own settings: only what differs from the circle's (null fields follow the circle). */
+export interface TrackerCustom {
+  /** Minutes between positions while moving, 1 to 60. */
+  moving: number | null;
+  /** Minutes between positions otherwise, 5 to 720. */
+  still: number | null;
+  /** Minutes between battery reports, 0 (never) or 5 to 720. */
+  battery: number | null;
+  /** Its own message for 1 to 5 presses ("1"…"5"). */
+  presses: Partial<Record<'1' | '2' | '3' | '4' | '5', string>> | null;
+}
+
 /** What a home base's radio knows about a node it hears. */
 export interface MeshNodeRadio {
   /** When it was last heard. */
@@ -109,8 +125,12 @@ export interface HomeBaseStatus {
   } | null;
   gps: { fix: boolean; sats: number | null; hdop: number | null } | null;
   heard: ({ node: string; name: string | null } & MeshNodeRadio)[];
-  /** Its trackers: `at` is their last position on the map; `radio` what the radio last heard from them. */
-  trackers: { node: string; member: string; at: number | null; radio: MeshNodeRadio | null }[];
+  /** Its trackers: `at` is their last position on the map; `radio` what the radio last heard from them; `settings` whether HomeCircle's settings are on the tracker. */
+  trackers: { node: string; member: string; at: number | null; radio: MeshNodeRadio | null; settings: 'set' | 'sending' | 'needs-key' | null }[];
+  /** Its Meshtastic public key (base64): a tracker with it as an admin key takes settings from the home base. */
+  key: string | null;
+  /** The link (meshtastic.org/e/#…) that puts a tracker on the circle's private channel, opened in the Meshtastic app. */
+  channel: string | null;
 }
 
 /** Admin settings about one member (her skin and Elderly Companion settings, someone's he/she). */
@@ -542,7 +562,7 @@ export type PrayerSlot = { id: PrayerId; name: string; until: string; date: stri
 export function prayerNow(days: { date: string; times: PrayerTimes }[], now?: number): { current: PrayerSlot | null; next: PrayerSlot | null };
 
 /** A plugin's settings, as an admin sees them. */
-export type PluginField = { id: string; label: string; secret?: boolean; optional?: boolean; placeholder?: string; help?: string; numeric?: boolean };
+export type PluginField = { id: string; label: string; secret?: boolean; optional?: boolean; placeholder?: string; help?: string; numeric?: boolean; /** Shown on a screen of its own, not in the plugin's form ("trackers": Meshtastic tracker settings). */ section?: string };
 export type PluginSettings = {
   fields: PluginField[];
   values: Record<string, string | { set: boolean }>;
@@ -635,6 +655,12 @@ export class CircleClient {
   denyRejoin(id: string): Promise<unknown>;
   refresh(): Promise<unknown>;
   memberList(): Member[];
+  /** A tracker or a Meshtastic home base rather than a person (from the admin's record about it). */
+  isDevice(memberId: string): boolean;
+  /** Members who are people: not trackers or a home base. */
+  peopleList(): Member[];
+  /** Trackers and home bases. */
+  deviceList(): Member[];
   fetchLocations(): Promise<Map<string, MemberLocation>>;
   shareLocation(loc: {
     lat: number;

@@ -26,7 +26,7 @@ export default function ElderTiles() {
   if (!her) return null;
   const order = client.memberRecord(member)?.tiles ?? [];
   const people = client
-    .memberList()
+    .peopleList()
     .filter((m) => m.id !== member)
     .sort((a, b) => (order.includes(a.id) ? order.indexOf(a.id) : order.length) - (order.includes(b.id) ? order.indexOf(b.id) : order.length));
 

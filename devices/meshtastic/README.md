@@ -21,12 +21,19 @@ server can be anywhere: Render, a VPS, or at home.
   channel once, in the Meshtastic app.
 - **Each tracker is its own pin**, named by an admin: "Leo's tracker",
   "Honda CR-V". It is a member of the circle, and the home base holds its keys.
+  It's for someone (who has it), or a car, a pet, luggage, keys or something
+  else, which an admin can change in the app at any time. The app counts
+  trackers apart from people and doesn't offer them people's settings.
 - **When someone's phone goes quiet**, the home base asks the tracker they
   carry for a fresh position over the mesh.
 - **An SOS** from a tracker (a text with "SOS" or the alert bell) becomes an
-  SOS in the circle. "OK" or "safe" ends it. On a SenseCAP T1000-E with the
-  HomeCircle build, **press the button 5 times** (up to 2 s apart): a long
-  beep means the SOS went out; 5 presses again end it.
+  SOS in the circle. "OK" or "safe" ends it.
+- **The button means something** on a SenseCAP T1000-E with the HomeCircle
+  build: 1 to 5 presses, up to 2 s apart (see "The tracker's button" below).
+  5 presses are an SOS; a long beep means it went out.
+- **Settings from the app:** how often trackers send their position and
+  battery, for all of them or one, and what each number of presses says.
+  The home base puts the intervals on each tracker over the radio.
 - **The app's buttons reach the tracker:**
   - **Locate** asks it for a position over the mesh.
   - **Chirp** and **Ask to check in** make it beep. Its "OK" answers the
@@ -61,7 +68,7 @@ server can be anywhere: Render, a VPS, or at home.
 |---|---|---|
 | **Heltec WiFi LoRa 32 V4** | the home base: indoors, on USB power and Wi-Fi, with a good antenna | `heltec-v4-homebase` |
 | Any Meshtastic tracker: SenseCAP T1000-E, Heltec Wireless Tracker, LilyGO T-Beam or T-Echo, RAK… | carried by a person or kept in a car | stock Meshtastic |
-| SenseCAP T1000-E (optional) | stock Meshtastic plus a 5-press SOS | `tracker-t1000-e-homecircle` (a `.uf2`: copy it onto the T1000-E drive in update mode) |
+| SenseCAP T1000-E (optional) | stock Meshtastic plus HomeCircle's button: 1 to 5 presses | `tracker-t1000-e-homecircle` (a `.uf2`: copy it onto the T1000-E drive in update mode) |
 | Heltec Wireless Tracker (optional) | a tracker that seals at the source and also reports over Wi-Fi | `heltec-wireless-tracker-homecircle` |
 
 ## Building and flashing the home base
@@ -127,11 +134,23 @@ The firmware is GPL-3.0, because Meshtastic is. The module files say so.
    - It keeps the tracker on the home base's frequency, so other people's
      nodes still relay for it.
    - That is the only time the tracker needs a phone.
-2. **In HomeCircle, message Home base:**
-   - `list`: shows nodes it can hear, with their ids.
-   - `add !a1b2c3d4 Leo's tracker`, or `add !0badcafe Honda CR-V as car`.
-   - `link Leo's tracker to Leo`: whose tracker it is. When Leo's phone goes
-     quiet, the home base asks this tracker where it is.
+2. **Add it in HomeCircle**, whichever way is easiest:
+   - **Its QR code:** Trackers → Add a tracker with its QR code. In the
+     Meshtastic app, open the tracker and choose Share contact. Scan its QR
+     code, or paste its link. HomeCircle fills in its node id and name, and
+     then shows the channel QR code and the home base's key to put on the
+     tracker.
+   - **Heard nearby:** Trackers lists the nodes the home base hears. Tap one.
+   - **In the chat with Home base:**
+     - `list`: shows the nodes it can hear, with their ids.
+     - `add !a1b2c3d4 Leo's tracker`, `add !0badcafe Honda CR-V as car`, or
+       `add https://meshtastic.org/v/#… as pet` (the Share contact link).
+       Kinds: car, pet, luggage, keys, other. With none, someone carries it.
+     - `link Leo's tracker to Leo`: whose tracker it is. When Leo's phone
+       goes quiet, the home base asks this tracker where it is.
+
+   A Share contact link also gives the home base the tracker's key, so it
+   can send the tracker its settings before it has even heard it.
 
 **More commands:**
 
@@ -142,22 +161,56 @@ The firmware is GPL-3.0, because Meshtastic is. The module files say so.
 | `remove Name` | Takes the tracker out of the circle |
 | `channel` | The link that puts a tracker on the private channel |
 | `status` | Shows the circle, how many trackers, and whether Home base is an admin |
-| `gps` | Where the home base is (if it has a GPS module, like the Heltec V4's L76K), how good the fix is, the satellites it can see by system with their signal, and a map link. It also puts Home base on the map, refreshed hourly while it has a fix |
+| `gps` | Where the home base is (if it has a GPS module, like the Heltec V4's L76K), how good the fix is, the satellites it can see by system with their signal, and a map link. It also puts Home base on the map, refreshed every 10 minutes while it has a fix |
 
 Anyone can ask for `list` and `status`; only admins can change trackers.
 
-**Settings on the tracker,** in the Meshtastic app:
-- Smart position on.
-- A position interval to taste: every 15 minutes is the default, shorter
-  for a child out alone.
-- On the T1000-E, its button's alert set to send a message containing
-  "SOS".
+**Let the home base set the tracker,** once per tracker, in the Meshtastic
+app: connect to the tracker, open Settings → Security, and add the home
+base's public key as an Admin key. Settings → Circle → Trackers shows the key
+with a copy button when a tracker still needs it. From then on the home base
+puts HomeCircle's settings on it over the radio (Meshtastic remote admin,
+encrypted to the tracker's key):
+- GPS on, smart position on.
+- A position at most every N minutes while moving (2 by default) and every
+  M minutes otherwise (15).
+- A battery report every K minutes (30), so the app shows its battery.
+- The buzzer on for the alert bell, so Chirp and Ask to check in beep.
+- Meshtastic's 3-press "GPS off" turned off.
+
+It sends them once, when they change in the app. A change made on the tracker
+itself, in the Meshtastic app, stays until the app's settings change again.
+
+## The tracker's button
+
+On a SenseCAP T1000-E with the HomeCircle build (`tracker-t1000-e-homecircle`),
+press the button 1 to 5 times, no more than 2 s apart. It beeps once for
+each press it counts.
+
+| Presses | Means | What the circle gets (editable in the app) |
+|---|---|---|
+| 1 | I'm OK | Answers "Ask to check in" when the tracker beeped for one: "✅ I'm OK". On its own it sends nothing, so a bump in a pocket stays quiet |
+| 2 | Here's where I am | "📍 Here's where I am" and a fresh position |
+| 3 | Come pick me up | "🚗 Please come pick me up" and a fresh position, as an urgent alert |
+| 4 | On my way home | "🏠 I'm on my way home" and a fresh position |
+| 5 | SOS | An SOS on everyone's phone with "🆘 I need help". 5 presses again send "I'm safe" and end it |
+| hold | Off or on | Meshtastic's own |
+
+The tracker only counts: it sends `#press N` on the private channel as data, not a text, so other trackers don't beep (with
+its position for 2 to 4), and the home base sends the message. So the
+messages live in the app: Trackers → Settings for all trackers, or one
+tracker's own settings. The HomeCircle build takes over Meshtastic's own
+2, 3 and 4 press gestures (send a position, GPS on or off, mute).
 
 ## In the app
 
 - **Settings → your circle → Trackers:**
-  - Shows the home base (online or offline, when it last checked in) and each
-    tracker: who carries it, its last position, and how many hops away it is.
+  - Shows the home base (online or offline, its power, Wi-Fi and GPS) and
+    each tracker: who carries it, its last position, how many hops away it
+    is, its battery and signal, and whether its settings are on it.
+  - **Settings for all trackers** and each tracker's **Settings** (its own,
+    or the same as every tracker): position and battery intervals, and the
+    message for each number of presses. Learn more explains the button.
   - Admins can add a tracker from the nodes the home base hears (name, a car
     or someone carrying it, and who), rename it, change who carries it, or
     remove it.
@@ -174,8 +227,8 @@ Anyone can ask for `list` and `status`; only admins can change trackers.
 
 | In the app | What the home base does |
 |---|---|
-| Locate | Asks the tracker for its position over the mesh and traces its path |
-| Chirp | Sends it a message with the alert bell: it beeps |
+| Locate | Asks the tracker for its position over the mesh and traces its path. The new position shows on the map, and the tracker answers in your chat with it ("📍 Here now…" with a map link), or says it hasn't answered after 3 minutes |
+| Chirp | Sends it a message with the alert bell: it beeps. "Chirp everyone" is for people and leaves trackers out |
 | Ask to check in | Makes it beep and asks for its position. "OK" from the tracker sends you "✅ I'm OK" |
 | Alert me when they arrive or leave | Works as for phones: the home base checks each position against the circle's places |
 
@@ -184,9 +237,14 @@ How these reach the home base:
   the server which home base keeps it (`PUT /members/me/keeper`). The server
   queues requests for that tracker, and the home base collects them every
   few seconds (`GET /keeper/pending`).
-- **The tracker must beep for messages.** In the Meshtastic app on the
-  tracker, turn on External notification with a buzzer for messages or for
-  the alert bell.
+- **The tracker must know the home base's key.** Chirps and check-ins are
+  direct messages, encrypted from the home base's key to the tracker's. The
+  home base sends its key straight to each tracker when it's added, and again
+  every 12 hours. A tracker that never heard it can't open them.
+- **The tracker must beep for messages.** The home base turns on the buzzer
+  for the alert bell with the tracker's settings. On a tracker that doesn't
+  take settings yet, turn on External notification with a buzzer in the
+  Meshtastic app.
 - **The path** is traced when you tap Locate, and every 30 minutes while
   the tracker reports. It goes into the tracker's sealed location, so the
   server can't read it.

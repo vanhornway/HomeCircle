@@ -90,7 +90,7 @@ export function PluginSetup({ client, id }: { client: CircleClient; id: string }
 
   return (
     <View style={{ paddingHorizontal: 14, paddingBottom: 14, gap: 4 }}>
-      {info.fields.map((f) => (
+      {info.fields.filter((f) => !f.section).map((f) => (
         <View key={f.id}>
           <Field
             label={f.label}

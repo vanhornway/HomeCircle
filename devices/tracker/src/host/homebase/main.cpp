@@ -13,6 +13,10 @@
 //   selfgps LAT LNG SATS HDOP       the home base's own GPS fix
 //   nmea SENTENCE                   a line from its GPS module
 //   whoami                          the home base's member id
+//   configured !id set|needs-key|failed   a tracker's answer to its settings
+//   nofix !id                       a tracker answered a position request without a position
+//   (tick also prints "configure !id MOVING STILL BATTERY" for settings sent, in seconds,
+//   and "introduce !id" when it sends a tracker its key)
 #include <cstdio>
 #include <iostream>
 #include <map>
@@ -31,6 +35,12 @@ struct FakeRadio : hc::Radio {
     for (auto& kv : heard) out.push_back(kv.second);
   }
   std::string channelLink() override { return "https://meshtastic.org/e/#TEST"; }
+  std::vector<std::pair<uint32_t, hc::TrackerConfig>> configs;
+  bool configure(uint32_t node, const hc::TrackerConfig& c) override {
+    configs.push_back({node, c});
+    return true;
+  }
+  std::string publicKey() override { return "vF3zUvwXwuAElnZ54StHuwcop/EZIIeu0IOKOnbiyA4="; }
   // A home base on mains power with good Wi-Fi.
   bool selfInfo(hc::SelfInfo& out) override {
     out.plugged = true;
@@ -50,6 +60,10 @@ struct FakeRadio : hc::Radio {
   }
   const hc::GnssSky* sky() override { return &skyView; }
   std::vector<uint32_t> traced;
+  std::vector<uint32_t> introduced;
+  void introduce(uint32_t node) override { introduced.push_back(node); }
+  std::vector<hc::Bytes> contacts;
+  void addContact(const hc::Bytes& c) override { contacts.push_back(c); }
   void traceroute(uint32_t node) override { traced.push_back(node); }
   std::string nodeName(uint32_t num) override {
     auto h = heard.find(num);
@@ -161,6 +175,14 @@ int main(int argc, char** argv) {
         }
         hb.onRoute(node, back, snr);
       }
+    } else if (cmd == "nofix") {
+      uint32_t node;
+      if (hc::parseNodeId(rest(line, 1), node)) hb.onNoFix(node);
+    } else if (cmd == "configured") {
+      uint32_t node;
+      std::string args = rest(line, 1), what = rest(line, 2);
+      if (hc::parseNodeId(args.substr(0, args.find(' ')), node))
+        hb.onConfigured(node, what == "set" ? hc::ConfigResult::Set : what == "needs-key" ? hc::ConfigResult::NeedsKey : hc::ConfigResult::Failed);
     } else if (cmd == "mesh") {
       hc::Bytes b;
       if (hc::fromB64(rest(line, 1), b)) hb.onMeshPacket(b);
@@ -175,6 +197,12 @@ int main(int argc, char** argv) {
       radio.alerts.clear();
       for (uint32_t n : radio.traced) printf("trace %s\n", hc::nodeId(n).c_str());
       radio.traced.clear();
+      for (uint32_t n : radio.introduced) printf("introduce %s\n", hc::nodeId(n).c_str());
+      for (auto& c : radio.contacts) printf("contact %u bytes\n", (unsigned)c.size());
+      radio.contacts.clear();
+      radio.introduced.clear();
+      for (auto& c : radio.configs) printf("configure %s %d %d %d\n", hc::nodeId(c.first).c_str(), c.second.movingS, c.second.stillS, c.second.batteryS);
+      radio.configs.clear();
       if (!hb.log.empty()) printf("log: %s\n", hb.log.c_str());
     } else {
       printf("unknown command\n");

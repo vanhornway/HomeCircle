@@ -21,6 +21,7 @@
 #include "PowerStatus.h"
 #include "airtime.h"
 #include "main.h"
+#include "mesh/generated/meshtastic/admin.pb.h"
 #include "mesh/generated/meshtastic/apponly.pb.h"
 #include "mesh/mesh-pb-constants.h"
 #if !MESHTASTIC_EXCLUDE_GPS
@@ -35,6 +36,7 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <esp_mac.h>
+#include <algorithm>
 #include <map>
 #include <math.h>
 #include <sodium.h>
@@ -54,7 +56,28 @@ namespace
 const char *CHANNEL = "HomeCircle";
 const uint32_t PORTAL_MS = 30 * 60 * 1000;
 
+bool startConfig(uint32_t node, const hc::TrackerConfig &c);
+void sendKeyTo(uint32_t node);
+
 struct MeshRadio : hc::Radio {
+    bool configure(uint32_t node, const hc::TrackerConfig &c) override { return startConfig(node, c); }
+    void introduce(uint32_t node) override { sendKeyTo(node); }
+    void addContact(const hc::Bytes &raw) override
+    {
+        meshtastic_SharedContact c = meshtastic_SharedContact_init_zero;
+        if (pb_decode_from_bytes(raw.data(), raw.size(), &meshtastic_SharedContact_msg, &c) && c.node_num && c.has_user) {
+            nodeDB->addFromContact(c);
+            LOG_INFO("HomeCircle home base: added %08x from its contact", (unsigned)c.node_num);
+        }
+    }
+    std::string publicKey() override
+    {
+        if (config.security.public_key.size != 32)
+            return "";
+        char out[64];
+        sodium_bin2base64(out, sizeof out, config.security.public_key.bytes, 32, sodium_base64_VARIANT_ORIGINAL);
+        return out;
+    }
     void requestPosition(uint32_t node) override
     {
         if (homeBaseModule)
@@ -155,6 +178,287 @@ hcio::FsStore store;
 hcio::WifiHttp http;
 MeshRadio radio;
 hc::HomeBase hb(http, store, hcio::nowMs, radio);
+
+// --- settings onto a tracker (Meshtastic remote admin) ---------------------------------
+//
+// The tracker must list this node's public key as an admin key. Then: ask for
+// its device, position, telemetry and alert settings (the answers carry a
+// session key), change what HomeCircle manages, and send them back inside one
+// edit; the tracker's acknowledgement of the commit means they're on it.
+struct ConfigJob {
+    hc::TrackerConfig want;
+    uint32_t startedAt = 0;
+    uint32_t askAt = 0; // when to ask for its settings (after it has had time to learn our key)
+    bool asked = false;
+    uint32_t askedAt = 0;
+    int reasks = 0;
+    uint32_t sentAt = 0;
+    int checks = 0; // read-backs of its position settings after sending them
+    uint8_t passkey[8];
+    bool havePass = false, sent = false;
+    bool haveDevice = false, havePosition = false, haveTelemetry = false, haveAlerts = false;
+    meshtastic_Config_DeviceConfig device;
+    meshtastic_Config_PositionConfig position;
+    meshtastic_ModuleConfig_TelemetryConfig telemetry;
+    meshtastic_ModuleConfig_ExternalNotificationConfig alerts;
+    std::vector<uint32_t> ids; // our packets to it, for its error answers
+    uint32_t commitId = 0;
+};
+std::map<uint32_t, ConfigJob> configJobs;
+const uint32_t CONFIG_TIMEOUT_MS = 300 * 1000;
+const uint32_t KEY_FIRST_MS = 15 * 1000;
+
+uint32_t sendAdmin(uint32_t node, meshtastic_AdminMessage &m, bool wantResponse, bool wantAck)
+{
+    meshtastic_MeshPacket *p = router->allocForSending();
+    p->to = node;
+    p->decoded.portnum = meshtastic_PortNum_ADMIN_APP;
+    p->decoded.want_response = wantResponse;
+    p->want_ack = wantAck;
+    p->pki_encrypted = true; // only a tracker that trusts this node's key acts on it
+    p->channel = 0;
+    p->priority = meshtastic_MeshPacket_Priority_RELIABLE;
+    p->decoded.payload.size = pb_encode_to_bytes(p->decoded.payload.bytes, sizeof(p->decoded.payload.bytes), &meshtastic_AdminMessage_msg, &m);
+    uint32_t id = p->id;
+    service->sendToMesh(p);
+    return id;
+}
+
+void askSettings(uint32_t node, ConfigJob &job);
+
+// This node's user (its key included) straight to one node on the private
+// channel. Built here rather than with NodeInfoModule::sendOurNodeInfo, which
+// sends at most one node info every 10 minutes: a second tracker would miss it.
+void sendKeyTo(uint32_t node)
+{
+    int idx = homeBaseModule ? homeBaseModule->channelIndex() : -1;
+    meshtastic_MeshPacket *info = router->allocForSending();
+    info->to = node;
+    info->channel = idx >= 0 ? idx : channels.getPrimaryIndex();
+    info->decoded.portnum = meshtastic_PortNum_NODEINFO_APP;
+    info->decoded.want_response = false;
+    info->want_ack = false;
+    info->priority = meshtastic_MeshPacket_Priority_RELIABLE;
+    meshtastic_User me = owner;
+    strcpy(me.id, nodeDB->getNodeId().c_str());
+    info->decoded.payload.size = pb_encode_to_bytes(info->decoded.payload.bytes, sizeof(info->decoded.payload.bytes), &meshtastic_User_msg, &me);
+    service->sendToMesh(info);
+    LOG_INFO("HomeCircle home base: sent %08x this node's key", (unsigned)node);
+}
+
+bool startConfig(uint32_t node, const hc::TrackerConfig &c)
+{
+    meshtastic_NodeInfoLite *n = nodeDB->getMeshNode(node);
+    if (!n || n->user.public_key.size != 32)
+        return false; // its key comes with its node info: wait until it has been heard
+    ConfigJob &job = configJobs[node];
+    job = ConfigJob();
+    job.want = c;
+    job.startedAt = millis();
+    // Admin messages are encrypted from this node's key to the tracker's: the
+    // tracker can only open them if it knows our key, which comes with our
+    // node info. Ours goes out on the public channel, which a tracker on the
+    // private one doesn't hear, so send it straight to the tracker first.
+    sendKeyTo(node);
+    job.askAt = millis() + KEY_FIRST_MS;
+    LOG_INFO("HomeCircle home base: sent %08x this node's key; asking for its settings shortly", (unsigned)node);
+    return true;
+}
+
+// Asks for whichever of its four settings haven't come back yet.
+void askSettings(uint32_t node, ConfigJob &job)
+{
+    job.asked = true;
+    job.askedAt = millis();
+    meshtastic_AdminMessage m = meshtastic_AdminMessage_init_zero;
+    m.which_payload_variant = meshtastic_AdminMessage_get_config_request_tag;
+    if (!job.haveDevice) {
+        m.get_config_request = meshtastic_AdminMessage_ConfigType_DEVICE_CONFIG;
+        job.ids.push_back(sendAdmin(node, m, true, false));
+    }
+    if (!job.havePosition) {
+        m.get_config_request = meshtastic_AdminMessage_ConfigType_POSITION_CONFIG;
+        job.ids.push_back(sendAdmin(node, m, true, false));
+    }
+    m = meshtastic_AdminMessage_init_zero;
+    m.which_payload_variant = meshtastic_AdminMessage_get_module_config_request_tag;
+    if (!job.haveTelemetry) {
+        m.get_module_config_request = meshtastic_AdminMessage_ModuleConfigType_TELEMETRY_CONFIG;
+        job.ids.push_back(sendAdmin(node, m, true, false));
+    }
+    if (!job.haveAlerts) {
+        m.get_module_config_request = meshtastic_AdminMessage_ModuleConfigType_EXTNOTIF_CONFIG;
+        job.ids.push_back(sendAdmin(node, m, true, false));
+    }
+    LOG_INFO("HomeCircle home base: reading %08x's settings", (unsigned)node);
+}
+
+void sendConfig(uint32_t node, ConfigJob &job)
+{
+    job.sent = true;
+    auto withKey = [&](meshtastic_AdminMessage &m) {
+        m.session_passkey.size = 8;
+        memcpy(m.session_passkey.bytes, job.passkey, 8);
+    };
+    // What HomeCircle manages; everything else stays as it was on the tracker.
+    job.device.disable_triple_click = true; // 3 presses mean "come pick me up", not "GPS off"
+    job.position.gps_mode = meshtastic_Config_PositionConfig_GpsMode_ENABLED;
+    job.position.position_broadcast_smart_enabled = true;
+    job.position.broadcast_smart_minimum_interval_secs = job.want.movingS;
+    if (!job.position.broadcast_smart_minimum_distance)
+        job.position.broadcast_smart_minimum_distance = 100;
+    job.position.position_broadcast_secs = job.want.stillS;
+    job.telemetry.device_telemetry_enabled = job.want.batteryS > 0;
+    job.telemetry.device_update_interval = job.want.batteryS > 0 ? job.want.batteryS : 0;
+    job.alerts.enabled = true;
+    job.alerts.alert_bell_buzzer = true; // a text with the bell (Chirp, Ask to check in) beeps
+
+    meshtastic_AdminMessage m = meshtastic_AdminMessage_init_zero;
+    m.which_payload_variant = meshtastic_AdminMessage_begin_edit_settings_tag;
+    m.begin_edit_settings = true;
+    withKey(m);
+    job.ids.push_back(sendAdmin(node, m, false, false));
+
+    m = meshtastic_AdminMessage_init_zero;
+    m.which_payload_variant = meshtastic_AdminMessage_set_config_tag;
+    m.set_config.which_payload_variant = meshtastic_Config_device_tag;
+    m.set_config.payload_variant.device = job.device;
+    withKey(m);
+    job.ids.push_back(sendAdmin(node, m, false, false));
+
+    m = meshtastic_AdminMessage_init_zero;
+    m.which_payload_variant = meshtastic_AdminMessage_set_config_tag;
+    m.set_config.which_payload_variant = meshtastic_Config_position_tag;
+    m.set_config.payload_variant.position = job.position;
+    withKey(m);
+    job.ids.push_back(sendAdmin(node, m, false, false));
+
+    m = meshtastic_AdminMessage_init_zero;
+    m.which_payload_variant = meshtastic_AdminMessage_set_module_config_tag;
+    m.set_module_config.which_payload_variant = meshtastic_ModuleConfig_telemetry_tag;
+    m.set_module_config.payload_variant.telemetry = job.telemetry;
+    withKey(m);
+    job.ids.push_back(sendAdmin(node, m, false, false));
+
+    m = meshtastic_AdminMessage_init_zero;
+    m.which_payload_variant = meshtastic_AdminMessage_set_module_config_tag;
+    m.set_module_config.which_payload_variant = meshtastic_ModuleConfig_external_notification_tag;
+    m.set_module_config.payload_variant.external_notification = job.alerts;
+    withKey(m);
+    job.ids.push_back(sendAdmin(node, m, false, false));
+
+    m = meshtastic_AdminMessage_init_zero;
+    m.which_payload_variant = meshtastic_AdminMessage_commit_edit_settings_tag;
+    m.commit_edit_settings = true;
+    withKey(m);
+    job.commitId = sendAdmin(node, m, false, true); // its acknowledgement means the settings are on it
+    job.ids.push_back(job.commitId);
+    job.sentAt = millis();
+    LOG_INFO("HomeCircle home base: sent %08x its settings", (unsigned)node);
+}
+
+// An admin answer from a tracker we're setting up.
+void configAnswer(const meshtastic_MeshPacket &mp)
+{
+    auto it = configJobs.find(mp.from);
+    if (it == configJobs.end() || !it->second.asked)
+        return;
+    ConfigJob &job = it->second;
+    meshtastic_AdminMessage r = meshtastic_AdminMessage_init_zero;
+    if (!pb_decode_from_bytes(mp.decoded.payload.bytes, mp.decoded.payload.size, &meshtastic_AdminMessage_msg, &r))
+        return;
+    if (job.sent) {
+        if (r.which_payload_variant == meshtastic_AdminMessage_get_config_response_tag &&
+            r.get_config_response.which_payload_variant == meshtastic_Config_position_tag) {
+            const meshtastic_Config_PositionConfig &pos = r.get_config_response.payload_variant.position;
+            if (pos.position_broadcast_secs == (uint32_t)job.want.stillS &&
+                pos.broadcast_smart_minimum_interval_secs == (uint32_t)job.want.movingS) {
+                LOG_INFO("HomeCircle home base: %08x has its settings (read back)", (unsigned)mp.from);
+                configJobs.erase(it);
+                hb.onConfigured(mp.from, hc::ConfigResult::Set);
+            }
+        }
+        return;
+    }
+    if (r.session_passkey.size == 8) {
+        memcpy(job.passkey, r.session_passkey.bytes, 8);
+        job.havePass = true;
+    }
+    if (r.which_payload_variant == meshtastic_AdminMessage_get_config_response_tag) {
+        if (r.get_config_response.which_payload_variant == meshtastic_Config_device_tag) {
+            job.device = r.get_config_response.payload_variant.device;
+            job.haveDevice = true;
+        } else if (r.get_config_response.which_payload_variant == meshtastic_Config_position_tag) {
+            job.position = r.get_config_response.payload_variant.position;
+            job.havePosition = true;
+        }
+    } else if (r.which_payload_variant == meshtastic_AdminMessage_get_module_config_response_tag) {
+        if (r.get_module_config_response.which_payload_variant == meshtastic_ModuleConfig_telemetry_tag) {
+            job.telemetry = r.get_module_config_response.payload_variant.telemetry;
+            job.haveTelemetry = true;
+        } else if (r.get_module_config_response.which_payload_variant == meshtastic_ModuleConfig_external_notification_tag) {
+            job.alerts = r.get_module_config_response.payload_variant.external_notification;
+            job.haveAlerts = true;
+        }
+    }
+    if (job.havePass && job.haveDevice && job.havePosition && job.haveTelemetry && job.haveAlerts)
+        sendConfig(mp.from, job);
+}
+
+// A routing answer from a tracker: our commit acknowledged, or one of our admin packets refused.
+void configRouting(const meshtastic_MeshPacket &mp)
+{
+    auto it = configJobs.find(mp.from);
+    if (it == configJobs.end() || !mp.decoded.request_id)
+        return;
+    ConfigJob &job = it->second;
+    if (std::find(job.ids.begin(), job.ids.end(), mp.decoded.request_id) == job.ids.end())
+        return;
+    meshtastic_Routing r = meshtastic_Routing_init_zero;
+    if (!pb_decode_from_bytes(mp.decoded.payload.bytes, mp.decoded.payload.size, &meshtastic_Routing_msg, &r))
+        return;
+    meshtastic_Routing_Error e = r.which_variant == meshtastic_Routing_error_reason_tag ? r.error_reason : meshtastic_Routing_Error_NONE;
+    if (e == meshtastic_Routing_Error_ADMIN_PUBLIC_KEY_UNAUTHORIZED || e == meshtastic_Routing_Error_NOT_AUTHORIZED) {
+        LOG_INFO("HomeCircle home base: %08x doesn't have the home base's key as an admin key", (unsigned)mp.from);
+        configJobs.erase(it);
+        hb.onConfigured(mp.from, hc::ConfigResult::NeedsKey);
+    } else if (e != meshtastic_Routing_Error_NONE) {
+        LOG_INFO("HomeCircle home base: %08x refused its settings (error %d)", (unsigned)mp.from, (int)e);
+        configJobs.erase(it);
+        hb.onConfigured(mp.from, hc::ConfigResult::Failed);
+    } else if (mp.decoded.request_id == job.commitId) {
+        LOG_INFO("HomeCircle home base: %08x has its settings", (unsigned)mp.from);
+        configJobs.erase(it);
+        hb.onConfigured(mp.from, hc::ConfigResult::Set);
+    }
+}
+
+void configTimeouts()
+{
+    for (auto it = configJobs.begin(); it != configJobs.end();) {
+        ConfigJob &job = it->second;
+        if (!job.asked && (int32_t)(millis() - job.askAt) >= 0)
+            askSettings(it->first, job);
+        else if (job.asked && !job.sent && job.reasks < 2 && millis() - job.askedAt > 25 * 1000) {
+            job.reasks++; // some answers didn't come: ask for those again
+            askSettings(it->first, job);
+        } else if (job.sent && job.checks < 3 && millis() - job.sentAt > (uint32_t)(40 + 30 * job.checks) * 1000) {
+            // No acknowledgement yet: read its position settings back instead.
+            job.checks++;
+            meshtastic_AdminMessage m = meshtastic_AdminMessage_init_zero;
+            m.which_payload_variant = meshtastic_AdminMessage_get_config_request_tag;
+            m.get_config_request = meshtastic_AdminMessage_ConfigType_POSITION_CONFIG;
+            job.ids.push_back(sendAdmin(it->first, m, true, false));
+        }
+        if (millis() - it->second.startedAt > CONFIG_TIMEOUT_MS) {
+            uint32_t node = it->first;
+            it = configJobs.erase(it);
+            hb.onConfigured(node, hc::ConfigResult::Failed);
+        } else {
+            ++it;
+        }
+    }
+}
 
 bool started = false;
 bool configured = false; // in a circle, with home Wi-Fi: doing its job
@@ -331,6 +635,8 @@ std::string HomeBaseModule::channelLink()
 
 // --- the radio -----------------------------------------------------------------------
 
+std::map<uint32_t, uint32_t> positionAsks; // node -> our latest position request's id
+
 void HomeBaseModule::askPosition(uint32_t node)
 {
     meshtastic_MeshPacket *p = allocDataPacket();
@@ -343,6 +649,7 @@ void HomeBaseModule::askPosition(uint32_t node)
     p->decoded.payload.size = 0;
     p->want_ack = false;
     p->priority = meshtastic_MeshPacket_Priority_RELIABLE;
+    positionAsks[node] = p->id;
     service->sendToMesh(p);
     LOG_INFO("HomeCircle home base: asked %08x for a position", (unsigned)node);
 }
@@ -390,7 +697,7 @@ bool HomeBaseModule::wantPacket(const meshtastic_MeshPacket *p)
         return false;
     meshtastic_PortNum port = p->decoded.portnum;
     return port == meshtastic_PortNum_TEXT_MESSAGE_APP || port == meshtastic_PortNum_PRIVATE_APP || port == meshtastic_PortNum_POSITION_APP ||
-           port == meshtastic_PortNum_TRACEROUTE_APP;
+           port == meshtastic_PortNum_TRACEROUTE_APP || port == meshtastic_PortNum_ADMIN_APP || port == meshtastic_PortNum_ROUTING_APP;
 }
 
 ProcessMessage HomeBaseModule::handleReceived(const meshtastic_MeshPacket &mp)
@@ -403,10 +710,31 @@ ProcessMessage HomeBaseModule::handleReceived(const meshtastic_MeshPacket &mp)
         hb.onText(mp.from, std::string((const char *)pl.bytes, pl.size));
         break;
     case meshtastic_PortNum_PRIVATE_APP:
-        hb.onMeshPacket(hc::Bytes(pl.bytes, pl.bytes + pl.size));
+        // A HomeCircle tracker's button ("#press N", sent as data so other trackers don't beep),
+        // or a HomeCircle-firmware tracker's sealed packet.
+        if (pl.size > 7 && memcmp(pl.bytes, "#press ", 7) == 0)
+            hb.onText(mp.from, std::string((const char *)pl.bytes, pl.size));
+        else
+            hb.onMeshPacket(hc::Bytes(pl.bytes, pl.bytes + pl.size));
         break;
     case meshtastic_PortNum_POSITION_APP:
         lastPoll = 0; // the node database has it now: pass it on soon
+        break;
+    case meshtastic_PortNum_ADMIN_APP:
+        if (mp.to == nodeDB->getNodeNum())
+            configAnswer(mp);
+        break;
+    case meshtastic_PortNum_ROUTING_APP:
+        if (mp.to != nodeDB->getNodeNum())
+            break;
+        // A tracker with no GPS fix answers a position request with a routing message, not a position.
+        if (mp.decoded.request_id && positionAsks.count(mp.from) && positionAsks[mp.from] == mp.decoded.request_id && hb.isTracker(mp.from)) {
+            positionAsks.erase(mp.from);
+            LOG_INFO("HomeCircle home base: %08x has no GPS fix", (unsigned)mp.from);
+            hb.onNoFix(mp.from);
+            break;
+        }
+        configRouting(mp);
         break;
     case meshtastic_PortNum_TRACEROUTE_APP: {
         // The answer to our traceroute: route_back lists the relays the answer
@@ -613,6 +941,7 @@ int32_t HomeBaseModule::runOnce()
         pollPositions();
         lastPoll = millis();
     }
+    configTimeouts();
     if (hcio::online() && millis() - lastTick > 5000) {
         hb.tick();
         if (!hb.log.empty()) {

@@ -28,7 +28,7 @@ const setupToken = 'homebase-e2e-setup-code';
 const dir = mkdtempSync(join(tmpdir(), 'hc-homebase-'));
 
 const server = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', join(repo, 'server/src/index.js')], {
-  env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), DATA_DIR: join(dir, 'data'), SETUP_TOKEN: setupToken, PUSH_PROVIDER: 'none', LOAD_TEST: 'true', TRUST_PROXY: 'true' },
+  env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), DATA_DIR: join(dir, 'data'), SETUP_TOKEN: setupToken, PUSH_PROVIDER: 'none', LOAD_TEST: 'true', TRUST_PROXY: 'true', LOCATION_REQUEST_COOLDOWN_SECONDS: '1' },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let serverLog = '';
@@ -104,11 +104,12 @@ try {
   pass('the home base joins with an ordinary invite and becomes an admin');
 
   // Talking to it: Maya sends direct messages, the home base answers in the chat.
+  let askTick = [];
   const ask = async (text) => {
     const before = maya.messages.length;
     await maya.sendChat(text, { to: hbId });
     await radio('advance 21');
-    await radio('tick');
+    askTick = await radio('tick');
     for (let i = 0; i < 50; i++) {
       await maya._fetchMessages();
       const reply = maya.messages.slice(before).find((m) => m.from === hbId);
@@ -125,6 +126,7 @@ try {
 
   answer = await ask(`add ${TRACKER} Leo's tracker`);
   assert.match(answer, /Added Leo's tracker \(!a1b2c3d4\)/, answer);
+  assert.ok(askTick.includes(`introduce ${TRACKER}`), `it sends the new tracker its key: ${askTick.join(' | ')}`);
   await maya.refresh();
   const tracker = maya.memberList().find((m) => m.name === "Leo's tracker");
   assert.ok(tracker, 'the tracker is a member of its own, verified by the app');
@@ -244,11 +246,15 @@ try {
   await radio('advance 9');
   out = await radio('tick');
   assert.ok(out.includes(`request ${TRACKER}`), `Locate asks the tracker over the mesh: ${out.join(' | ')}`);
+  const beforeLocate = maya.messages.length;
   await radio(`position ${TRACKER} 37.63 -122.07 69`);
   await radio('tick');
   await maya.fetchLocations();
   assert.equal(maya.locations.get(tracker.id).lat, 37.63);
-  pass('Locate on the tracker asks it over the mesh, and the new position comes back');
+  await maya._fetchMessages();
+  const here = maya.messages.slice(beforeLocate).find((m) => m.from === tracker.id && m.to === maya.account.memberId);
+  assert.match(here?.body.text ?? '', /^📍 Here now · battery 69%\nhttps:\/\/www\.openstreetmap\.org\/\?mlat=37\.630000&mlon=-122\.070000/, 'and answers in Maya’s chat with it');
+  pass('Locate on the tracker asks it over the mesh; the new position comes back on the map and in the chat');
 
   // The radio path: Locate also traces the route; the answer goes onto the tracker's pin.
   assert.ok(out.includes(`trace ${TRACKER}`), `Locate traces the path: ${out.join(' | ')}`);
@@ -275,7 +281,37 @@ try {
   await radio('advance 9');
   out = await radio('tick');
   assert.ok(out.some((l) => l === `alert ${TRACKER} \\aMaya chirped you`), `a chirp beeps the tracker: ${out.join(' | ')}`);
-  pass('a chirp to the tracker makes it beep (the alert bell)');
+  await maya.chirp(null);
+  await radio('advance 9');
+  out = await radio('tick');
+  assert.ok(!out.some((l) => l.startsWith(`alert ${TRACKER}`)), `"Chirp everyone" is for people, not trackers: ${out.join(' | ')}`);
+  pass('a chirp to the tracker makes it beep (the alert bell); chirping everyone leaves trackers out');
+
+  // A Locate the tracker doesn't answer: the chat says so (Leo asks: Maya asked a moment ago).
+  await leo.refresh(); // so Leo's app has the tracker's keys
+  await leo.requestLocations([tracker.id]);
+  await radio('advance 9');
+  await radio('tick');
+  await leo._fetchMessages();
+  const beforeSilence = leo.messages.length;
+  await radio('advance 181');
+  await radio('tick');
+  await leo._fetchMessages();
+  const silence = leo.messages.slice(beforeSilence).find((m) => m.from === tracker.id && m.to === leo.account.memberId);
+  assert.match(silence?.body?.text ?? '', /^📡 No answer over the radio yet\. My last position is \d+ min ago\./);
+  // A tracker that answers without a position (no GPS fix, indoors): said at once.
+  await new Promise((r) => setTimeout(r, 1100)); // the server's Locate cooldown in this test
+  await maya.requestLocations([tracker.id]);
+  await radio('advance 9');
+  await radio('tick');
+  await maya._fetchMessages();
+  const beforeNoFix = maya.messages.length;
+  await radio(`nofix ${TRACKER}`);
+  await radio('tick');
+  await maya._fetchMessages();
+  const noFix = maya.messages.slice(beforeNoFix).find((m) => m.from === tracker.id && m.to === maya.account.memberId);
+  assert.match(noFix?.body?.text ?? '', /^📡 I heard you, but I don't have a GPS fix right now\./);
+  pass('a Locate the tracker doesn’t answer within 3 minutes is reported in the chat, and one it answers without a GPS fix at once');
 
   await maya.askToCheckIn(tracker.id);
   await radio('advance 9');
@@ -289,6 +325,67 @@ try {
   const ok = maya.messages.slice(beforeOk).find((m) => m.from === tracker.id);
   assert.equal(ok?.body.checkin, 'ok', 'Maya gets "I’m OK" from the tracker');
   pass('“Ask to check in” beeps the tracker; “OK” from it answers Maya’s check-in');
+
+  // Button presses: the HomeCircle tracker firmware says "#press N", and the
+  // home base sends the message for it (the circle's, or the tracker's own).
+  const saidByTracker = async (since) => {
+    await maya._fetchMessages();
+    return maya.messages.slice(since).filter((m) => m.from === tracker.id && m.kind === 'chat' && !m.to).map((m) => m.body.text);
+  };
+  let since = maya.messages.length;
+  await radio(`text ${TRACKER} #press 1`); // no check-in waiting: a bump in a pocket sends nothing
+  await radio(`text ${TRACKER} #press 2`);
+  await radio(`position ${TRACKER} 37.66 -122.09 66`);
+  await radio('tick');
+  assert.deepEqual(await saidByTracker(since), ['📍 Here’s where I am'], '2 presses: the default message');
+  await maya.fetchLocations();
+  assert.equal(maya.locations.get(tracker.id)?.lat, 37.66, 'with a fresh position, sent at once');
+  await maya.api.putPluginSettings('meshtastic', { quietMinutes: '45', traceMinutes: '0', sosWords: 'Mayday, SOS', press4: 'Heading home now' });
+  await maya.setMemberRecord(tracker.id, { tracker: { ...maya.memberRecord(tracker.id).tracker, custom: { still: 60, presses: { 3: 'Gate B, please' } } } });
+  await radio('advance 601'); // the plugin and each tracker's own settings are read every 10 minutes
+  out = await radio('tick');
+  assert.ok(out.includes(`configure ${TRACKER} 120 3600 1800`), `its own position interval goes onto the tracker: ${out.join(' | ')}`);
+  since = maya.messages.length;
+  await radio(`text ${TRACKER} #press 3`);
+  await radio('tick');
+  await radio(`text ${TRACKER} #press 4`);
+  await radio('tick');
+  assert.deepEqual(await saidByTracker(since), ['Gate B, please', 'Heading home now'], 'its own message for 3, the circle’s for 4');
+  const urgent = maya.messages.find((m) => m.body?.text === 'Gate B, please');
+  assert.ok(urgent, 'come pick me up arrives');
+  pass('button presses send the message for them: the tracker’s own, the circle’s, or the default');
+
+  // Its settings go onto the tracker over the radio once it trusts the home base's key.
+  await radio(`configured ${TRACKER} needs-key`);
+  await radio('advance 61');
+  await radio('tick');
+  await maya.fetchRecords();
+  let hbStatus = maya.memberRecord(hbId).homeBase;
+  assert.equal(hbStatus.trackers.find((x) => x.node === TRACKER)?.settings, 'needs-key', 'the app can say the tracker needs the key');
+  assert.equal(hbStatus.key, 'vF3zUvwXwuAElnZ54StHuwcop/EZIIeu0IOKOnbiyA4=', 'and show the key to add');
+  await radio(`configured ${TRACKER} set`);
+  await radio('advance 61');
+  out = await radio('tick');
+  await maya.fetchRecords();
+  hbStatus = maya.memberRecord(hbId).homeBase;
+  assert.equal(hbStatus.trackers.find((x) => x.node === TRACKER)?.settings, 'set');
+  await radio('advance 3600');
+  out = await radio('tick');
+  assert.ok(!out.some((l) => l.startsWith(`configure ${TRACKER}`)), 'set once: a change made on the tracker itself stays');
+  await maya.setMemberRecord(tracker.id, { tracker: { ...maya.memberRecord(tracker.id).tracker, mode: 'pet', carriedBy: null } });
+  await radio('advance 601');
+  await radio('tick');
+  assert.match(await ask('list'), /Leo's tracker \(!a1b2c3d4\), pet,/, 'the home base follows what an admin chose in the app');
+  answer = await ask(`rename ${TRACKER} to Leo's tag`);
+  await maya.fetchRecords();
+  assert.equal(maya.memberRecord(tracker.id).tracker.custom?.presses?.['3'], 'Gate B, please', 'renaming keeps its own settings');
+  assert.equal(maya.memberRecord(tracker.id).tracker.mode, 'pet', 'and what it is');
+  await maya.setMemberRecord(tracker.id, { tracker: { ...maya.memberRecord(tracker.id).tracker, mode: 'carried', carriedBy: leo.account.memberId } });
+  await radio('advance 601');
+  await radio('tick');
+  await ask(`rename ${TRACKER} to Leo's tracker`);
+  assert.equal(maya.memberRecord(tracker.id).tracker.carriedBy, leo.account.memberId, 'given back to Leo');
+  pass('settings go onto the tracker over the radio, once; without the home base’s key the app is told');
 
   // Arrived and left, worked out by the home base as a phone would.
   await maya.savePlace({ name: 'School', lat: 37.7, lng: -122.1, radius: 150 });
@@ -324,6 +421,37 @@ try {
   await maya.fetchRecords();
   assert.equal(maya.memberRecord(car.id)?.tracker?.mode, 'car');
   pass('trackers can be renamed, and a car is marked as one');
+
+  // Adding from the tracker's "Share contact" link (Meshtastic app → Share contact): a QR code in the app, or pasted here.
+  const varint = (n) => {
+    const out = [];
+    do {
+      let b = n % 128;
+      n = Math.floor(n / 128);
+      if (n) b |= 128;
+      out.push(b);
+    } while (n);
+    return out;
+  };
+  const field = (num, bytes) => [num * 8 + 2, ...varint(bytes.length), ...bytes];
+  const utf8 = (s) => [...Buffer.from(s, 'utf8')];
+  const user = [...field(1, utf8('!0c0ffee1')), ...field(2, utf8('Rex collar')), ...field(3, utf8('REX')), 5 * 8, ...varint(71), ...field(8, Array(32).fill(7))];
+  const contact = Buffer.from([8, ...varint(0x0c0ffee1), ...field(2, user)]).toString('base64url');
+  await radio('heard !0c0ffee1 Rex collar');
+  answer = await ask(`add https://meshtastic.org/v/#${contact} as pet`);
+  assert.match(answer, /Added Rex collar \(!0c0ffee1\)/, answer);
+  assert.ok(askTick.some((l) => /^contact \d+ bytes$/.test(l)), `the home base keeps its contact, key included: ${askTick.join(' | ')}`);
+  assert.match(await ask('list'), /Rex collar \(!0c0ffee1\), pet,/);
+  answer = await ask(`contact https://meshtastic.org/v/#${contact}`);
+  assert.match(answer, /Got Rex collar's contact\./, answer);
+  assert.ok(askTick.some((l) => /^contact \d+ bytes$/.test(l)) && askTick.includes('introduce !0c0ffee1'), `"contact" passes its key on, and sends it ours: ${askTick.join(' | ')}`);
+  answer = await ask(`add !0c0ffee1 Rex again`);
+  assert.match(answer, /already Rex collar/, 'the chat way still works, and knows it');
+  await radio('advance 61');
+  await radio('tick');
+  await maya.fetchRecords();
+  assert.equal(maya.memberRecord(hbId).homeBase.channel, 'https://meshtastic.org/e/#TEST', 'its status carries the channel link for the app’s QR code');
+  pass('a tracker’s Share contact link adds it (named from the contact, as a pet); the channel link reaches the app');
 
   // Only admins change trackers.
   const before = leo.messages.length;

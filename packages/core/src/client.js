@@ -785,6 +785,26 @@ export class CircleClient {
       .sort((a, b) => (a.isMe ? -1 : b.isMe ? 1 : a.name.localeCompare(b.name)));
   }
 
+  /**
+   * A device in the circle rather than a person: a tracker (a Meshtastic
+   * tracker, a tracker phone) or a Meshtastic home base, as an admin's record
+   * about it says.
+   */
+  isDevice(memberId) {
+    const r = this.memberRecord(memberId);
+    return !!(r?.tracker || r?.homeBase);
+  }
+
+  /** The circle's people: members who aren't trackers or a home base. */
+  peopleList() {
+    return this.memberList().filter((m) => !this.isDevice(m.id));
+  }
+
+  /** The circle's trackers and home bases. */
+  deviceList() {
+    return this.memberList().filter((m) => this.isDevice(m.id));
+  }
+
   /** Open any envelope from a member, using their pinned signing key. Pass `to` for a direct message. */
   _open(env, from, kinds, to = null, id = undefined) {
     const signPub = this.account.known[from]?.signPub;
@@ -3072,9 +3092,22 @@ function cleanHomeBase(h) {
     heard: list(h.heard, (n) => (node(n?.node) ? { node: n.node, name: text(n.name) || null, ...radio(n) } : null)),
     trackers: list(h.trackers, (t) =>
       node(t?.node) && typeof t.member === 'string'
-        ? { node: t.node, member: t.member, at: Number.isFinite(t.at) ? t.at : null, radio: t.radio && typeof t.radio === 'object' ? radio(t.radio) : null }
+        ? {
+            node: t.node,
+            member: t.member,
+            at: Number.isFinite(t.at) ? t.at : null,
+            radio: t.radio && typeof t.radio === 'object' ? radio(t.radio) : null,
+            // Its settings on the tracker itself: 'set' (as HomeCircle says), 'sending',
+            // or 'needs-key' (the tracker doesn't trust the home base's key yet).
+            settings: ['set', 'sending', 'needs-key'].includes(t.settings) ? t.settings : null,
+          }
         : null,
     ),
+    // The home base's Meshtastic public key: added on a tracker as its admin key,
+    // it lets the home base change the tracker's settings over the radio.
+    key: typeof h.key === 'string' && /^[A-Za-z0-9+/]{43}=$/.test(h.key) ? h.key : null,
+    // The link that puts a tracker on the circle's private Meshtastic channel (to open in the Meshtastic app).
+    channel: typeof h.channel === 'string' && h.channel.length < 400 && /^https:\/\/meshtastic\.org\/e\/#[A-Za-z0-9_-]+$/.test(h.channel) ? h.channel : null,
   };
 }
 
@@ -3084,12 +3117,15 @@ function cleanHomeBase(h) {
  * moving and while still, quiet hours in its own time, and whether its SOS
  * button is on. Null when the record has none.
  */
+const TRACKER_MODES = ['carried', 'car', 'pet', 'luggage', 'keys', 'other'];
+
 function cleanTracker(t) {
   if (!t || typeof t !== 'object') return null;
   const mins = (v, lo, hi, d) => (Number.isInteger(v) && v >= lo && v <= hi ? v : d);
   const quiet = t.quiet && HHMM.test(t.quiet.from) && HHMM.test(t.quiet.to) ? { from: t.quiet.from, to: t.quiet.to } : null;
   return {
-    mode: t.mode === 'carried' ? 'carried' : 'car',
+    // What it's for: carried by someone, in a car, on a pet, in luggage, on keys, or something else.
+    mode: TRACKER_MODES.includes(t.mode) ? t.mode : 'car',
     moving: mins(t.moving, 1, 60, 2),
     still: mins(t.still, 5, 1440, 60),
     quiet,
@@ -3099,7 +3135,28 @@ function cleanTracker(t) {
     // phone goes quiet.
     node: typeof t.node === 'string' && /^![0-9a-f]{8}$/.test(t.node) ? t.node : null,
     carriedBy: typeof t.carriedBy === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(t.carriedBy) ? t.carriedBy : null,
+    // A Meshtastic tracker's own settings, where an admin chose them for it;
+    // null means it follows the circle's (the Meshtastic plugin's settings).
+    custom: cleanTrackerCustom(t.custom),
   };
+}
+
+/** One tracker's own settings: only what differs from the circle's. Null when it has none. */
+function cleanTrackerCustom(c) {
+  if (!c || typeof c !== 'object') return null;
+  const int = (v, ok) => (Number.isInteger(v) && ok(v) ? v : null);
+  const presses = {};
+  for (const n of ['1', '2', '3', '4', '5']) {
+    const v = c.presses?.[n];
+    if (typeof v === 'string' && v.trim()) presses[n] = v.replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+  }
+  const out = {
+    moving: int(c.moving, (v) => v >= 1 && v <= 60),
+    still: int(c.still, (v) => v >= 5 && v <= 720),
+    battery: int(c.battery, (v) => v === 0 || (v >= 5 && v <= 720)),
+    presses: Object.keys(presses).length ? presses : null,
+  };
+  return out.moving != null || out.still != null || out.battery != null || out.presses ? out : null;
 }
 
 /**

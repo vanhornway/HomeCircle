@@ -93,7 +93,7 @@ export default function CircleSettings() {
   return (
     <SettingsPage title={name}>
       <SettingsGroup title="People" footer="Everyone here can see each other’s location and tap Locate to ask for it. Joining means agreeing to that.">
-        {client.memberList().map(row)}
+        {client.peopleList().map(row)}
         {client.isAdmin ? (
           <GroupBody>
             <Button title="Invite someone" variant="primary" onPress={() => router.push('/invite')} />
@@ -122,7 +122,7 @@ export default function CircleSettings() {
           ]}
         >
           {client
-            .memberList()
+            .peopleList()
             .filter((m) => !m.isMe && m.kind !== 'agent')
             .map((m) => {
               const rec = client.memberRecord(m.id);

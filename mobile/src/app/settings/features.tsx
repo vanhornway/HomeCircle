@@ -54,6 +54,9 @@ export default function FeatureSettings() {
             // The home base follows these settings; its trackers are managed on their own screen.
             <>
               {admin ? <PluginSetup client={client} id={id} /> : null}
+              {admin ? (
+                <SettingsRow icon="settings" title="Tracker settings" detail="How often trackers report, and what button presses say" href="/tracker-settings" />
+              ) : null}
               <SettingsRow icon="locate" title="Trackers" detail="The home base and its trackers" href="/trackers" />
             </>
           ) : null

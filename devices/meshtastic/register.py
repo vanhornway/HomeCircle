@@ -39,23 +39,34 @@ if "hcGpsChar" not in gps:
     open(gps_path, "w").write(gps)
     print("added the GPS hook in GPS.cpp")
 
-# Every press of the button, counted: five in a row is a HomeCircle SOS on a
-# one-button tracker (hcButtonClicks, weak: only HOMECIRCLE_SOS builds define
-# it). Single, double and multi presses all report how many presses they were,
-# so presses at a normal pace count as well as fast taps.
+# Every press of the button, counted: on a one-button tracker with HomeCircle
+# (hcButtonPresses, weak: only HOMECIRCLE_SOS builds define it), 1 to 5
+# presses each mean something (HomeCircleSos.cpp). Single, double and multi
+# presses all report how many presses they were, so presses at a normal pace
+# count as well as fast taps. For 2 or more the hook takes over from
+# Meshtastic's own gestures (2: send a position, 3: GPS on or off, 4: mute),
+# so "come pick me up" never turns the GPS off.
 button_path = os.path.join(os.path.dirname(os.path.dirname(path)), "input", "ButtonThread.cpp")
 button = open(button_path).read()
-if "hcButtonClicks" not in button:
+if "hcButtonPresses" not in button:
+    # An earlier version of these hooks (hcButtonClicks): take it out first.
+    for old in (
+        "            if (hcButtonClicks) // HomeCircle (register.py)\n                hcButtonClicks(1);\n",
+        "            if (hcButtonClicks) // HomeCircle (register.py)\n                hcButtonClicks(2);\n",
+        "            if (hcButtonClicks) // HomeCircle (register.py)\n                hcButtonClicks(multipressClickCount);\n",
+        "// HomeCircle: presses are counted for the SOS on a one-button tracker (register.py).\nextern void hcButtonClicks(int presses) __attribute__((weak));\n",
+    ):
+        button = button.replace(old, "")
     hooks = (
-        ("            evt.inputEvent = _singlePress;\n", "            if (hcButtonClicks) // HomeCircle (register.py)\n                hcButtonClicks(1);\n"),
-        ("            evt.inputEvent = _doublePress;\n", "            if (hcButtonClicks) // HomeCircle (register.py)\n                hcButtonClicks(2);\n"),
-        ("            switch (multipressClickCount) {\n", "            if (hcButtonClicks) // HomeCircle (register.py)\n                hcButtonClicks(multipressClickCount);\n"),
+        ("            evt.inputEvent = _singlePress;\n", "            if (hcButtonPresses) // HomeCircle (register.py)\n                hcButtonPresses(1);\n"),
+        ("            evt.inputEvent = _doublePress;\n", "            if (hcButtonPresses && hcButtonPresses(2)) // HomeCircle (register.py)\n                break;\n"),
+        ("            switch (multipressClickCount) {\n", "            if (hcButtonPresses && hcButtonPresses(multipressClickCount)) // HomeCircle (register.py)\n                break;\n"),
     )
     for anchor, hook in hooks:
         if anchor not in button:
-            sys.exit("ButtonThread.cpp has changed: add the hcButtonClicks hooks by hand")
+            sys.exit("ButtonThread.cpp has changed: add the hcButtonPresses hooks by hand")
         button = button.replace(anchor, hook + anchor, 1)
     first_include = button.index("#include")
-    button = button[:first_include] + "// HomeCircle: presses are counted for the SOS on a one-button tracker (register.py).\nextern void hcButtonClicks(int presses) __attribute__((weak));\n" + button[first_include:]
+    button = button[:first_include] + "// HomeCircle: presses are counted on a one-button tracker (register.py); true takes over the gesture.\nextern bool hcButtonPresses(int presses) __attribute__((weak));\n" + button[first_include:]
     open(button_path, "w").write(button)
     print("added the button hooks in ButtonThread.cpp")

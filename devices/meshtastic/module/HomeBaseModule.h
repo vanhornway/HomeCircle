@@ -20,6 +20,8 @@ class HomeBaseModule : public SinglePortModule, private concurrency::OSThread
     void textNode(uint32_t node, const std::string &text);
     /** A traceroute to a node: the relays between it and this home base. */
     void traceNode(uint32_t node);
+    /** The private HomeCircle channel's index, or -1. */
+    int channelIndex();
 
   protected:
     bool wantPacket(const meshtastic_MeshPacket *p) override;
@@ -27,7 +29,6 @@ class HomeBaseModule : public SinglePortModule, private concurrency::OSThread
     int32_t runOnce() override;
 
   private:
-    int channelIndex();
     int ensureChannel();
     void pollPositions();
     void startPortal();

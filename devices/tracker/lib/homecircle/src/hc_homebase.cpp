@@ -17,7 +17,8 @@ const int64_t ASK_GAP = 10 * MIN;            // at most one position request per
 const char* const HELP =
     "Home base commands:\n"
     "• list: trackers, and nodes I can hear\n"
-    "• add !a1b2c3d4 Name (add \"as car\" for a car)\n"
+    "• add !a1b2c3d4 Name (add \"as car\", \"as pet\", \"as luggage\", \"as keys\" or \"as other\" if no one carries it)\n"
+    "• add <the tracker's Share contact link> [Name] [as …]\n"
     "• rename Name to New name\n"
     "• link Name to Person: who carries it; I ask it for a position when their phone goes quiet\n"
     "• unlink Name\n"
@@ -34,6 +35,24 @@ const int64_t PATH_FOR = 6 * 60 * MIN;     // a path older than this isn't shown
 const int64_t STATUS_EVERY = 1 * MIN;      // its own status for the app's Trackers screen (it has mains or solar power)
 const int64_t RECORD_REREAD = 10 * MIN;    // between full reads of its member record when writing the status
 const int64_t OFF_RECHECK = 1 * MIN;       // while the plugin is off: how often to look whether it's back on
+const int64_t LOCATE_WAIT = 3 * MIN;        // a Locate the tracker hasn't answered: say so in the chat
+const int64_t INTRODUCE_EVERY = 12 * 60 * MIN;  // send each tracker this node's key again (it may have forgotten)
+const int64_t CONFIG_RETRY = 10 * MIN;     // a tracker that didn't confirm its settings: try again
+const int64_t CONFIG_NO_KEY = 60 * MIN;    // one that doesn't take the home base's key yet: try now and then
+
+// What a tracker is for: the member record's tracker.mode.
+const char* const KINDS[] = {"carried", "car", "pet", "luggage", "keys", "other"};
+std::string kindOf(const std::string& s) {
+  if (s == "person") return "carried";
+  for (const char* k : KINDS)
+    if (s == k) return k;
+  return "";
+}
+
+// What 1 to 5 presses say unless the circle or the tracker chose its own (as the server's plugin).
+const char* const PRESS_DEFAULTS[6] = {"", "\xE2\x9C\x85 I\xE2\x80\x99m OK", "\xF0\x9F\x93\x8D Here\xE2\x80\x99s where I am",
+                                       "\xF0\x9F\x9A\x97 Please come pick me up", "\xF0\x9F\x8F\xA0 I\xE2\x80\x99m on my way home",
+                                       "\xF0\x9F\x86\x98 I need help"};
 
 double metres(double lat1, double lng1, double lat2, double lng2) {
   const double r = 6371000.0, rad = M_PI / 180.0;
@@ -132,9 +151,12 @@ bool HomeBase::load() {
       if (!parseNodeId(o["node"] | "", node)) continue;
       Tracker& t = adopt(node);
       t.name = o["name"] | "";
-      t.kind = o["kind"] | "person";
+      t.kind = kindOf(o["kind"] | "carried");
+      if (t.kind.empty()) t.kind = "carried";
       t.carriedBy = o["carriedBy"] | "";
       t.keeperSet = o["keeper"] | false;
+      t.configSet = o["config"] | "";
+      if (!t.configSet.empty()) t.configState = "set";
       if (!t.dev->load()) trackers_.pop_back();  // its account is gone: drop it
     }
   }
@@ -151,6 +173,7 @@ void HomeBase::saveTrackers() {
     o["kind"] = t->kind;
     if (!t->carriedBy.empty()) o["carriedBy"] = t->carriedBy;
     if (t->keeperSet) o["keeper"] = true;
+    if (!t->configSet.empty()) o["config"] = t->configSet;
   }
   std::string raw;
   serializeJson(d, raw);
@@ -198,11 +221,14 @@ HomeBase::Tracker* HomeBase::find(const std::string& ref) {
 // apps can show a person at their tracker when their phone is quiet.
 void HomeBase::writeRecord(Tracker& t) {
   if (!base_.amAdmin()) return;
+  readCustoms(false);  // keep the settings an admin gave it in the app
   JsonDocument p;
   JsonObject tr = p["tracker"].to<JsonObject>();
-  tr["mode"] = t.kind == "car" ? "car" : "carried";
+  tr["mode"] = t.kind;
   tr["node"] = nodeId(t.node);
   if (!t.carriedBy.empty()) tr["carriedBy"] = t.carriedBy;
+  JsonDocument custom;
+  if (!t.custom.empty() && !deserializeJson(custom, t.custom)) tr["custom"] = custom.as<JsonVariantConst>();
   base_.mergeMemberRecord(t.dev->memberId(), p.as<JsonVariantConst>());
 }
 
@@ -222,12 +248,24 @@ void HomeBase::onText(uint32_t node, const std::string& text) {
   Tracker* t = byNode(node);
   if (!t) return;
   std::string l = lower(text);
+  // The HomeCircle tracker firmware counts button presses and says "#press N".
+  if (l.rfind("#press ", 0) == 0) {
+    int n = atoi(l.c_str() + 7);
+    if (n == 1) {
+      if (!t->checkins.empty()) t->okPressed = true;  // otherwise a bump in a pocket: nothing to send
+    } else if (n >= 2 && n <= 4) {
+      t->presses.push_back(n);
+      t->askedAt = now_();  // its next position goes out at once (the firmware sends one with the press)
+    }
+    return;  // 5 presses come as an SOS text
+  }
   bool alert = l.find('\a') != std::string::npos;
   for (auto& w : sosWords_) alert = alert || l.find(w) != std::string::npos;
   bool safe = l == "safe" || l == "ok" || l == "i'm ok" || l == "im ok" || l.find("i'm safe") != std::string::npos;
   if (alert && !t->dev->sosActive()) {
     t->dev->sos(true, false);
     t->sosChanged = true;
+    t->presses.push_back(5);  // and the SOS message in the chat
   } else if (safe && t->dev->sosActive()) {
     t->dev->sos(false, false);
     t->sosChanged = true;
@@ -263,10 +301,18 @@ void HomeBase::upload(Tracker& t) {
   if (t.sosChanged) {
     if (t.dev->flushSos() == Status::Ok) t.sosChanged = false;
   }
+  if (!t.presses.empty()) {
+    int n = t.presses.front();
+    // 3 presses (come pick me up) and SOS alert even when the chat is muted.
+    if (t.dev->sendGroup(pressText(t, n), n == 3 || n == 5) == Status::Ok) {
+      t.presses.erase(t.presses.begin());
+      log = t.name + ": " + std::to_string(n) + " presses";
+    }
+  }
   if (t.okPressed) {
     int64_t at = now_();
     for (auto& c : t.checkins)
-      if (at - c.second < CHECKIN_FOR) t.dev->sendDirect(c.first, "\xE2\x9C\x85 I\xE2\x80\x99m OK", true);
+      if (at - c.second < CHECKIN_FOR) t.dev->sendDirect(c.first, pressText(t, 1), true);
     t.checkins.clear();
     t.okPressed = false;
     log = t.name + " checked in";
@@ -301,6 +347,18 @@ void HomeBase::upload(Tracker& t) {
     t.sentFixAt = t.fixAt;
     t.sentAt = now;
     log = "sent " + t.name + "'s position";
+    if (asked && !t.locateFrom.empty()) {
+      char where[160];
+      snprintf(where, sizeof where, "https://www.openstreetmap.org/?mlat=%.6f&mlon=%.6f#map=17/%.6f/%.6f", t.fix.lat, t.fix.lng, t.fix.lat, t.fix.lng);
+      std::string place;
+      for (auto& pl : places_)
+        if (pl.id == t.fix.placeId) place = pl.name;
+      std::string text = "\xF0\x9F\x93\x8D Here now" + (place.empty() ? std::string() : " at " + place);
+      if (t.fix.battery >= 0) text += " \xC2\xB7 battery " + std::to_string(t.fix.battery) + "%";
+      text += "\n" + std::string(where);
+      for (auto& l : t.locateFrom) t.dev->sendDirect(l.first, text);
+      t.locateFrom.clear();
+    }
     // Arrived and left, as a phone announces them (only where the circle has place alerts on).
     if (base_.feature("placeAlerts")) {
       for (auto& m : moves) {
@@ -389,6 +447,9 @@ void HomeBase::handle(const Pending& p) {
   std::string who = base_.nameOf(p.from);
   if (who.empty()) who = "Someone";
   if (p.type == "locate") {
+    bool waiting = false;
+    for (auto& l : t->locateFrom) waiting = waiting || l.first == p.from;
+    if (!waiting) t->locateFrom.push_back({p.from, now});
     radio_.requestPosition(t->node);
     t->askedAt = now;
     if (now - t->tracedAt >= TRACE_GAP) {
@@ -397,6 +458,7 @@ void HomeBase::handle(const Pending& p) {
     }
     log = who + " asked where " + t->name + " is";
   } else if (p.type == "chirp") {
+    introduce(*t, now);
     radio_.alert(t->node, "\a" + who + " chirped you");
     log = who + " chirped " + t->name;
   } else if (p.type == "message") {
@@ -405,6 +467,7 @@ void HomeBase::handle(const Pending& p) {
     if (t->dev->fetchDirect(in) != Status::Ok) return;
     for (auto& d : in) {
       if (d.checkin != "request") continue;
+      introduce(*t, now);
       radio_.alert(t->node, "\aCheck in, please: " + d.fromName + " asked. Reply OK.");
       radio_.requestPosition(t->node);
       t->askedAt = now;
@@ -452,6 +515,7 @@ void HomeBase::tick() {
     nextPlaces_ = now + (enabled_ ? PLACES_EVERY : OFF_RECHECK);
     if (enabled_) {
       base_.fetchPlaces(places_);
+      readCustoms();
       if (!wasOn) nextKeeper_ = nextPending_ = nextStatus_ = now;  // just turned on: catch up now
     }
   }
@@ -495,7 +559,18 @@ void HomeBase::tick() {
     }
   }
   for (auto& t : trackers_)
-    if (t->dev->joined()) upload(*t);
+    if (t->dev->joined()) {
+      upload(*t);
+      pushConfig(*t, now);
+      introduce(*t, now);
+      // A Locate it didn't answer: say so, with how old its last position is.
+      if (!t->locateFrom.empty() && now - t->locateFrom.front().second >= LOCATE_WAIT) {
+        std::string text = "\xF0\x9F\x93\xA1 No answer over the radio yet. ";
+        text += t->sentFixAt ? "My last position is " + ago(now - t->sentFixAt) + "." : "No position from me yet.";
+        for (auto& l : t->locateFrom) t->dev->sendDirect(l.first, text);
+        t->locateFrom.clear();
+      }
+    }
   // Trackers whose account is gone (removed) leave the list.
   size_t before = trackers_.size();
   trackers_.erase(std::remove_if(trackers_.begin(), trackers_.end(), [](const std::unique_ptr<Tracker>& t) { return !t->dev->joined(); }),
@@ -532,6 +607,16 @@ void HomeBase::readPlugin() {
   std::string trace = v["traceMinutes"] | "";
   int every = atoi(trace.c_str());
   traceEveryMs_ = trace == "0" ? 0 : (every >= 10 && every <= 720 ? every : 30) * MIN;
+  auto mins = [&](const char* id, int lo, int hi, int dflt, bool zeroOk) {
+    std::string raw = v[id] | "";
+    int n = atoi(raw.c_str());
+    if (zeroOk && raw == "0") return 0;
+    return n >= lo && n <= hi ? n : dflt;
+  };
+  movingMin_ = mins("movingMinutes", 1, 60, 2, false);
+  stillMin_ = mins("stillMinutes", 5, 720, 15, false);
+  batteryMin_ = mins("batteryMinutes", 5, 720, 30, true);
+  for (int n = 1; n <= 5; n++) press_[n] = v[("press" + std::to_string(n)).c_str()] | "";
   std::string words = v["sosWords"] | "";
   std::vector<std::string> list;
   for (size_t at = 0; at <= words.size();) {
@@ -546,6 +631,114 @@ void HomeBase::readPlugin() {
 
 // The app's Trackers screen reads this: that the home base is alive, the
 // nodes it hears (to add as trackers), and when it last heard each tracker.
+// --- tracker settings ----------------------------------------------------------------
+
+void HomeBase::readCustoms(bool alsoWhat) {
+  if (trackers_.empty()) return;
+  for (auto& t : trackers_) t->custom.clear();
+  bool changed = false;
+  base_.memberRecords([&](const std::string& subject, JsonObjectConst body) {
+    for (auto& t : trackers_) {
+      if (t->dev->memberId() != subject) continue;
+      JsonObjectConst tr = body["tracker"];
+      JsonObjectConst c = tr["custom"];
+      if (!c.isNull()) serializeJson(c, t->custom);
+      if (!alsoWhat || tr.isNull()) continue;
+      std::string kind = kindOf(tr["mode"] | "");
+      if (!kind.empty() && kind != t->kind) t->kind = kind, changed = true;
+      std::string who = tr["carriedBy"] | "";
+      if (kind.empty() || kind == "carried") {
+        if (who != t->carriedBy) t->carriedBy = who, changed = true;
+      } else if (!t->carriedBy.empty()) {
+        t->carriedBy.clear(), changed = true;  // a car, a pet, keys…: no one's phone falls back to it
+      }
+    }
+  });
+  if (changed) saveTrackers();
+}
+
+void HomeBase::introduce(Tracker& t, int64_t now, bool force) {
+  if (!force && t.introducedAt && now - t.introducedAt < INTRODUCE_EVERY) return;
+  radio_.introduce(t.node);
+  t.introducedAt = now;
+}
+
+TrackerConfig HomeBase::configFor(const Tracker& t) const {
+  int moving = movingMin_, still = stillMin_, battery = batteryMin_;
+  JsonDocument c;
+  if (!t.custom.empty() && !deserializeJson(c, t.custom)) {
+    int m = c["moving"] | -1, s = c["still"] | -1, b = c["battery"] | -1;
+    if (m >= 1 && m <= 60) moving = m;
+    if (s >= 5 && s <= 720) still = s;
+    if (b == 0 || (b >= 5 && b <= 720)) battery = b;
+  }
+  TrackerConfig cfg;
+  cfg.movingS = moving * 60;
+  cfg.stillS = still * 60;
+  cfg.batteryS = battery * 60;
+  return cfg;
+}
+
+std::string HomeBase::pressText(const Tracker& t, int n) const {
+  if (n < 1 || n > 5) return "";
+  JsonDocument c;
+  if (!t.custom.empty() && !deserializeJson(c, t.custom)) {
+    std::string own = c["presses"][std::to_string(n)] | "";
+    if (!trim(own).empty()) return own;
+  }
+  return trim(press_[n]).empty() ? PRESS_DEFAULTS[n] : press_[n];
+}
+
+// Settings go on a tracker when HomeCircle's change, not over and over: a
+// change made on the tracker itself stays until the circle's settings change.
+void HomeBase::pushConfig(Tracker& t, int64_t now) {
+  TrackerConfig cfg = configFor(t);
+  std::string want = cfg.key();
+  if (want == t.configSet) {
+    t.configState = "set";
+    return;
+  }
+  int64_t wait = t.configState == "needs-key" ? CONFIG_NO_KEY : CONFIG_RETRY;
+  if (t.configSending == want && now - t.configSentAt < wait) return;
+  if (!radio_.configure(t.node, cfg)) return;
+  t.configSending = want;
+  t.configSentAt = now;
+  if (t.configState != "needs-key") t.configState = "sending";
+  log = "sending " + t.name + " its settings";
+}
+
+void HomeBase::onNoFix(uint32_t node) {
+  Tracker* t = byNode(node);
+  if (!t || t->locateFrom.empty()) return;
+  std::string text =
+      "\xF0\x9F\x93\xA1 I heard you, but I don't have a GPS fix right now. I need a view of the sky: after being indoors "
+      "that can take a few minutes outside. ";
+  text += t->sentFixAt ? "My last position is " + ago(now_() - t->sentFixAt) + "." : "No position from me yet.";
+  for (auto& l : t->locateFrom) t->dev->sendDirect(l.first, text);
+  t->locateFrom.clear();
+  log = t->name + " has no GPS fix";
+}
+
+void HomeBase::onConfigured(uint32_t node, ConfigResult r) {
+  Tracker* t = byNode(node);
+  if (!t) return;
+  if (r == ConfigResult::Set) {
+    t->configFails = 0;
+    t->configSet = t->configSending;
+    t->configState = "set";
+    saveTrackers();
+    log = t->name + " has its settings";
+  } else if (r == ConfigResult::NeedsKey) {
+    t->configState = "needs-key";
+    log = t->name + " doesn't take the home base's key yet";
+  } else {
+    // No answer (out of range, asleep, or it didn't know our key yet): try again in CONFIG_RETRY.
+    // A tracker that never answers, though the radio hears it, most likely doesn't take the home
+    // base's key: say so, so the app shows how to add it (and try less often).
+    if (++t->configFails >= 2) t->configState = "needs-key";
+  }
+}
+
 void HomeBase::publishStatus() {
   if (!base_.amAdmin()) return;  // only admins write member records
   JsonDocument p;
@@ -604,7 +797,12 @@ void HomeBase::publishStatus() {
         JsonObject r = o["radio"].to<JsonObject>();
         radioFacts(r, n);
       }
+    if (!t->configState.empty()) o["settings"] = t->configState;
   }
+  std::string key = radio_.publicKey();
+  if (!key.empty()) h["key"] = key;
+  std::string channel = radio_.channelLink();
+  if (!channel.empty()) h["channel"] = channel;  // sealed like the rest: only the circle reads it
   // Every minute: reuse the rest of its record for a while instead of reading
   // every member's record each time (admins rarely change the home base's).
   base_.mergeMemberRecord(base_.memberId(), p.as<JsonVariantConst>(), RECORD_REREAD);
@@ -633,6 +831,68 @@ bool HomeBase::shareSelf(bool asked) {
 
 // --- admins' commands -------------------------------------------------------------
 
+// --- Meshtastic contact links ---------------------------------------------------------
+//
+// meshtastic.org/v/#<base64url SharedContact>: node_num (1) and a User (2)
+// with id (1), long_name (2), short_name (3), hw_model (5), public_key (8).
+// A small protobuf reader: varints and length-delimited fields only.
+namespace {
+bool readVarint(const Bytes& b, size_t& at, uint64_t& v) {
+  v = 0;
+  for (int shift = 0; at < b.size() && shift < 64; shift += 7) {
+    uint8_t c = b[at++];
+    v |= (uint64_t)(c & 0x7f) << shift;
+    if (!(c & 0x80)) return true;
+  }
+  return false;
+}
+// Calls fn(field, wireType, varint, start, length) for each field; false if malformed.
+template <typename F>
+bool eachField(const Bytes& b, size_t from, size_t to, F fn) {
+  size_t at = from;
+  while (at < to) {
+    uint64_t key, v = 0;
+    if (!readVarint(b, at, key)) return false;
+    int field = (int)(key >> 3), wire = (int)(key & 7);
+    size_t start = at, len = 0;
+    if (wire == 0) {
+      if (!readVarint(b, at, v)) return false;
+    } else if (wire == 2) {
+      uint64_t l;
+      if (!readVarint(b, at, l) || at + l > to) return false;
+      start = at, len = (size_t)l, at += len;
+    } else if (wire == 5) {
+      if (at + 4 > to) return false;
+      at += 4;
+    } else if (wire == 1) {
+      if (at + 8 > to) return false;
+      at += 8;
+    } else {
+      return false;
+    }
+    fn(field, wire, v, start, len);
+  }
+  return true;
+}
+}  // namespace
+
+bool parseContactLink(const std::string& link, MeshContact& out) {
+  size_t hash = link.find("/v/#");
+  std::string b64 = trim(hash == std::string::npos ? link : link.substr(hash + 4));
+  if (b64.empty() || !fromB64(b64, out.raw)) return false;
+  const Bytes& b = out.raw;
+  bool ok = eachField(b, 0, b.size(), [&](int f, int w, uint64_t v, size_t s, size_t len) {
+    if (f == 1 && w == 0) out.node = (uint32_t)v;
+    if (f == 2 && w == 2)
+      eachField(b, s, s + len, [&](int uf, int uw, uint64_t uv, size_t us, size_t ul) {
+        if (uf == 2 && uw == 2) out.longName.assign((const char*)&b[us], ul);
+        if (uf == 3 && uw == 2) out.shortName.assign((const char*)&b[us], ul);
+        if (uf == 5 && uw == 0) out.hwModel = (int)uv;
+      });
+  });
+  return ok && out.node != 0;
+}
+
 std::string HomeBase::listText() {
   int64_t now = now_();
   std::string out;
@@ -640,7 +900,7 @@ std::string HomeBase::listText() {
   else out = "Trackers:";
   for (auto& t : trackers_) {
     out += "\n• " + t->name + " (" + nodeId(t->node) + ")";
-    if (t->kind == "car") out += ", a car";
+    if (t->kind != "carried") out += ", " + (t->kind == "car" ? std::string("a car") : t->kind);
     if (!t->carriedBy.empty()) out += ", carried by " + base_.nameOf(t->carriedBy);
     out += ", last position " + ago(t->sentFixAt ? now - t->sentFixAt : 0);
     if (t->dev->sosActive()) out += ", SOS ON";
@@ -682,21 +942,33 @@ void HomeBase::command(const Device::Direct& d) {
   } else if (verb == "channel") {
     reply = "Open this on a phone paired with the tracker in the Meshtastic app to put it on our private channel:\n" + radio_.channelLink();
   } else if (verb == "add") {
-    // add !a1b2c3d4 Name [as car|as person] [invite link]
+    // add !a1b2c3d4 Name [as car|pet|luggage|keys|other|person] [invite link]
+    // add https://meshtastic.org/v/#… [Name] [as …]   (the tracker's "Share contact" link)
     size_t s2 = rest.find(' ');
     uint32_t node;
+    std::string first = rest.substr(0, s2);
+    MeshContact contact;
+    bool fromContact = first.find("/v/#") != std::string::npos && parseContactLink(first, contact);
     std::string name = s2 == std::string::npos ? "" : trim(rest.substr(s2 + 1));
-    std::string link, kind = "person";
+    std::string link, kind = "carried";
     size_t h = name.find("http");
     if (h == std::string::npos) h = name.find("homecircle://");
     if (h != std::string::npos) {
       link = trim(name.substr(h));
       name = trim(name.substr(0, h));
     }
-    std::string ln = lower(name);
-    if (ln.size() > 7 && ln.compare(ln.size() - 7, 7, " as car") == 0) kind = "car", name = trim(name.substr(0, name.size() - 7));
-    else if (ln.size() > 10 && ln.compare(ln.size() - 10, 10, " as person") == 0) name = trim(name.substr(0, name.size() - 10));
-    if (!parseNodeId(rest.substr(0, s2), node) || name.empty()) {
+    std::string ln = " " + lower(name);
+    size_t as = ln.rfind(" as ");
+    if (as != std::string::npos && !kindOf(trim(ln.substr(as + 4))).empty()) {
+      kind = kindOf(trim(ln.substr(as + 4)));
+      name = as == 0 ? "" : trim(name.substr(0, as - 1));
+    }
+    if (fromContact) {
+      node = contact.node;
+      if (name.empty()) name = contact.longName.empty() ? contact.shortName : contact.longName;
+      radio_.addContact(contact.raw);  // its key, before it's heard: it can be sent settings right away
+    }
+    if ((!fromContact && !parseNodeId(first, node)) || name.empty()) {
       reply = "Use: add !a1b2c3d4 Name (the node id is in the Meshtastic app, or send \"list\").";
     } else if (byNode(node)) {
       reply = nodeId(node) + " is already " + byNode(node)->name + ".";
@@ -722,12 +994,23 @@ void HomeBase::command(const Device::Direct& d) {
           }
           saveTrackers();
           writeRecord(t);
+          introduce(t, now_(), true);  // so it can open the home base's messages (chirps, check-ins, settings)
           reply = "Added " + name + " (" + nodeId(node) + "). It shows on the map with its next position. Make sure it's on our channel: send \"channel\".";
         } else {
           reply = "Couldn't add it: " + t.dev->error();
           trackers_.pop_back();
         }
       }
+    }
+  } else if (verb == "contact") {
+    // contact <Share contact link>: the tracker's key for the node's list (the app sends it after "add").
+    MeshContact c;
+    if (!parseContactLink(rest, c)) reply = "Use: contact https://meshtastic.org/v/#… (the tracker's Share contact link)";
+    else {
+      radio_.addContact(c.raw);
+      Tracker* t = byNode(c.node);
+      if (t) introduce(*t, now_(), true);
+      reply = "Got " + (c.longName.empty() ? nodeId(c.node) : c.longName) + "'s contact.";
     }
   } else if (verb == "rename") {
     std::string a, b;

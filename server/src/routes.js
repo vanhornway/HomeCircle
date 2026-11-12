@@ -957,7 +957,8 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     const to = body.to == null ? null : vId(body.to, 'to');
     const flash = body.flash === true;
     const others = store.activeMembers(me.circleId).filter((m) => m.id !== me.id);
-    const targets = to ? others.filter((m) => m.id === to) : others;
+    // "Chirp everyone" means the people: trackers (kept by a home base) beep only when chirped one by one.
+    const targets = to ? others.filter((m) => m.id === to) : others.filter((m) => !m.keeperId);
     if (to && !targets.length) fail(404, 'not_found', 'No such member');
     if (!targets.length) fail(409, 'nobody', 'There’s no one else in this circle yet');
     const now = Date.now();

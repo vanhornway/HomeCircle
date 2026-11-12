@@ -66,14 +66,14 @@ export default function ProfileSettings() {
         </GroupBody>
       </SettingsGroup>
       <MyPhoneGroup client={client} />
-      {client.memberList().some((m) => !m.isMe) ? (
+      {client.peopleList().some((m) => !m.isMe) ? (
         <SettingsGroup
           title="What do they call you?"
           footer="What each person calls you, like Nani to one grandchild and Dadi to another."
           how="They see that name everywhere the app names you to them."
         >
           {client
-            .memberList()
+            .peopleList()
             .filter((m) => !m.isMe)
             .map((m) => (
               <GroupBody key={m.id}>

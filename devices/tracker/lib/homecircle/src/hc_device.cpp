@@ -823,6 +823,48 @@ Status Device::sendDirect(const std::string& to, const std::string& text, bool c
   return Status::Failed;
 }
 
+Status Device::sendGroup(const std::string& text, bool urgent) {
+  JsonDocument b;
+  b["text"] = text.substr(0, 4000);
+  std::string id = randomId(12);
+  for (int attempt = 0; attempt < 2; attempt++) {
+    JsonDocument req = seal("chat", b.as<JsonVariantConst>(), id);
+    req["id"] = id;
+    req["silent"] = false;
+    if (urgent) req["urgent"] = true;
+    std::string body;
+    serializeJson(req, body);
+    HttpResponse raw;
+    Status s = call("POST", "/messages", body, nullptr, &raw);
+    if (s == Status::Ok) return s;
+    if (raw.status == 409 && errorCode(raw) == "stale_epoch" && attempt == 0) {
+      Status r = refresh();
+      if (r != Status::Ok) return r;
+      continue;
+    }
+    return s;
+  }
+  return Status::Failed;
+}
+
+Status Device::memberRecords(const std::function<void(const std::string&, JsonObjectConst)>& fn) {
+  JsonDocument res;
+  Status s = call("GET", "/records?kind=member", "", &res);
+  if (s != Status::Ok) return s;
+  for (JsonObjectConst r : res["records"].as<JsonArrayConst>()) {
+    std::string subject = r["subject"] | "";
+    std::string by = r["by"] | "";
+    // Only records an admin signed count (the server checks too).
+    auto role = roles_.find(by);
+    if (role == roles_.end() || (role->second != "admin" && role->second != "owner")) continue;
+    auto k = acct_.known.find(by);
+    Bytes signPub = by == acct_.memberId ? acct_.id.signPub : k == acct_.known.end() ? Bytes() : k->second.signPub;
+    JsonDocument msg;
+    if (signPub.size() && open(r["env"], signPub, "member", by, msg)) fn(subject, msg["body"].as<JsonObjectConst>());
+  }
+  return Status::Ok;
+}
+
 Status Device::memberLocations(std::vector<MemberLoc>& out) {
   out.clear();
   JsonDocument res;

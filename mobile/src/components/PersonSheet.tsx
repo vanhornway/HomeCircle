@@ -13,7 +13,7 @@ import { spotName, type Anchor } from '../lib/visitsCore';
 import { MemberAvatar } from './MemberAvatar';
 import { cadenceLine, canLocate, locatePerson, locateState, openDirections, radioLine, statusLine, useLocateVersion } from '../lib/people';
 import { useTheme } from '../theme';
-import { carriedFallback, trackerEmoji, trackerOf, useNow } from '../lib/trackers';
+import { carriedFallback, homeBaseOf, radioFacts, TRACKER_KINDS, trackerEmoji, trackerOf, useNow } from '../lib/trackers';
 import { timeAgo } from '../lib/useCircle';
 import { showSheet } from '../lib/sheet';
 
@@ -61,8 +61,11 @@ export function PersonSheet({
   const via = m && !tracker ? carriedFallback(client, m.id, now) : null;
   const loc = m ? (via?.loc ?? client.locations.get(m.id)) : undefined;
   const carrier = tracker?.carriedBy ? client.members.get(tracker.carriedBy) : null;
+  // What it is (and who has it), then its battery and signal as the home base last heard them.
   const trackerLine = tracker
-    ? `${trackerEmoji(tracker)} ${tracker.mode === 'car' ? 'Car tracker' : carrier ? `Tracker carried by ${carrier.name}` : 'Tracker'} · Meshtastic`
+    ? `${trackerEmoji(tracker)} ${
+        tracker.mode === 'carried' ? (carrier ? `Tracker ${carrier.name} has` : 'Tracker') : `Tracker · ${TRACKER_KINDS.find((k) => k.mode === tracker.mode)?.label ?? 'Something else'}`
+      } · ${radioFacts(homeBaseOf(client)?.status.trackers.find((x) => x.node === tracker.node)?.radio) ?? 'Meshtastic'}`
     : null;
   const viaLine = via ? `📡 Phone quiet since ${timeAgo(client.locations.get(m!.id)?.ts)} · shown where ${via.trackerName} is` : null;
   const paused = m ? client.paused.get(m.id) : undefined;
@@ -208,9 +211,15 @@ export function PersonSheet({
                           () => locatePerson(client, m.id),
                           !!paused || !canLocate(state),
                         )}
-                      {client.feature('checkIns') && row('checkin', checking ? 'Sending…' : 'Ask to check in', tracker ? 'It beeps; an “OK” from it answers' : 'Ask “where are you?”', askCheckIn, checking)}
+                      {/* A tracker in a car or on a pet has no one to answer a check-in. */}
+                      {client.feature('checkIns') &&
+                        (!tracker || tracker.mode === 'carried') &&
+                        row('checkin', checking ? 'Sending…' : 'Ask to check in', tracker ? 'It beeps; 1 press or an “OK” from it answers' : 'Ask “where are you?”', askCheckIn, checking)}
                       {client.feature('placeAlerts') && row('bell', 'Alert me when they arrive or leave', 'At a place you pick', () => setAlerting(true))}
-                      {client.feature('chirps') && row('bird', 'Chirp', tracker ? 'Makes the tracker beep' : 'A sound they’ll know is you', go(() => chirpWithChoice(client, m.id)))}
+                      {client.feature('chirps') && row('bird', 'Chirp', tracker ? 'Makes the tracker beep, to find it' : 'A sound they’ll know is you', go(() => chirpWithChoice(client, m.id)))}
+                      {tracker && client.isAdmin
+                        ? row('settings', 'Tracker settings', 'What it is, who has it, how often it reports', go(() => router.push({ pathname: '/tracker-settings', params: { member: m.id } })))
+                        : null}
                     </View>
                   </>
                 )}

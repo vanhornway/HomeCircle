@@ -3,7 +3,7 @@
 // `tracker.node` set, signed by the home base. The home base is the member
 // whose record about itself carries `homeBase` (its status).
 import { useEffect, useState } from 'react';
-import type { CircleClient, HomeBaseStatus, MemberLocation, MeshNodeRadio, TrackerSettings } from '@homecircle/core';
+import type { CircleClient, HomeBaseStatus, MemberLocation, MeshNodeRadio, TrackerMode, TrackerSettings } from '@homecircle/core';
 
 /** The time now, updated every half minute: "heard 5 min ago" and the quiet-phone fallback stay current without reading the clock during render. */
 export function useNow(everyMs = 30_000): number {
@@ -19,6 +19,38 @@ export function useNow(everyMs = 30_000): number {
 export const QUIET_MS = 30 * 60_000;
 /** A home base that hasn't checked in for this long is shown as offline (older home bases report every 5 minutes). */
 export const HOME_BASE_OFFLINE_MS = 15 * 60_000;
+
+/**
+ * What pressing a tracker's button 1 to 5 times does (the HomeCircle tracker
+ * firmware; the server's Meshtastic plugin keeps the same defaults). `text`
+ * is the message it sends unless the circle or the tracker has its own.
+ */
+export const TRACKER_PRESSES = [
+  { n: 1, what: 'I’m OK', text: '✅ I’m OK', does: 'Answers “Ask to check in” when the tracker has beeped for one. On its own it sends nothing, so a bump in a pocket stays quiet.' },
+  { n: 2, what: 'Here’s where I am', text: '📍 Here’s where I am', does: 'Sends the message and a fresh position.' },
+  { n: 3, what: 'Come pick me up', text: '🚗 Please come pick me up', does: 'Sends the message and a fresh position, as an urgent alert.' },
+  { n: 4, what: 'On my way home', text: '🏠 I’m on my way home', does: 'Sends the message and a fresh position.' },
+  { n: 5, what: 'SOS', text: '🆘 I need help', does: 'Starts an SOS on everyone’s phone. 5 presses again send “I’m safe” and end it.' },
+] as const;
+
+/** The "Learn more" lines about the button, for anyone in the circle. */
+export const PRESS_HELP = [
+  'Press the tracker’s button 1 to 5 times, no more than 2 seconds apart. It beeps once for each press it counts.',
+  ...TRACKER_PRESSES.map((p) => `${p.n} press${p.n === 1 ? '' : 'es'}: ${p.what}. ${p.does}`),
+  'Holding the button down turns the tracker off or on.',
+  'Presses need HomeCircle’s firmware on the tracker (a SenseCAP T1000-E). On a tracker with stock Meshtastic, 2 quick presses send a position and the rest do what Meshtastic does.',
+];
+
+/** How often a tracker reports unless the circle chose otherwise, in minutes (0: no battery reports). */
+export const TRACKER_INTERVALS = { moving: 2, still: 15, battery: 30 };
+
+/** Whether HomeCircle's settings are on this tracker, in words; null when the home base hasn't said. */
+export function trackerSettingsLine(state: 'set' | 'sending' | 'needs-key' | null | undefined): string | null {
+  if (state === 'set') return 'settings on the tracker';
+  if (state === 'sending') return 'sending its settings…';
+  if (state === 'needs-key') return 'needs the home base’s key';
+  return null;
+}
 
 /** Whether the home base checked in lately: three missed reports, and never less than 5 minutes. */
 export function homeBaseOnline(status: HomeBaseStatus, now: number): boolean {
@@ -62,9 +94,26 @@ export function trackerOf(client: CircleClient, memberId: string): TrackerSettin
   return t?.node ? t : null;
 }
 
-/** 🚗 for a car, 🎒 for a tracker someone carries. */
+/** What a tracker can be for, with its pin's emoji. */
+export const TRACKER_KINDS: { mode: TrackerMode; emoji: string; label: string }[] = [
+  { mode: 'carried', emoji: '🎒', label: 'Someone carries it' },
+  { mode: 'car', emoji: '🚗', label: 'In a car' },
+  { mode: 'pet', emoji: '🐾', label: 'Pet' },
+  { mode: 'luggage', emoji: '🧳', label: 'Luggage' },
+  { mode: 'keys', emoji: '🔑', label: 'Keys' },
+  { mode: 'other', emoji: '📍', label: 'Something else' },
+];
+
+/** The emoji for a tracker's pin: 🎒 someone carries it, 🚗 a car, 🐾 a pet… */
 export function trackerEmoji(t: TrackerSettings): string {
-  return t.mode === 'car' ? '🚗' : '🎒';
+  return TRACKER_KINDS.find((k) => k.mode === t.mode)?.emoji ?? '📍';
+}
+
+/** "4 people · 2 trackers": the circle's members, people and devices counted apart. */
+export function circleCount(client: CircleClient): string {
+  const people = client.peopleList().length;
+  const trackers = trackerList(client).length;
+  return `${people === 1 ? '1 person' : `${people} people`}${trackers ? ` · ${trackers === 1 ? '1 tracker' : `${trackers} trackers`}` : ''}`;
 }
 
 /** The circle's home base and what it last said about itself, or null if there's none. */

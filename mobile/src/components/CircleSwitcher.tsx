@@ -82,8 +82,8 @@ export function CircleSwitcher({ style, large }: { style?: StyleProp<ViewStyle>;
                       {c.circle.name}
                     </Text>
                     <Text style={{ color: t.muted, fontSize: 14 }} numberOfLines={1}>
-                      {c.memberList().length || ''}
-                      {c.memberList().length ? (c.memberList().length === 1 ? ' member · ' : ' members · ') : ''}
+                      {c.peopleList().length || ''}
+                      {c.peopleList().length ? (c.peopleList().length === 1 ? ' person · ' : ' people · ') : ''}
                       {c.serverUrl?.replace(/^https?:\/\//, '')}
                     </Text>
                   </View>

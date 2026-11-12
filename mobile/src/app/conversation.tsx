@@ -6,6 +6,7 @@ import { CALLBACK_REPLIES, QUICK_REACTIONS, isEmojiOnly, type CallbackReply, typ
 import { Avatar, Button, Icon } from '../components/ui';
 import { HeaderBar } from '../components/Header';
 import { shareNow } from '../lib/location';
+import { circleCount } from '../lib/trackers';
 import { ServerBanner } from '../components/ServerBanner';
 import { PollCard } from '../components/PollCard';
 import { PlanCard } from '../components/PlanCard';
@@ -33,7 +34,6 @@ import { setChatScale, useChatScale, usePinchZoom } from '../lib/chatZoom';
 import { percentLabel, scaled } from '../lib/chatZoomCore';
 import { useTheme } from '../theme';
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const clock = (ts: number) => new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
 /** One conversation: a circle's group chat, or a direct chat with one member (`peer`). */
@@ -249,7 +249,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     ? withAgent
       ? 'Helper · end-to-end encrypted'
       : `Direct message · ${client.circle.name} · end-to-end encrypted`
-    : `Group · ${plural(client.memberList().length, 'member')} · end-to-end encrypted`;
+    : `Group · ${circleCount(client)} · end-to-end encrypted`;
 
   // A question to the helper shows as the person's own words, without the "/Name" it carries.
   const shownText = (m: Message) => {
