@@ -507,6 +507,7 @@ export class Api {
   air(lat: number, lng: number): Promise<AirQuality>;
   /** The prayer times plugin: today's and tomorrow's times at a grid cell, for a madhab. */
   prayer(lat: number, lng: number, madhab: Madhab): Promise<PrayerDays>;
+  registerMesh(key: string): Promise<{ ok: true; ref: string }>;
   pluginSettings(id: string): Promise<PluginSettings>;
   putPluginSettings(id: string, values: Record<string, string>): Promise<{ ok: true; values: PluginSettings['values']; ready: boolean }>;
   homeAssistantLocation(body: { lat: number; lng: number; accuracy?: number | null; battery?: number | null; charging?: boolean | null; speed?: number | null; name: string }): Promise<{ ok: true; entity: string }>;
@@ -655,6 +656,16 @@ export class CircleClient {
   denyRejoin(id: string): Promise<unknown>;
   refresh(): Promise<unknown>;
   memberList(): Member[];
+  /** The most text (UTF-8 bytes) one mesh message carries. */
+  readonly meshTextMax: { chat: number; direct: number };
+  /** Whether this text fits one mesh message (a direct one if `to`). */
+  meshFits(text: string, to?: string | null): boolean;
+  /** Whether this phone's mesh key is registered, so it can send over the mesh. */
+  readonly meshReady: boolean;
+  /** Register this member's mesh key with the server (needs the internet once). */
+  prepareMesh(): Promise<void>;
+  /** A message sealed for the mesh (one LoRa packet), for the tracker to send. */
+  meshMessage(text: string, opts?: { to?: string | null }): Promise<{ id: string; packet: Uint8Array }>;
   /** A tracker or a Meshtastic home base rather than a person (from the admin's record about it). */
   isDevice(memberId: string): boolean;
   /** Members who are people: not trackers or a home base. */

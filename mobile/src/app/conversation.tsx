@@ -7,6 +7,8 @@ import { Avatar, Button, Icon } from '../components/ui';
 import { HeaderBar } from '../components/Header';
 import { shareNow } from '../lib/location';
 import { circleCount } from '../lib/trackers';
+import { myTracker, sendOverMesh, unreachable, useMeshOutbox } from '../lib/meshOutbox';
+import { meshRadioText } from '../lib/meshRadio';
 import { ServerBanner } from '../components/ServerBanner';
 import { PollCard } from '../components/PollCard';
 import { PlanCard } from '../components/PlanCard';
@@ -143,13 +145,36 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per new message, not on every render
   }, [client, peer, lastSeq, readReceipts]);
 
+  // With no internet, a short message can go through the tracker this person
+  // carries, over the mesh: automatically when the server can't be reached,
+  // or always while "over the mesh" is on (the 📡 button).
+  const tracker = withAgent ? null : myTracker(client);
+  const [viaMesh, setViaMesh] = useState(false);
+  const outbox = useMeshOutbox(client, peer);
+  const meshMax = peer ? client.meshTextMax.direct : client.meshTextMax.chat;
+  const meshLeft = meshMax - new TextEncoder().encode(text.trim()).length;
+  useEffect(() => {
+    // The mesh key has to reach the server while there's internet.
+    if (tracker && !client.meshReady) client.prepareMesh().catch(() => {});
+  }, [client, tracker]);
+
   const send = async () => {
     const value = text;
     if (!value.trim()) return;
     setText('');
     setError(null);
+    const question = agent && !peer ? helperQuestion(value, agent.name) : null;
+    const plain = !withAgent && !(agent && !peer && (asking || question != null));
+    if (plain && tracker && viaMesh) {
+      try {
+        await sendOverMesh(client, value, peer);
+      } catch (e) {
+        setText(value);
+        setError(meshRadioText(e, tracker.name));
+      }
+      return;
+    }
     try {
-      const question = agent && !peer ? helperQuestion(value, agent.name) : null;
       if (withAgent) await client.askAgent(value, { peer });
       else if (agent && !peer && (asking || question != null)) {
         await client.askAgent(question ?? value);
@@ -157,8 +182,23 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
       } else await client.sendChat(value, { to: peer });
       list.current?.scrollToOffset({ offset: 0, animated: true });
     } catch (e) {
+      // No internet: through the tracker instead, if it fits one radio packet.
+      if (plain && tracker && unreachable(e) && client.meshReady && client.meshFits(value, peer)) {
+        try {
+          await sendOverMesh(client, value, peer);
+          return;
+        } catch (e2) {
+          setText(value);
+          setError(`No internet, and the mesh didn’t work either. ${meshRadioText(e2, tracker.name)}`);
+          return;
+        }
+      }
       setText(value);
-      setError(errorText(e));
+      setError(
+        plain && tracker && unreachable(e) && !client.meshFits(value, peer)
+          ? `No internet. Over the mesh a message can be at most ${meshMax} bytes: shorten it and tap 📡.`
+          : errorText(e),
+      );
     }
   };
 
@@ -496,6 +536,7 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
         ) : null}
         <Text style={{ color: t.muted, fontSize: fs(14), marginTop: 2, marginHorizontal: 6 }}>
           {clock(m.ts)}
+          {m.body?.via === 'radio' && m.body?.sos === undefined ? ' · 📡 over the mesh' : ''}
           {mine ? <Ticks state={client.receipt(m)} showRead={readReceipts} /> : null}
         </Text>
       </View>
@@ -672,12 +713,23 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
                   <Text style={{ color: t.brand, fontSize: 30, lineHeight: 34, fontWeight: '500' }}>{menuOpen ? '×' : '+'}</Text>
                 </Pressable>
               ) : null}
-              <TextInput accessibilityLabel={withAgent ? `Ask ${title} anything` : asking && agent ? `Ask ${agent.name}…` : peer ? `Message ${title}` : 'Message your circle'}
+              {tracker ? (
+                <Pressable
+                  accessibilityRole="switch"
+                  accessibilityLabel={`Send over the mesh, through ${tracker.name}`}
+                  accessibilityState={{ checked: viaMesh }}
+                  onPress={() => setViaMesh((v) => !v)}
+                  style={{ width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: viaMesh ? t.brandSoft : t.bg, borderWidth: viaMesh ? 2 : 0, borderColor: t.brand }}
+                >
+                  <Text style={{ fontSize: 22 }}>📡</Text>
+                </Pressable>
+              ) : null}
+              <TextInput accessibilityLabel={viaMesh && tracker ? `Message over the mesh, through ${tracker.name}` : withAgent ? `Ask ${title} anything` : asking && agent ? `Ask ${agent.name}…` : peer ? `Message ${title}` : 'Message your circle'}
                 ref={input}
                 value={text}
                 onChangeText={setText}
                 onFocus={() => setMenuOpen(false)}
-                placeholder={withAgent ? `Ask ${title} anything` : asking && agent ? `Ask ${agent.name}…` : peer ? `Message ${title}` : 'Message your circle'}
+                placeholder={viaMesh && tracker ? `Over the mesh, through ${tracker.name}` : withAgent ? `Ask ${title} anything` : asking && agent ? `Ask ${agent.name}…` : peer ? `Message ${title}` : 'Message your circle'}
                 placeholderTextColor={t.muted}
                 multiline
                 maxLength={20000}
@@ -686,12 +738,26 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
               <Pressable accessibilityRole="button"
                 accessibilityLabel="Send"
                 onPress={send}
-                disabled={!text.trim()}
-                style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: t.brand, alignItems: 'center', justifyContent: 'center', opacity: text.trim() ? 1 : 0.5 }}
+                disabled={!text.trim() || (viaMesh && !!tracker && meshLeft < 0)}
+                style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: t.brand, alignItems: 'center', justifyContent: 'center', opacity: text.trim() && !(viaMesh && tracker && meshLeft < 0) ? 1 : 0.5 }}
               >
                 <Icon name="send" color={t.brandInk} size={22} />
               </Pressable>
             </View>
+            {viaMesh && tracker ? (
+              <Text accessibilityLiveRegion="polite" style={{ color: meshLeft < 0 ? t.danger : t.muted, fontSize: 14, marginHorizontal: 16, marginBottom: 8 }}>
+                Over the mesh through {tracker.name}: {meshLeft >= 0 ? `${meshLeft} left` : `${-meshLeft} too many`} (one radio packet holds {meshMax} bytes; emoji and Urdu letters take more than one). The Meshtastic app mustn’t be connected to it.
+              </Text>
+            ) : null}
+            {outbox.length ? (
+              <View style={{ marginHorizontal: 12, marginBottom: 8, gap: 4 }}>
+                {outbox.map((o) => (
+                  <Text key={o.id} style={{ color: t.muted, fontSize: 14 }} numberOfLines={2}>
+                    📡 “{o.text}” sent over the mesh through {o.via} at {clock(o.at)}. It shows in the chat when the home base passes it on.
+                  </Text>
+                ))}
+              </View>
+            ) : null}
             {agent && !peer && !asking && /^@\S*$/.test(text) && `@${agent.name}`.toLowerCase().startsWith(text.toLowerCase()) ? (
               // "@" and the start of its name: ask it instead.
               <Pressable

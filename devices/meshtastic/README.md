@@ -181,6 +181,30 @@ encrypted to the tracker's key):
 It sends them once, when they change in the app. A change made on the tracker
 itself, in the Meshtastic app, stays until the app's settings change again.
 
+## Messages from your phone over the mesh
+
+When your phone has no internet but you have your tracker, HomeCircle can
+send a short message through it. The phone talks to the tracker over
+Bluetooth, the tracker sends it over the mesh, and the home base passes it
+on to the circle.
+- **Automatically:** if a message can't reach the server, HomeCircle sends
+  it through the tracker you carry (the one linked to you), if it's in
+  Bluetooth range.
+- **On purpose:** tap 📡 next to the message box. Everything you send goes
+  over the mesh until you tap it again.
+- **Short:** one radio packet holds about 110 characters for the group, or
+  85 for a direct message. Emoji and Urdu letters count as more than one.
+  The box counts down.
+- **Private:** your phone seals the message before the tracker sends it.
+  The mesh, the home base and the server can't read it. A direct message is
+  sealed twice, so the rest of the circle can't read it either.
+- **Marked:** it shows "📡 over the mesh" in the chat, for everyone.
+- **Bluetooth:** a tracker takes one Bluetooth connection at a time.
+  Disconnect the Meshtastic app from it first. The first time, Android asks
+  to pair: the T1000-E's PIN is 123456 unless you changed it.
+- **Needs internet once:** your phone registers its key for this while
+  online, so messages over the mesh can be checked as yours.
+
 ## The tracker's button
 
 On a SenseCAP T1000-E with the HomeCircle build (`tracker-t1000-e-homecircle`),

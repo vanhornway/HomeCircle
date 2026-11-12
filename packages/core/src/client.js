@@ -29,7 +29,8 @@ import {
   appInviteLink,
 } from './crypto.js';
 import { isValidReaction } from './emoji.js';
-import { openMesh } from './mesh.js';
+import { MESH_TEXT_MAX, openMesh, sealMeshMessage } from './mesh.js';
+import { utf8Encode } from './encoding.js';
 import { quickReturns } from './places.js';
 import { FREE_RE, PLAN_ANSWERS, TRAVEL_RE, busyDays, cleanBusy, cleanPlan, travelStats, tripsFrom } from './schedule.js';
 import { allFeatures, cleanFeatures, defaultFeatures, hasFeature, resolveFeatures } from './features.js';
@@ -335,6 +336,70 @@ export class CircleClient {
     const peer = this.account.known[peerId];
     if (!peer) throw new Error('Can’t message someone whose keys haven’t been verified yet');
     return directKey(this.account.identity.boxSecret, peer.boxPub);
+  }
+
+  // --- messages over the mesh -----------------------------------------------
+  //
+  // With no internet, a phone can send a short message through the
+  // Meshtastic tracker its person carries (over Bluetooth); the circle's home
+  // base hands it to the server like a tracker's position. The packet is
+  // sealed here, so nothing on the way can read it. Its tag uses this
+  // member's mesh key, registered with the server over the internet first
+  // (prepareMesh), since a packet can't prove who sent it otherwise.
+
+  /** The most text (UTF-8 bytes) a mesh message carries: a group message, and a direct one. */
+  get meshTextMax() {
+    return MESH_TEXT_MAX;
+  }
+
+  /** Whether this text fits one mesh message. */
+  meshFits(text, to = null) {
+    return utf8Encode(String(text ?? '')).length <= (to ? MESH_TEXT_MAX.direct : MESH_TEXT_MAX.chat);
+  }
+
+  /** Whether this phone can send messages over the mesh (its mesh key is registered). */
+  get meshReady() {
+    return !!this.account?.meshKey;
+  }
+
+  /** Register this member's mesh key with the server, if it hasn't been yet. Needs the internet. */
+  async prepareMesh() {
+    if (this.account.meshKey) return;
+    const key = randomId(32); // 32 random bytes, base64url
+    await this.api.registerMesh(key);
+    this.account.meshKey = key;
+    await this._save();
+  }
+
+  /**
+   * A message sealed for the mesh, for the tracker to send: { id, packet }
+   * (packet: Uint8Array, one LoRa packet). Works offline once prepareMesh ran.
+   */
+  async meshMessage(text, { to = null } = {}) {
+    const t = String(text ?? '').trim();
+    if (!t) throw new Error('Nothing to send');
+    if (!this.account.meshKey) throw new Error('Messages over the mesh need this phone online once first.');
+    if (!this.meshFits(t, to)) throw new Error(`Too long for the mesh: at most ${to ? MESH_TEXT_MAX.direct : MESH_TEXT_MAX.chat} bytes.`);
+    const a = this.account;
+    // Only ever goes up (the server refuses a counter it has seen): seconds now, or one more.
+    const counter = Math.max((a.meshCounter ?? 0) + 1, Math.floor(Date.now() / 1000));
+    a.meshCounter = counter;
+    await this._save();
+    const id = randomId(12);
+    const packet = sealMeshMessage({
+      from: a.memberId,
+      circle: a.circleId,
+      epoch: a.epoch,
+      key: a.keyring[a.epoch],
+      meshKey: a.meshKey,
+      signSecret: a.identity.signSecret,
+      counter,
+      id,
+      text: t,
+      toId: to,
+      directKey: to ? this._directKey(to) : null,
+    });
+    return { id, packet };
   }
 
   /** Days this circle keeps messages, and the choices an admin has. */
@@ -823,11 +888,18 @@ export class CircleClient {
       return null;
     }
     if (!key) return null;
-    // A tracker's packet that came over the mesh: compact, but sealed and signed the same way.
+    // A packet that came over the mesh (a tracker's, or a phone's message sent
+    // through its tracker): compact, sealed with the circle key and signed the
+    // same way; a direct message's text is sealed again with the direct key.
     if (typeof env?.mesh === 'string') {
-      if (to) return null;
       try {
-        const msg = openMesh(env.mesh, { key, signPub, from, circle: this.account.circleId });
+        const msg = openMesh(env.mesh, {
+          key: this.account.keyring[env.epoch],
+          signPub,
+          from,
+          circle: this.account.circleId,
+          directKey: to ? key : null,
+        });
         if (msg.epoch !== env.epoch || (id && msg.id !== id) || !kinds.includes(msg.kind)) return null;
         return msg;
       } catch (e) {

@@ -10,8 +10,11 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 export const MESH_LOCATION = 1;
 export const MESH_SOS_START = 2;
 export const MESH_SOS_SAFE = 3;
+export const MESH_CHAT = 4; // a phone's group message, through its tracker
+export const MESH_DIRECT = 5; // a phone's direct message: the recipient's ref follows the id
 const HEADER = 18;
 const ID_BYTES = 12;
+const TO_BYTES = 8;
 const TAG = 8;
 export const MESH_MAX_BYTES = 240;
 
@@ -25,8 +28,8 @@ export function meshHeader(buf) {
   if (!Buffer.isBuffer(buf) || buf.length > MESH_MAX_BYTES || buf.length < HEADER + 16 + 64 + TAG) return null;
   if (buf[0] !== 0x68 || buf[1] !== 0x63 || buf[2] !== 1) return null;
   const type = buf[3];
-  if (type !== MESH_LOCATION && type !== MESH_SOS_START && type !== MESH_SOS_SAFE) return null;
-  const headerLen = type === MESH_LOCATION ? HEADER : HEADER + ID_BYTES;
+  if (type < MESH_LOCATION || type > MESH_DIRECT) return null;
+  const headerLen = type === MESH_LOCATION ? HEADER : type === MESH_DIRECT ? HEADER + ID_BYTES + TO_BYTES : HEADER + ID_BYTES;
   if (buf.length < headerLen + 16 + 64 + TAG) return null;
   return {
     type,
@@ -34,6 +37,7 @@ export function meshHeader(buf) {
     counter: buf.readUInt32LE(12),
     epoch: buf.readUInt16LE(16),
     id: type === MESH_LOCATION ? null : buf.subarray(HEADER, HEADER + ID_BYTES).toString('base64url'),
+    to: type === MESH_DIRECT ? buf.subarray(HEADER + ID_BYTES, HEADER + ID_BYTES + TO_BYTES).toString('base64url') : null,
   };
 }
 

@@ -151,6 +151,8 @@ export class Api {
   /** The prayer times plugin: today's and tomorrow's times at a grid cell, for a madhab. */
   prayer = (lat, lng, madhab) => this.req('GET', `/plugins/prayer/times?lat=${Math.round(lat * 10) / 10}&lng=${Math.round(lng * 10) / 10}&madhab=${encodeURIComponent(madhab)}`);
   /** A plugin's settings for this circle (admins): secrets come back only as { set }. */
+  /** This member's mesh key (base64url, 32 bytes): the server checks mesh packets' tags with it. */
+  registerMesh = (key) => this.req('PUT', '/members/me/mesh', { key });
   pluginSettings = (id) => this.req('GET', `/plugins/${encodeURIComponent(id)}/settings`);
   putPluginSettings = (id, values) => this.req('PUT', `/plugins/${encodeURIComponent(id)}/settings`, { values });
   /** Your position, for your device in the circle's Home Assistant. */

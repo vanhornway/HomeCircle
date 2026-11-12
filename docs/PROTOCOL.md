@@ -405,10 +405,12 @@ at home (`server/scripts/mesh-bridge.mjs`), hands them to
 not the home base, not the server.
 
 ```
-0   2  "hc"           2  1  version 1       3  1  type: 1 location, 2 SOS start, 3 SOS safe
+0   2  "hc"           2  1  version 1       3  1  type: 1 location, 2 SOS start, 3 SOS safe,
+                                                       4 group message, 5 direct message
 4   8  sender ref = SHA-512("homecircle/mesh-ref" ‖ member id)[0..8]
 12  4  counter (LE; only goes up)          16  2  epoch (LE)
-18  12 message id (SOS only: the same id as the same SOS sent over the internet)
+18  12 message id (all but locations: the same id as the same message sent over the internet)
+30  8  recipient ref (direct messages only): their mesh ref, for the server to deliver it
 …      secretbox(content ‖ Ed25519 signature, nonce, CK_epoch)
        nonce = SHA-512("homecircle/mesh-nonce" ‖ header)[0..24]
 -8  8  tag = HMAC-SHA-512(sender's mesh key, everything before)[0..8]
@@ -418,6 +420,22 @@ not the home base, not the server.
   1e-7°), `accuracy` (u16 m), `speed` (u16 cm/s), `battery` (u8 %) and flags
   (charging, SOS on): 18 bytes, 124 with the rest. An SOS start is `ts`; an
   SOS safe is `ts` and the id of the SOS it ends.
+- **Messages from a phone over the mesh** (types 4 and 5): with no internet,
+  or when the person asks for it, the app seals a short message itself and
+  sends it over Bluetooth to the Meshtastic tracker that person carries. The
+  tracker broadcasts it as a `PRIVATE_APP` packet on its primary channel, and
+  a home base hands it in like any other.
+  - Content is `ts` and the text in UTF-8, at most 111 bytes for a group
+    message (one LoRa packet holds 233).
+  - A direct message's text is sealed again: `secretbox(text,
+    SHA-512("homecircle/mesh-direct" ‖ header)[0..24], DK)` with the
+    two members' direct key. That leaves 87 bytes, and the rest of the circle
+    can't read it.
+  - The server finds the recipient from the ref after the id, stores it as a
+    direct message, and sends it to that person only. The body is
+    `{ text, via: "radio" }`, and the apps mark it as sent over the mesh.
+  - The phone registers its mesh key while online (`PUT /members/me/mesh`).
+    Its counter is the time in seconds, or one more than the last.
 - **The signature** covers `"homecircle/mesh-v1\0" ‖ circle ‖ "\0" ‖ member ‖
   "\0" ‖ header ‖ content`, so a packet can't be moved to another circle,
   member, type or epoch. Apps check it with the sender's verified signing key,
@@ -427,8 +445,8 @@ not the home base, not the server.
   (`PUT /members/me/mesh`, when it joins). The server stores a packet only if
   its tag matches that key and its counter is higher than any before, so
   nobody else on the mesh can fill or replay a tracker's location.
-- **Stored** as `{ epoch, mesh }` (a location) or a group message with that
-  envelope (an SOS, pushed as urgent). The same SOS arriving over the internet
+- **Stored** as `{ epoch, mesh }` (a location) or a message with that
+  envelope (an SOS, pushed as urgent; a phone's group or direct message). The same SOS arriving over the internet
   and the mesh is one message. Apps before 0.25 can't open these and skip them.
 
 ### A home base (stock Meshtastic trackers)

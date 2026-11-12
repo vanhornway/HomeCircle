@@ -755,9 +755,22 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
           hub.broadcast(m.circleId, { type: 'location', memberId: m.id, env, updatedAt: now }, m.id);
           return 'ok';
         }
-        const seq = store.insertMessage({ id: h.id, circleId: m.circleId, fromId: m.id, env, now });
-        hub.broadcast(m.circleId, { type: 'message', message: { seq, id: h.id, from: m.id, to: null, env, createdAt: now } }, m.id);
-        const recipients = store.activeMembers(m.circleId).filter((x) => x.id !== m.id);
+        // A direct message names its recipient by their ref (the server can't read the rest).
+        let to = null;
+        if (h.to) {
+          to = store.activeMembers(m.circleId).find((x) => x.id !== m.id && meshRef(x.id) === h.to);
+          if (!to) return 'invalid';
+        }
+        const seq = store.insertMessage({ id: h.id, circleId: m.circleId, fromId: m.id, toId: to?.id ?? null, env, now });
+        const message = { seq, id: h.id, from: m.id, to: to?.id ?? null, env, createdAt: now };
+        if (to) {
+          hub.send(to.id, { type: 'message', message });
+          relayToKeeper(to, { type: 'message', from: m.id, seq });
+        } else {
+          hub.broadcast(m.circleId, { type: 'message', message }, m.id);
+        }
+        hub.send(m.id, { type: 'message', message }); // the sender's phone, once it's back online
+        const recipients = to ? [to] : store.activeMembers(m.circleId).filter((x) => x.id !== m.id);
         push.activity(recipients.filter((x) => x.pushToken && !hub.isOnline(x.id)), { urgent: urgentLimiter.take(m.id) === 0, seq });
         return 'ok';
       });
