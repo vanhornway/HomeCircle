@@ -1,6 +1,19 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.26.0',
+    date: '2026-11-12',
+    title: 'Trackers, set up from the app',
+    items: [
+      'Set how often trackers report, for all of them or one, right in the app.',
+      'A tracker’s button speaks for you: 2 presses for “here’s where I am”, 3 for “come pick me up”, 4 for “on my way home”, 5 for SOS. You choose the words.',
+      'Trackers for the car, a pet, luggage or keys, and hand one to someone else any time.',
+      'Add a tracker by scanning its QR code from the Meshtastic app.',
+      'Locate a tracker and it answers in your chat with where it is.',
+      'Trackers are counted apart from people, and “Chirp everyone” leaves them out.',
+    ],
+  },
+  {
     version: '0.25.1',
     date: '2026-11-12',
     title: 'Your home base, at a glance',
