@@ -13,7 +13,7 @@ import { spotName, type Anchor } from '../lib/visitsCore';
 import { MemberAvatar } from './MemberAvatar';
 import { cadenceLine, canLocate, locatePerson, locateState, openDirections, radioLine, statusLine, useLocateVersion } from '../lib/people';
 import { useTheme } from '../theme';
-import { carriedFallback, trackerEmoji, trackerOf } from '../lib/trackers';
+import { carriedFallback, trackerEmoji, trackerOf, useNow } from '../lib/trackers';
 import { timeAgo } from '../lib/useCircle';
 import { showSheet } from '../lib/sheet';
 
@@ -49,6 +49,7 @@ export function PersonSheet({
 }) {
   const t = useTheme();
   useLocateVersion();
+  const now = useNow();
   const [alerting, setAlerting] = useState(false);
   const [choosingCall, setChoosingCall] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -57,7 +58,7 @@ export function PersonSheet({
   // A Meshtastic tracker (kept by a home base): no phone to call or message.
   const tracker = m ? trackerOf(client, m.id) : null;
   // Someone whose phone has gone quiet: shown at the tracker they carry.
-  const via = m && !tracker ? carriedFallback(client, m.id, Date.now()) : null;
+  const via = m && !tracker ? carriedFallback(client, m.id, now) : null;
   const loc = m ? (via?.loc ?? client.locations.get(m.id)) : undefined;
   const carrier = tracker?.carriedBy ? client.members.get(tracker.carriedBy) : null;
   const trackerLine = tracker

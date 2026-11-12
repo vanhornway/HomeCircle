@@ -2,7 +2,18 @@
 // an ordinary member of the circle; what makes it one is its member record:
 // `tracker.node` set, signed by the home base. The home base is the member
 // whose record about itself carries `homeBase` (its status).
+import { useEffect, useState } from 'react';
 import type { CircleClient, HomeBaseStatus, MemberLocation, TrackerSettings } from '@homecircle/core';
+
+/** The time now, updated every half minute: "heard 5 min ago" and the quiet-phone fallback stay current without reading the clock during render. */
+export function useNow(everyMs = 30_000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), everyMs);
+    return () => clearInterval(timer);
+  }, [everyMs]);
+  return now;
+}
 
 /** A phone that hasn't reported for this long is quiet: its person shows at their tracker (unless the home base says otherwise). */
 export const QUIET_MS = 30 * 60_000;

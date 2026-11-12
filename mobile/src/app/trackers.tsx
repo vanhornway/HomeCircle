@@ -11,7 +11,7 @@ import { GroupBody, SettingsGroup, SettingsPage, SettingsRow } from '../componen
 import { errorText } from '../lib/circle';
 import { radioLine } from '../lib/people';
 import { confirm, notice, showSheet } from '../lib/sheet';
-import { HOME_BASE_OFFLINE_MS, homeBaseOf, tellHomeBase, trackerEmoji, trackerList } from '../lib/trackers';
+import { HOME_BASE_OFFLINE_MS, homeBaseOf, tellHomeBase, trackerEmoji, trackerList, useNow } from '../lib/trackers';
 import { timeAgo, useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
 
@@ -54,7 +54,7 @@ export default function Trackers() {
   const home = homeBaseOf(client);
   const trackers = trackerList(client);
   const admin = client.isAdmin;
-  const now = Date.now();
+  const now = useNow();
   // One form at a time: adding a heard node, renaming or linking a tracker.
   const [adding, setAdding] = useState<{ node: string; name: string; kind: Kind; carriedBy: string } | null>(null);
   const [renaming, setRenaming] = useState<{ id: string; node: string; name: string } | null>(null);
