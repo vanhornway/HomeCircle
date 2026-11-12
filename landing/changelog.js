@@ -1,6 +1,17 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.25.0',
+    date: '2026-11-12',
+    title: 'Trackers on the family map',
+    items: [
+      'Meshtastic trackers, an optional plugin: a home base on your Wi-Fi puts trackers on the map, for the car or a backpack. Locate, Chirp and arrive and leave alerts work on them too.',
+      'When someone’s phone goes quiet, they show at the tracker they carry.',
+      'See the radio path each tracker’s position took to get home.',
+      'Plugins sit in one section in Settings → Features, opened when you need it.',
+    ],
+  },
+  {
     version: '0.24.1',
     date: '2026-11-06',
     title: 'More Urdu in a real voice',
