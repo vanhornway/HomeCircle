@@ -31,6 +31,16 @@ struct FakeRadio : hc::Radio {
     for (auto& kv : heard) out.push_back(kv.second);
   }
   std::string channelLink() override { return "https://meshtastic.org/e/#TEST"; }
+  // A home base on mains power with good Wi-Fi.
+  bool selfInfo(hc::SelfInfo& out) override {
+    out.plugged = true;
+    out.wifiRssi = -58;
+    out.uptimeS = 3600;
+    out.heapKb = 120;
+    out.chUtil = 3.25f;
+    out.airTx = 0.4f;
+    return true;
+  }
   // The home base's own GPS, set by "selfgps"; its sky, fed by "nmea".
   hc::SelfGnss self;
   hc::GnssSky skyView;
@@ -92,6 +102,10 @@ int main(int argc, char** argv) {
         h.num = node;
         h.name = rest(line, 2);
         h.heardAtMs = host::nowMs();
+        // What its telemetry would say: a fair signal and most of its battery.
+        h.snr = 6.25f;
+        h.battery = 80;
+        h.volts = 3.97f;
         radio.heard[node] = h;
       } else if (cmd == "position") {
         hc::Fix f;

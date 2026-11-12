@@ -71,12 +71,46 @@ export interface TrackerSettings {
 }
 
 /** What a Meshtastic home base says about itself: when it last checked in, the nodes it hears, its trackers. */
+/** What a home base's radio knows about a node it hears. */
+export interface MeshNodeRadio {
+  /** When it was last heard. */
+  at: number | null;
+  hops: number | null;
+  /** Signal-to-noise ratio when last heard, dB. */
+  snr: number | null;
+  /** Battery percent from its telemetry. */
+  battery: number | null;
+  /** On external power. */
+  plugged: boolean;
+  volts: number | null;
+}
+
 export interface HomeBaseStatus {
   at: number;
+  /** How often it reports, in seconds; null for older home bases (every 5 minutes). */
+  every: number | null;
   /** After how long a phone counts as quiet (the Meshtastic plugin's setting), or null for the default. */
   quietMinutes: number | null;
-  heard: { node: string; name: string | null; at: number | null; hops: number | null }[];
-  trackers: { node: string; member: string; at: number | null }[];
+  /** The home base itself. */
+  self: {
+    battery: number | null;
+    volts: number | null;
+    plugged: boolean;
+    /** Wi-Fi signal, dBm. */
+    wifi: number | null;
+    /** Seconds since it started. */
+    up: number | null;
+    /** Free memory, KB. */
+    heap: number | null;
+    /** LoRa channel busy, percent. */
+    ch: number | null;
+    /** Its own transmitting, percent of the hour. */
+    tx: number | null;
+  } | null;
+  gps: { fix: boolean; sats: number | null; hdop: number | null } | null;
+  heard: ({ node: string; name: string | null } & MeshNodeRadio)[];
+  /** Its trackers: `at` is their last position on the map; `radio` what the radio last heard from them. */
+  trackers: { node: string; member: string; at: number | null; radio: MeshNodeRadio | null }[];
 }
 
 /** Admin settings about one member (her skin and Elderly Companion settings, someone's he/she). */

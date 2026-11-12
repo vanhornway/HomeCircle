@@ -184,7 +184,8 @@ class Device {
   /** Admins: a one-time invite link for this circle. */
   Status createInvite(std::string& link, int hours = 1);
   /** Admins: save fields into the member record about someone (merged with what's there). */
-  Status mergeMemberRecord(const std::string& subject, JsonVariantConst patch);
+  /** reuseMs > 0: reuse the record read last time for this subject if it is younger than that (and this device wrote it since). */
+  Status mergeMemberRecord(const std::string& subject, JsonVariantConst patch, int64_t reuseMs = 0);
   /** Change this member's name in the circle. */
   Status rename(const std::string& name);
   /** Leave the circle, then forget it. */
@@ -226,6 +227,8 @@ class Device {
   bool refreshed_ = false;
   std::map<std::string, std::string> roles_;  // from the last /state
   std::map<std::string, bool> features_;      // from the last /state
+  std::string recordFor_, recordBody_;         // the member record merged last (its body as JSON)
+  int64_t recordReadAt_ = 0;
 
   bool save();
   Status fail(const std::string& why);

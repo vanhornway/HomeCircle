@@ -2,6 +2,16 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.25.1
+
+- The home base reports every minute, since it's plugged in or on solar.
+  Settings → Circle → Trackers shows how it's doing: its power, Wi-Fi signal,
+  uptime, GPS and how busy the radio channel is. Each tracker shows its
+  battery and signal. The home base firmware in `devices/meshtastic` needs
+  updating for this. The server doesn't.
+- When an admin turns the Meshtastic plugin back on, the home base notices
+  within a minute. While it's off, it no longer shows as offline.
+
 ## 0.25.0
 
 - Meshtastic trackers, a plugin that's off until an admin turns it on. A home

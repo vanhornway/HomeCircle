@@ -3037,15 +3037,43 @@ function cleanHomeBase(h) {
   const node = (v) => (typeof v === 'string' && /^![0-9a-f]{8}$/.test(v) ? v : null);
   const text = (v) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, '').trim().slice(0, 40) : '');
   const list = (a, f) => (Array.isArray(a) ? a.slice(0, 40).map(f).filter(Boolean) : []);
+  const num = (v, lo, hi) => (Number.isFinite(v) && v >= lo && v <= hi ? v : null);
+  // What the radio knows about a node: when it was heard, how far, its signal and battery.
+  const radio = (n) => ({
+    at: Number.isFinite(n?.at) ? n.at : null,
+    hops: Number.isInteger(n?.hops) ? n.hops : null,
+    snr: num(n?.snr, -40, 40),
+    battery: Number.isInteger(n?.battery) ? num(n.battery, 0, 100) : null,
+    plugged: n?.plugged === true,
+    volts: num(n?.volts, 0, 30),
+  });
+  const s = h.self && typeof h.self === 'object' ? h.self : null;
+  const g = h.gps && typeof h.gps === 'object' ? h.gps : null;
   return {
     at: h.at,
+    // How often it reports, in seconds (older home bases: every 5 minutes).
+    every: Number.isInteger(h.every) ? num(h.every, 10, 3600) : null,
     // After how long a phone counts as quiet (the Meshtastic plugin's setting).
     quietMinutes: Number.isInteger(h.quietMinutes) && h.quietMinutes >= 10 && h.quietMinutes <= 720 ? h.quietMinutes : null,
-    heard: list(h.heard, (n) =>
-      node(n?.node) ? { node: n.node, name: text(n.name) || null, at: Number.isFinite(n.at) ? n.at : null, hops: Number.isInteger(n.hops) ? n.hops : null } : null,
-    ),
+    // The home base itself: power, Wi-Fi signal (dBm), uptime (s), free memory (KB), LoRa channel and its own airtime (%).
+    self: s
+      ? {
+          battery: Number.isInteger(s.battery) ? num(s.battery, 0, 100) : null,
+          volts: num(s.volts, 0, 30),
+          plugged: s.plugged === true,
+          wifi: num(s.wifi, -120, -1),
+          up: Number.isInteger(s.up) ? num(s.up, 0, 1e9) : null,
+          heap: Number.isInteger(s.heap) ? num(s.heap, 0, 1e6) : null,
+          ch: num(s.ch, 0, 100),
+          tx: num(s.tx, 0, 100),
+        }
+      : null,
+    gps: g ? { fix: g.fix === true, sats: Number.isInteger(g.sats) ? num(g.sats, 0, 99) : null, hdop: num(g.hdop, 0, 99) } : null,
+    heard: list(h.heard, (n) => (node(n?.node) ? { node: n.node, name: text(n.name) || null, ...radio(n) } : null)),
     trackers: list(h.trackers, (t) =>
-      node(t?.node) && typeof t.member === 'string' ? { node: t.node, member: t.member, at: Number.isFinite(t.at) ? t.at : null } : null,
+      node(t?.node) && typeof t.member === 'string'
+        ? { node: t.node, member: t.member, at: Number.isFinite(t.at) ? t.at : null, radio: t.radio && typeof t.radio === 'object' ? radio(t.radio) : null }
+        : null,
     ),
   };
 }

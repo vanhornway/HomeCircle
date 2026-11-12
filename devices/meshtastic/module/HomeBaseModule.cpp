@@ -18,6 +18,8 @@
 #include "MeshRadio.h"
 #include "MeshService.h"
 #include "NodeDB.h"
+#include "PowerStatus.h"
+#include "airtime.h"
 #include "main.h"
 #include "mesh/generated/meshtastic/apponly.pb.h"
 #include "mesh/mesh-pb-constants.h"
@@ -70,8 +72,35 @@ struct MeshRadio : hc::Radio {
             if (n->has_user)
                 h.name = n->user.long_name;
             h.heardAtMs = (int64_t)n->last_heard * 1000;
+            h.snr = n->snr;
+            if (n->has_device_metrics) {
+                if (n->device_metrics.has_battery_level)
+                    h.battery = (int)n->device_metrics.battery_level;
+                if (n->device_metrics.has_voltage && n->device_metrics.voltage > 0)
+                    h.volts = n->device_metrics.voltage;
+            }
             out.push_back(h);
         }
+    }
+    bool selfInfo(hc::SelfInfo &out) override
+    {
+        if (powerStatus) {
+            if (powerStatus->getHasBattery()) {
+                out.battery = powerStatus->getBatteryChargePercent();
+                if (powerStatus->getBatteryVoltageMv() > 0)
+                    out.volts = powerStatus->getBatteryVoltageMv() / 1000.0f;
+            }
+            out.plugged = powerStatus->getHasUSB() || !powerStatus->getHasBattery();
+        }
+        if (WiFi.status() == WL_CONNECTED)
+            out.wifiRssi = WiFi.RSSI();
+        out.uptimeS = millis() / 1000;
+        out.heapKb = (int)(ESP.getFreeHeap() / 1024);
+        if (airTime) {
+            out.chUtil = airTime->channelUtilizationPercent();
+            out.airTx = airTime->utilizationTXPercent();
+        }
+        return true;
     }
     std::string channelLink() override { return homeBaseModule ? homeBaseModule->channelLink() : ""; }
     void alert(uint32_t node, const std::string &text) override

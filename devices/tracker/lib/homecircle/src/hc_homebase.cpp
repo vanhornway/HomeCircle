@@ -25,13 +25,15 @@ const char* const HELP =
     "• channel: the link that puts a tracker on our private channel\n"
     "• gps: where I am, and the satellites I can see\n"
     "• status";
-const int64_t SELF_EVERY = 60 * MIN;  // the home base's own pin, from its GPS
+const int64_t SELF_EVERY = 10 * MIN;  // the home base's own pin, from its GPS (skipped when unchanged)
 const int64_t PENDING_EVERY = 8 * 1000;  // collect Locate, chirps and check-ins for trackers
 const int64_t PLACES_EVERY = 10 * MIN;   // the circle's places, for arrived and left
 const int64_t CHECKIN_FOR = 2 * 60 * MIN;  // how long an "ok" from the tracker answers a check-in
 const int64_t TRACE_GAP = 1 * MIN;         // at most one traceroute a minute per tracker (airtime)
 const int64_t PATH_FOR = 6 * 60 * MIN;     // a path older than this isn't shown
-const int64_t STATUS_EVERY = 5 * MIN;      // its own status for the app's Trackers screen
+const int64_t STATUS_EVERY = 1 * MIN;      // its own status for the app's Trackers screen (it has mains or solar power)
+const int64_t RECORD_REREAD = 10 * MIN;    // between full reads of its member record when writing the status
+const int64_t OFF_RECHECK = 1 * MIN;       // while the plugin is off: how often to look whether it's back on
 
 double metres(double lat1, double lng1, double lat2, double lng2) {
   const double r = 6371000.0, rad = M_PI / 180.0;
@@ -442,6 +444,33 @@ void HomeBase::tick() {
   if (!ready()) return;
   int64_t now = now_();
   forwardMesh();
+  if (now >= nextPlaces_) {
+    bool wasOn = enabled_;
+    base_.refresh();  // features (place alerts, the plugin) and new members
+    readPlugin();
+    // Off: look again every minute, so turning it on takes effect quickly.
+    nextPlaces_ = now + (enabled_ ? PLACES_EVERY : OFF_RECHECK);
+    if (enabled_) {
+      base_.fetchPlaces(places_);
+      if (!wasOn) nextKeeper_ = nextPending_ = nextStatus_ = now;  // just turned on: catch up now
+    }
+  }
+  if (!enabled_) {
+    // Meshtastic trackers are off in this circle: only answer admins, and
+    // keep saying it's alive so the app doesn't show it as offline.
+    if (now >= nextDirect_) {
+      nextDirect_ = now + DIRECT_EVERY;
+      std::vector<Device::Direct> in;
+      if (base_.fetchDirect(in) == Status::Ok)
+        for (auto& d : in)
+          base_.sendDirect(d.from, "Meshtastic trackers are turned off in this circle. An admin can turn them on in Settings \xE2\x86\x92 Features \xE2\x86\x92 Plugins.");
+    }
+    if (now >= nextStatus_) {
+      nextStatus_ = now + STATUS_EVERY;
+      publishStatus();
+    }
+    return;
+  }
   // Trackers added before keepers existed: tell the server who keeps them.
   // (A server from before keepers says no: try again in a while, not every tick.)
   if (now >= nextKeeper_) {
@@ -455,23 +484,6 @@ void HomeBase::tick() {
         saveTrackers();
       }
     }
-  }
-  if (now >= nextPlaces_) {
-    nextPlaces_ = now + PLACES_EVERY;
-    base_.refresh();  // features (place alerts, the plugin) and new members
-    readPlugin();
-    if (enabled_) base_.fetchPlaces(places_);
-  }
-  if (!enabled_) {
-    // Meshtastic trackers are off in this circle: only answer admins.
-    if (now >= nextDirect_) {
-      nextDirect_ = now + DIRECT_EVERY;
-      std::vector<Device::Direct> in;
-      if (base_.fetchDirect(in) == Status::Ok)
-        for (auto& d : in)
-          base_.sendDirect(d.from, "Meshtastic trackers are turned off in this circle. An admin can turn them on in Settings \xE2\x86\x92 Features \xE2\x86\x92 Plugins.");
-    }
-    return;
   }
   if (now >= nextPending_ && !trackers_.empty()) {
     nextPending_ = now + PENDING_EVERY;
@@ -539,27 +551,63 @@ void HomeBase::publishStatus() {
   JsonDocument p;
   JsonObject h = p["homeBase"].to<JsonObject>();
   h["at"] = now_();
+  h["every"] = (int)(STATUS_EVERY / 1000);  // so the app knows when it's late
   h["quietMinutes"] = (int)(quietMs_ / MIN);  // the app shows people at their tracker after the same time
+  auto tenth = [](float v) { return std::round(v * 10) / 10; };
+  SelfInfo me;
+  if (radio_.selfInfo(me)) {
+    JsonObject s = h["self"].to<JsonObject>();
+    if (me.battery >= 0 && me.battery <= 100) s["battery"] = me.battery;
+    if (me.volts > 0) s["volts"] = tenth(me.volts);
+    s["plugged"] = me.plugged || me.battery > 100;
+    if (me.wifiRssi < 0) s["wifi"] = me.wifiRssi;
+    if (me.uptimeS >= 0) s["up"] = me.uptimeS;
+    if (me.heapKb >= 0) s["heap"] = me.heapKb;
+    if (me.chUtil >= 0) s["ch"] = tenth(me.chUtil);
+    if (me.airTx >= 0) s["tx"] = tenth(me.airTx);
+  }
+  SelfGnss g;
+  if (radio_.selfGnss(g) && g.present) {
+    JsonObject o = h["gps"].to<JsonObject>();
+    o["fix"] = g.hasFix;
+    o["sats"] = g.satsUsed;
+    if (g.hdop >= 0) o["hdop"] = tenth(g.hdop);
+  }
   std::vector<HeardNode> heard;
   radio_.nodes(heard);
   std::sort(heard.begin(), heard.end(), [](const HeardNode& a, const HeardNode& b) { return a.heardAtMs > b.heardAtMs; });
+  // What the radio knows about a node: signal, hops and battery.
+  auto radioFacts = [&](JsonObject o, const HeardNode& n) {
+    o["at"] = n.heardAtMs;
+    int hops = radio_.hopsAway(n.num);
+    if (hops >= 0) o["hops"] = hops;
+    if (n.snr > -100) o["snr"] = tenth(n.snr);
+    if (n.battery >= 0 && n.battery <= 100) o["battery"] = n.battery;
+    if (n.battery > 100) o["plugged"] = true;
+    if (n.volts > 0) o["volts"] = tenth(n.volts);
+  };
   JsonArray hn = h["heard"].to<JsonArray>();
   for (size_t i = 0; i < heard.size() && i < 20; i++) {
     JsonObject o = hn.add<JsonObject>();
     o["node"] = nodeId(heard[i].num);
     if (!heard[i].name.empty()) o["name"] = heard[i].name;
-    o["at"] = heard[i].heardAtMs;
-    int hops = radio_.hopsAway(heard[i].num);
-    if (hops >= 0) o["hops"] = hops;
+    radioFacts(o, heard[i]);
   }
   JsonArray tr = h["trackers"].to<JsonArray>();
   for (auto& t : trackers_) {
     JsonObject o = tr.add<JsonObject>();
     o["node"] = nodeId(t->node);
     o["member"] = t->dev->memberId();
-    if (t->sentFixAt) o["at"] = t->sentFixAt;
+    if (t->sentFixAt) o["at"] = t->sentFixAt;  // its last position on the map
+    for (auto& n : heard)
+      if (n.num == t->node) {
+        JsonObject r = o["radio"].to<JsonObject>();
+        radioFacts(r, n);
+      }
   }
-  base_.mergeMemberRecord(base_.memberId(), p.as<JsonVariantConst>());
+  // Every minute: reuse the rest of its record for a while instead of reading
+  // every member's record each time (admins rarely change the home base's).
+  base_.mergeMemberRecord(base_.memberId(), p.as<JsonVariantConst>(), RECORD_REREAD);
 }
 
 bool HomeBase::shareSelf(bool asked) {

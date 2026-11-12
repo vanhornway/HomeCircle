@@ -466,10 +466,25 @@ private `HomeCircle` channel, it seals it as that member's `location`, with
   The home base asks the tracker for a position, makes it beep (a text with
   the alert bell), and answers check-ins with `checkin: "ok"` when the tracker
   sends "ok". The server learns which member keeps which, but nothing more.
-- **Its own status:** every 5 minutes the home base writes the member record
-  about itself, with `homeBase: { at, heard: [{ node, name, at, hops }],
-  trackers: [{ node, member, at }] }`. It's sealed like any record, and the
-  app's Trackers screen reads it.
+- **Its own status:** the home base is on mains or solar power, so every
+  minute it writes the member record about itself:
+  `homeBase: { at, every, quietMinutes, self, gps, heard, trackers }`.
+  - `every` is how often it reports, in seconds. The app shows it offline
+    after three missed reports (at least 5 minutes). Older home bases
+    reported every 5 minutes without `every`.
+  - `self: { battery, volts, plugged, wifi, up, heap, ch, tx }` covers its
+    power, Wi-Fi signal in dBm, uptime in seconds, free memory in KB, how
+    busy the LoRa channel is, and its own airtime (both in percent).
+  - `gps: { fix, sats, hdop }` covers its own GPS.
+  - `heard: [{ node, name, at, hops, snr, battery, plugged, volts }]`
+    lists the nodes it hears, with each node's telemetry.
+  - `trackers: [{ node, member, at, radio }]` lists its trackers: `at` is
+    the last position on the map, and `radio` has the same fields as a
+    heard node.
+
+  It's sealed like any record, and the app's Trackers screen reads it. It
+  reuses the rest of the record for 10 minutes between full reads, so a
+  status is one write.
 - **Arrived and left:** the home base reads the circle's places and checks
   each tracker position with the apps' rule. It sends the same
   `{ type: "place", action, placeId, placeName, at }` events a phone sends.

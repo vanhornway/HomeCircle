@@ -30,6 +30,21 @@ struct HeardNode {
   uint32_t num = 0;
   std::string name;      // its long name, if it sent one
   int64_t heardAtMs = 0;
+  float snr = -999;      // dB when last heard; -999 unknown
+  int battery = -1;      // percent from its telemetry (101: on external power); below 0 unknown
+  float volts = -1;      // battery voltage; below 0 unknown
+};
+
+/** How the home base itself is doing: it's on mains or solar, so it reports this often. */
+struct SelfInfo {
+  int battery = -1;      // percent (101: on external power with no battery); below 0 unknown
+  float volts = -1;      // battery voltage; below 0 unknown
+  bool plugged = false;  // USB or external power present
+  int wifiRssi = 0;      // dBm; 0 unknown
+  int64_t uptimeS = -1;
+  int heapKb = -1;       // free memory
+  float chUtil = -1;     // LoRa channel busy, percent of the last minute
+  float airTx = -1;      // its own transmitting, percent of the last hour
 };
 
 /** What the home base needs from the Meshtastic node. */
@@ -54,6 +69,8 @@ class Radio {
   virtual std::string nodeName(uint32_t num) { return ""; }
   /** How many hops away the node was when last heard (-1: unknown). */
   virtual int hopsAway(uint32_t node) { return -1; }
+  /** Its own power, Wi-Fi and radio load: false if it can't tell. */
+  virtual bool selfInfo(SelfInfo& out) { return false; }
 };
 
 /** Keys under a prefix, so each tracker's account has its own place in one store. */

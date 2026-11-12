@@ -11,7 +11,7 @@ import { GroupBody, SettingsGroup, SettingsPage, SettingsRow } from '../componen
 import { errorText } from '../lib/circle';
 import { radioLine } from '../lib/people';
 import { confirm, notice, showSheet } from '../lib/sheet';
-import { HOME_BASE_OFFLINE_MS, homeBaseOf, tellHomeBase, trackerEmoji, trackerList, useNow } from '../lib/trackers';
+import { homeBaseHealth, homeBaseOf, homeBaseOnline, radioFacts, tellHomeBase, trackerEmoji, trackerList, useNow } from '../lib/trackers';
 import { timeAgo, useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
 
@@ -85,7 +85,8 @@ export default function Trackers() {
     />
   );
 
-  const online = home ? now - home.status.at < HOME_BASE_OFFLINE_MS : false;
+  const online = home ? homeBaseOnline(home.status, now) : false;
+  const health = home && online ? homeBaseHealth(home.status) : null;
   const tracked = new Set(trackers.map((x) => x.tracker.node));
   const heard = (home?.status.heard ?? []).filter((h) => !tracked.has(h.node));
 
@@ -104,7 +105,13 @@ export default function Trackers() {
             title={home.name}
             detail={`${online ? 'Online' : 'Offline'} · checked in ${timeAgo(home.status.at)}${client.memberRecord(home.id) && client.members.get(home.id)?.role === 'member' ? ' · make it an admin so it can add trackers' : ''}`}
           />
-        ) : (
+        ) : null}
+        {home && health ? (
+          <GroupBody>
+            <P muted>{health}</P>
+          </GroupBody>
+        ) : null}
+        {home ? null : (
           <GroupBody>
             <P muted>No home base in this circle yet. Set one up with an invite, then make it an admin here.</P>
           </GroupBody>
@@ -120,6 +127,7 @@ export default function Trackers() {
             x.tracker.mode === 'car' ? 'Car' : carrier ? `Carried by ${carrier.name}` : 'Not linked to anyone',
             loc ? `last position ${timeAgo(loc.ts)}` : 'no position yet',
             path && loc?.mesh?.hops != null ? (loc.mesh.hops === 0 ? 'heard directly' : `${loc.mesh.hops} hop${loc.mesh.hops === 1 ? '' : 's'}`) : null,
+            radioFacts(home?.status.trackers.find((s) => s.node === x.tracker.node)?.radio),
           ]
             .filter(Boolean)
             .join(' · ');
@@ -198,7 +206,7 @@ export default function Trackers() {
               <SettingsRow
                 icon="plus"
                 title={h.name || h.node}
-                detail={[h.node, h.at ? `heard ${timeAgo(h.at)}` : null, h.hops != null ? (h.hops === 0 ? 'direct' : `${h.hops} hop${h.hops === 1 ? '' : 's'}`) : null].filter(Boolean).join(' · ')}
+                detail={[h.node, h.at ? `heard ${timeAgo(h.at)}` : null, h.hops != null ? (h.hops === 0 ? 'direct' : `${h.hops} hop${h.hops === 1 ? '' : 's'}`) : null, radioFacts(h)].filter(Boolean).join(' · ')}
                 onPress={() => setAdding({ node: h.node, name: h.name ?? '', kind: 'person', carriedBy: '' })}
               />
               {adding?.node === h.node ? (

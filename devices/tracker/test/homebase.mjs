@@ -158,7 +158,21 @@ try {
   assert.ok(status && Date.now() - status.at < 3600_000 * 2, 'a recent status');
   assert.ok(status.heard.some((h) => h.node === TRACKER && h.name === 'T1000-E'), 'the nodes it hears');
   assert.deepEqual(status.trackers.map((t) => [t.node, t.member]), [[TRACKER, tracker.id]]);
-  pass('the home base publishes its status: when it checked in, the nodes it hears, its trackers');
+  // It's on mains or solar: it reports every minute, with its own health and what it knows about each tracker.
+  assert.equal(status.every, 60, 'it reports every minute');
+  assert.deepEqual(
+    { plugged: status.self?.plugged, wifi: status.self?.wifi, up: status.self?.up, heap: status.self?.heap, ch: status.self?.ch, tx: status.self?.tx },
+    { plugged: true, wifi: -58, up: 3600, heap: 120, ch: 3.3, tx: 0.4 },
+    'its own power, Wi-Fi, uptime, memory and airtime',
+  );
+  const radioFacts = status.trackers[0].radio;
+  assert.deepEqual({ snr: radioFacts?.snr, battery: radioFacts?.battery, volts: radioFacts?.volts }, { snr: 6.3, battery: 80, volts: 4 }, 'each tracker’s signal and battery');
+  const firstAt = status.at;
+  await radio('advance 61');
+  await radio('tick');
+  await maya.fetchRecords();
+  assert.ok(maya.memberRecord(hbId).homeBase.at > firstAt, 'a minute later, a fresh status');
+  pass('the home base publishes its status every minute: its own health, the nodes it hears, its trackers’ signal and battery');
 
   // Leo's phone goes quiet for an hour: the home base asks his tracker where it is.
   let out = await radio('advance 3600');
@@ -205,14 +219,23 @@ try {
   await radio('tick');
   await maya.fetchRecords();
   assert.equal(maya.memberRecord(hbId)?.homeBase?.quietMinutes, 45, 'its status carries the plugin’s quiet time for the app');
+  const onAt = maya.memberRecord(hbId)?.homeBase?.at;
   await assert.rejects(maya.api.putPluginSettings('meshtastic', { quietMinutes: '5' }), /10 to 720/);
   await maya.setFeatures({ ...maya.features, meshtastic: false });
   await radio('advance 601');
   await radio('tick');
   assert.match(await ask('list'), /turned off in this circle/);
-  await maya.setFeatures({ ...maya.features, meshtastic: true });
-  await radio('advance 601');
+  // Off, it still says it's alive, so the app doesn't call it offline.
+  await radio('advance 301');
   await radio('tick');
+  await maya.fetchRecords();
+  const offAt = maya.memberRecord(hbId)?.homeBase?.at;
+  assert.ok(offAt > onAt, 'its status stays fresh while the plugin is off');
+  // Turned back on, it notices within a minute, not ten.
+  await maya.setFeatures({ ...maya.features, meshtastic: true });
+  await radio('advance 61');
+  await radio('tick');
+  assert.doesNotMatch(await ask('list'), /turned off/, 'back on within a minute');
   pass('Meshtastic is a plugin: its settings reach the home base, and switched off it stays idle');
 
   // The app's buttons, aimed at the tracker: the server hands them to the home base.

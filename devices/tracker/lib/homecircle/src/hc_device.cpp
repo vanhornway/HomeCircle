@@ -890,19 +890,27 @@ Status Device::createInvite(std::string& link, int hours) {
   return Status::Failed;
 }
 
-Status Device::mergeMemberRecord(const std::string& subject, JsonVariantConst patch) {
+Status Device::mergeMemberRecord(const std::string& subject, JsonVariantConst patch, int64_t reuseMs) {
   JsonDocument body;
-  // Start from what an admin saved before, so other settings stay.
-  JsonDocument res;
-  Status s = call("GET", "/records?kind=member", "", &res);
-  if (s != Status::Ok) return s;
-  for (JsonObjectConst r : res["records"].as<JsonArrayConst>()) {
-    if (subject != (r["subject"] | "")) continue;
-    std::string by = r["by"] | "";
-    auto k = acct_.known.find(by);
-    Bytes signPub = by == acct_.memberId ? acct_.id.signPub : k == acct_.known.end() ? Bytes() : k->second.signPub;
-    JsonDocument msg;
-    if (signPub.size() && open(r["env"], signPub, "member", by, msg)) body.set(msg["body"]);
+  Status s;
+  int64_t now = now_();
+  bool reuse = reuseMs > 0 && recordFor_ == subject && now - recordReadAt_ < reuseMs &&
+               deserializeJson(body, recordBody_) == DeserializationError::Ok;
+  if (!reuse) {
+    // Start from what an admin saved before, so other settings stay.
+    body.clear();
+    JsonDocument res;
+    s = call("GET", "/records?kind=member", "", &res);
+    if (s != Status::Ok) return s;
+    for (JsonObjectConst r : res["records"].as<JsonArrayConst>()) {
+      if (subject != (r["subject"] | "")) continue;
+      std::string by = r["by"] | "";
+      auto k = acct_.known.find(by);
+      Bytes signPub = by == acct_.memberId ? acct_.id.signPub : k == acct_.known.end() ? Bytes() : k->second.signPub;
+      JsonDocument msg;
+      if (signPub.size() && open(r["env"], signPub, "member", by, msg)) body.set(msg["body"]);
+    }
+    recordReadAt_ = now;
   }
   if (!body.is<JsonObject>()) body.to<JsonObject>();
   for (JsonPairConst kv : patch.as<JsonObjectConst>()) body[kv.key()] = kv.value();
@@ -914,7 +922,13 @@ Status Device::mergeMemberRecord(const std::string& subject, JsonVariantConst pa
     serializeJson(seal("member", body.as<JsonVariantConst>()), req);
     HttpResponse raw;
     s = call("PUT", path.c_str(), req, nullptr, &raw);
-    if (s == Status::Ok) return s;
+    if (s == Status::Ok) {
+      recordFor_ = subject;
+      recordBody_.clear();
+      serializeJson(body, recordBody_);
+      return s;
+    }
+    recordFor_.clear();  // read it afresh next time
     if (raw.status == 409 && errorCode(raw) == "stale_epoch" && attempt == 0) {
       Status r = refresh();
       if (r != Status::Ok) return r;
