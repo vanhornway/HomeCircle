@@ -269,8 +269,19 @@ subject, written by admins or the people concerned and read by every member
   skin their app shows (`full` or `elderly`), and for an elder her page
   (`care` or `grandkids`), Ring everyone, Games, tile order, photos an admin
   added for her tiles, sleep hours, reminder interval, inactivity check-in,
-  language and he/she. Only admins may write one, and phones accept it only
-  if an admin signed it.
+  language and he/she, and for a tracker how it reports (`tracker: { mode:
+  "car" | "carried", moving, still, quiet: { from, to } | null, sos, node,
+  carriedBy }`,
+  minutes between reports while moving and while still). Only admins may
+  write one, and phones accept it only if an admin signed it.
+
+**Tracker devices** (`devices/tracker`) are small ESP32 boards that join a
+circle with an ordinary invite and speak this protocol themselves: a sealed,
+self-signed profile; sealed `location` envelopes (with `app: "tracker"` and
+`skin: "tracker"`); SOS as urgent group `chat` messages; their own `member`
+record for settings; new circle keys only from an admin whose profile they
+verified before. They have no push token and sleep between reports, so a
+Locate request reaches them at their next report.
 - `alias`, subject `caller.member`: a family name, what one member calls
   another ("Nani"), with an optional relationship. Either of them or an admin
   may write it, and phones accept it only from one of those. Names are per
@@ -383,6 +394,69 @@ and the phone watches it once and posts the arrival or departure to every
 circle that has it. Addresses are looked up with the phone's own geocoder
 (Google on Android, Apple on iOS) and stored only inside the envelope.
 
+## Mesh packets (trackers on a Meshtastic mesh)
+
+A HomeCircle tracker with a LoRa radio (`devices/meshtastic`) that has no
+internet sends its location and SOS as one Meshtastic packet each, on the
+`PRIVATE_APP` port, usually on a private channel named `HomeCircle`. A home
+base, a Meshtastic node attached to the server (`MESH_NODE`) or to a bridge
+at home (`server/scripts/mesh-bridge.mjs`), hands them to
+`POST /mesh/packets`. Nobody but the circle can read them: not the mesh,
+not the home base, not the server.
+
+```
+0   2  "hc"           2  1  version 1       3  1  type: 1 location, 2 SOS start, 3 SOS safe
+4   8  sender ref = SHA-512("homecircle/mesh-ref" ‖ member id)[0..8]
+12  4  counter (LE; only goes up)          16  2  epoch (LE)
+18  12 message id (SOS only: the same id as the same SOS sent over the internet)
+…      secretbox(content ‖ Ed25519 signature, nonce, CK_epoch)
+       nonce = SHA-512("homecircle/mesh-nonce" ‖ header)[0..24]
+-8  8  tag = HMAC-SHA-512(sender's mesh key, everything before)[0..8]
+```
+
+- **Content:** a location is `ts` (u32 seconds), `lat` and `lng` (i32,
+  1e-7°), `accuracy` (u16 m), `speed` (u16 cm/s), `battery` (u8 %) and flags
+  (charging, SOS on): 18 bytes, 124 with the rest. An SOS start is `ts`; an
+  SOS safe is `ts` and the id of the SOS it ends.
+- **The signature** covers `"homecircle/mesh-v1\0" ‖ circle ‖ "\0" ‖ member ‖
+  "\0" ‖ header ‖ content`, so a packet can't be moved to another circle,
+  member, type or epoch. Apps check it with the sender's verified signing key,
+  exactly as for any envelope.
+- **The tag and counter** are for the server, which can't check signatures.
+  A tracker registers a random 32-byte mesh key over HTTPS
+  (`PUT /members/me/mesh`, when it joins). The server stores a packet only if
+  its tag matches that key and its counter is higher than any before, so
+  nobody else on the mesh can fill or replay a tracker's location.
+- **Stored** as `{ epoch, mesh }` (a location) or a group message with that
+  envelope (an SOS, pushed as urgent). The same SOS arriving over the internet
+  and the mesh is one message. Apps before 0.25 can't open these and skip them.
+
+### A home base (stock Meshtastic trackers)
+
+Stock Meshtastic trackers can't seal anything for the circle. A **home base**
+is a member of the circle on a Meshtastic node with Wi-Fi
+(`devices/meshtastic`, `hc::HomeBase`). It holds one more identity for each
+tracker: an ordinary member, named by an admin, joined with an invite the
+home base makes as an admin. When it hears a tracker's position on the
+private `HomeCircle` channel, it seals it as that member's `location`, with
+`via: "radio"`, `app: "meshtastic"`, and the time the fix was taken.
+
+- **Who can read it:** the home base and nodes with the channel key, besides
+  the circle; the server still can't.
+- **Admins drive it in direct messages:** `list`, `add !nodeid Name [as car]`,
+  `rename`, `link Name to Person`, `unlink`, `remove`, `channel` and `status`.
+  It answers in the same conversation, and only admins may change trackers.
+- **The tracker's member record** (`tracker.node`, `tracker.carriedBy`,
+  `tracker.mode`) is signed by the home base as an admin. It tells the apps
+  whose tracker it is.
+- **When the person who carries a tracker goes quiet,** the home base asks
+  the tracker for a position over the mesh (a Meshtastic position request).
+  Their phone counts as quiet when its latest sealed location is older than
+  the longer of 30 minutes and twice its "still" interval plus 5 minutes.
+  This doesn't happen while they've paused sharing.
+- **A tracker's text** containing "SOS" (or the alert bell) is sent as an SOS
+  from that tracker; "ok" or "safe" ends it.
+
 ## API summary (`/api/v1`, Bearer device token unless noted)
 
 | Method | Path | Notes |
@@ -407,6 +481,8 @@ circle that has it. Addresses are looked up with the phone's own geocoder
 | POST | `/keys/rotate` | admin |
 | GET | `/keys/envelopes` | your rotated keys |
 | GET / PUT | `/locations`, `/locations/me` | latest sealed locations |
+| PUT / DELETE | `/members/me/mesh` | a tracker's mesh key `{ key }` (32 bytes) |
+| POST | `/mesh/packets` | public: up to 20 mesh packets a home base heard; each proves its sender (Mesh packets) |
 | GET | `/records` | sealed member settings and family names (`?kind=member` or `alias`) |
 | PUT / DELETE | `/records/:kind/:subject` | `member`: admins; `alias` (`caller.member`): either of them or an admin |
 | POST / GET / DELETE | `/files`, `/files/:id` | encrypted files; `?purpose=photo` for a member's photo (kept) |

@@ -8,3 +8,4 @@ export * from './schedule.js';
 export * from './agent.js';
 export * from './features.js';
 export * from './prayer.js';
+export * from './mesh.js';

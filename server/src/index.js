@@ -11,6 +11,7 @@ import { AgentHost } from './agent/host.js';
 import { createFiles } from './files.js';
 import { CallRelay } from './calls.js';
 import { HttpError, sendJson, readJson, readRaw, sha256, clientIp, RateLimiter } from './http.js';
+import { startMeshBridge } from './meshtastic.js';
 
 // Logs never include IPs, tokens or payloads.
 const log = (...args) => console.log(new Date().toISOString(), ...args);
@@ -160,6 +161,14 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
     // Agents talk to this server like any phone, over loopback.
     const local = ['0.0.0.0', '::', ''].includes(config.host) ? '127.0.0.1' : config.host;
     app.agentHost?.start(`http://${local.includes(':') ? `[${local}]` : local}:${config.port}`).catch((e) => log('agent host failed to start', e?.message ?? e));
+    // A Meshtastic home base attached to this server: trackers' mesh packets come in through it.
+    if (process.env.MESH_NODE) {
+      try {
+        startMeshBridge({ node: process.env.MESH_NODE, server: `http://${local.includes(':') ? `[${local}]` : local}:${config.port}`, log });
+      } catch (e) {
+        log(`mesh bridge not started: ${e.message}`);
+      }
+    }
     const where = config.publicUrl || 'your server address';
     log('──────────────────────────────────────────────────────────');
     if (config.loadTest) {

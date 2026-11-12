@@ -57,6 +57,19 @@ export interface PhotoRef {
   at: number;
 }
 
+/** How a tracker reports: minutes between reports while moving and while still, quiet hours, SOS on or off. */
+export interface TrackerSettings {
+  mode: 'car' | 'carried';
+  moving: number;
+  still: number;
+  quiet: { from: string; to: string } | null;
+  sos: boolean;
+  /** A Meshtastic tracker's node id ("!a1b2c3d4"), set by the home base that sends for it. */
+  node: string | null;
+  /** The member who carries this tracker: their pin falls back to it when their phone is quiet. */
+  carriedBy: string | null;
+}
+
 /** Admin settings about one member (her skin and Elderly Companion settings, someone's he/she). */
 export interface MemberRecord {
   member: string;
@@ -79,6 +92,8 @@ export interface MemberRecord {
   photos: Record<string, PhotoRef> | null;
   /** Her phone number ("+15551234567"), when an admin saved one. */
   phone: string | null;
+  /** How a tracker reports (a tracker phone or a small tracker device), or null. */
+  tracker: TrackerSettings | null;
   /** Who signed it (an admin) and when. */
   by: string;
   ts: number;
@@ -163,9 +178,27 @@ export interface MemberLocation {
   skin?: string | null;
   /** The page it shows in the Elderly Companion skin. */
   page?: 'care' | 'grandkids' | null;
+  /** 'radio': a tracker's location that came over the mesh through a home base. */
+  via?: 'radio' | null;
   ts: number;
   receivedAt: number;
 }
+
+/** A tracker's mesh packet, opened (see mesh.js). */
+export interface MeshHeader {
+  type: 1 | 2 | 3;
+  ref: string;
+  counter: number;
+  epoch: number;
+  id: string | null;
+  headerLen: number;
+}
+export const MESH_LOCATION: 1;
+export const MESH_SOS_START: 2;
+export const MESH_SOS_SAFE: 3;
+export function meshRef(memberId: string): string;
+export function meshHeader(bytes: Uint8Array): MeshHeader | null;
+export function openMesh(b64: string, opts: { key: string; signPub: string; from: string; circle: string }): { v: 1; kind: 'location' | 'chat'; from: string; circle: string; epoch: number; ts: number; body: Record<string, unknown>; id?: string };
 
 export interface Place {
   id: string;

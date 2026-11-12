@@ -183,6 +183,11 @@ function migrateToMultiCircle(db) {
   // Backup alerts (0.22): a member who opted in gets a generic visible push when
   // the wake-up for a message hasn't been answered by a fetch (push.js).
   add('members', 'push_fallback', 'INTEGER NOT NULL DEFAULT 0');
+  // Trackers on a Meshtastic mesh (0.25): the key their packets are tagged
+  // with, the ref they carry, and the highest counter seen (mesh.js).
+  add('members', 'mesh_key', 'TEXT');
+  add('members', 'mesh_ref', 'TEXT');
+  add('members', 'mesh_counter', 'INTEGER NOT NULL DEFAULT 0');
   // Which features a circle has (0.13): circles from before keep everything on.
   if (!cols('circles').includes('features')) {
     db.exec('ALTER TABLE circles ADD COLUMN features TEXT');
@@ -383,6 +388,22 @@ export class Store {
   /** The highest message seq this member's phone has fetched (what the delivered ticks show). */
   deliveredSeqOf(id) {
     return this.q('SELECT delivered_seq FROM members WHERE id = ?').get(id)?.delivered_seq ?? 0;
+  }
+  /** A tracker's mesh key (base64url, 32 bytes) and ref; the counter starts again. */
+  setMeshKey(id, key, ref) {
+    this.q('UPDATE members SET mesh_key = ?, mesh_ref = ?, mesh_counter = 0 WHERE id = ?').run(key, ref, id);
+  }
+  clearMeshKey(id) {
+    this.q('UPDATE members SET mesh_key = NULL, mesh_ref = NULL, mesh_counter = 0 WHERE id = ?').run(id);
+  }
+  /** The active member whose packets carry this ref, with their mesh key. */
+  memberByMeshRef(ref) {
+    const r = this.q('SELECT * FROM members WHERE mesh_ref = ? AND removed_at IS NULL').get(ref);
+    return r ? { ...memberRow(r), meshKey: r.mesh_key } : null;
+  }
+  /** Take a packet's counter: true only if it is higher than any before (no replays). */
+  takeMeshCounter(id, counter) {
+    return this.q('UPDATE members SET mesh_counter = ? WHERE id = ? AND mesh_counter < ?').run(counter, id, counter).changes > 0;
   }
   touchMember(id, now) {
     this.q('UPDATE members SET last_seen_at = ? WHERE id = ?').run(now, id);

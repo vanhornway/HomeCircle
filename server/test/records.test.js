@@ -152,6 +152,20 @@ test('member records: admins write them, phones accept only an admin’s signatu
   assert.equal(ali.memberRecord(id(ali)), null);
 });
 
+test('tracker settings: an admin sets how often a tracker reports; bad values fall back', async () => {
+  await umair.setMemberRecord(id(ali), { tracker: { mode: 'carried', moving: 3, still: 30, quiet: { from: '23:00', to: '06:00' }, sos: false } });
+  await syncRecords();
+  assert.deepEqual(ali.memberRecord(id(ali)).tracker, { mode: 'carried', moving: 3, still: 30, quiet: { from: '23:00', to: '06:00' }, sos: false, node: null, carriedBy: null });
+  await umair.setMemberRecord(id(ali), { tracker: { mode: 'boat', moving: 0, still: 99999, quiet: { from: '25:00', to: '06:00' } } });
+  await syncRecords();
+  assert.deepEqual(ali.memberRecord(id(ali)).tracker, { mode: 'car', moving: 2, still: 60, quiet: null, sos: true, node: null, carriedBy: null });
+  // Other settings don't touch it, and a record without one has none.
+  await umair.setMemberRecord(id(ali), { lang: 'ur' });
+  await syncRecords();
+  assert.equal(ali.memberRecord(id(ali)).tracker.mode, 'car');
+  assert.equal(zara.memberRecord(id(zara)), null);
+});
+
 test('he or she: your own profile first, else an admin’s choice', async () => {
   assert.equal(umair.genderOf(id(fatima)), 'f', 'from the admin record');
   await zara.setGender('f');

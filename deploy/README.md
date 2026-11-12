@@ -144,6 +144,7 @@ on your Pi.
 | `MESSAGE_RETENTION_DAYS` | `365` | longest any circle may keep messages (each circle's admin picks 1 day to 1 year); can't exceed 365 |
 | `LOCATION_REQUEST_COOLDOWN_SECONDS` | `60` | how often one person can tap "Locate" |
 | `PUSH_PROVIDER` | `expo` | `none` disables push (locate requests then only reach open apps) |
+| `MESH_NODE` | unset | a Meshtastic home base for HomeCircle trackers on a LoRa mesh: `tcp://192.168.1.60:4403` (a node on Wi-Fi) or `serial:/dev/ttyUSB0` (USB, Linux). A server that isn't at home runs `server/scripts/mesh-bridge.mjs` at home instead (devices/meshtastic/README.md) |
 | `TILE_URL` / `TILE_ATTRIBUTION` | OpenStreetMap | map tiles the apps load |
 | `WEB_CLIENT` | `true` | serve the browser version at `/` |
 | `AGENT` | `false` | run the circle agent (the optional AI helper); each circle's admin then adds it in the app |

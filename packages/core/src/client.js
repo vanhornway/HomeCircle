@@ -29,6 +29,7 @@ import {
   appInviteLink,
 } from './crypto.js';
 import { isValidReaction } from './emoji.js';
+import { openMesh } from './mesh.js';
 import { quickReturns } from './places.js';
 import { FREE_RE, PLAN_ANSWERS, TRAVEL_RE, busyDays, cleanBusy, cleanPlan, travelStats, tripsFrom } from './schedule.js';
 import { allFeatures, cleanFeatures, defaultFeatures, hasFeature, resolveFeatures } from './features.js';
@@ -802,6 +803,18 @@ export class CircleClient {
       return null;
     }
     if (!key) return null;
+    // A tracker's packet that came over the mesh: compact, but sealed and signed the same way.
+    if (typeof env?.mesh === 'string') {
+      if (to) return null;
+      try {
+        const msg = openMesh(env.mesh, { key, signPub, from, circle: this.account.circleId });
+        if (msg.epoch !== env.epoch || (id && msg.id !== id) || !kinds.includes(msg.kind)) return null;
+        return msg;
+      } catch (e) {
+        this.onError(e);
+        return null;
+      }
+    }
     try {
       const msg = open(env, { key, signPub, from, to, circle: this.account.circleId, id });
       if (memo) {
@@ -872,6 +885,8 @@ export class CircleClient {
       // switched it can see it has.
       skin: typeof b.skin === 'string' && /^[a-z]{2,16}$/.test(b.skin) ? b.skin : null,
       page: b.page === 'care' || b.page === 'grandkids' ? b.page : null,
+      // Came over the mesh radio from a tracker, through a home base.
+      via: b.via === 'radio' ? 'radio' : null,
       ts: msg.ts,
       receivedAt: updatedAt,
     };
@@ -953,8 +968,10 @@ export class CircleClient {
     this.lastSeq = Math.max(this.lastSeq, m.seq);
     if (this.seenMessageIds.has(m.id)) return false;
     this.seenMessageIds.add(m.id);
-    if (this.seenNonces.has(m.env?.nonce)) return false;
-    this.seenNonces.add(m.env?.nonce);
+    // A mesh packet has no nonce of its own: the packet itself stands in.
+    const nonceKey = m.env?.nonce ?? m.env?.mesh;
+    if (this.seenNonces.has(nonceKey)) return false;
+    this.seenNonces.add(nonceKey);
     const to = m.to ?? null;
     // Direct messages: the other person in the conversation. null = the group.
     const peer = to ? (m.from === this.account.memberId ? to : m.from) : null;
@@ -2984,6 +3001,31 @@ function cleanMemberRecord(b) {
     g: GENDERS.includes(b.g) ? b.g : null,
     photos: cleanPhotoMap(b.photos),
     phone: cleanPhone(b.phone),
+    tracker: cleanTracker(b.tracker),
+  };
+}
+
+/**
+ * How a tracker reports, set by an admin: a phone in the tracker skin or a
+ * small tracker device (devices/tracker). Minutes between reports while
+ * moving and while still, quiet hours in its own time, and whether its SOS
+ * button is on. Null when the record has none.
+ */
+function cleanTracker(t) {
+  if (!t || typeof t !== 'object') return null;
+  const mins = (v, lo, hi, d) => (Number.isInteger(v) && v >= lo && v <= hi ? v : d);
+  const quiet = t.quiet && HHMM.test(t.quiet.from) && HHMM.test(t.quiet.to) ? { from: t.quiet.from, to: t.quiet.to } : null;
+  return {
+    mode: t.mode === 'carried' ? 'carried' : 'car',
+    moving: mins(t.moving, 1, 60, 2),
+    still: mins(t.still, 5, 1440, 60),
+    quiet,
+    sos: t.sos !== false,
+    // A Meshtastic tracker a home base sends for: its node id ("!a1b2c3d4"),
+    // and the member who carries it, whose pin it stands in for when their
+    // phone goes quiet.
+    node: typeof t.node === 'string' && /^![0-9a-f]{8}$/.test(t.node) ? t.node : null,
+    carriedBy: typeof t.carriedBy === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(t.carriedBy) ? t.carriedBy : null,
   };
 }
 

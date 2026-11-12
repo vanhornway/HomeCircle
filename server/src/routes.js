@@ -21,6 +21,7 @@ import { isPushToken } from './push.js';
 import { MAX_FILE_BYTES } from './files.js';
 import { PLUGINS, mountPlugins } from './plugins/index.js';
 import { IceServers } from './ice.js';
+import { MESH_LOCATION, meshHeader, meshRef, meshTagOk } from './mesh.js';
 import { allFeatures, cleanFeatures, hasFeature, resolveFeatures } from '../../packages/core/src/features.js';
 
 const MAX_MEMBERS = 50;
@@ -669,6 +670,62 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     const since = Math.max(0, Number.parseInt(query.get('since') || '0', 10) || 0);
     return { envelopes: store.envelopesFor(me.id, since) };
   });
+
+  // --- mesh (trackers on a Meshtastic mesh, through a home base) ----------
+
+  // A tracker registers the key its mesh packets are tagged with (over HTTPS,
+  // with its token), so only it can fill its location from the mesh.
+  r.add('PUT', '/members/me/mesh', ({ me, body }) => {
+    const key = vBytes(body.key, 'key', 32);
+    const ref = meshRef(me.id);
+    store.setMeshKey(me.id, key, ref);
+    return { ok: true, ref };
+  });
+  r.add('DELETE', '/members/me/mesh', ({ me }) => {
+    store.clearMeshKey(me.id);
+    return { ok: true };
+  });
+
+  // Packets a home base heard. No token: each packet proves its sender with
+  // a tag made with that sender's mesh key, and its counter must go up. The
+  // server can't read them; apps open and verify them.
+  r.add(
+    'POST',
+    '/mesh/packets',
+    ({ body, ctx }) => {
+      limitPublic(ctx);
+      if (!Array.isArray(body.packets) || body.packets.length > 20) fail(400, 'invalid', 'packets must be a list of up to 20');
+      const now = Date.now();
+      const results = body.packets.map((p) => {
+        if (typeof p !== 'string' || p.length > 400) return 'invalid';
+        const buf = Buffer.from(p, 'base64');
+        const h = meshHeader(buf);
+        if (!h) return 'invalid';
+        const m = store.memberByMeshRef(h.ref);
+        if (!m || !m.meshKey || !meshTagOk(Buffer.from(m.meshKey, 'base64url'), buf)) return 'unknown';
+        const circle = store.circle(m.circleId);
+        // An older key is fine: a tracker off the internet may not have the newest yet.
+        if (h.epoch < 1 || h.epoch > circle.epoch) return 'invalid';
+        // The same SOS can come over the internet and the mesh, and from several nodes.
+        if (h.id && store.messageExists(h.id)) return 'duplicate';
+        if (!store.takeMeshCounter(m.id, h.counter)) return 'replayed';
+        const env = { epoch: h.epoch, mesh: buf.toString('base64url') };
+        if (h.type === MESH_LOCATION) {
+          store.putLocation(m.id, env, now);
+          hub.broadcast(m.circleId, { type: 'location', memberId: m.id, env, updatedAt: now }, m.id);
+          return 'ok';
+        }
+        const seq = store.insertMessage({ id: h.id, circleId: m.circleId, fromId: m.id, env, now });
+        hub.broadcast(m.circleId, { type: 'message', message: { seq, id: h.id, from: m.id, to: null, env, createdAt: now } }, m.id);
+        const recipients = store.activeMembers(m.circleId).filter((x) => x.id !== m.id);
+        push.activity(recipients.filter((x) => x.pushToken && !hub.isOnline(x.id)), { urgent: urgentLimiter.take(m.id) === 0, seq });
+        return 'ok';
+      });
+      if (results.includes('ok')) log(`mesh: ${results.filter((x) => x === 'ok').length} packet(s) in`);
+      return { results };
+    },
+    { auth: false },
+  );
 
   // --- locations ---------------------------------------------------------
 
