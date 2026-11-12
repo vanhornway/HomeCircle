@@ -2,6 +2,22 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.27.0
+
+- Messages over the mesh: with no internet, a message goes through the
+  Meshtastic tracker you carry, over Bluetooth and then the radio, and the
+  home base passes it on. Tap 📡 next to the message box to send that way on
+  purpose. Up to about 95 characters for the group, 70 for a direct message.
+  Your phone seals it first, so nothing on the way can read it. It's marked
+  "📡 over the mesh" in the chat.
+- Radio paths on the map: a faint line shows how each tracker's position
+  reached the home base, through relays where they're known. Switch it off
+  with "📡 Paths" on the map.
+- The home base and your trackers keep each other as favorites, and messages
+  go straight to the home base with retries, so routes are learned and kept.
+- The home base firmware in `devices/meshtastic` needs updating for the
+  paths and the routing.
+
 ## 0.26.0
 
 - Tracker settings in the app: how often trackers send their position and
