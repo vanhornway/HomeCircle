@@ -555,6 +555,30 @@ try {
   assert.ok(maya.memberRecord(hbId).homeBase.fw, 'its status says which firmware it runs');
   pass('“update” (admins only) hands the module a link and checksum to update from; its version is in its status');
 
+  // The internet bridge (MQTT): set by an admin; a position a gateway heard comes "via internet".
+  assert.match(await ask('mqtt'), /The internet bridge is off/);
+  assert.match(await ask('mqtt broker.example.com'), /Set it with: mqtt <broker/);
+  answer = await ask('mqtt broker.example.com:8883 homecircle s3cret-pass');
+  assert.match(answer, /Internet bridge set to broker\.example\.com\. I'll restart/, answer);
+  assert.doesNotMatch(answer, /s3cret/, 'it never repeats the password');
+  assert.ok(askTick.includes('mqtt on broker.example.com 8883 homecircle 11'), `the module gets it: ${askTick.join(' | ')}`);
+  assert.match(await ask('mqtt'), /on, to broker\.example\.com, and connected/);
+  await radio(`net ${TRACKER}`);
+  await radio(`position ${TRACKER} 37.6 -122.1 80`);
+  await radio('advance 31');
+  await radio('tick');
+  await maya.fetchLocations();
+  const viaNet = maya.locations.get(tracker.id);
+  assert.equal(viaNet?.lat, 37.6);
+  assert.equal(viaNet?.mesh?.src, 'internet', 'its position says it came over the internet');
+  await radio('advance 61');
+  await radio('tick');
+  await maya.fetchRecords();
+  assert.equal(maya.memberRecord(hbId).homeBase.self.mqtt, true, 'its status says the bridge is connected');
+  assert.equal(maya.memberRecord(hbId).homeBase.trackers.find((t) => t.node === TRACKER).log.at(-1).src, 'internet');
+  assert.match(await ask('mqtt off'), /Turning the internet bridge off/);
+  pass('the internet bridge: an admin sets it (the password stays out of replies); positions a gateway heard show as via internet');
+
   answer = await ask('remove Honda CR-V');
   assert.match(answer, /Removed Honda CR-V/);
   await maya.refresh();

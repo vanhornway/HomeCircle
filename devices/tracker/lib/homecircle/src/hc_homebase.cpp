@@ -36,7 +36,7 @@ const int64_t STATUS_EVERY = 1 * MIN;      // its own status for the app's Track
 const int64_t RECORD_REREAD = 10 * MIN;    // between full reads of its member record when writing the status
 const int64_t OFF_RECHECK = 1 * MIN;       // while the plugin is off: how often to look whether it's back on
 const int64_t STALE_FIX = 20 * MIN;        // a tracker's position older than this isn't where it is (the app's "Away")
-const size_t LOG_KEEP = 10;               // positions heard per tracker, kept for the trip on the map
+const size_t LOG_KEEP = 30;               // positions heard per tracker, kept for the trip on the map
 const int64_t LOCATE_WAIT = 3 * MIN;        // a Locate the tracker hasn't answered: say so in the chat
 const int64_t INTRODUCE_EVERY = 12 * 60 * MIN;  // send each tracker this node's key again (it may have forgotten)
 const int64_t CONFIG_RETRY = 10 * MIN;     // a tracker that didn't confirm its settings: try again
@@ -246,6 +246,10 @@ void HomeBase::writeRecord(Tracker& t) {
 
 // --- from the radio -----------------------------------------------------------------
 
+const char* sourceName(Source s) {
+  return s == Source::Internet ? "internet" : s == Source::Phone ? "phone" : s == Source::Beacon ? "beacon" : "radio";
+}
+
 void HomeBase::onPosition(uint32_t node, const Fix& fix, int64_t fixTimeMs) {
   Tracker* t = byNode(node);
   if (!t) return;
@@ -254,6 +258,10 @@ void HomeBase::onPosition(uint32_t node, const Fix& fix, int64_t fixTimeMs) {
   t->fix = fix;
   t->fixAt = fixTimeMs;
   t->pending = true;
+  // How it came: the packet heard just now (a position arrives as a packet, then in the node's list).
+  bool recent = now_() - t->lastRx.at < MIN;
+  t->fixSrc = recent ? t->lastRx.src : Source::Radio;
+  t->fixGateway = recent ? t->lastRx.gateway : "";
 }
 
 void HomeBase::onText(uint32_t node, const std::string& text) {
@@ -367,6 +375,8 @@ void HomeBase::upload(Tracker& t) {
     h.hops = fresh ? t.lastRx.hops : radio_.hopsAway(t.node);
     h.relay = fresh ? t.lastRx.relay : 0;
     h.snr = fresh ? t.lastRx.snr : 0;
+    h.src = t.fixSrc;
+    if (h.src != Source::Radio) h.hops = -1;
     t.log.push_back(h);
     if (t.log.size() > LOG_KEEP) t.log.erase(t.log.begin());
     if (asked && !t.locateFrom.empty()) {
@@ -444,6 +454,13 @@ void HomeBase::onRoute(uint32_t node, const std::vector<uint32_t>& back, const s
 
 void HomeBase::meshInfo(Tracker& t, JsonDocument& out) {
   JsonObject m = out["mesh"].to<JsonObject>();
+  // The last mile: not this node's radio. Hops and the traced path don't apply then.
+  if (t.fixSrc != Source::Radio) {
+    m["src"] = sourceName(t.fixSrc);
+    if (!t.fixGateway.empty()) m["gateway"] = t.fixGateway;
+    return;
+  }
+  m["src"] = "radio";
   bool fresh = !t.path.empty() && now_() - t.pathAt < PATH_FOR;
   int hops = fresh ? (int)t.path.size() - 2 : radio_.hopsAway(t.node);
   if (hops >= 0) m["hops"] = hops;
@@ -748,14 +765,16 @@ void HomeBase::onNoFix(uint32_t node) {
   log = t->name + " has no GPS fix";
 }
 
-void HomeBase::onHeard(uint32_t node, int hops, uint32_t relay, float snr, bool position) {
+void HomeBase::onHeard(uint32_t node, int hops, uint32_t relay, float snr, bool position, Source src, const std::string& gateway) {
   Tracker* t = byNode(node);
   if (!t) return;
   int64_t now = now_();
   t->lastRx.at = now;
-  t->lastRx.hops = hops;
-  t->lastRx.relay = hops > 0 ? relay : 0;
-  t->lastRx.snr = snr;
+  t->lastRx.hops = src == Source::Radio ? hops : -1;
+  t->lastRx.relay = src == Source::Radio && hops > 0 ? relay : 0;
+  t->lastRx.snr = src == Source::Radio ? snr : 0;
+  t->lastRx.src = src;
+  t->lastRx.gateway = gateway;
   // Heard, but its position on the map is old (it's been away): ask where it is now, so the
   // map moves it there. At most every 10 minutes.
   if (!position && now - t->sentFixAt > STALE_FIX && now - t->askedAt > 10 * MIN) {
@@ -817,6 +836,7 @@ void HomeBase::publishStatus() {
     if (me.heapKb >= 0) s["heap"] = me.heapKb;
     if (me.chUtil >= 0) s["ch"] = tenth(me.chUtil);
     if (me.airTx >= 0) s["tx"] = tenth(me.airTx);
+    if (me.mqtt >= 0) s["mqtt"] = me.mqtt == 1;  // the internet bridge: connected or not (absent: off)
   }
   SelfGnss g;
   if (radio_.selfGnss(g) && g.present) {
@@ -867,6 +887,7 @@ void HomeBase::publishStatus() {
         e["lng"] = std::round(h.lng * 10000) / 10000;
         if (h.hops >= 0) e["hops"] = h.hops;
         if (h.snr != 0) e["snr"] = tenth(h.snr);
+        if (h.src != Source::Radio) e["src"] = sourceName(h.src);
         if (h.relay) {
           JsonObject r = e["relay"].to<JsonObject>();
           r["id"] = nodeId(h.relay);
@@ -1012,6 +1033,44 @@ void HomeBase::command(const Device::Direct& d) {
 
   if (changes && !d.fromAdmin) {
     reply = verb == "update" ? "Only the circle's admins can update the home base." : "Only the circle's admins can change trackers.";
+  } else if (verb == "mqtt" || verb == "bridge") {
+    // mqtt: how it is; mqtt off; mqtt <host[:port]> <user> <password> (admins).
+    std::string host = radio_.mqttHost();
+    if (rest.empty()) {
+      SelfInfo me;
+      radio_.selfInfo(me);
+      reply = host.empty() ? "The internet bridge is off. Turn it on from the app: Trackers → Internet bridge."
+                           : "The internet bridge is on, to " + host + (me.mqtt == 1 ? ", and connected." : ", but not connected right now.");
+    } else if (!d.fromAdmin) {
+      reply = "Only the circle's admins can change the internet bridge.";
+    } else if (lower(rest) == "off") {
+      MqttSettings m;
+      reply = radio_.setMqtt(m) ? "Turning the internet bridge off. I'll restart (about 30 s)." : "I couldn't change the internet bridge.";
+    } else {
+      std::vector<std::string> w;
+      size_t i = 0;
+      while (i < rest.size()) {
+        size_t j = rest.find(' ', i);
+        if (j == std::string::npos) j = rest.size();
+        if (j > i) w.push_back(rest.substr(i, j - i));
+        i = j + 1;
+      }
+      MqttSettings m;
+      m.on = true;
+      if (w.size() >= 1) {
+        size_t colon = w[0].rfind(':');
+        m.host = colon == std::string::npos ? w[0] : w[0].substr(0, colon);
+        if (colon != std::string::npos) m.port = atoi(w[0].c_str() + colon + 1);
+      }
+      if (w.size() >= 2) m.user = w[1];
+      if (w.size() >= 3) m.pass = w[2];
+      if (w.size() != 3 || m.host.empty() || m.port <= 0 || m.host.size() > 56 || m.user.size() > 63 || m.pass.size() > 31) {
+        reply = "Set it with: mqtt <broker[:port]> <user> <password> (the password at most 31 characters). The app does this: Trackers → Internet bridge.";
+      } else {
+        reply = radio_.setMqtt(m) ? "Internet bridge set to " + m.host + ". I'll restart to connect (about 30 s); then trackers heard by any of your gateways show up here."
+                                  : "I couldn't change the internet bridge.";
+      }
+    }
   } else if (verb == "version" || verb == "firmware") {
     reply = std::string("Home base firmware ") + HC_FW_VERSION + ".";
   } else if (verb == "update") {

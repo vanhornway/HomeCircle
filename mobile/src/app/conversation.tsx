@@ -301,6 +301,8 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
   // A question to the helper shows as the person's own words, without the "/Name" it carries.
   const shownText = (m: Message) => {
     const raw = String(m.body?.text ?? '');
+    // The internet bridge's settings sent to the home base: don't show its password.
+    if (m.peer && /^mqtt \S+ \S+ \S+$/i.test(raw.trim())) return raw.trim().replace(/ \S+$/, ' ••••••');
     return m.body?.agentAsk && !m.peer ? askedText(raw, helperName) : raw;
   };
   const undo = (m: Message) => {

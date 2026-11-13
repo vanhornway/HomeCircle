@@ -26,6 +26,7 @@
 #include "mesh/mesh-pb-constants.h"
 #if !MESHTASTIC_EXCLUDE_GPS
 #include "gps/GPS.h"
+#include "mqtt/MQTT.h"
 #endif
 // clang-format off
 #include "HomeCircleIO.h"
@@ -144,7 +145,59 @@ struct MeshRadio : hc::Radio {
             out.chUtil = airTime->channelUtilizationPercent();
             out.airTx = airTime->utilizationTXPercent();
         }
+        if (moduleConfig.mqtt.enabled)
+            out.mqtt = mqtt && mqtt->isConnectedDirectly() ? 1 : 0;
         return true;
+    }
+    // The internet bridge: Meshtastic's MQTT module, for the private HomeCircle
+    // channel only, both ways, encrypted (the broker sees only ciphertext).
+    // Every HomeCircle gateway uses the same broker and root topic, so a
+    // tracker one of them hears reaches this home base as if over the radio.
+    bool setMqtt(const hc::MqttSettings &m) override
+    {
+        if (!homeBaseModule)
+            return false;
+        int idx = homeBaseModule->channelIndex();
+        if (idx < 0)
+            return false;
+        meshtastic_ModuleConfig_MQTTConfig &c = moduleConfig.mqtt;
+        c.enabled = m.on;
+        if (m.on) {
+            std::string address = m.host + ":" + std::to_string(m.port);
+            strncpy(c.address, address.c_str(), sizeof c.address - 1);
+            c.address[sizeof c.address - 1] = 0;
+            strncpy(c.username, m.user.c_str(), sizeof c.username - 1);
+            c.username[sizeof c.username - 1] = 0;
+            strncpy(c.password, m.pass.c_str(), sizeof c.password - 1);
+            c.password[sizeof c.password - 1] = 0;
+            strncpy(c.root, "msh/homecircle", sizeof c.root - 1);
+            c.root[sizeof c.root - 1] = 0;
+            c.encryption_enabled = true;
+            c.json_enabled = false;
+            c.tls_enabled = m.port != 1883;
+            c.proxy_to_client_enabled = false;
+            c.map_reporting_enabled = false;
+        }
+        // Only the private channel goes over the bridge.
+        for (int i = 0; i < MAX_NUM_CHANNELS; i++) {
+            meshtastic_Channel &ch = channels.getByIndex(i);
+            if (ch.role == meshtastic_Channel_Role_DISABLED)
+                continue;
+            ch.settings.uplink_enabled = m.on && i == idx;
+            ch.settings.downlink_enabled = m.on && i == idx;
+        }
+        nodeDB->saveToDisk(SEGMENT_MODULECONFIG | SEGMENT_CHANNELS);
+        LOG_INFO("HomeCircle home base: internet bridge %s; restarting", m.on ? "on" : "off");
+        rebootAtMsec = millis() + 3000; // MQTT starts at boot
+        return true;
+    }
+    std::string mqttHost() override
+    {
+        if (!moduleConfig.mqtt.enabled)
+            return "";
+        std::string a = moduleConfig.mqtt.address;
+        size_t colon = a.rfind(':');
+        return colon == std::string::npos ? a : a.substr(0, colon);
     }
     std::string channelLink() override { return homeBaseModule ? homeBaseModule->channelLink() : ""; }
     void alert(uint32_t node, const std::string &text) override
@@ -930,9 +983,12 @@ ProcessMessage HomeBaseModule::handleReceived(const meshtastic_MeshPacket &mp)
     if (!configured || mp.from == nodeDB->getNodeNum())
         return ProcessMessage::CONTINUE;
     const auto &pl = mp.decoded.payload;
-    // Any packet from a tracker: how it got here; one long silent gets asked where it is.
+    // Any packet from a tracker: how it got here (this node's radio, or a gateway over the
+    // internet bridge); one long silent gets asked where it is.
+    hc::Source src = mp.via_mqtt ? hc::Source::Internet : hc::Source::Radio;
+    int hops = mp.hop_start ? (int)mp.hop_start - (int)mp.hop_limit : -1;
     if (mp.decoded.portnum != meshtastic_PortNum_POSITION_APP && hb.isTracker(mp.from))
-        hb.onHeard(mp.from, mp.hop_start ? (int)mp.hop_start - (int)mp.hop_limit : -1, relayNode(mp.relay_node, mp.from), mp.rx_snr, false);
+        hb.onHeard(mp.from, hops, relayNode(mp.relay_node, mp.from), mp.rx_snr, false, src);
     switch (mp.decoded.portnum) {
     case meshtastic_PortNum_TEXT_MESSAGE_APP:
         hb.onText(mp.from, std::string((const char *)pl.bytes, pl.size));
@@ -947,7 +1003,7 @@ ProcessMessage HomeBaseModule::handleReceived(const meshtastic_MeshPacket &mp)
         break;
     case meshtastic_PortNum_POSITION_APP:
         if (hb.isTracker(mp.from))
-            hb.onHeard(mp.from, mp.hop_start ? (int)mp.hop_start - (int)mp.hop_limit : -1, relayNode(mp.relay_node, mp.from), mp.rx_snr);
+            hb.onHeard(mp.from, hops, relayNode(mp.relay_node, mp.from), mp.rx_snr, true, src);
         lastPoll = 0; // the node database has it now: pass it on soon
         break;
     case meshtastic_PortNum_ADMIN_APP:

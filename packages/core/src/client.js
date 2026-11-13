@@ -3321,6 +3321,8 @@ function cleanHomeBase(h) {
           heap: Number.isInteger(s.heap) ? num(s.heap, 0, 1e6) : null,
           ch: num(s.ch, 0, 100),
           tx: num(s.tx, 0, 100),
+          // The internet bridge (MQTT): connected or not; null when it's off.
+          mqtt: typeof s.mqtt === 'boolean' ? s.mqtt : null,
         }
       : null,
     gps: g ? { fix: g.fix === true, sats: Number.isInteger(g.sats) ? num(g.sats, 0, 99) : null, hdop: num(g.hdop, 0, 99) } : null,
@@ -3349,8 +3351,10 @@ function cleanHomeBase(h) {
                 hops: Number.isInteger(e.hops) ? num(e.hops, 0, 10) : null,
                 snr: num(e.snr, -40, 40),
                 relay: r ? { id: r.id, name: text(r.name) || null, ...(ll(r) ?? { lat: null, lng: null }) } : null,
+                // How it reached the home base: its radio, a gateway over the internet, a phone, a public beacon.
+                src: ['radio', 'internet', 'phone', 'beacon'].includes(e.src) ? e.src : 'radio',
               };
-            }).slice(-20),
+            }).slice(-30),
           }
         : null,
     ),

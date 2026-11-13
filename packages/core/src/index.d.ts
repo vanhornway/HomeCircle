@@ -96,6 +96,8 @@ export interface TrackerHeard {
   snr: number | null;
   /** The last node that relayed it (null when heard directly), and where that node is if known. */
   relay: { id: string; name: string | null; lat: number | null; lng: number | null } | null;
+  /** How it reached the home base: its radio, a gateway over the internet, a phone, or a public beacon. */
+  src: 'radio' | 'internet' | 'phone' | 'beacon';
 }
 
 /** What a home base's radio knows about a node it hears. */
@@ -133,6 +135,8 @@ export interface HomeBaseStatus {
     ch: number | null;
     /** Its own transmitting, percent of the hour. */
     tx: number | null;
+    /** The internet bridge (MQTT): connected or not; null when it's off. */
+    mqtt?: boolean | null;
   } | null;
   gps: { fix: boolean; sats: number | null; hdop: number | null } | null;
   /** Its firmware version, if it says (0.29.0 and later). */

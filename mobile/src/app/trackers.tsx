@@ -113,6 +113,20 @@ export default function Trackers() {
           />
         ) : null}
         <HomeBaseUpdateRow client={client} />
+        {home && admin ? (
+          <SettingsRow
+            icon="server"
+            title="Internet bridge"
+            detail={
+              home.status.self?.mqtt == null
+                ? 'Off · see trackers that your gateways hear anywhere'
+                : home.status.self.mqtt
+                  ? 'On and connected · trackers your gateways hear show here'
+                  : 'On, not connected right now'
+            }
+            href="/internet-bridge"
+          />
+        ) : null}
         {home && health ? (
           <GroupBody>
             <P muted>{health}</P>

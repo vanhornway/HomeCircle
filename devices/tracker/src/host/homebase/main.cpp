@@ -49,8 +49,18 @@ struct FakeRadio : hc::Radio {
     out.heapKb = 120;
     out.chUtil = 3.25f;
     out.airTx = 0.4f;
+    out.mqtt = mqtt.on ? 1 : -1;
     return true;
   }
+  // The internet bridge: what "mqtt" set (printed at the next tick).
+  hc::MqttSettings mqtt;
+  bool mqttChanged = false;
+  bool setMqtt(const hc::MqttSettings& m) override {
+    mqtt = m;
+    mqttChanged = true;
+    return true;
+  }
+  std::string mqttHost() override { return mqtt.on ? mqtt.host : ""; }
   // The home base's own GPS, set by "selfgps"; its sky, fed by "nmea".
   hc::SelfGnss self;
   hc::GnssSky skyView;
@@ -187,6 +197,10 @@ int main(int argc, char** argv) {
       uint32_t node;
       std::string args = rest(line, 1);
       if (hc::parseNodeId(args.substr(0, args.find(' ')), node)) hb.onHeard(node, atoi(rest(line, 2).c_str()), 0, 0, false);
+    } else if (cmd == "net") {
+      // net !id: a tracker's position packet that came over the internet bridge (a gateway heard it)
+      uint32_t node;
+      if (hc::parseNodeId(rest(line, 1), node)) hb.onHeard(node, -1, 0, 0, true, hc::Source::Internet);
     } else if (cmd == "rx") {
       // rx !id HOPS !relay SNR: a tracker's packet, and how it got here
       uint32_t node, relay = 0;
@@ -225,6 +239,10 @@ int main(int argc, char** argv) {
       radio.introduced.clear();
       for (auto& c : radio.configs) printf("configure %s %d %d %d h%d\n", hc::nodeId(c.first).c_str(), c.second.movingS, c.second.stillS, c.second.batteryS, c.second.hopLimit);
       radio.configs.clear();
+      if (radio.mqttChanged) {
+        printf("mqtt %s %s %d %s %zu\n", radio.mqtt.on ? "on" : "off", radio.mqtt.host.c_str(), radio.mqtt.port, radio.mqtt.user.c_str(), radio.mqtt.pass.size());
+        radio.mqttChanged = false;
+      }
       hc::HomeBase::Update u;
       if (hb.takeUpdate(u)) printf("update %s %s by %s\n", u.url.c_str(), u.sha256.c_str(), u.by.c_str());
       if (!hb.log.empty()) printf("log: %s\n", hb.log.c_str());

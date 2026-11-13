@@ -35,6 +35,22 @@ struct HeardNode {
   float volts = -1;      // battery voltage; below 0 unknown
 };
 
+/**
+ * How a tracker's packet reached the home base: its own radio (directly or
+ * through relays), a gateway over the internet (MQTT), the carrier's phone, or
+ * a public beacon. Shown in the app ("via internet").
+ */
+enum class Source { Radio, Internet, Phone, Beacon };
+const char* sourceName(Source s);
+
+/** The internet bridge (Meshtastic's MQTT module), for packets heard by gateways anywhere. */
+struct MqttSettings {
+  bool on = false;
+  std::string host;  // "abc.s1.eu.hivemq.cloud"
+  int port = 8883;   // TLS
+  std::string user, pass;
+};
+
 /** How the home base itself is doing: it's on mains or solar, so it reports this often. */
 struct SelfInfo {
   int battery = -1;      // percent (101: on external power with no battery); below 0 unknown
@@ -45,6 +61,7 @@ struct SelfInfo {
   int heapKb = -1;       // free memory
   float chUtil = -1;     // LoRa channel busy, percent of the last minute
   float airTx = -1;      // its own transmitting, percent of the last hour
+  int mqtt = -1;         // the internet bridge: -1 off, 0 not connected, 1 connected
 };
 
 /** Settings the home base puts on a tracker over the radio (Meshtastic remote admin). */
@@ -107,6 +124,10 @@ class Radio {
   virtual uint32_t selfNode() { return 0; }
   /** Keep a node as a favorite: Meshtastic never drops it from its list (its key and route stay). */
   virtual void favorite(uint32_t node) {}
+  /** Turn the internet bridge on or off; the node restarts to connect. False if it can't. */
+  virtual bool setMqtt(const MqttSettings& m) { return false; }
+  /** The broker it's set to ("" when off). */
+  virtual std::string mqttHost() { return ""; }
 };
 
 /** Keys under a prefix, so each tracker's account has its own place in one store. */
@@ -183,7 +204,7 @@ class HomeBase {
   /** A tracker answered a position request with no position: it has no GPS fix. */
   void onNoFix(uint32_t node);
   /** A packet from a tracker: how many hops it took, the last relay (0: none or unknown), and the signal. */
-  void onHeard(uint32_t node, int hops, uint32_t relay, float snr, bool position = true);
+  void onHeard(uint32_t node, int hops, uint32_t relay, float snr, bool position = true, Source src = Source::Radio, const std::string& gateway = "");
   bool isTracker(uint32_t node) const;
   size_t trackerCount() const { return trackers_.size(); }
 
@@ -234,13 +255,18 @@ class HomeBase {
       int hops = -1;
       uint32_t relay = 0;
       float snr = 0;
+      Source src = Source::Radio;
+      std::string gateway;
     } lastRx;  // the last packet heard from it
+    Source fixSrc = Source::Radio;  // how its pending position came
+    std::string fixGateway;
     struct Heard {
       int64_t at = 0;
       double lat = 0, lng = 0;
       int hops = -1;
       uint32_t relay = 0;
       float snr = 0;
+      Source src = Source::Radio;
     };
     std::vector<Heard> log;  // each position heard lately, with how it got here (for the trip on the map)
   };
