@@ -440,6 +440,8 @@ void configAnswer(const meshtastic_MeshPacket &mp)
             job.haveAlerts = true;
         }
     }
+    LOG_INFO("HomeCircle home base: %08x answered (variant %d): key %d device %d position %d telemetry %d alerts %d lora %d", (unsigned)mp.from,
+             (int)r.which_payload_variant, job.havePass, job.haveDevice, job.havePosition, job.haveTelemetry, job.haveAlerts, job.haveLora);
     if (job.havePass && job.haveDevice && job.havePosition && job.haveTelemetry && job.haveAlerts && job.haveLora)
         sendConfig(mp.from, job);
 }
@@ -457,6 +459,7 @@ void configRouting(const meshtastic_MeshPacket &mp)
     if (!pb_decode_from_bytes(mp.decoded.payload.bytes, mp.decoded.payload.size, &meshtastic_Routing_msg, &r))
         return;
     meshtastic_Routing_Error e = r.which_variant == meshtastic_Routing_error_reason_tag ? r.error_reason : meshtastic_Routing_Error_NONE;
+    LOG_INFO("HomeCircle home base: %08x routing answer %d to one of our settings packets", (unsigned)mp.from, (int)e);
     if (e == meshtastic_Routing_Error_ADMIN_PUBLIC_KEY_UNAUTHORIZED || e == meshtastic_Routing_Error_NOT_AUTHORIZED) {
         LOG_INFO("HomeCircle home base: %08x doesn't have the home base's key as an admin key", (unsigned)mp.from);
         configJobs.erase(it);
