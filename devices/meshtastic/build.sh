@@ -11,7 +11,8 @@
 # Flash the result with the Meshtastic web flasher or:
 #   pio run -d <dir> -e <env> -t upload
 #
-# HC_FW_VERSION (default: git describe) is the version the home base reports.
+# HC_FW_VERSION (default: git describe) is the version the home base reports;
+# HC_RELEASE_TAG (default: v<version>) is the GitHub release the files go on.
 # For a home base, it also writes homebase-heltec-v4.bin and .json (version,
 # size, SHA-256, link) to put on the GitHub release: the app reads the .json
 # and has the home base update itself over Wi-Fi.
@@ -47,8 +48,10 @@ if [ "$ENV" = "heltec-v4-homebase" ]; then
   cp "$BIN" "$OUT/homebase-heltec-v4.bin"
   SHA="$(shasum -a 256 "$OUT/homebase-heltec-v4.bin" | cut -d' ' -f1)"
   SIZE="$(wc -c < "$OUT/homebase-heltec-v4.bin" | tr -d ' ')"
+  # The release the two files go on (HC_RELEASE_TAG): its own tag, or an app release's.
+  TAG_FOR_FILES="${HC_RELEASE_TAG:-v$VERSION}"
   cat > "$OUT/homebase-heltec-v4.json" <<EOF
-{"version":"$VERSION","size":$SIZE,"sha256":"$SHA","url":"https://github.com/vanhornway/HomeCircle/releases/download/v$VERSION/homebase-heltec-v4.bin"}
+{"version":"$VERSION","size":$SIZE,"sha256":"$SHA","url":"https://github.com/vanhornway/HomeCircle/releases/download/$TAG_FOR_FILES/homebase-heltec-v4.bin"}
 EOF
   echo "Update files: $OUT/homebase-heltec-v4.bin and .json"
 fi
