@@ -36,11 +36,15 @@ export function unreachable(e: unknown): boolean {
   return e instanceof ApiError && (e.status === 0 || [502, 503, 504].includes(e.status));
 }
 
-/** Seal the message and send it through the tracker; it shows as pending until the server has it. */
-export async function sendOverMesh(client: CircleClient, text: string, peer: string | null): Promise<MeshOutboxItem> {
+/**
+ * Seal the message and send it through the tracker; it shows as pending until
+ * the server has it. Pass the id it was already tried with over the internet,
+ * so if that got through after all, the server keeps one copy.
+ */
+export async function sendOverMesh(client: CircleClient, text: string, peer: string | null, messageId?: string): Promise<MeshOutboxItem> {
   const tracker = myTracker(client);
   if (!tracker) throw new Error('No tracker of yours to send through.');
-  const { id, packet } = await client.meshMessage(text, { to: peer });
+  const { id, packet } = await client.meshMessage(text, { to: peer, ...(messageId ? { id: messageId } : {}) });
   await sendThroughTracker(tracker.node, packet, homeBaseOf(client)?.status.node ?? null);
   const item = { id, circle: client.circleId!, peer, text: text.trim(), at: Date.now(), via: tracker.name };
   items = [...items, item];

@@ -48,13 +48,23 @@ const matches = (d: Device, node: string) => {
   return [d.name, d.localName].some((n) => !!n && n.toLowerCase().endsWith(tail));
 };
 
-function findTracker(node: string, timeoutMs: number): Promise<Device> {
+async function findTracker(node: string, timeoutMs: number): Promise<Device> {
+  // Already connected to this phone (the Meshtastic app holds it): it doesn't
+  // advertise then, but another app can open its own link to it.
+  const connected = await ble().connectedDevices([SERVICE]).catch(() => [] as Device[]);
+  const held = connected.find((d) => matches(d, node));
+  if (held) return held;
+  return scanFor(node, timeoutMs);
+}
+
+// By name, not by service: some trackers only put the service id in the scan response.
+function scanFor(node: string, timeoutMs: number): Promise<Device> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       ble().stopDeviceScan();
       reject(new MeshRadioError('not-found'));
     }, timeoutMs);
-    ble().startDeviceScan([SERVICE], null, (error, device) => {
+    ble().startDeviceScan(null, null, (error, device) => {
       if (error) {
         clearTimeout(timer);
         ble().stopDeviceScan();
@@ -98,10 +108,21 @@ export async function sendThroughTracker(node: string, packet: Uint8Array, homeB
   if (!(await permitted())) throw new MeshRadioError('no-permission');
   const state = await ble().state();
   if (state === 'PoweredOff') throw new MeshRadioError('bluetooth-off');
+  try {
+    await sendOnce(node, packet, homeBase);
+  } catch (e) {
+    // A dropped connection is often fine the second time.
+    if (!(e instanceof MeshRadioError) || e.problem !== 'failed') throw e;
+    await new Promise((r) => setTimeout(r, 1500));
+    await sendOnce(node, packet, homeBase);
+  }
+}
+
+async function sendOnce(node: string, packet: Uint8Array, homeBase: string | null): Promise<void> {
   const found = await findTracker(node, 15_000);
   let device: Device | null = null;
   try {
-    device = await found.connect({ timeout: 15_000 });
+    device = (await found.isConnected().catch(() => false)) ? found : await found.connect({ timeout: 15_000 });
     if (Platform.OS === 'android') await device.requestMTU(512).catch(() => device!);
     device = await device.discoverAllServicesAndCharacteristics();
     // To the home base, acknowledged, when we know its node id; otherwise to everyone on the channel.

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, AppState, FlatList, Keyboard, KeyboardAvoidingView, Linking, Modal, Pressable, Text, TextInput, View, type TextInputInstance } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CALLBACK_REPLIES, QUICK_REACTIONS, isEmojiOnly, type CallbackReply, type CircleClient, type Message } from '@homecircle/core';
+import { CALLBACK_REPLIES, QUICK_REACTIONS, isEmojiOnly, randomId, type CallbackReply, type CircleClient, type Message } from '@homecircle/core';
 import { Avatar, Button, Icon } from '../components/ui';
 import { HeaderBar } from '../components/Header';
 import { shareNow } from '../lib/location';
@@ -158,17 +158,22 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
     if (tracker && !client.meshReady) client.prepareMesh().catch(() => {});
   }, [client, tracker]);
 
+  // A message that didn't go: tried again (same text), it keeps its id, so the server never keeps two.
+  const failed = useRef<{ text: string; id: string } | null>(null);
   const send = async () => {
     const value = text;
     if (!value.trim()) return;
     setText('');
     setError(null);
+    const msgId = failed.current?.text === value.trim() ? failed.current.id : randomId(12);
+    failed.current = null;
     const question = agent && !peer ? helperQuestion(value, agent.name) : null;
     const plain = !withAgent && !(agent && !peer && (asking || question != null));
     if (plain && tracker && viaMesh) {
       try {
-        await sendOverMesh(client, value, peer);
+        await sendOverMesh(client, value, peer, msgId);
       } catch (e) {
+        failed.current = { text: value.trim(), id: msgId };
         setText(value);
         setError(meshRadioText(e, tracker.name));
       }
@@ -179,20 +184,22 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
       else if (agent && !peer && (asking || question != null)) {
         await client.askAgent(question ?? value);
         setAsking(false);
-      } else await client.sendChat(value, { to: peer });
+      } else await client.sendChat(value, { to: peer, id: msgId });
       list.current?.scrollToOffset({ offset: 0, animated: true });
     } catch (e) {
       // No internet: through the tracker instead, if it fits one radio packet.
       if (plain && tracker && unreachable(e) && client.meshReady && client.meshFits(value, peer)) {
         try {
-          await sendOverMesh(client, value, peer);
+          await sendOverMesh(client, value, peer, msgId);
           return;
         } catch (e2) {
+          failed.current = { text: value.trim(), id: msgId };
           setText(value);
-          setError(`No internet, and the mesh didn’t work either. ${meshRadioText(e2, tracker.name)}`);
+          setError(`Couldn’t reach the server, and ${tracker.name} didn’t take it either, so it may not have gone. Tap send to try again (it won’t be sent twice). ${meshRadioText(e2, tracker.name)}`);
           return;
         }
       }
+      if (plain && unreachable(e)) failed.current = { text: value.trim(), id: msgId };
       setText(value);
       setError(
         plain && tracker && unreachable(e) && !client.meshFits(value, peer)

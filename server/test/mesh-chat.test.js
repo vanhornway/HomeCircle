@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../src/index.js';
-import { CircleClient, allFeatures } from '../../packages/core/src/index.js';
+import { CircleClient, allFeatures, randomId } from '../../packages/core/src/index.js';
 
 const SETUP = 'test-setup-token-mesh-chat';
 let app;
@@ -90,6 +90,21 @@ test('a phone’s group message over the mesh reaches everyone, marked as sent o
   assert.deepEqual(m.body, { text: 'Battery died, at the library 📚', via: 'radio' });
   assert.ok(kid.messages.some((x) => x.id === id), 'and the sender has it too, once back online');
   assert.ok(!JSON.stringify(app.store.db.prepare('SELECT env FROM messages').all()).includes('library'), 'the server can’t read it');
+});
+
+test('the same message over the mesh and over the internet (one id) is kept once, and the second send counts as sent', async () => {
+  // The upload timed out but got there, then the phone tried the tracker too; or the other way round.
+  const first = randomId(12);
+  const { id, packet } = await kid.meshMessage('On my way', { id: first });
+  assert.equal(id, first);
+  assert.equal(await handIn(packet), 'ok');
+  await kid.sendChat('On my way', { id }); // the server has it: no error
+  const second = randomId(12);
+  await kid.sendChat('Second try', { id: second });
+  await kid.sendChat('Second try', { id: second }); // tried again: still one
+  await sync();
+  assert.equal(dad.messages.filter((x) => x.id === first).length, 1);
+  assert.equal(dad.messages.filter((x) => x.body?.text === 'Second try').length, 1);
 });
 
 test('a direct message over the mesh reaches only its recipient, and only they can read it', async () => {

@@ -446,7 +446,7 @@ export class CircleClient {
    * A message sealed for the mesh, for the tracker to send: { id, packet }
    * (packet: Uint8Array, one LoRa packet). Works offline once prepareMesh ran.
    */
-  async meshMessage(text, { to = null } = {}) {
+  async meshMessage(text, { to = null, id = randomId(12) } = {}) {
     const t = String(text ?? '').trim();
     if (!t) throw new Error('Nothing to send');
     if (!this.account.meshKey) throw new Error('Messages over the mesh need this phone online once first.');
@@ -456,7 +456,6 @@ export class CircleClient {
     const counter = Math.max((a.meshCounter ?? 0) + 1, Math.floor(Date.now() / 1000));
     a.meshCounter = counter;
     await this._save();
-    const id = randomId(12);
     const packet = sealMeshMessage({
       from: a.memberId,
       circle: a.circleId,
@@ -2603,11 +2602,24 @@ export class CircleClient {
     this.emit('messages', this.messages);
   }
 
-  /** Send to the whole circle, or only to `to` (a direct message). */
-  sendChat(text, { to = null } = {}) {
+  /**
+   * Send to the whole circle, or only to `to` (a direct message). Pass the
+   * same `id` to try a message again (or to send it over the mesh too): the
+   * server keeps one, and a copy it already has counts as sent.
+   */
+  async sendChat(text, { to = null, id } = {}) {
     const t = String(text || '').trim().slice(0, 4000);
-    if (!t) return Promise.resolve();
-    return this._post('chat', { text: t }, { to });
+    if (!t) return;
+    try {
+      await this._post('chat', { text: t }, { to, ...(id ? { id } : {}) });
+    } catch (e) {
+      // It got there before (the answer was lost, or it came over the mesh): sent.
+      if (id && e instanceof ApiError && e.status === 409 && e.code === 'conflict') {
+        await this._fetchMessages?.().catch(() => {});
+        return;
+      }
+      throw e;
+    }
   }
 
   /**
@@ -3308,6 +3320,8 @@ function cleanHomeBase(h) {
         }
       : null,
     gps: g ? { fix: g.fix === true, sats: Number.isInteger(g.sats) ? num(g.sats, 0, 99) : null, hdop: num(g.hdop, 0, 99) } : null,
+    // Its firmware version ("0.29.0"), for "Update" in the app.
+    fw: typeof h.fw === 'string' && /^[0-9A-Za-z.+_-]{1,32}$/.test(h.fw) ? h.fw : null,
     heard: list(h.heard, (n) => (node(n?.node) ? { node: n.node, name: text(n.name) || null, ...radio(n) } : null)),
     trackers: list(h.trackers, (t) =>
       node(t?.node) && typeof t.member === 'string'

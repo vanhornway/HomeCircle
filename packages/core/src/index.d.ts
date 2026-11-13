@@ -135,6 +135,8 @@ export interface HomeBaseStatus {
     tx: number | null;
   } | null;
   gps: { fix: boolean; sats: number | null; hdop: number | null } | null;
+  /** Its firmware version, if it says (0.29.0 and later). */
+  fw?: string | null;
   heard: ({ node: string; name: string | null } & MeshNodeRadio)[];
   /** Its trackers: `at` is their last position on the map; `radio` what the radio last heard from them; `settings` whether HomeCircle's settings are on the tracker. */
   trackers: {
@@ -699,7 +701,7 @@ export class CircleClient {
   /** Register this member's mesh key with the server (needs the internet once). */
   prepareMesh(): Promise<void>;
   /** A message sealed for the mesh (one LoRa packet), for the tracker to send. */
-  meshMessage(text: string, opts?: { to?: string | null }): Promise<{ id: string; packet: Uint8Array }>;
+  meshMessage(text: string, opts?: { to?: string | null; id?: string }): Promise<{ id: string; packet: Uint8Array }>;
   /** A tracker or a Meshtastic home base rather than a person (from the admin's record about it). */
   hiddenDevice(memberId: string): boolean;
   isDevice(memberId: string): boolean;
@@ -766,7 +768,8 @@ export class CircleClient {
     firstFetch?: { mode: 'tail' | 'forward' | 'gap'; count: number; ms: number };
   };
   /** Group chat, or a direct message when `to` is set. */
-  sendChat(text: string, opts?: { to?: string | null }): Promise<void>;
+  /** Pass the same `id` to try a message again: the server keeps one copy, and one it already has counts as sent. */
+  sendChat(text: string, opts?: { to?: string | null; id?: string }): Promise<void>;
   /** Messages of the group (peer null) or of a direct chat. */
   conversation(peer?: string | null): Message[];
   /** People you have direct conversations with, most recent first. */
