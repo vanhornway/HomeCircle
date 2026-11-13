@@ -187,11 +187,22 @@ export function circleCount(client: CircleClient): string {
 
 /** The circle's home base and what it last said about itself, or null if there's none. */
 export function homeBaseOf(client: CircleClient): { id: string; name: string; status: HomeBaseStatus } | null {
+  // The one that reported most lately: an old home base (one that joined again) left behind stays silent.
+  let best: { id: string; name: string; status: HomeBaseStatus } | null = null;
   for (const m of client.memberList()) {
     const status = client.memberRecord(m.id)?.homeBase;
-    if (status) return { id: m.id, name: m.name, status };
+    if (status && (!best || status.at > best.status.at)) best = { id: m.id, name: m.name, status };
   }
-  return null;
+  return best;
+}
+
+/** Home bases other than the one in use, silent for a while: left behind when it joined again, to be removed. */
+export function oldHomeBases(client: CircleClient, now: number): { id: string; name: string; at: number }[] {
+  const current = homeBaseOf(client);
+  return client.memberList().flatMap((m) => {
+    const status = client.memberRecord(m.id)?.homeBase;
+    return status && m.id !== current?.id && !homeBaseOnline(status, now) ? [{ id: m.id, name: m.name, at: status.at }] : [];
+  });
 }
 
 /** The trackers in the circle: member id, name and settings. */

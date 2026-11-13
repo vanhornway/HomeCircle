@@ -13,7 +13,7 @@ import { GroupBody, SettingsGroup, SettingsPage, SettingsRow } from '../componen
 import { errorText } from '../lib/circle';
 import { radioLine } from '../lib/people';
 import { confirm, notice, showSheet } from '../lib/sheet';
-import { homeBaseHealth, homeBaseOf, homeBaseOnline, PRESS_HELP, radioFacts, tellHomeBase, trackerEmoji, trackerList, TRACKER_KINDS, trackerSettingsLine, tripLine, useNow } from '../lib/trackers';
+import { homeBaseHealth, homeBaseOf, homeBaseOnline, PRESS_HELP, oldHomeBases, radioFacts, tellHomeBase, trackerEmoji, trackerList, TRACKER_KINDS, trackerSettingsLine, tripLine, useNow } from '../lib/trackers';
 import { KeyHelp } from '../components/TrackerKeyHelp';
 import { timeAgo, useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
@@ -184,6 +184,26 @@ export default function Trackers() {
           );
         })}
       </SettingsGroup>
+
+      {admin && oldHomeBases(client, now).length ? (
+        <SettingsGroup
+          title="Old home bases"
+          footer="A home base that joined the circle again leaves its old entry behind, silent. Remove it so only the one in use shows."
+        >
+          {oldHomeBases(client, now).map((o) => (
+            <SettingsRow
+              key={o.id}
+              icon="home"
+              title={o.name}
+              detail={`Silent since ${timeAgo(o.at)} · tap to remove`}
+              onPress={async () => {
+                if (!(await confirm(`Remove this ${o.name}?`, 'It’s an old entry: the home base in use stays.', 'Remove', { destructive: true }))) return;
+                client.removeMember(o.id).catch((e) => notice('Couldn’t remove it', errorText(e)));
+              }}
+            />
+          ))}
+        </SettingsGroup>
+      ) : null}
 
       {admin && home ? (
         <SettingsGroup title="Add and set up">
