@@ -866,9 +866,15 @@ void HomeBaseModule::startPortal()
         else
             page += "<h1>Wi-Fi for this home base</h1><p>It's already in <b>" + esc(hb.base().circleName()) +
                     "</b>, but it has no home Wi-Fi to reach your server.</p>";
+        // Wi-Fi it already has: filled in, and the saved password is kept if the box is left empty.
+        String saved = config.network.wifi_ssid;
         page += "<form method=post action=/setup>"
-                "<label for=s>Home Wi-Fi network <span class=hint>(2.4 GHz)</span></label><input id=s name=s required>"
-                "<label for=p>Wi-Fi password</label><input id=p name=p type=password>";
+                "<label for=s>Home Wi-Fi network <span class=hint>(2.4 GHz)</span></label><input id=s name=s required value=\"" +
+                esc(saved.c_str()) + "\">";
+        if (saved.length())
+            page += "<label for=p>Wi-Fi password <span class=hint>(leave empty to keep the one it has)</span></label><input id=p name=p type=password>";
+        else
+            page += "<label for=p>Wi-Fi password</label><input id=p name=p type=password>";
         if (needInvite)
             page += "<label for=i>Invite link <span class=hint>(it names your HomeCircle server too)</span></label>"
                     "<textarea id=i name=i rows=3 required></textarea>";
@@ -881,6 +887,9 @@ void HomeBaseModule::startPortal()
     web->on("/setup", HTTP_POST, []() {
         wifiSsid = web->arg("s").c_str();
         wifiPass = web->arg("p").c_str();
+        // The same network it already has, password left empty: keep the saved one.
+        if (wifiPass.empty() && wifiSsid == config.network.wifi_ssid)
+            wifiPass = config.network.wifi_psk;
         invite = web->arg("i").c_str();
         region = web->arg("r").toInt();
         job = Job::Joining;
@@ -929,9 +938,12 @@ void HomeBaseModule::portalLoop()
     dns->processNextRequest();
     web->handleClient();
     if (job == Job::Joining) {
-        WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
+        // Already on that network (it only needed an invite): don't drop the connection to join it again.
+        bool already = WiFi.status() == WL_CONNECTED && WiFi.SSID() == wifiSsid.c_str() && wifiPass == config.network.wifi_psk;
+        if (!already)
+            WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
         uint32_t t = millis();
-        while (WiFi.status() != WL_CONNECTED && millis() - t < 20000) {
+        while (WiFi.status() != WL_CONNECTED && millis() - t < 30000) {
             web->handleClient();
             hcio::feedWatchdog();
             delay(50);
