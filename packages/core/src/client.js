@@ -3223,8 +3223,12 @@ function cleanMeshPath(m) {
         lng: Number.isFinite(h?.lat) && Math.abs(h.lat) <= 90 && Number.isFinite(h?.lng) && Math.abs(h.lng) <= 180 ? h.lng : null,
       }))
     : null;
-  if (hops == null && !path) return null;
-  return { hops, at: Number.isFinite(m.at) ? m.at : null, path: path && path.length >= 2 ? path : null };
+  // The last mile: heard by the home base's own radio, uplinked by a gateway
+  // over the internet (MQTT), passed on by the carrier's phone, or a public beacon.
+  const src = ['radio', 'internet', 'phone', 'beacon'].includes(m.src) ? m.src : null;
+  const gateway = typeof m.gateway === 'string' ? m.gateway.replace(/[\u0000-\u001f]/g, '').trim().slice(0, 40) || null : null;
+  if (hops == null && !path && !src) return null;
+  return { hops, at: Number.isFinite(m.at) ? m.at : null, path: path && path.length >= 2 ? path : null, src, gateway };
 }
 
 function cleanCadence(c) {

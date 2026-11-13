@@ -3,13 +3,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { CircleClient } from '@homecircle/core';
-import { googleMapsUrl, heardNearby, messageSpot, trackerAway } from './trackers.ts';
+import { googleMapsUrl, heardNearby, messageSpot, trackerAway, trackerStatusLine, trackerVia } from './trackers.ts';
 
 const MIN = 60_000;
 const NOW = 1_800_000_000_000;
 
 // A circle with one tracker (UT2) and a home base that heard it, as the client keeps them.
-function circle({ loc, log = [], radio = null }: { loc?: { lat: number; lng: number; ts: number }; log?: { lat: number; lng: number; at: number }[]; radio?: { at: number; hops: number } | null }) {
+const HOME = { id: 'home', name: 'Home', lat: 30.1, lng: -97.9, radius: 150, homeBase: true };
+function circle({ loc, log = [], radio = null, home = HOME }: { loc?: { lat: number; lng: number; ts: number; accuracy?: number; mesh?: object }; log?: { lat: number; lng: number; at: number }[]; radio?: { at: number; hops: number } | null; home?: typeof HOME | null }) {
   const records = new Map<string, unknown>([
     ['ut2', { tracker: { node: '!9e58f8c9', mode: 'carried' } }],
     ['hb', { homeBase: { at: NOW - MIN, every: 1, trackers: [{ node: '!9e58f8c9', log, radio }] } }],
@@ -18,6 +19,9 @@ function circle({ loc, log = [], radio = null }: { loc?: { lat: number; lng: num
     memberRecord: (id: string) => records.get(id) ?? null,
     memberList: () => [{ id: 'ut2', name: 'UT2' }, { id: 'hb', name: 'Home base' }],
     locations: new Map(loc ? [['ut2', loc]] : []),
+    places: new Map(home ? [[home.id, home]] : []),
+    homeBasePlace: () => (home?.homeBase ? home : null),
+    members: new Map([['ut2', { id: 'ut2', name: 'UT2' }]]),
   } as unknown as CircleClient;
 }
 
@@ -45,17 +49,31 @@ test('google maps link', () => {
   assert.equal(googleMapsUrl(30.26721, -97.74306), 'https://www.google.com/maps/search/?api=1&query=30.267210,-97.743060');
 });
 
-test('away: heard directly with an old position is in range, through relays is away', () => {
-  const old = { lat: 30.1, lng: -97.9, ts: NOW - 90 * MIN };
-  const direct = circle({ loc: old, radio: { at: NOW - 2 * MIN, hops: 0 } });
+test('away is where it is, like a person: outside the Home place, however it was heard', () => {
+  const atHome = { lat: 30.1, lng: -97.9, ts: NOW - 90 * MIN };
+  const farAway = { lat: 30.3, lng: -97.7, ts: NOW - 90 * MIN };
+  assert.equal(trackerAway(circle({ loc: atHome }), 'ut2', NOW), false);
+  assert.equal(trackerAway(circle({ loc: farAway }), 'ut2', NOW), true, 'old or not, its last position is away');
+  assert.equal(trackerAway(circle({ loc: farAway, home: { ...HOME, homeBase: false } }), 'ut2', NOW), true, 'a place called Home counts');
+  assert.equal(trackerAway(circle({ loc: farAway, home: null }), 'ut2', NOW), false, 'no Home place: can’t say');
+  assert.equal(trackerAway(circle({}), 'ut2', NOW), false, 'never heard: can’t say');
+  const direct = circle({ loc: atHome, radio: { at: NOW - 2 * MIN, hops: 0 } });
   assert.equal(heardNearby(direct, 'ut2', NOW), true);
-  assert.equal(trackerAway(direct, 'ut2', NOW), false);
-  const relayed = circle({ loc: old, radio: { at: NOW - 2 * MIN, hops: 2 } });
-  assert.equal(trackerAway(relayed, 'ut2', NOW), true);
-  const silent = circle({ loc: old, radio: { at: NOW - 30 * MIN, hops: 0 } });
-  assert.equal(trackerAway(silent, 'ut2', NOW), true);
-  const fresh = circle({ loc: { ...old, ts: NOW - MIN } });
-  assert.equal(trackerAway(fresh, 'ut2', NOW), false);
+});
+
+test('its line says where, how fresh, and how it got here', () => {
+  const where = () => '';
+  const fresh = { lat: 30.3, lng: -97.7, ts: NOW - 5 * MIN };
+  assert.equal(trackerStatusLine(circle({ loc: { ...fresh, mesh: { hops: 0 } } }), 'ut2', NOW, where), 'Away · 5 min ago · in range of home');
+  assert.equal(trackerStatusLine(circle({ loc: { ...fresh, mesh: { hops: 2 } } }), 'ut2', NOW, where), 'Away · 5 min ago · via 2 relays');
+  assert.equal(
+    trackerStatusLine(circle({ loc: { ...fresh, mesh: { src: 'internet', gateway: 'Uncle’s node' } } }), 'ut2', NOW, where),
+    'Away · 5 min ago · via internet (Uncle’s node)',
+  );
+  assert.equal(trackerStatusLine(circle({ loc: { ...fresh, ts: NOW - 3 * 60 * MIN, mesh: { src: 'beacon' } } }), 'ut2', NOW, where), 'Away · last seen 3 h ago · via public mesh');
+  assert.equal(trackerStatusLine(circle({ loc: { lat: 30.1, lng: -97.9, ts: NOW - 20_000 } }), 'ut2', NOW, () => 'At Home'), 'At Home · just now · over radio');
+  assert.equal(trackerStatusLine(circle({}), 'ut2', NOW, where), 'Not heard yet');
+  assert.equal(trackerVia({ mesh: { src: 'phone', gateway: 'Sara’s phone' } } as never), 'via Sara’s phone');
 });
 
 test('firmware versions', async () => {

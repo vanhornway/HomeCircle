@@ -3,7 +3,7 @@
 // `tracker.node` set, signed by the home base. The home base is the member
 // whose record about itself carries `homeBase` (its status).
 import { useEffect, useState } from 'react';
-import { distanceM, type CircleClient, type HomeBaseStatus, type MemberLocation, type MeshNodeRadio, type TrackerHeard, type TrackerMode, type TrackerSettings } from '@homecircle/core';
+import { distanceM, type CircleClient, type HomeBaseStatus, type MemberLocation, type MeshNodeRadio, type Place, type TrackerHeard, type TrackerMode, type TrackerSettings } from '@homecircle/core';
 
 /** The time now, updated every half minute: "heard 5 min ago" and the quiet-phone fallback stay current without reading the clock during render. */
 export function useNow(everyMs = 30_000): number {
@@ -24,30 +24,48 @@ export const QUIET_MS = 30 * 60_000;
  */
 export const TRACKER_STALE_MS = 20 * 60_000;
 
+/** The circle's home: the place the home base is pinned to, else a place called Home. */
+export function homePlace(client: CircleClient): Place | null {
+  const pinned = client.homeBasePlace();
+  if (pinned) return pinned;
+  for (const p of client.places.values()) if (/^home$/i.test(p.name.trim())) return p;
+  return null;
+}
+
 /**
- * A tracker's line: "At Home · 5 min ago · over radio" while current;
- * "Last heard over radio 1 h ago, at Home" when not, and "probably with
- * Umair" when the person who has it is somewhere else now (their phone says so).
+ * How a tracker's latest position reached HomeCircle: "in range of home",
+ * "via 2 relays", "via internet (Uncle's node)", "via Sara's phone",
+ * "via public mesh".
+ */
+export function trackerVia(loc: MemberLocation): string {
+  const m = loc.mesh;
+  if (m?.src === 'internet') return m.gateway ? `via internet (${m.gateway})` : 'via internet';
+  if (m?.src === 'phone') return m.gateway ? `via ${m.gateway}` : 'via a phone';
+  if (m?.src === 'beacon') return 'via public mesh';
+  if (m?.hops === 0) return 'in range of home';
+  if (m?.hops != null) return `via ${m.hops} relay${m.hops === 1 ? '' : 's'}`;
+  return 'over radio';
+}
+
+/**
+ * A tracker's line, like a person's: where it is and how fresh, then how it
+ * got here. "At Home · 5 min ago · in range of home"; "Away · 25 min ago ·
+ * via internet (Uncle's node)"; "Away · last seen 3 h ago · via 2 relays".
+ * Its pin stays on the map at its last position, faded once it's old.
  */
 export function trackerStatusLine(client: CircleClient, memberId: string, now: number, where: (loc: MemberLocation) => string): string {
   const loc = client.locations.get(memberId);
-  if (!loc) return trackerAway(client, memberId, now) ? 'Away · not heard over radio yet' : 'Not heard over radio yet';
+  if (!loc) return 'Not heard yet';
   const at = where(loc); // "At Home", or "" when it isn't at a place
-  if (now - loc.ts <= TRACKER_STALE_MS) return [at, ago(now - loc.ts), 'over radio'].filter(Boolean).join(' · ');
-  const heard = trackerLastHeard(client, memberId) ?? loc.ts;
+  const away = trackerAway(client, memberId, now);
+  const place = at || (away ? 'Away' : '');
+  if (now - loc.ts <= TRACKER_STALE_MS) return [place, ago(now - loc.ts), trackerVia(loc)].filter(Boolean).join(' · ');
   // In range of home, just no new position (no GPS fix indoors, say).
   if (heardNearby(client, memberId, now)) {
-    return `In range · heard directly ${ago(now - heard)} · no new position for ${ago(now - loc.ts).replace(' ago', '')}`;
+    const heard = trackerLastHeard(client, memberId) ?? loc.ts;
+    return [place, `in range, heard ${ago(now - heard)}`, `no new position for ${ago(now - loc.ts).replace(' ago', '')}`].filter(Boolean).join(' · ');
   }
-  // Heard lately through relays, but its last position is old: the home base has asked it where it is.
-  if (trackerAway(client, memberId, now) && heard > loc.ts && now - heard <= TRACKER_STALE_MS) {
-    return `Away · heard over radio ${ago(now - heard)} · asking it where it is`;
-  }
-  const bits = [
-    ...(trackerAway(client, memberId, now) ? ['Away'] : []),
-    `last heard over radio ${ago(now - heard)}${at && heard === loc.ts ? `, ${at.charAt(0).toLowerCase()}${at.slice(1)}` : ''}`,
-  ];
-  bits[0] = bits[0].charAt(0).toUpperCase() + bits[0].slice(1);
+  const bits = [place, `last seen ${ago(now - loc.ts)}`, trackerVia(loc)].filter(Boolean);
   const t = trackerOf(client, memberId);
   const carrier = t?.mode === 'carried' && t.carriedBy ? client.members.get(t.carriedBy) : null;
   const phone = carrier ? client.locations.get(carrier.id) : null;
@@ -65,19 +83,16 @@ export function trackerLastHeard(client: CircleClient, memberId: string): number
 }
 
 /**
- * Away: the home base (at home, and online) hasn't heard the tracker for a
- * while, so it has left, or is out of the mesh's reach. Its pin comes off the
- * map until it's heard again. With the home base offline nothing can be said.
+ * Away, like a person: its last position is outside the circle's Home place
+ * (and its accuracy). Not known (false) without a position or a Home place.
+ * Radio contact is a separate thing: see trackerVia and heardNearby.
  */
-export function trackerAway(client: CircleClient, memberId: string, now: number): boolean {
+export function trackerAway(client: CircleClient, memberId: string, _now: number): boolean {
   if (!trackerOf(client, memberId)) return false;
-  const home = homeBaseOf(client);
-  if (!home || !homeBaseOnline(home.status, now)) return false;
   const loc = client.locations.get(memberId);
-  if (loc && now - loc.ts <= TRACKER_STALE_MS) return false;
-  // No fresh position, but the home base hears it directly: it's in range of home (indoors,
-  // or without a GPS fix), not away. Heard only through relays, it's somewhere else.
-  return !heardNearby(client, memberId, now);
+  const home = homePlace(client);
+  if (!loc || !home) return false;
+  return distanceM(loc, home) > home.radius + Math.min(loc.accuracy ?? 0, 200);
 }
 
 /** The home base heard this tracker directly (no relays) in the last 20 minutes. */

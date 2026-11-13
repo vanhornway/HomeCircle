@@ -284,6 +284,10 @@ export interface MeshPath {
   at: number | null;
   /** From the tracker to the home base; snr is how the next node heard each one (dB). */
   path: { id: string | null; name: string | null; snr: number | null; lat: number | null; lng: number | null }[] | null;
+  /** How it reached HomeCircle: the home base's radio, a gateway over the internet (MQTT), the carrier's phone, or a public beacon. */
+  src?: 'radio' | 'internet' | 'phone' | 'beacon' | null;
+  /** The gateway or phone that passed it on ("Uncle's node", "Sara's phone"). */
+  gateway?: string | null;
 }
 
 /** A tracker's mesh packet, opened (see mesh.js). */
