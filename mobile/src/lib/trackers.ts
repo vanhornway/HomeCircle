@@ -31,15 +31,47 @@ export const TRACKER_STALE_MS = 20 * 60_000;
  */
 export function trackerStatusLine(client: CircleClient, memberId: string, now: number, where: (loc: MemberLocation) => string): string {
   const loc = client.locations.get(memberId);
-  if (!loc) return 'Not heard over radio yet';
+  if (!loc) return trackerAway(client, memberId, now) ? 'Away · not heard over radio yet' : 'Not heard over radio yet';
   const at = where(loc); // "At Home", or "" when it isn't at a place
   if (now - loc.ts <= TRACKER_STALE_MS) return [at, ago(now - loc.ts), 'over radio'].filter(Boolean).join(' · ');
-  const bits = [`Last heard over radio ${ago(now - loc.ts)}${at ? `, ${at.charAt(0).toLowerCase()}${at.slice(1)}` : ''}`];
+  const heard = trackerLastHeard(client, memberId) ?? loc.ts;
+  // Heard lately, but its last position is old: the home base has asked it where it is.
+  if (trackerAway(client, memberId, now) && heard > loc.ts && now - heard <= TRACKER_STALE_MS) {
+    return `Away · heard over radio ${ago(now - heard)} · asking it where it is`;
+  }
+  const bits = [
+    ...(trackerAway(client, memberId, now) ? ['Away'] : []),
+    `last heard over radio ${ago(now - heard)}${at && heard === loc.ts ? `, ${at.charAt(0).toLowerCase()}${at.slice(1)}` : ''}`,
+  ];
+  bits[0] = bits[0].charAt(0).toUpperCase() + bits[0].slice(1);
   const t = trackerOf(client, memberId);
   const carrier = t?.mode === 'carried' && t.carriedBy ? client.members.get(t.carriedBy) : null;
   const phone = carrier ? client.locations.get(carrier.id) : null;
   if (carrier && phone && phone.ts > loc.ts && now - phone.ts <= TRACKER_STALE_MS && distanceM(phone, loc) > 300) bits.push(`probably with ${carrier.name}`);
   return bits.join(' · ');
+}
+
+/** When the home base last heard anything from a tracker: its last position, or any packet (the home base's status). */
+export function trackerLastHeard(client: CircleClient, memberId: string): number | null {
+  const t = trackerOf(client, memberId);
+  if (!t) return null;
+  const st = homeBaseOf(client)?.status.trackers.find((x) => x.node === t.node);
+  const heard = Math.max(client.locations.get(memberId)?.ts ?? 0, st?.radio?.at ?? 0);
+  return heard || null;
+}
+
+/**
+ * Away: the home base (at home, and online) hasn't heard the tracker for a
+ * while, so it has left, or is out of the mesh's reach. Its pin comes off the
+ * map until it's heard again. With the home base offline nothing can be said.
+ */
+export function trackerAway(client: CircleClient, memberId: string, now: number): boolean {
+  if (!trackerOf(client, memberId)) return false;
+  const home = homeBaseOf(client);
+  if (!home || !homeBaseOnline(home.status, now)) return false;
+  // Its position, not just any packet: heard from somewhere new, it's away until that new position comes in.
+  const loc = client.locations.get(memberId);
+  return !loc || now - loc.ts > TRACKER_STALE_MS;
 }
 
 /** "heard 6 times in 3 h, last through 2 relays (meshunit1)": what the home base heard of a tracker lately. */

@@ -753,7 +753,8 @@ bool HomeBaseModule::wantPacket(const meshtastic_MeshPacket *p)
         return false;
     meshtastic_PortNum port = p->decoded.portnum;
     return port == meshtastic_PortNum_TEXT_MESSAGE_APP || port == meshtastic_PortNum_PRIVATE_APP || port == meshtastic_PortNum_POSITION_APP ||
-           port == meshtastic_PortNum_TRACEROUTE_APP || port == meshtastic_PortNum_ADMIN_APP || port == meshtastic_PortNum_ROUTING_APP;
+           port == meshtastic_PortNum_TRACEROUTE_APP || port == meshtastic_PortNum_ADMIN_APP || port == meshtastic_PortNum_ROUTING_APP ||
+           port == meshtastic_PortNum_TELEMETRY_APP || port == meshtastic_PortNum_NODEINFO_APP; // any sign of a tracker
 }
 
 ProcessMessage HomeBaseModule::handleReceived(const meshtastic_MeshPacket &mp)
@@ -761,6 +762,9 @@ ProcessMessage HomeBaseModule::handleReceived(const meshtastic_MeshPacket &mp)
     if (!configured || mp.from == nodeDB->getNodeNum())
         return ProcessMessage::CONTINUE;
     const auto &pl = mp.decoded.payload;
+    // Any packet from a tracker: how it got here; one long silent gets asked where it is.
+    if (mp.decoded.portnum != meshtastic_PortNum_POSITION_APP && hb.isTracker(mp.from))
+        hb.onHeard(mp.from, mp.hop_start ? (int)mp.hop_start - (int)mp.hop_limit : -1, relayNode(mp.relay_node, mp.from), mp.rx_snr, false);
     switch (mp.decoded.portnum) {
     case meshtastic_PortNum_TEXT_MESSAGE_APP:
         hb.onText(mp.from, std::string((const char *)pl.bytes, pl.size));

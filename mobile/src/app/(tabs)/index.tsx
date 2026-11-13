@@ -22,7 +22,7 @@ import { initials, useAllCircles, useCircle } from '../../lib/useCircle';
 import { chirpWithChoice } from '../../lib/chirp';
 import { canLocate, everyoneCoolingDown, isAsking, memberState, locatePerson, locateState, lowBattery, refreshEveryone, settingWarning, statusLine, useLocateVersion } from '../../lib/people';
 import { DEFAULT_SETTINGS, getSettings } from '../../lib/storage';
-import { carriedFallback, circleCount, homeBaseOf, TRACKER_STALE_MS, trackerEmoji, trackerList, trackerOf } from '../../lib/trackers';
+import { carriedFallback, circleCount, homeBaseOf, TRACKER_STALE_MS, trackerAway, trackerEmoji, trackerList, trackerOf } from '../../lib/trackers';
 import { edgeChips, groups, openingFrame } from '../../lib/mapFrame';
 import { usePlaceNames } from '../../lib/weather';
 import { useTheme } from '../../theme';
@@ -118,6 +118,8 @@ export default function MapTab() {
     const loc = sharing ? (via?.loc ?? client.locations.get(m.id)) : null;
     if (!loc) return [];
     const tracker = trackerOf(client, m.id);
+    // Away: the home base hasn't heard it lately, so its last position isn't where it is.
+    if (tracker && !via && trackerAway(client, m.id, now)) return [];
     return [
       {
         id: m.id,

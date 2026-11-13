@@ -35,6 +35,7 @@ const int64_t PATH_FOR = 6 * 60 * MIN;     // a path older than this isn't shown
 const int64_t STATUS_EVERY = 1 * MIN;      // its own status for the app's Trackers screen (it has mains or solar power)
 const int64_t RECORD_REREAD = 10 * MIN;    // between full reads of its member record when writing the status
 const int64_t OFF_RECHECK = 1 * MIN;       // while the plugin is off: how often to look whether it's back on
+const int64_t STALE_FIX = 20 * MIN;        // a tracker's position older than this isn't where it is (the app's "Away")
 const size_t LOG_KEEP = 10;               // positions heard per tracker, kept for the trip on the map
 const int64_t LOCATE_WAIT = 3 * MIN;        // a Locate the tracker hasn't answered: say so in the chat
 const int64_t INTRODUCE_EVERY = 12 * 60 * MIN;  // send each tracker this node's key again (it may have forgotten)
@@ -737,13 +738,21 @@ void HomeBase::onNoFix(uint32_t node) {
   log = t->name + " has no GPS fix";
 }
 
-void HomeBase::onHeard(uint32_t node, int hops, uint32_t relay, float snr) {
+void HomeBase::onHeard(uint32_t node, int hops, uint32_t relay, float snr, bool position) {
   Tracker* t = byNode(node);
   if (!t) return;
-  t->lastRx.at = now_();
+  int64_t now = now_();
+  t->lastRx.at = now;
   t->lastRx.hops = hops;
   t->lastRx.relay = hops > 0 ? relay : 0;
   t->lastRx.snr = snr;
+  // Heard, but its position on the map is old (it's been away): ask where it is now, so the
+  // map moves it there. At most every 10 minutes.
+  if (!position && now - t->sentFixAt > STALE_FIX && now - t->askedAt > 10 * MIN) {
+    radio_.requestPosition(node);
+    t->askedAt = now;
+    log = t->name + " is back in reach: asked where it is";
+  }
 }
 
 void HomeBase::onConfigured(uint32_t node, ConfigResult r) {

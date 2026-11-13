@@ -304,6 +304,20 @@ try {
   assert.ok(trip.length >= 2, 'earlier positions stay in the log too');
   pass('each position heard on a trip is logged with its hops and last relay, for the trail on the map');
 
+  // Back in reach after a while away: something heard from it (not a position) gets it asked where it is.
+  await radio('advance 1300');
+  await radio(`seen ${TRACKER} 3`);
+  out = await radio('tick');
+  assert.ok(out.includes(`request ${TRACKER}`), `heard again after 20 minutes: asked for its position: ${out.join(' | ')}`);
+  await radio(`seen ${TRACKER} 3`);
+  out = await radio('tick');
+  assert.ok(!out.includes(`request ${TRACKER}`), 'not again for 10 minutes');
+  await radio(`position ${TRACKER} 37.67 -122.1 64`);
+  await radio('tick');
+  await maya.fetchLocations();
+  assert.equal(maya.locations.get(tracker.id).lat, 37.67, 'its new position goes on the map at once (it was asked for)');
+  pass('a tracker heard again after a while away is asked where it is, and its new position goes on the map');
+
   await maya.chirp(tracker.id);
   await radio('advance 9');
   out = await radio('tick');

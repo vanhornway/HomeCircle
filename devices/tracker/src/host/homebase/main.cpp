@@ -182,6 +182,11 @@ int main(int argc, char** argv) {
         }
         hb.onRoute(node, back, snr);
       }
+    } else if (cmd == "seen") {
+      // seen !id HOPS: any packet from a tracker that isn't a position (telemetry, node info)
+      uint32_t node;
+      std::string args = rest(line, 1);
+      if (hc::parseNodeId(args.substr(0, args.find(' ')), node)) hb.onHeard(node, atoi(rest(line, 2).c_str()), 0, 0, false);
     } else if (cmd == "rx") {
       // rx !id HOPS !relay SNR: a tracker's packet, and how it got here
       uint32_t node, relay = 0;
