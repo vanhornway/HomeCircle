@@ -35,7 +35,11 @@ export function trackerStatusLine(client: CircleClient, memberId: string, now: n
   const at = where(loc); // "At Home", or "" when it isn't at a place
   if (now - loc.ts <= TRACKER_STALE_MS) return [at, ago(now - loc.ts), 'over radio'].filter(Boolean).join(' · ');
   const heard = trackerLastHeard(client, memberId) ?? loc.ts;
-  // Heard lately, but its last position is old: the home base has asked it where it is.
+  // In range of home, just no new position (no GPS fix indoors, say).
+  if (heardNearby(client, memberId, now)) {
+    return `In range · heard directly ${ago(now - heard)} · no new position for ${ago(now - loc.ts).replace(' ago', '')}`;
+  }
+  // Heard lately through relays, but its last position is old: the home base has asked it where it is.
   if (trackerAway(client, memberId, now) && heard > loc.ts && now - heard <= TRACKER_STALE_MS) {
     return `Away · heard over radio ${ago(now - heard)} · asking it where it is`;
   }
@@ -69,9 +73,18 @@ export function trackerAway(client: CircleClient, memberId: string, now: number)
   if (!trackerOf(client, memberId)) return false;
   const home = homeBaseOf(client);
   if (!home || !homeBaseOnline(home.status, now)) return false;
-  // Its position, not just any packet: heard from somewhere new, it's away until that new position comes in.
   const loc = client.locations.get(memberId);
-  return !loc || now - loc.ts > TRACKER_STALE_MS;
+  if (loc && now - loc.ts <= TRACKER_STALE_MS) return false;
+  // No fresh position, but the home base hears it directly: it's in range of home (indoors,
+  // or without a GPS fix), not away. Heard only through relays, it's somewhere else.
+  return !heardNearby(client, memberId, now);
+}
+
+/** The home base heard this tracker directly (no relays) in the last 20 minutes. */
+export function heardNearby(client: CircleClient, memberId: string, now: number): boolean {
+  const t = trackerOf(client, memberId);
+  const r = t ? homeBaseOf(client)?.status.trackers.find((x) => x.node === t.node)?.radio : null;
+  return !!r?.at && now - r.at <= TRACKER_STALE_MS && r.hops === 0;
 }
 
 /** "heard 6 times in 3 h, last through 2 relays (meshunit1)": what the home base heard of a tracker lately. */
