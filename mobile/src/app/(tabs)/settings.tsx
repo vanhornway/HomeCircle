@@ -14,6 +14,7 @@ import { FEATURES } from '@homecircle/core';
 import { CHIRP_NAMES } from '../../lib/chirp';
 import { useCircles } from '../../lib/circle';
 import { APP_VERSION, checkForUpdate, downloadUpdate, useNewerVersion } from '../../lib/updates';
+import { HomeBaseUpdateRow } from '../../components/HomeBaseUpdate';
 import { buildNumber } from '../../../modules/hc-attention/src/HcAttentionModule';
 import { locationProfileOf, useSettings } from '../../lib/storage';
 import { STOP_NAMES, type Stop } from '../../lib/locationPolicy';
@@ -144,6 +145,7 @@ export default function SettingsTab() {
             checkForUpdate({ force: true }).then((v) => setChecked(v ? null : 'latest'));
           }}
         />
+        <HomeBaseUpdateRow client={client} />
       </SettingsGroup>
     </Screen>
   );
