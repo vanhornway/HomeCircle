@@ -167,6 +167,23 @@ test('tracker settings: an admin sets how often a tracker reports; bad values fa
   assert.equal(zara.memberRecord(id(zara)), null);
 });
 
+test('Meshtastic plugin off: its trackers and home base leave the member list until it’s on again', async () => {
+  await umair.setFeatures({ meshtastic: true });
+  await umair.setMemberRecord(id(ali), { tracker: { mode: 'car', node: '!9e58f8c9' } });
+  await syncRecords();
+  assert.ok(umair.memberList().some((m) => m.id === id(ali)));
+  assert.ok(umair.deviceList().some((m) => m.id === id(ali)));
+  await umair.setFeatures({ meshtastic: false });
+  assert.equal(umair.hiddenDevice(id(ali)), true);
+  assert.ok(!umair.memberList().some((m) => m.id === id(ali)));
+  assert.ok(!umair.deviceList().some((m) => m.id === id(ali)));
+  assert.equal(umair.hiddenDevice(id(zara)), false, 'people stay');
+  await umair.setFeatures({ meshtastic: true });
+  assert.ok(umair.memberList().some((m) => m.id === id(ali)), 'back with the plugin on');
+  await umair.setMemberRecord(id(ali), { tracker: null });
+  await syncRecords();
+});
+
 test('he or she: your own profile first, else an admin’s choice', async () => {
   assert.equal(umair.genderOf(id(fatima)), 'f', 'from the admin record');
   await zara.setGender('f');

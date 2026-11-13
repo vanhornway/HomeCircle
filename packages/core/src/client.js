@@ -846,7 +846,7 @@ export class CircleClient {
   /** The people in the circle (not its agent). */
   memberList() {
     return [...this.members.values()]
-      .filter((m) => !m.removed && m.kind !== 'agent')
+      .filter((m) => !m.removed && m.kind !== 'agent' && !this.hiddenDevice(m.id))
       .sort((a, b) => (a.isMe ? -1 : b.isMe ? 1 : a.name.localeCompare(b.name)));
   }
 
@@ -858,6 +858,17 @@ export class CircleClient {
   isDevice(memberId) {
     const r = this.memberRecord(memberId);
     return !!(r?.tracker || r?.homeBase);
+  }
+
+  /**
+   * A Meshtastic tracker or home base while the circle has the Meshtastic
+   * plugin off: left out of the member list (the map, chats, counts) until
+   * it's on again. Its record stays, so turning the plugin back on brings it back.
+   */
+  hiddenDevice(memberId) {
+    if (this.feature('meshtastic')) return false;
+    const r = this.memberRecord(memberId);
+    return !!(r?.homeBase || r?.tracker?.node);
   }
 
   /** The circle's people: members who aren't trackers or a home base. */

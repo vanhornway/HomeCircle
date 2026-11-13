@@ -688,6 +688,7 @@ export class CircleClient {
   /** A message sealed for the mesh (one LoRa packet), for the tracker to send. */
   meshMessage(text: string, opts?: { to?: string | null }): Promise<{ id: string; packet: Uint8Array }>;
   /** A tracker or a Meshtastic home base rather than a person (from the admin's record about it). */
+  hiddenDevice(memberId: string): boolean;
   isDevice(memberId: string): boolean;
   /** Members who are people: not trackers or a home base. */
   peopleList(): Member[];

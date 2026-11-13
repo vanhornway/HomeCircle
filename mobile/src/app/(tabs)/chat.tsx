@@ -75,7 +75,7 @@ export default function Chats() {
     // The helper's chat is always there, even before the first message.
     const peers = c.directPeers();
     if (c.agent && c.feature('agent') && !peers.includes(c.agent.id)) peers.push(c.agent.id);
-    const dms = peers.filter(dmOn).map((peer): Row => {
+    const dms = peers.filter((peer) => dmOn(peer) && !c.hiddenDevice(peer)).map((peer): Row => {
       const m = c.members.get(peer);
       const helper = peer === c.agent?.id;
       return {
