@@ -57,3 +57,13 @@ test('away: heard directly with an old position is in range, through relays is a
   const fresh = circle({ loc: { ...old, ts: NOW - MIN } });
   assert.equal(trackerAway(fresh, 'ut2', NOW), false);
 });
+
+test('firmware versions', async () => {
+  const { compareVersions } = await import('./trackers.ts');
+  assert.equal(compareVersions('0.29.0', '0.28.1'), 1);
+  assert.equal(compareVersions('0.28.1', '0.29.0'), -1);
+  assert.equal(compareVersions('0.29.0', 'v0.29.0'), 0);
+  assert.equal(compareVersions('0.29.0', '0.29.0-test'), 1, 'a release is newer than its test build');
+  assert.equal(compareVersions('0.30.0-test', '0.29.0'), 1);
+  assert.equal(compareVersions('1.0', '0.99.9'), 1);
+});

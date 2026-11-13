@@ -10,6 +10,11 @@
 #   heltec-v4-homebase                  the home base
 # Flash the result with the Meshtastic web flasher or:
 #   pio run -d <dir> -e <env> -t upload
+#
+# HC_FW_VERSION (default: git describe) is the version the home base reports.
+# For a home base, it also writes homebase-heltec-v4.bin and .json (version,
+# size, SHA-256, link) to put on the GitHub release: the app reads the .json
+# and has the home base update itself over Wi-Fi.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -30,5 +35,20 @@ cp "$HERE/variant/platformio.ini" "$FW/variants/esp32s3/homecircle/platformio.in
 # Register the modules, once each.
 python3 "$HERE/register.py" "$FW/src/modules/Modules.cpp"
 
+VERSION="${HC_FW_VERSION:-$(git -C "$HERE" describe --tags --always 2>/dev/null | sed 's/^v//' || echo dev)}"
+export PLATFORMIO_BUILD_FLAGS="-DHC_FW_VERSION=\\\"$VERSION\\\""
 pio run -d "$FW" -e "$ENV"
-echo "Firmware: $FW/.pio/build/$ENV/"
+echo "Firmware $VERSION: $FW/.pio/build/$ENV/"
+
+if [ "$ENV" = "heltec-v4-homebase" ]; then
+  OUT="$FW/.pio/build/$ENV"
+  # The app image (what's written at 0x10000), not the factory image with the bootloader.
+  BIN="$(ls "$OUT"/firmware-*.bin | grep -v -e factory -e ota | head -1)"
+  cp "$BIN" "$OUT/homebase-heltec-v4.bin"
+  SHA="$(shasum -a 256 "$OUT/homebase-heltec-v4.bin" | cut -d' ' -f1)"
+  SIZE="$(wc -c < "$OUT/homebase-heltec-v4.bin" | tr -d ' ')"
+  cat > "$OUT/homebase-heltec-v4.json" <<EOF
+{"version":"$VERSION","size":$SIZE,"sha256":"$SHA","url":"https://github.com/vanhornway/HomeCircle/releases/download/v$VERSION/homebase-heltec-v4.bin"}
+EOF
+  echo "Update files: $OUT/homebase-heltec-v4.bin and .json"
+fi

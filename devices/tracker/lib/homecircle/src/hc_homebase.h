@@ -135,9 +135,25 @@ bool parseContactLink(const std::string& link, MeshContact& out);
 std::string nodeId(uint32_t num);                       // "!a1b2c3d4"
 bool parseNodeId(const std::string& s, uint32_t& num);  // "!a1b2c3d4" or "a1b2c3d4"
 
+// The home base firmware's version (build.sh sets it), in its status for the app.
+#ifndef HC_FW_VERSION
+#define HC_FW_VERSION "dev"
+#endif
+
 class HomeBase {
  public:
   HomeBase(Http& http, Store& store, int64_t (*nowMs)(), Radio& radio);
+
+  /** A firmware update an admin asked for: where to download it, its SHA-256 (hex), and who asked. */
+  struct Update {
+    std::string url, sha256, by;
+  };
+  /** The update to do now, if an admin asked for one (handed over once). */
+  bool takeUpdate(Update& out);
+  /** Tell whoever asked for an update how it went. */
+  void updateNews(const std::string& to, const std::string& text);
+  /** When its status last reached the server (0: not since it started). */
+  int64_t reportedAt() const { return reportedAt_; }
 
   /** Load the saved home base and its trackers. False if it hasn't joined a circle. */
   bool load();
@@ -175,6 +191,9 @@ class HomeBase {
   std::string log;
 
  private:
+  Update update_;
+  bool updateAsked_ = false;
+  int64_t reportedAt_ = 0;
   struct Tracker {
     uint32_t node = 0;
     std::string name, kind = "carried", carriedBy;  // kind: carried, car, pet, luggage, keys or other

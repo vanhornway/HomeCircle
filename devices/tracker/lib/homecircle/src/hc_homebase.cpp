@@ -785,11 +785,24 @@ void HomeBase::onConfigured(uint32_t node, ConfigResult r) {
   }
 }
 
+bool HomeBase::takeUpdate(Update& out) {
+  if (!updateAsked_) return false;
+  updateAsked_ = false;
+  out = update_;
+  return true;
+}
+
+void HomeBase::updateNews(const std::string& to, const std::string& text) {
+  if (!to.empty() && base_.sendDirect(to, text) == Status::Ok) return;
+  log = "update: " + text;
+}
+
 void HomeBase::publishStatus() {
   if (!base_.amAdmin()) return;  // only admins write member records
   JsonDocument p;
   JsonObject h = p["homeBase"].to<JsonObject>();
   h["at"] = now_();
+  h["fw"] = HC_FW_VERSION;  // the app offers an update when a newer one is out
   h["every"] = (int)(STATUS_EVERY / 1000);  // so the app knows when it's late
   h["quietMinutes"] = (int)(quietMs_ / MIN);  // the app shows people at their tracker after the same time
   auto tenth = [](float v) { return std::round(v * 10) / 10; };
@@ -875,7 +888,7 @@ void HomeBase::publishStatus() {
   if (!channel.empty()) h["channel"] = channel;  // sealed like the rest: only the circle reads it
   // Every minute: reuse the rest of its record for a while instead of reading
   // every member's record each time (admins rarely change the home base's).
-  base_.mergeMemberRecord(base_.memberId(), p.as<JsonVariantConst>(), RECORD_REREAD);
+  if (base_.mergeMemberRecord(base_.memberId(), p.as<JsonVariantConst>(), RECORD_REREAD) == Status::Ok) reportedAt_ = now_();
 }
 
 bool HomeBase::shareSelf(bool asked) {
@@ -993,12 +1006,27 @@ void HomeBase::command(const Device::Direct& d) {
   std::string verb = l.substr(0, sp);
   std::string rest = sp == std::string::npos ? "" : trim(text.substr(sp + 1));
   std::string reply;
-  bool changes = verb == "add" || verb == "rename" || verb == "remove" || verb == "link" || verb == "unlink";
+  bool changes = verb == "add" || verb == "rename" || verb == "remove" || verb == "link" || verb == "unlink" || verb == "update";
   // Roles and names change (someone made this home base an admin, someone joined): look first.
   if (changes || verb == "status") base_.refresh();
 
   if (changes && !d.fromAdmin) {
-    reply = "Only the circle's admins can change trackers.";
+    reply = verb == "update" ? "Only the circle's admins can update the home base." : "Only the circle's admins can change trackers.";
+  } else if (verb == "version" || verb == "firmware") {
+    reply = std::string("Home base firmware ") + HC_FW_VERSION + ".";
+  } else if (verb == "update") {
+    // update <https link to the firmware .bin> <its SHA-256>: the app sends it from Trackers → Update.
+    size_t s2 = rest.find(' ');
+    std::string url = rest.substr(0, s2);
+    std::string sha = s2 == std::string::npos ? "" : lower(trim(rest.substr(s2 + 1)));
+    bool hex = sha.size() == 64 && sha.find_first_not_of("0123456789abcdef") == std::string::npos;
+    if (url.rfind("https://", 0) != 0 || !hex) {
+      reply = "Update with: update <https link to the firmware> <its SHA-256>. The app does this for you: Trackers → the home base → Update.";
+    } else {
+      update_ = {url, sha, d.from};
+      updateAsked_ = true;
+      reply = std::string("⬇️ Updating from ") + HC_FW_VERSION + ". I'll download it (about a minute), check it, and restart. I'll tell you here when I'm back.";
+    }
   } else if (verb == "list" || verb == "trackers") {
     reply = listText();
   } else if (verb == "status") {

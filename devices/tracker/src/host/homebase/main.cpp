@@ -225,6 +225,8 @@ int main(int argc, char** argv) {
       radio.introduced.clear();
       for (auto& c : radio.configs) printf("configure %s %d %d %d h%d\n", hc::nodeId(c.first).c_str(), c.second.movingS, c.second.stillS, c.second.batteryS, c.second.hopLimit);
       radio.configs.clear();
+      hc::HomeBase::Update u;
+      if (hb.takeUpdate(u)) printf("update %s %s by %s\n", u.url.c_str(), u.sha256.c_str(), u.by.c_str());
       if (!hb.log.empty()) printf("log: %s\n", hb.log.c_str());
     } else {
       printf("unknown command\n");

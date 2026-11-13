@@ -286,3 +286,39 @@ export function messageSpot(
 export function googleMapsUrl(lat: number, lng: number): string {
   return `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
 }
+
+/** The home base firmware on the latest release, for "Update" on the Trackers screen. */
+export const HOMEBASE_FIRMWARE_URL = 'https://github.com/vanhornway/HomeCircle/releases/latest/download/homebase-heltec-v4.json';
+
+export type HomeBaseFirmware = { version: string; url: string; sha256: string; size: number };
+
+/** What the latest release offers (null if it can't be read, or has no home base firmware). */
+export async function latestHomeBaseFirmware(fetchImpl: typeof fetch = fetch): Promise<HomeBaseFirmware | null> {
+  try {
+    const res = await fetchImpl(HOMEBASE_FIRMWARE_URL, { headers: { Accept: 'application/json' } });
+    if (!res.ok) return null;
+    const j = await res.json();
+    const ok = typeof j?.version === 'string' && /^https:\/\//.test(j.url ?? '') && /^[0-9a-f]{64}$/.test(j.sha256 ?? '') && Number.isFinite(j.size);
+    return ok ? { version: j.version, url: j.url, sha256: j.sha256, size: j.size } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 1 if version a is newer than b, -1 if older, 0 if the same ("0.29.0" vs "0.28.1"; a "-test" suffix sorts before its release). */
+export function compareVersions(a: string, b: string): number {
+  const parse = (v: string) => {
+    const [main, pre] = v.replace(/^v/, '').split('-', 2);
+    return { nums: main.split('.').map((x) => Number.parseInt(x, 10) || 0), pre: pre ?? null };
+  };
+  const x = parse(a);
+  const y = parse(b);
+  for (let i = 0; i < Math.max(x.nums.length, y.nums.length); i++) {
+    const d = (x.nums[i] ?? 0) - (y.nums[i] ?? 0);
+    if (d) return Math.sign(d);
+  }
+  if (x.pre === y.pre) return 0;
+  if (x.pre === null) return 1;
+  if (y.pre === null) return -1;
+  return x.pre > y.pre ? 1 : -1;
+}

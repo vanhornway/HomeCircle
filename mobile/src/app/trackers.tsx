@@ -3,7 +3,7 @@
 // commands, sent as a direct message to it, the same ones an admin can type
 // in the chat with it (add, rename, link, unlink, remove). Its answers arrive
 // in that chat; this screen follows the records and locations as they change.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
 import { Text, View } from 'react-native';
 import type { CircleClient, TrackerMode } from '@homecircle/core';
@@ -13,7 +13,7 @@ import { GroupBody, SettingsGroup, SettingsPage, SettingsRow } from '../componen
 import { errorText } from '../lib/circle';
 import { radioLine } from '../lib/people';
 import { confirm, notice, showSheet } from '../lib/sheet';
-import { homeBaseHealth, homeBaseOf, homeBaseOnline, PRESS_HELP, oldHomeBases, radioFacts, tellHomeBase, trackerEmoji, trackerList, TRACKER_KINDS, trackerSettingsLine, tripLine, useNow } from '../lib/trackers';
+import { compareVersions, latestHomeBaseFirmware, type HomeBaseFirmware, homeBaseHealth, homeBaseOf, homeBaseOnline, PRESS_HELP, oldHomeBases, radioFacts, tellHomeBase, trackerEmoji, trackerList, TRACKER_KINDS, trackerSettingsLine, tripLine, useNow } from '../lib/trackers';
 import { KeyHelp } from '../components/TrackerKeyHelp';
 import { timeAgo, useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
@@ -40,6 +40,15 @@ export default function Trackers() {
   const [renaming, setRenaming] = useState<{ id: string; node: string; name: string } | null>(null);
   const [linking, setLinking] = useState<{ id: string; node: string; carriedBy: string } | null>(null);
   const [sending, setSending] = useState(false);
+  // The home base firmware on the latest release: offered as an update over Wi-Fi.
+  const [latest, setLatest] = useState<HomeBaseFirmware | null>(null);
+  useEffect(() => {
+    let alive = true;
+    latestHomeBaseFirmware().then((f) => alive && setLatest(f));
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const send = async (commands: string[]) => {
     if (!home) return;
@@ -82,6 +91,19 @@ export default function Trackers() {
   };
 
   const online = home ? homeBaseOnline(home.status, now) : false;
+  const fw = home?.status.fw ?? null;
+  const newer = fw && latest && compareVersions(latest.version, fw) > 0 ? latest : null;
+  const update = async () => {
+    if (!home || !newer) return;
+    const mb = (newer.size / 1048576).toFixed(1);
+    if (!(await confirm(`Update the home base to ${newer.version}?`, `It downloads ${mb} MB over its Wi-Fi, checks it, and restarts (about 2 minutes, with no tracker updates meanwhile). If the new version doesn’t start properly, it goes back to ${fw} by itself. It tells you in its chat how it went.`, 'Update'))) return;
+    try {
+      await tellHomeBase(client, home.id, `update ${newer.url} ${newer.sha256}`);
+      notice('Updating the home base', 'It answers in your chat with it, and again when it’s back on the new version.');
+    } catch (e) {
+      notice('Couldn’t send it', errorText(e));
+    }
+  };
   const health = home && online ? homeBaseHealth(home.status) : null;
   const tracked = new Set(trackers.map((x) => x.tracker.node));
   const heard = (home?.status.heard ?? []).filter((h) => !tracked.has(h.node));
@@ -108,6 +130,23 @@ export default function Trackers() {
             title={pin ? `At ${pin.name}` : 'Home address'}
             detail={pin ? `${pin.address ? `${pin.address} · ` : ''}pinned there on the map · ${gpsLine}` : `Not set: it shows where its GPS says (${gpsLine}). Tap to pin it to your home`}
             onPress={choosePin}
+          />
+        ) : null}
+        {home ? (
+          <SettingsRow
+            icon="refresh"
+            title={newer ? `Update to ${newer.version}` : `Firmware ${fw ?? 'older than 0.29'}`}
+            detail={
+              newer
+                ? `It runs ${fw}. ${admin ? 'Tap to update it over its Wi-Fi' : 'An admin can update it over its Wi-Fi'}`
+                : fw
+                  ? latest
+                    ? 'Up to date'
+                    : 'Updates over its Wi-Fi from the app'
+                  : 'Update it over USB once (devices/meshtastic); after that it updates over its Wi-Fi from here'
+            }
+            badge={newer ? '1' : null}
+            onPress={newer && admin ? update : undefined}
           />
         ) : null}
         {home && health ? (

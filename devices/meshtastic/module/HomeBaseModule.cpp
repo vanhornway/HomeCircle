@@ -35,7 +35,12 @@
 #include <DNSServer.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <HTTPClient.h>
+#include <Preferences.h>
+#include <WiFiClientSecure.h>
 #include <esp_mac.h>
+#include <esp_ota_ops.h>
+#include <mbedtls/sha256.h>
 #include <algorithm>
 #include <map>
 #include <math.h>
@@ -194,6 +199,164 @@ hcio::FsStore store;
 hcio::WifiHttp http;
 MeshRadio radio;
 hc::HomeBase hb(http, store, hcio::nowMs, radio);
+
+// --- updates over Wi-Fi ---------------------------------------------------------------
+//
+// The flash has two app slots (default_16MB.csv: app0 and app1, 6.25 MB each).
+// An admin's signed "update <link> <sha256>" (the app sends it) has this node
+// download the new firmware into the slot it isn't running from, check its
+// SHA-256 and that it's a whole ESP32 image, switch to it and restart. The
+// checksum comes from the admin's message, not the download, so the file can
+// come from anywhere (a GitHub release).
+//
+// If the new firmware restarts 3 times without its status reaching the
+// server, the node goes back to the slot it came from: a bad update can't
+// leave a home base on a roof unreachable. Kept in NVS ("hc-ota").
+namespace ota
+{
+const char *NS = "hc-ota";
+
+// Early in boot: count this start, and go back if the new firmware keeps restarting.
+void checkBoot()
+{
+    Preferences p;
+    if (!p.begin(NS, false))
+        return;
+    if (p.getBool("pending", false)) {
+        int tries = p.getInt("tries", 0) + 1;
+        p.putInt("tries", tries);
+        if (tries > 3) {
+            String prev = p.getString("prev", "");
+            p.putBool("pending", false);
+            p.putString("news", "⚠️ The update didn't start properly (it kept restarting), so I went back to the firmware I had.");
+            p.end();
+            const esp_partition_t *back = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_ANY, prev.c_str());
+            if (back && esp_ota_set_boot_partition(back) == ESP_OK) {
+                LOG_WARN("HomeCircle home base: the update kept restarting; back to %s", prev.c_str());
+                delay(200);
+                ESP.restart();
+            }
+            return;
+        }
+    }
+    p.end();
+}
+
+// Once the status has reached the server: the update worked. Says so to whoever asked.
+void confirm()
+{
+    Preferences p;
+    if (!p.begin(NS, false))
+        return;
+    std::string to = p.getString("by", "").c_str();
+    std::string news = p.getString("news", "").c_str();
+    if (p.getBool("pending", false)) {
+        p.putBool("pending", false);
+        p.putInt("tries", 0);
+        news = std::string("✓ Updated: now running ") + HC_FW_VERSION + ".";
+    }
+    p.remove("news");
+    p.end();
+    if (!news.empty())
+        hb.updateNews(to, news);
+}
+
+static uint8_t buf[4096];
+
+// "" when it's written and switched to; otherwise what went wrong.
+std::string install(const hc::HomeBase::Update &u)
+{
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    const esp_partition_t *target = esp_ota_get_next_update_partition(NULL);
+    if (!target || target == running)
+        return "this board has no second app slot";
+    WiFiClientSecure tls;
+    tls.setInsecure(); // the SHA-256 from the admin's signed message is what's checked
+    HTTPClient h;
+    h.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS); // GitHub release links redirect to its file host
+    h.setTimeout(20000);
+    if (!h.begin(tls, u.url.c_str()))
+        return "that link doesn't work";
+    h.addHeader("User-Agent", "homecircle-meshtastic");
+    hcio::feedWatchdog();
+    int code = h.GET();
+    if (code != 200) {
+        h.end();
+        return "the download failed (HTTP " + std::to_string(code) + ")";
+    }
+    int len = h.getSize();
+    if (len > 0 && (size_t)len > target->size) {
+        h.end();
+        return "the file is too big for the app slot";
+    }
+    esp_ota_handle_t handle;
+    if (esp_ota_begin(target, OTA_SIZE_UNKNOWN, &handle) != ESP_OK) {
+        h.end();
+        return "couldn't start writing the update";
+    }
+    mbedtls_sha256_context sha;
+    mbedtls_sha256_init(&sha);
+    mbedtls_sha256_starts(&sha, 0);
+    WiFiClient *s = h.getStreamPtr();
+    size_t got = 0;
+    uint32_t lastData = millis();
+    std::string err;
+    while (len < 0 || got < (size_t)len) {
+        size_t avail = s->available();
+        if (!avail) {
+            if (!h.connected() || millis() - lastData > 20000)
+                break;
+            delay(5);
+            continue;
+        }
+        int n = s->readBytes(buf, std::min(avail, sizeof buf));
+        if (n <= 0)
+            continue;
+        mbedtls_sha256_update(&sha, buf, n);
+        if (esp_ota_write(handle, buf, n) != ESP_OK) {
+            err = "writing the update failed";
+            break;
+        }
+        got += n;
+        lastData = millis();
+        hcio::feedWatchdog();
+    }
+    h.end();
+    uint8_t digest[32];
+    mbedtls_sha256_finish(&sha, digest);
+    mbedtls_sha256_free(&sha);
+    char hex[65];
+    for (int i = 0; i < 32; i++)
+        snprintf(hex + i * 2, 3, "%02x", digest[i]);
+    if (err.empty() && len > 0 && got != (size_t)len)
+        err = "the download stopped part way (" + std::to_string(got) + " of " + std::to_string(len) + " bytes)";
+    if (err.empty() && u.sha256 != hex)
+        err = "the file's checksum didn't match, so I didn't use it";
+    if (!err.empty()) {
+        esp_ota_abort(handle);
+        return err;
+    }
+    if (esp_ota_end(handle) != ESP_OK) // checks it's a whole image for this chip
+        return "that isn't a firmware image for this board";
+    esp_app_desc_t desc;
+    if (esp_ota_get_partition_description(target, &desc) == ESP_OK)
+        LOG_INFO("HomeCircle home base: update %s (%s) written to %s", desc.version, desc.project_name, target->label);
+    Preferences p;
+    p.begin(NS, false);
+    p.putBool("pending", true);
+    p.putInt("tries", 0);
+    p.putString("prev", running->label);
+    p.putString("by", u.by.c_str());
+    p.end();
+    if (esp_ota_set_boot_partition(target) != ESP_OK) {
+        p.begin(NS, false);
+        p.putBool("pending", false);
+        p.end();
+        return "couldn't switch to the update";
+    }
+    return "";
+}
+} // namespace ota
 
 // --- settings onto a tracker (Meshtastic remote admin) ---------------------------------
 //
@@ -506,6 +669,7 @@ bool started = false;
 bool configured = false; // in a circle, with home Wi-Fi: doing its job
 bool needInvite = true;  // the setup page asks for an invite (not yet in a circle), or only for Wi-Fi
 uint32_t lastTick = 0, lastPoll = 0;
+bool updateConfirmed = false; // after a start: told whoever asked for an update how it went
 std::map<uint32_t, uint32_t> seenFix; // node -> the position time last passed on
 
 // --- the setup page ---
@@ -604,6 +768,7 @@ void hcGpsChar(char c)
 HomeBaseModule::HomeBaseModule()
     : SinglePortModule("homebase", meshtastic_PortNum_TEXT_MESSAGE_APP), concurrency::OSThread("HomeBase")
 {
+    ota::checkBoot(); // an update that keeps restarting goes back
     isPromiscuous = true; // trackers' texts and HomeCircle packets come as broadcasts
     homeBaseModule = this;
     setIntervalFromNow(5000);
@@ -1027,6 +1192,23 @@ int32_t HomeBaseModule::runOnce()
         }
         hb.log.clear();
         lastTick = millis();
+        // Back from an update (or from going back): its status reached the server, so say how it went.
+        if (!updateConfirmed && hb.reportedAt()) {
+            updateConfirmed = true;
+            ota::confirm();
+        }
+        hc::HomeBase::Update u;
+        if (hb.takeUpdate(u)) {
+            LOG_INFO("HomeCircle home base: updating from %s", u.url.c_str());
+            std::string err = ota::install(u);
+            if (err.empty()) {
+                LOG_INFO("HomeCircle home base: update written; restarting into it");
+                rebootAtMsec = millis() + 2000;
+            } else {
+                LOG_WARN("HomeCircle home base: update failed: %s", err.c_str());
+                hb.updateNews(u.by, "⚠️ The update didn't work: " + err + ". I'm still on " + HC_FW_VERSION + ".");
+            }
+        }
     }
     return 1000;
 }

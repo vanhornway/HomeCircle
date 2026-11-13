@@ -535,6 +535,26 @@ try {
   assert.equal(maya.locations.get(hbId)?.lat, 37.548271);
   pass('“gps” answers with its fix and the satellites it sees, and puts the home base on the map');
 
+  // Updates over Wi-Fi: an admin's "update <link> <sha256>" (the app sends it); its version in its status.
+  assert.match(await ask('version'), /Home base firmware \S+\./);
+  const sha = 'ab'.repeat(32);
+  answer = await ask(`update https://github.com/x/y/releases/download/v1/homebase.bin ${sha.toUpperCase()}`);
+  assert.match(answer, /Updating from \S+\. I'll download it/, answer);
+  assert.ok(askTick.includes(`update https://github.com/x/y/releases/download/v1/homebase.bin ${sha} by ${maya.account.memberId}`), `the module gets the update to do: ${askTick.join(' | ')}`);
+  assert.match(await ask('update http://insecure.example/fw.bin ' + sha), /Update with: update <https link/);
+  assert.match(await ask('update https://example.com/fw.bin 1234'), /Update with/);
+  const before2 = leo.messages.length;
+  await leo.sendChat(`update https://example.com/fw.bin ${sha}`, { to: hbId });
+  await radio('advance 21');
+  await radio('tick');
+  await leo._fetchMessages();
+  assert.match(leo.messages.slice(before2).find((m) => m.from === hbId)?.body.text ?? '', /Only the circle's admins can update the home base/);
+  await radio('advance 61');
+  await radio('tick');
+  await maya.fetchRecords();
+  assert.ok(maya.memberRecord(hbId).homeBase.fw, 'its status says which firmware it runs');
+  pass('“update” (admins only) hands the module a link and checksum to update from; its version is in its status');
+
   answer = await ask('remove Honda CR-V');
   assert.match(answer, /Removed Honda CR-V/);
   await maya.refresh();
