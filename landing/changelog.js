@@ -1,6 +1,17 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.28.0',
+    date: '2026-11-13',
+    title: 'Trackers on a trip',
+    items: [
+      'See where a tracker has been in the last 3 hours, as a trail on the map, and how each spot reached home.',
+      'A tracker that leaves home shows as away, and its pin moves when it’s heard from somewhere new. One that’s home but has no GPS fix shows as in range.',
+      'Turn off the Meshtastic plugin and its trackers leave the map, chats and the circle count.',
+      'Remove old home bases from the Trackers screen; the app follows the one in use.',
+    ],
+  },
+  {
     version: '0.27.0',
     date: '2026-11-12',
     title: 'Messages without internet',
