@@ -1070,6 +1070,7 @@ export class CircleClient {
     if (prev && prev.ts > loc.ts) return prev;
     this.locations.set(memberId, loc);
     this.paused.delete(memberId);
+    if (this.memberRecord(memberId)?.homeBase && this._pinHomeBases()) return this.locations.get(memberId);
     return loc;
   }
 
@@ -1079,6 +1080,7 @@ export class CircleClient {
     this._cacheDirty = true;
     this.paused = new Map();
     for (const l of locations) this._decodeLocation(l.memberId, l.env, l.updatedAt);
+    this._pinHomeBases();
     this.emit('locations', this.locations);
     return this.locations;
   }
@@ -2008,6 +2010,7 @@ export class CircleClient {
     }
     this.records = { member, alias };
     this.emit('records', this.records);
+    if (this._pinHomeBases()) this.emit('locations', this.locations);
     return this.records;
   }
 
@@ -2664,10 +2667,60 @@ export class CircleClient {
       address: typeof b.address === 'string' ? b.address.slice(0, 200) : null,
       // The same place added to several circles shares a group id.
       group: typeof b.group === 'string' ? b.group.slice(0, 40) : null,
+      // Where the circle's home base is (its pin on the map), whatever its GPS says.
+      homeBase: b.homeBase === true,
       updatedBy: p.updatedBy,
     };
     this.places.set(p.id, place);
+    this._pinHomeBases();
     return place;
+  }
+
+  /** The place the home base is pinned to (normally Home), if one is chosen. */
+  homeBasePlace() {
+    for (const p of this.places.values()) if (p.homeBase) return p;
+    return null;
+  }
+
+  /** Pin the home base to this place (null: back to its GPS). One place at a time. */
+  async pinHomeBase(placeId) {
+    if (placeId && !this.places.has(placeId)) throw new Error('No such place');
+    for (const p of [...this.places.values()]) {
+      const want = p.id === placeId;
+      if (!!p.homeBase !== want) {
+        const { updatedBy, ...body } = p;
+        await this.savePlace({ ...body, homeBase: want });
+      }
+    }
+    this._pinHomeBases();
+    this.emit('locations', this.locations);
+  }
+
+  /**
+   * A home base pinned to a place shows there, as of its last check-in, with
+   * or without a GPS fix (its status still says what the GPS sees). Called
+   * whenever places, records or locations change.
+   */
+  _pinHomeBases() {
+    if (!this.records?.member) return false;
+    const pin = this.homeBasePlace();
+    let changed = false;
+    for (const [id, r] of this.records.member) {
+      if (!r?.homeBase) continue;
+      const cur = this.locations.get(id);
+      if (!pin) {
+        if (cur?.pinned) {
+          this.locations.delete(id);
+          changed = true;
+        }
+        continue;
+      }
+      const ts = Math.max(r.homeBase.at, cur?.ts ?? 0);
+      if (cur?.pinned && cur.lat === pin.lat && cur.lng === pin.lng && cur.ts === ts) continue;
+      this.locations.set(id, { ...(cur ?? {}), lat: pin.lat, lng: pin.lng, accuracy: 10, approximate: false, placeId: pin.id, via: null, pinned: true, ts, receivedAt: Date.now() });
+      changed = true;
+    }
+    return changed;
   }
 
   async fetchPlaces() {
@@ -2675,14 +2728,18 @@ export class CircleClient {
     this.places = new Map();
     for (const p of places) this._decodePlace(p);
     this.emit('places', this.places);
+    if (this._pinHomeBases()) this.emit('locations', this.locations);
     return this.places;
   }
 
-  async savePlace({ id = randomId(9), name, lat, lng, radius = 150, icon = 'pin', address = null, group = null }) {
-    const body = { id, name: cleanName(name), lat, lng, radius, icon, address, group };
+  async savePlace({ id = randomId(9), name, lat, lng, radius = 150, icon = 'pin', address = null, group = null, homeBase }) {
+    // Editing a place keeps it the home base's pin unless told otherwise.
+    const pinned = typeof homeBase === 'boolean' ? homeBase : !!this.places.get(id)?.homeBase;
+    const body = { id, name: cleanName(name), lat, lng, radius, icon, address, group, ...(pinned ? { homeBase: true } : {}) };
     await this._withEpochRetry(() => this.api.putPlace(id, this._seal('place', body)));
-    this.places.set(id, { ...body, updatedBy: this.account.memberId });
+    this.places.set(id, { ...body, homeBase: pinned, updatedBy: this.account.memberId });
     this.emit('places', this.places);
+    if (this._pinHomeBases()) this.emit('locations', this.locations);
     return id;
   }
 
@@ -2690,6 +2747,7 @@ export class CircleClient {
     await this.api.deletePlace(id);
     this.places.delete(id);
     this.emit('places', this.places);
+    if (this._pinHomeBases()) this.emit('locations', this.locations);
   }
 
   // --- membership --------------------------------------------------------
@@ -3084,11 +3142,15 @@ export class CircleClient {
         this.emit('locationRequest', { from: e.from });
         break;
       case 'place':
-        if (this._decodePlace(e.place)) this.emit('places', this.places);
+        if (this._decodePlace(e.place)) {
+          this.emit('places', this.places);
+          this.emit('locations', this.locations);
+        }
         break;
       case 'place_deleted':
         this.places.delete(e.id);
         this.emit('places', this.places);
+        if (this._pinHomeBases()) this.emit('locations', this.locations);
         break;
       case 'removed':
         if (e.memberId === this.account.memberId) return this._handleRemoved('removed');

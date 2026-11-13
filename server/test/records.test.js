@@ -184,6 +184,52 @@ test('Meshtastic plugin off: its trackers and home base leave the member list un
   await syncRecords();
 });
 
+test('the home base pinned to Home: shown there with or without a GPS fix; editing Home keeps it; unpinned, it goes back', async () => {
+  const at = Date.now() - 30_000;
+  await umair.setFeatures({ meshtastic: true });
+  await umair.setMemberRecord(id(ali), { homeBase: { at, every: 1, gps: { fix: false, sats: 0, hdop: null } } });
+  await syncRecords();
+  await zara.fetchLocations();
+  assert.equal(zara.locations.get(id(ali)), undefined, 'no fix, no pin: nowhere');
+
+  const home = await umair.savePlace({ name: 'Home', lat: 30.2672, lng: -97.7431, radius: 100, address: '1 Main St' });
+  await umair.pinHomeBase(home);
+  assert.equal(umair.homeBasePlace()?.id, home);
+  await zara.fetchPlaces();
+  const loc = zara.locations.get(id(ali));
+  assert.equal(loc?.pinned, true);
+  assert.deepEqual([loc.lat, loc.lng, loc.ts], [30.2672, -97.7431, at]);
+  assert.equal(zara.memberRecord(id(ali)).homeBase.gps.fix, false, 'its GPS status is still there');
+
+  // Its next check-in moves the time, not the pin.
+  await umair.setMemberRecord(id(ali), { homeBase: { at: at + 60_000, every: 1 } });
+  await zara.fetchRecords();
+  assert.equal(zara.locations.get(id(ali)).ts, at + 60_000);
+
+  // Editing Home (a new radius) keeps it the pin; another place doesn't take it.
+  await umair.savePlace({ id: home, name: 'Home', lat: 30.2672, lng: -97.7431, radius: 200, address: '1 Main St' });
+  const park = await umair.savePlace({ name: 'Park', lat: 30.3, lng: -97.7, radius: 100 });
+  await zara.fetchPlaces();
+  assert.equal(zara.homeBasePlace()?.id, home);
+  assert.equal(zara.places.get(park).homeBase, false);
+
+  // Pinned elsewhere: one place at a time.
+  await umair.pinHomeBase(park);
+  await zara.fetchPlaces();
+  assert.equal(zara.homeBasePlace()?.id, park);
+  assert.equal(zara.places.get(home).homeBase, false);
+  assert.equal(zara.locations.get(id(ali)).lat, 30.3);
+
+  await umair.pinHomeBase(null);
+  await zara.fetchPlaces();
+  assert.equal(zara.homeBasePlace(), null);
+  assert.equal(zara.locations.get(id(ali)), undefined);
+  await umair.deletePlace(home);
+  await umair.deletePlace(park);
+  await umair.setMemberRecord(id(ali), { homeBase: null });
+  await syncRecords();
+});
+
 test('he or she: your own profile first, else an admin’s choice', async () => {
   assert.equal(umair.genderOf(id(fatima)), 'f', 'from the admin record');
   await zara.setGender('f');

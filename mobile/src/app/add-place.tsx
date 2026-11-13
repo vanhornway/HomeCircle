@@ -10,7 +10,7 @@ import { allClients, errorText, getClient } from '../lib/circle';
 import { DEFAULT_SETTINGS, getSettings } from '../lib/storage';
 import { feetToMeters, metersToFeet } from '../lib/units';
 import { useTheme } from '../theme';
-import { showSheet } from '../lib/sheet';
+import { notice, showSheet } from '../lib/sheet';
 
 const RADII_FT = [500, 1000, 2000, 5000];
 // Phones can't reliably tell smaller areas apart (GPS drift, and the OS
@@ -52,7 +52,9 @@ function radiusFields(meters: number) {
 /** Add a place, or edit one (opened with ?circle=…&id=…, by tapping it in Places). */
 export default function AddPlace() {
   const t = useTheme();
-  const params = useLocalSearchParams<{ circle?: string; id?: string }>();
+  // ?homeBase=1: the home base's address (from Trackers): saved as Home and the home base pinned there.
+  const params = useLocalSearchParams<{ circle?: string; id?: string; homeBase?: string }>();
+  const forHomeBase = params.homeBase === '1';
   const [editing] = useState(() => placeToEdit(params.circle, params.id));
   const circles = allClients();
   const [tiles, setTiles] = useState(DEFAULT_SETTINGS);
@@ -62,7 +64,7 @@ export default function AddPlace() {
   );
   const [query, setQuery] = useState('');
   const [address, setAddress] = useState<string | null>(editing?.place.address ?? null);
-  const [name, setName] = useState(editing?.place.name ?? '');
+  const [name, setName] = useState(editing?.place.name ?? (forHomeBase ? 'Home' : ''));
   const [feet, setFeet] = useState(editing ? radiusFields(editing.place.radius).feet : 500);
   const [customFeet, setCustomFeet] = useState(editing ? radiusFields(editing.place.radius).custom : '');
   const [everywhere, setEverywhere] = useState(true);
@@ -187,6 +189,12 @@ export default function AddPlace() {
       );
       const failed = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
       if (failed.length === results.length) throw failed[0].reason;
+      if (forHomeBase && !editing) {
+        const targets = everywhere ? circles : [getClient()];
+        const i = targets.indexOf(getClient());
+        const r = results[i];
+        if (r?.status === 'fulfilled') await getClient().pinHomeBase(r.value as string).catch((e) => notice('Saved, but couldn’t pin the home base there', errorText(e)));
+      }
       router.back();
     } catch (e) {
       setError(errorText(e));
@@ -216,7 +224,7 @@ export default function AddPlace() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
-      {editing ? <Stack.Screen options={{ title: `Edit ${editing.place.name}` }} /> : null}
+      {editing ? <Stack.Screen options={{ title: `Edit ${editing.place.name}` }} /> : forHomeBase ? <Stack.Screen options={{ title: 'Home base address' }} /> : null}
       <View style={{ height: 260 }}>
         <FamilyMap
           tileUrl={tiles.tileUrl}

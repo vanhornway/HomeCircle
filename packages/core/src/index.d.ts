@@ -236,6 +236,8 @@ export interface FrequentPlace {
 export interface MemberLocation {
   lat: number;
   lng: number;
+  /** A home base shown at the place it's pinned to, not where its GPS says. */
+  pinned?: boolean;
   accuracy: number | null;
   battery: number | null;
   charging: boolean;
@@ -309,6 +311,8 @@ export interface Place {
   address: string | null;
   /** Shared by copies of the same place in several circles. */
   group: string | null;
+  /** The home base is pinned here (its spot on the map). */
+  homeBase?: boolean;
   updatedBy: string;
 }
 
@@ -909,8 +913,12 @@ export class CircleClient {
   /** A request the app makes of the agent (Memory screen, settings), sealed for it; resolves with its answer. */
   agentRpc<T = any>(op: string, args?: Record<string, unknown>, opts?: { timeoutMs?: number }): Promise<T>;
   fetchPlaces(): Promise<Map<string, Place>>;
-  savePlace(p: { id?: string; name: string; lat: number; lng: number; radius?: number; icon?: string; address?: string | null; group?: string | null }): Promise<string>;
+  savePlace(p: { id?: string; name: string; lat: number; lng: number; radius?: number; icon?: string; address?: string | null; group?: string | null; homeBase?: boolean }): Promise<string>;
   deletePlace(id: string): Promise<void>;
+  /** The place the home base is pinned to, if one is chosen. */
+  homeBasePlace(): Place | null;
+  /** Pin the home base to a place (null: back to its GPS). */
+  pinHomeBase(placeId: string | null): Promise<void>;
   createInvite(opts?: { hours?: number; companion?: CompanionInvite | null }): Promise<Invite>;
   setName(name: string): Promise<void>;
   setCircleName(name: string): Promise<void>;

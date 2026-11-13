@@ -18,7 +18,7 @@ import { KeyHelp } from '../components/TrackerKeyHelp';
 import { timeAgo, useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
 
-const EVENTS = ['members', 'locations', 'records', 'status'] as const;
+const EVENTS = ['members', 'locations', 'records', 'status', 'places'] as const;
 
 type Kind = TrackerMode;
 
@@ -65,6 +65,22 @@ export default function Trackers() {
     />
   );
 
+  // Where the home base shows on the map: pinned to a place (its home address), or its GPS.
+  const pin = client.homeBasePlace();
+  const gps = home?.status.gps;
+  const gpsLine = !gps ? 'no GPS' : gps.fix ? `GPS fix, ${gps.sats ?? '?'} satellites` : 'GPS: no fix yet';
+  const pinTo = (placeId: string | null) =>
+    client.pinHomeBase(placeId).catch((e) => notice('Couldn’t change it', errorText(e)));
+  const choosePin = () => {
+    const places = [...client.places.values()].sort((a, b) => Number(/^home$/i.test(b.name)) - Number(/^home$/i.test(a.name)) || a.name.localeCompare(b.name));
+    showSheet('Where is the home base?', 'It shows on the map at this place, whatever its GPS says. Its GPS is still checked and shown here.', [
+      ...places.filter((p) => p.id !== pin?.id).slice(0, 4).map((p) => ({ text: `At ${p.name}${p.address ? ` · ${p.address}` : ''}`, onPress: () => void pinTo(p.id) })),
+      { text: 'Add its address…', onPress: () => router.push({ pathname: '/add-place', params: { homeBase: '1' } }) },
+      ...(pin ? [{ text: 'Use its GPS instead', onPress: () => void pinTo(null) }] : []),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
   const online = home ? homeBaseOnline(home.status, now) : false;
   const health = home && online ? homeBaseHealth(home.status) : null;
   const tracked = new Set(trackers.map((x) => x.tracker.node));
@@ -84,6 +100,14 @@ export default function Trackers() {
             icon="home"
             title={home.name}
             detail={`${online ? 'Online' : 'Offline'} · checked in ${timeAgo(home.status.at)}${client.memberRecord(home.id) && client.members.get(home.id)?.role === 'member' ? ' · make it an admin so it can add trackers' : ''}`}
+          />
+        ) : null}
+        {home ? (
+          <SettingsRow
+            icon="place"
+            title={pin ? `At ${pin.name}` : 'Home address'}
+            detail={pin ? `${pin.address ? `${pin.address} · ` : ''}pinned there on the map · ${gpsLine}` : `Not set: it shows where its GPS says (${gpsLine}). Tap to pin it to your home`}
+            onPress={choosePin}
           />
         ) : null}
         {home && health ? (
