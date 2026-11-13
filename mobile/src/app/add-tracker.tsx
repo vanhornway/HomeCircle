@@ -142,6 +142,13 @@ export default function AddTracker() {
   return (
     <SettingsPage title="Add a tracker">
       {!contact ? (
+        <SettingsGroup title="Over Bluetooth (easiest)" footer="HomeCircle sets the tracker up itself, no Meshtastic app needed.">
+          <GroupBody>
+            <Button title="Set it up over Bluetooth" variant="primary" onPress={() => router.replace('/tracker-setup')} />
+          </GroupBody>
+        </SettingsGroup>
+      ) : null}
+      {!contact ? (
         <SettingsGroup
           title="From its QR code"
           how={[
@@ -152,7 +159,6 @@ export default function AddTracker() {
           <GroupBody>
             <Button
               title="Scan its QR code"
-              variant="primary"
               onPress={async () => {
                 const p = permission?.granted ? permission : await requestPermission();
                 if (p.granted) {
