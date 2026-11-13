@@ -88,7 +88,8 @@ export function createApp(config) {
           const wait = requestLimiter.take(me.id) || (req.method === 'GET' ? 0 : (me.kind === 'agent' ? agentWriteLimiter : writeLimiter).take(me.id));
           if (wait) throw new HttpError(429, 'rate_limited', 'Too many requests from this device, try again shortly', { retryAfter: wait });
           const now = Date.now();
-          if (!me.lastSeenAt || now - me.lastSeenAt > 60_000) store.touchMember(me.id, now);
+          if (me.sessionId) store.touchSession(me.sessionId, now);
+          else if (!me.lastSeenAt || now - me.lastSeenAt > 60_000) store.touchMember(me.id, now);
         }
         const body = route.raw ? await readRaw(req, route.raw) : ['POST', 'PUT', 'PATCH'].includes(req.method) ? await readJson(req) : {};
         const ctx = { ip: clientIp(req, config.trustProxy) };

@@ -73,10 +73,12 @@ export class Hub {
       const member = this.store.memberByToken(sha256(msg.token));
       if (!member) return ws.close(4001, 'unauthorized');
       ws.memberId = member.id;
+      ws.sessionId = member.sessionId ?? null;
       if (!this.sockets.has(member.id)) this.sockets.set(member.id, new Set());
       this.sockets.get(member.id).add(ws);
       this.circleOf.set(member.id, member.circleId);
-      this.store.touchMember(member.id, Date.now());
+      if (ws.sessionId) this.store.touchSession?.(ws.sessionId, Date.now());
+      else this.store.touchMember(member.id, Date.now());
       ws.send(JSON.stringify({ type: 'ready' }));
       this.onReady?.(member.id);
     });
@@ -114,8 +116,19 @@ export class Hub {
     }
   }
 
+  /**
+   * The member's own phone (or device) is connected. A linked browser open on
+   * a computer doesn't count: the phone still gets its pushes, location
+   * requests and chirps.
+   */
   isOnline(memberId) {
-    return this.sockets.has(memberId);
+    for (const ws of this.sockets.get(memberId) || []) if (!ws.sessionId) return true;
+    return false;
+  }
+
+  /** A linked browser was signed out: close its connections. */
+  closeSession(memberId, sessionId) {
+    for (const ws of this.sockets.get(memberId) || []) if (ws.sessionId === sessionId) ws.close(4001, 'signed out');
   }
 
   send(memberId, msg) {

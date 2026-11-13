@@ -128,6 +128,35 @@ confirms in the app that the person is 13 or older.
    trusted box key, adds `CK_{e+1}` to their keyring, and re-publishes their
    profile under the new epoch. Outstanding invites are revoked.
 
+## Signing in a browser from the phone (0.29.0)
+
+A member already in a circle on their phone can sign in the web app as
+themselves, without an invite or the setup code:
+
+1. The web page makes a one-time box key pair `(B, b)` and calls `POST /link
+   { boxPub: B, label }` (public). The server keeps `{ B, label }` under a
+   random link id for 5 minutes, in memory only. The page shows
+   `homecircle://link?server=…&l=<id>&k=<B>&n=<label>` as a QR code.
+2. The phone scans it, shows the label ("Chrome on macOS"), and on the
+   person's OK makes its own one-time pair `(P, p)` and sends
+   `POST /link/:id { sealed: box({ v: 1, account }, nonce, B, p), from: P }`
+   with its own token. `account` is the circle's account without the token:
+   identity keys, keyring, pinned keys, profile.
+3. The server creates a session for that member (a token of the browser's
+   own, kept as a hash) and hands `{ token, sealed, from }` to the page once,
+   on its next `GET /link/:id`. The page opens `sealed` with `b` and is that
+   member from then on.
+
+The key `B` reaches the phone in the QR code, not from the server, so the
+server can't swap in its own and read the account; it only passes the sealed
+box on. A browser's token is separate from the phone's: `GET /sessions` lists
+a member's browsers and `DELETE /sessions/:id` signs one out (`current` is the
+browser asking). Removing a member deletes their sessions. A browser doesn't
+count as the member being online (the phone still gets its pushes, location
+requests and chirps), its reads don't move the phone's delivered ticks, it
+can't change the phone's push token, and a browser "leaving" only signs itself
+out.
+
 ## Live connection
 
 Open apps keep one WebSocket per circle at `/api/v1/ws`. The first frame is
@@ -553,7 +582,12 @@ private `HomeCircle` channel, it seals it as that member's `location`, with
 | GET / POST | `/messages` | group messages + your DMs; `to` makes a DM; `urgent: true` skips push batching (10 a minute per sender) |
 | PUT | `/members/me/profile` | re-seal profile |
 | PUT | `/members/me/push` | register push token; `fallback: true` (Android) opts in to one generic visible backup alert if the phone hasn't fetched a message soon after its wake-up (12 s, 4 s for urgent) |
-| DELETE | `/members/:id` | admin, or yourself (leave) |
+| DELETE | `/members/:id` | admin, or yourself (leave; a linked browser only signs itself out) |
+| POST | `/link` | public: a browser starts a sign-in `{ boxPub, label }` → `{ id, expiresAt }` |
+| GET | `/link/:id` | public: `waiting`, or once `{ state: 'linked', token, sealed, from }` |
+| POST | `/link/:id` | the phone answers: `{ sealed, from }` |
+| GET | `/sessions` | your linked browsers |
+| DELETE | `/sessions/:id` | sign out a browser (`current`: this one) |
 | POST | `/members/:id/role` | owner: promote/demote admin |
 | POST/GET/DELETE | `/invites` | admin |
 | POST | `/keys/rotate` | admin |

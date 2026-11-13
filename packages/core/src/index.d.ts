@@ -607,6 +607,15 @@ export class CircleClient {
   readonly accountKey: string;
   static serverInfo(serverUrl: string, fetchImpl?: typeof fetch): Promise<ServerInfo>;
   static setupTicket(serverUrl: string, setupToken: string, fetchImpl?: typeof fetch): Promise<{ code: string; expiresAt: number }>;
+  /** A browser asks to be signed in from a phone; show `url` as a QR code. */
+  static startLink(serverUrl: string, label: string, fetchImpl?: typeof fetch): Promise<BrowserLinkStart>;
+  /** The browser: wait for the phone's answer; true once signed in. */
+  finishLink(link: BrowserLinkStart, opts?: { signal?: AbortSignal; every?: number }): Promise<boolean>;
+  /** The phone: sign in the browser showing this QR code as me. */
+  linkBrowser(link: BrowserLink): Promise<{ ok: true; session: { id: string; label: string } }>;
+  browserSessions(): Promise<BrowserSession[]>;
+  signOutBrowser(id: string): Promise<void>;
+  readonly isLinkedBrowser: boolean;
   /** With the server's setup code: every circle on it. */
   static recoverCircles(serverUrl: string, setupToken: string, fetchImpl?: typeof fetch): Promise<{ server: string; circles: RecoverableCircle[] }>;
   /** With the server's setup code: delete a circle for everyone in it. */
@@ -949,6 +958,30 @@ export const MEMBER_COLORS: string[];
 export function randomId(bytes?: number): string;
 export function normalizeServerUrl(input: string): string;
 export function parseInviteLink(link: string): { serverUrl: string; inviteId: string; secret: string };
+/** A browser's sign-in QR code, read. */
+export interface BrowserLink {
+  server: string;
+  id: string;
+  boxPub: string;
+  label: string;
+}
+export interface BrowserLinkStart extends BrowserLink {
+  expiresAt: number;
+  boxSecret: string;
+  url: string;
+}
+/** A browser signed in as me, from my phone. */
+export interface BrowserSession {
+  id: string;
+  label: string;
+  createdAt: number;
+  lastSeenAt: number | null;
+  current: boolean;
+}
+export function browserLinkUrl(serverUrl: string, linkId: string, boxPub: string, label?: string): string;
+export function parseBrowserLink(text: string): BrowserLink | null;
+export function openFromKey(sealed: { nonce: string; ct: string }, theirBoxPub: string, myBoxSecret: string): any;
+export function newBoxKeyPair(): { boxPub: string; boxSecret: string };
 export function safetyNumber(signPub: string, boxPub: string): string;
 
 export const QUICK_REACTIONS: string[];

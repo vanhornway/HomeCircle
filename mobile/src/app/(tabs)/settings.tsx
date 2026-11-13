@@ -126,6 +126,7 @@ export default function SettingsTab() {
       ) : null}
 
       <SettingsGroup title="This phone">
+        <SettingsRow icon="laptop" title="Sign in on a computer" detail="Scan the code on your HomeCircle page; sign browsers out" href="/link" />
         <SettingsRow
           icon="phone"
           title="This phone"

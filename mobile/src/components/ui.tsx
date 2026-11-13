@@ -269,6 +269,7 @@ const ICONS: Record<string, string> = {
   pulse: 'M3 12h4l2.5-6 4 12 2.5-6H21',
   textsize: 'M3 19 8 6l5 13M4.8 15h6.4M15 19l2.8-7 2.8 7m-4.8-2h4',
   server: 'M4 4h16v6H4V4Zm0 10h16v6H4v-6Zm3-7h.01M7 17h.01',
+  laptop: 'M5 5h14v10H5V5Zm-3 13h20l-1.5 2h-17L2 18Z',
   heart: 'M12 20s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.4-7 10-7 10Z',
   clipboard: 'M9 4h6v3H9V4ZM7 5.5H5v15h14v-15h-2M9 12h6m-6 4h4',
   calendar: 'M5 6h14v14H5V6Zm0 5h14M9 3.5V8m6-4.5V8',

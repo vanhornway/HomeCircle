@@ -95,6 +95,12 @@ export class Api {
   info = () => this.req('GET', '/info');
   setup = (body) => this.req('POST', '/setup', body);
   setupTicket = (body) => this.req('POST', '/setup/ticket', body);
+  // Signing in a browser from the phone.
+  startLink = (boxPub, label) => this.req('POST', '/link', { boxPub, label });
+  pollLink = (id) => this.req('GET', `/link/${encodeURIComponent(id)}`);
+  answerLink = (id, body) => this.req('POST', `/link/${encodeURIComponent(id)}`, body);
+  sessions = () => this.req('GET', '/sessions');
+  deleteSession = (id) => this.req('DELETE', `/sessions/${encodeURIComponent(id)}`);
   /** Server admins only: create another circle on this server. */
   createCircle = (body) => this.req('POST', '/circles', body);
   deleteCircle = () => this.req('DELETE', '/circle');

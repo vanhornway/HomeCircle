@@ -137,6 +137,17 @@ CREATE TABLE IF NOT EXISTS places (
   updated_by TEXT NOT NULL,
   updated_at INTEGER NOT NULL
 );
+-- Browsers signed in as a member, linked from that member's phone: each has
+-- its own token, so it can be signed out without touching the phone.
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  member_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  label TEXT,
+  created_at INTEGER NOT NULL,
+  last_seen_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS sessions_member ON sessions (member_id);
 `;
 
 export function openDb(dataDir) {
@@ -369,8 +380,31 @@ export class Store {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(id, circleId, serverAdmin ? 1 : 0, role, kind, boxPub, signPub, JSON.stringify(profile ?? null), tokenHash, now, now);
   }
+  /** The member a token signs in as: their phone's own token, or a linked browser's (with `sessionId`). */
   memberByToken(tokenHash) {
-    return memberRow(this.q('SELECT * FROM members WHERE token_hash = ? AND removed_at IS NULL').get(tokenHash));
+    const phone = memberRow(this.q('SELECT * FROM members WHERE token_hash = ? AND removed_at IS NULL').get(tokenHash));
+    if (phone) return phone;
+    const r = this.q('SELECT m.*, s.id AS session_id FROM sessions s JOIN members m ON m.id = s.member_id WHERE s.token_hash = ? AND m.removed_at IS NULL').get(tokenHash);
+    const m = memberRow(r);
+    return m && { ...m, sessionId: r.session_id };
+  }
+
+  // linked browsers
+  insertSession({ id, memberId, tokenHash, label, now }) {
+    this.q('INSERT INTO sessions (id, member_id, token_hash, label, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, memberId, tokenHash, label, now, now);
+  }
+  sessionsOf(memberId) {
+    return this.q('SELECT id, label, created_at, last_seen_at FROM sessions WHERE member_id = ? ORDER BY created_at').all(memberId)
+      .map((r) => ({ id: r.id, label: r.label, createdAt: r.created_at, lastSeenAt: r.last_seen_at }));
+  }
+  countSessions(memberId) {
+    return this.q('SELECT COUNT(*) AS n FROM sessions WHERE member_id = ?').get(memberId).n;
+  }
+  deleteSession(memberId, id) {
+    return this.q('DELETE FROM sessions WHERE id = ? AND member_id = ?').run(id, memberId).changes > 0;
+  }
+  touchSession(id, now) {
+    this.q('UPDATE sessions SET last_seen_at = ? WHERE id = ?').run(now, id);
   }
   memberExists(id) {
     return !!this.q('SELECT 1 FROM members WHERE id = ?').get(id);
@@ -435,6 +469,7 @@ export class Store {
   }
   removeMember(id, now) {
     this.q('UPDATE members SET removed_at = ?, token_hash = NULL, push_token = NULL WHERE id = ?').run(now, id);
+    this.q('DELETE FROM sessions WHERE member_id = ?').run(id);
     this.q('DELETE FROM locations WHERE member_id = ?').run(id);
     this.q('DELETE FROM frequent_places WHERE member_id = ?').run(id);
     this.q('DELETE FROM busy_times WHERE member_id = ?').run(id);

@@ -245,6 +245,83 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     { auth: false },
   );
 
+  // --- linking a browser from the phone ------------------------------------
+  // The web page makes a one-time key and shows it in a QR code with a link id.
+  // The phone scans it and posts the member's account, sealed to that key; the
+  // server adds a token of the browser's own (a session) and hands both to the
+  // page, once. The server never sees the keys. Pending links live here only.
+  const LINK_MS = 5 * 60_000;
+  const MAX_LINKS = 500;
+  const MAX_SESSIONS = 10;
+  const links = new Map(); // id -> { boxPub, label, expiresAt, result }
+  const pruneLinks = (now) => {
+    for (const [id, l] of links) if (l.expiresAt <= now) links.delete(id);
+  };
+  const vLabel = (v) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 60) : '') || 'A browser';
+  const openLink = (id) => {
+    const now = Date.now();
+    pruneLinks(now);
+    const l = links.get(vId(id, 'id'));
+    if (!l) fail(404, 'link_expired', 'That code has expired. Make a new one on the computer.');
+    return l;
+  };
+
+  r.add(
+    'POST',
+    '/link',
+    ({ body, ctx }) => {
+      limitPublic(ctx);
+      const now = Date.now();
+      pruneLinks(now);
+      if (links.size >= MAX_LINKS) fail(503, 'busy', 'Too many sign-ins waiting; try again in a few minutes');
+      const id = randomBytes(16).toString('base64url');
+      links.set(id, { boxPub: vBytes(body.boxPub, 'boxPub', 32), label: vLabel(body.label), expiresAt: now + LINK_MS, result: null });
+      return { id, expiresAt: now + LINK_MS };
+    },
+    { auth: false },
+  );
+
+  // The page asks until the phone has answered; the answer is handed over once.
+  r.add(
+    'GET',
+    '/link/:id',
+    ({ params }) => {
+      const l = openLink(params.id);
+      if (!l.result) return { state: 'waiting' };
+      links.delete(params.id);
+      return { state: 'linked', ...l.result };
+    },
+    { auth: false },
+  );
+
+  r.add('POST', '/link/:id', ({ me, params, body }) => {
+    if (me.kind !== 'person') fail(403, 'forbidden', 'Only people can sign in a browser');
+    const l = openLink(params.id);
+    if (l.result) fail(409, 'already_linked', 'That code was already used');
+    if (!body.sealed || typeof body.sealed.nonce !== 'string' || typeof body.sealed.ct !== 'string' || body.sealed.ct.length > 200_000) fail(400, 'invalid', 'sealed is required');
+    const from = vBytes(body.from, 'from', 32);
+    if (store.countSessions(me.id) >= MAX_SESSIONS) fail(409, 'too_many_sessions', 'Sign out a browser first (Settings → Browsers)');
+    const { token, tokenHash } = newToken();
+    const id = randomBytes(12).toString('base64url');
+    store.insertSession({ id, memberId: me.id, tokenHash, label: l.label, now: Date.now() });
+    l.result = { token, sealed: { nonce: String(body.sealed.nonce), ct: String(body.sealed.ct) }, from };
+    log('browser linked');
+    return { ok: true, session: { id, label: l.label } };
+  });
+
+  // The browsers signed in as me, to sign them out.
+  r.add('GET', '/sessions', ({ me }) => ({
+    sessions: store.sessionsOf(me.id).map((x) => ({ ...x, current: x.id === me.sessionId })),
+  }));
+
+  r.add('DELETE', '/sessions/:id', ({ me, params }) => {
+    const id = params.id === 'current' ? me.sessionId : String(params.id);
+    if (!id) fail(400, 'invalid', 'This is the phone, not a browser');
+    if (!store.deleteSession(me.id, id)) fail(404, 'not_found', 'No such browser');
+    hub.closeSession(me.id, id);
+    return { ok: true };
+  });
+
   // --- recovery with the setup code -----------------------------------------
   // Whoever has the setup code can see which circles exist (dates and member
   // counts only: names are encrypted), delete one, or ask to rejoin one.
@@ -506,6 +583,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   });
 
   r.add('PUT', '/members/me/push', ({ me, body }) => {
+    if (me.sessionId) return { ok: true }; // a linked browser: the phone's push stays
     const token = body.token == null ? null : body.token;
     if (token !== null && !isPushToken(token)) fail(400, 'invalid', 'Unsupported push token');
     const platform = ['ios', 'android', 'web'].includes(body.platform) ? body.platform : null;
@@ -518,6 +596,11 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   r.add('DELETE', '/members/:id', ({ me, params }) => {
     const target = store.member(me.circleId, vId(params.id, 'id'));
     if (!target || target.removed) fail(404, 'not_found', 'No such member');
+    if (target.id === me.id && me.sessionId) {
+      store.deleteSession(me.id, me.sessionId);
+      hub.closeSession(me.id, me.sessionId);
+      return { ok: true, signedOut: true };
+    }
     if (target.id === me.id) {
       if (me.role === 'owner') fail(400, 'owner_cannot_leave', 'The owner cannot leave. Delete the circle instead.');
     } else {
@@ -1154,13 +1237,14 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       const rows = store.messagesBefore(me.circleId, me.id, tail ? Number.MAX_SAFE_INTEGER : before, limit, { directOnly: me.kind === 'agent' });
       // The newest page is everything that exists now: those are delivered.
       const upTo = tail ? (rows.at(-1)?.seq ?? 0) : 0;
-      if (me.kind !== 'agent' && upTo > 0 && store.setDelivered(me.id, upTo)) hub.broadcast(me.circleId, { type: 'delivered', delivered: { [me.id]: upTo } }, me.id);
+      if (me.kind !== 'agent' && !me.sessionId && upTo > 0 && store.setDelivered(me.id, upTo)) hub.broadcast(me.circleId, { type: 'delivered', delivered: { [me.id]: upTo } }, me.id);
       return { messages: rows };
     }
     const rows = me.kind === 'agent' ? store.directMessagesAfter(me.circleId, me.id, after, limit) : store.messagesAfter(me.circleId, me.id, after, limit);
     // A phone asking for what's after `after` has everything up to it; a page
-    // that isn't full means it now has everything. Delivered ticks follow.
-    if (me.kind !== 'agent') {
+    // that isn't full means it now has everything. Delivered ticks follow
+    // (the phone's: a linked browser reading them doesn't mean the phone has).
+    if (me.kind !== 'agent' && !me.sessionId) {
       const upTo = rows.length < limit ? Math.max(after, rows.at(-1)?.seq ?? 0) : after;
       if (upTo > 0 && store.setDelivered(me.id, upTo)) hub.broadcast(me.circleId, { type: 'delivered', delivered: { [me.id]: upTo } }, me.id);
     }

@@ -27,6 +27,9 @@ import {
   encryptFile,
   decryptFile,
   appInviteLink,
+  openFromKey,
+  newBoxKeyPair,
+  browserLinkUrl,
 } from './crypto.js';
 import { isValidReaction } from './emoji.js';
 import { MESH_TEXT_MAX, openMesh, sealMeshMessage } from './mesh.js';
@@ -257,11 +260,13 @@ export class CircleClient {
   }
 
   /**
-   * Forget this device's keys locally. `reason` is passed on with the
+   * Forget this device's keys locally. A browser signed in from the phone is
+   * signed out on the server too (its own token), when the server is reachable. `reason` is passed on with the
    * 'signedOut' event so apps can log why: 'signed_out' (the person chose
    * to), 'left', 'deleted_circle', 'removed' or 'circle_deleted'.
    */
   async signOut(reason = 'signed_out') {
+    if (this.account?.browser && this.api && reason === 'signed_out') await this.api.deleteSession('current').catch(() => {});
     this.disconnect();
     clearTimeout(this._cacheTimer);
     this._generation++;
@@ -309,6 +314,72 @@ export class CircleClient {
     const info = await new Api(server, { fetchImpl }).info();
     if (info?.app !== 'homecircle') throw new Error("That address isn't a HomeCircle server");
     return { server, ...info };
+  }
+
+  /**
+   * A browser asks to be signed in from a phone: a one-time key and a link id,
+   * and `url` to show as a QR code. Keep the result (it holds the key) and
+   * pass it to `finishLink`.
+   */
+  static async startLink(serverUrl, label, fetchImpl) {
+    const server = normalizeServerUrl(serverUrl);
+    const key = newBoxKeyPair();
+    const res = await new Api(server, { fetchImpl }).startLink(key.boxPub, label);
+    return { server, id: res.id, expiresAt: res.expiresAt, ...key, label, url: browserLinkUrl(server, res.id, key.boxPub, label) };
+  }
+
+  /**
+   * The browser: wait for the phone to answer the QR code, then this client
+   * is signed in as that member, with a token of its own. False if the code
+   * expired first or `signal` was aborted.
+   */
+  async finishLink(link, { signal, every = 2000 } = {}) {
+    const api = new Api(link.server, { fetchImpl: this.fetchImpl });
+    while (!signal?.aborted && Date.now() < link.expiresAt) {
+      const res = await api.pollLink(link.id);
+      if (res?.state === 'linked') {
+        const got = openFromKey(res.sealed, res.from, link.boxSecret);
+        const a = got?.account;
+        if (!a || typeof a.memberId !== 'string' || typeof a.circleId !== 'string' || !a.identity || !a.keyring) {
+          throw new Error('The phone’s answer couldn’t be opened. Make a new code and try again.');
+        }
+        this.account = { ...a, server: link.server, token: res.token, browser: true };
+        await this._save();
+        this.api = this._makeApi(this.account.server, this.account.token);
+        return true;
+      }
+      await new Promise((r) => setTimeout(r, every));
+    }
+    return false;
+  }
+
+  /**
+   * The phone: sign in the browser that shows this QR code (read with
+   * `parseBrowserLink`) as me. It gets a copy of this circle's keys, sealed
+   * so only that browser can open them, and a token of its own.
+   */
+  async linkBrowser(link) {
+    if (!this.account) throw new Error('Not signed in');
+    if (normalizeServerUrl(link.server) !== normalizeServerUrl(this.account.server)) throw new Error('That code is for another server');
+    const { token, browser, ...account } = this.account;
+    const key = newBoxKeyPair();
+    const sealed = sealToKey({ v: 1, account }, link.boxPub, key.boxSecret);
+    return this.api.answerLink(link.id, { sealed, from: key.boxPub });
+  }
+
+  /** The browsers signed in as me (`current`: this one). */
+  async browserSessions() {
+    return (await this.api.sessions()).sessions;
+  }
+
+  /** Sign out a browser signed in as me. */
+  async signOutBrowser(id) {
+    await this.api.deleteSession(id);
+  }
+
+  /** This is a browser signed in from a phone (not the member's own device). */
+  get isLinkedBrowser() {
+    return !!this.account?.browser;
   }
 
   /** A one-time ticket for setting up from a phone, from the setup code, or a check of one: { code, expiresAt }. */

@@ -139,6 +139,22 @@ export function sealToKey(obj, theirBoxPub, myBoxSecret) {
   return { nonce: toB64(nonce), ct: toB64(ct) };
 }
 
+/** Open what `sealToKey` sealed for me; null if it isn't for this key. */
+export function openFromKey(sealed, theirBoxPub, myBoxSecret) {
+  try {
+    const pt = nacl.box.open(fromB64(sealed.ct), fromB64(sealed.nonce), fromB64(theirBoxPub), fromB64(myBoxSecret));
+    return pt ? JSON.parse(utf8Decode(pt)) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A one-time key pair, for sealing one thing to one browser. */
+export function newBoxKeyPair() {
+  const box = nacl.box.keyPair();
+  return { boxPub: toB64(box.publicKey), boxSecret: toB64(box.secretKey) };
+}
+
 /**
  * A file for the agent, encrypted with a key of its own: { key, data }, data
  * being the nonce then the ciphertext. Only whoever gets the key can read it.
@@ -276,6 +292,27 @@ export function inviteLink(serverUrl, inviteId, secret) {
 
 export function appInviteLink(serverUrl, inviteId, secret) {
   return `homecircle://join?server=${encodeURIComponent(serverUrl)}&i=${inviteId}&s=${secret}`;
+}
+
+/**
+ * What a browser's sign-in QR code holds: its server, the link id, its
+ * one-time key, and what it calls itself ("Chrome on macOS").
+ */
+export function browserLinkUrl(serverUrl, linkId, boxPub, label = '') {
+  return `homecircle://link?server=${encodeURIComponent(serverUrl)}&l=${linkId}&k=${boxPub}&n=${encodeURIComponent(label)}`;
+}
+
+/** Reads a browser's sign-in QR code; null if it isn't one. */
+export function parseBrowserLink(text) {
+  const m = String(text || '').trim().match(/^homecircle:\/\/link\?(.*)$/i);
+  if (!m) return null;
+  const params = Object.fromEntries(m[1].split('&').map((kv) => kv.split('=').map((x) => decodeURIComponent(x || ''))));
+  if (!params.server || !/^[A-Za-z0-9_-]{8,64}$/.test(params.l || '') || !/^[A-Za-z0-9_-]{43}$/.test(params.k || '')) return null;
+  try {
+    return { server: normalizeServerUrl(params.server), id: params.l, boxPub: params.k, label: (params.n || '').slice(0, 60) || 'A browser' };
+  } catch {
+    return null;
+  }
 }
 
 /** Accepts https://server/join#id.secret or homecircle://join?server=…&i=…&s=… */

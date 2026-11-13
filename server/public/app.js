@@ -543,12 +543,88 @@ function renderNoAccount() {
         { class: 'card' },
         brandRow(),
         h('h1', {}, 'A private HomeCircle'),
-        h('p', { class: 'muted' }, 'This server belongs to a family circle. To join, ask one of its admins for an invite link or QR code.'),
+        h('p', { class: 'muted' }, 'Already in the circle on your phone? Sign in here by scanning a code with it.'),
+        h('button', { class: 'btn primary block', onclick: () => renderLinkBrowser() }, 'Sign in with your phone'),
+        h('p', { class: 'muted', style: 'margin-top:16px' }, 'New to this circle? Ask one of its admins for an invite link or QR code.'),
         info.recovery ? h('button', { class: 'btn block', onclick: () => renderRecover() }, 'I set up this server') : null,
         lockNote('Locations and messages here are end-to-end encrypted. Even this server can’t read them.'),
       ),
     ),
   );
+}
+
+// --- signing in with the phone ----------------------------------------------
+// This page makes a one-time key and shows it in a QR code. The phone scans it
+// (HomeCircle → Settings → Sign in on a computer) and sends this circle's keys,
+// sealed so only this page can open them. The server never sees them.
+
+/** "Chrome on macOS": what the phone shows, and its list of browsers. */
+function browserLabel() {
+  const ua = navigator.userAgent;
+  const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'A browser';
+  const os = /Windows/.test(ua) ? 'Windows' : /Mac OS X/.test(ua) ? 'macOS' : /Android/.test(ua) ? 'Android' : /CrOS/.test(ua) ? 'ChromeOS' : /Linux/.test(ua) ? 'Linux' : /iPhone|iPad/.test(ua) ? 'iOS' : '';
+  return os ? `${browser} on ${os}` : browser;
+}
+
+let linkAbort = null;
+async function renderLinkBrowser() {
+  linkAbort?.abort();
+  const abort = (linkAbort = new AbortController());
+  const card = h('div', { class: 'card' }, brandRow(), h('p', { class: 'muted' }, 'Making a sign-in code…'));
+  mount(h('main', { class: 'onboard' }, card));
+  const back = h('a', { class: 'btn block', href: '/', style: 'margin-top:10px', onclick: () => abort.abort() }, circles.length ? 'Back to your circles' : 'Back');
+  let link;
+  try {
+    link = await CircleClient.startLink(SERVER, browserLabel());
+  } catch (e) {
+    card.replaceChildren(brandRow(), h('h1', {}, 'Sign in with your phone'), h('p', { class: 'error', role: 'alert' }, errorText(e)), h('button', { class: 'btn primary block', onclick: () => renderLinkBrowser() }, 'Try again'), back);
+    return;
+  }
+  const left = h('p', { class: 'muted small' });
+  const tick = () => {
+    const m = Math.max(0, Math.ceil((link.expiresAt - Date.now()) / 60_000));
+    left.textContent = m > 0 ? `Works once, for ${m} more minute${m === 1 ? '' : 's'}` : 'Expired';
+  };
+  tick();
+  const timer = setInterval(tick, 15_000);
+  card.replaceChildren(
+    brandRow(),
+    h('h1', {}, 'Sign in with your phone'),
+    h(
+      'div',
+      { class: 'qr-steps' },
+      h('div', {}, qrImage(link.url, 'QR code to sign in to HomeCircle with your phone'), left),
+      h(
+        'ol',
+        { class: 'steps' },
+        h('li', {}, 'Open ', h('strong', {}, 'HomeCircle'), ' on your phone.'),
+        h('li', {}, 'Go to ', h('strong', {}, 'Settings → Sign in on a computer'), '.'),
+        h('li', {}, 'Scan this code, and check the phone says ', h('strong', {}, browserLabel()), '.'),
+      ),
+    ),
+    lockNote('Your phone sends this circle’s keys sealed to this page only. The server passes them on but can’t read them. Sign this browser out any time from your phone.'),
+    back,
+  );
+  try {
+    const c = newCircleClient();
+    const ok = await c.finishLink(link, { signal: abort.signal });
+    clearInterval(timer);
+    if (abort.signal.aborted) return;
+    if (!ok) {
+      card.replaceChildren(brandRow(), h('h1', {}, 'The code expired'), h('p', { class: 'muted' }, 'Each code works for 5 minutes. Make a new one and scan it with your phone.'), h('button', { class: 'btn primary block', onclick: () => renderLinkBrowser() }, 'Make a new code'), back);
+      return;
+    }
+    // Already here (signed in before): keep one copy, the new one.
+    for (const old of circles.filter((x) => x.account?.circleId === c.account.circleId && x.account?.memberId === c.account.memberId)) {
+      await old.signOut().catch(() => {});
+      circles = circles.filter((x) => x !== old);
+    }
+    openNewCircle(c);
+  } catch (e) {
+    clearInterval(timer);
+    if (abort.signal.aborted) return;
+    card.replaceChildren(brandRow(), h('h1', {}, 'Sign in with your phone'), h('p', { class: 'error', role: 'alert' }, errorText(e)), h('button', { class: 'btn primary block', onclick: () => renderLinkBrowser() }, 'Make a new code'), back);
+  }
 }
 
 // --- recovery with the setup code ------------------------------------------
@@ -794,6 +870,35 @@ function renderRejoinWait(pending) {
 /** This server no longer knows this browser in the open circle. Deleting its keys can't be undone, so ask. */
 function renderUnrecognized() {
   const name = client.circle.name;
+  if (client.isLinkedBrowser) {
+    return mount(
+      h(
+        'main',
+        { class: 'onboard' },
+        h(
+          'div',
+          { class: 'card' },
+          brandRow(),
+          h('h1', {}, 'This browser was signed out'),
+          h('p', { class: 'muted' }, `Of ${name}, from your phone (or you left the circle). Sign in again by scanning a new code with your phone.`),
+          h(
+            'button',
+            {
+              class: 'btn primary block',
+              onclick: async () => {
+                await client.signOut().catch(() => {});
+                circles = circles.filter((c) => c !== client);
+                saveCircles(circles[0]?.accountKey ?? ACCOUNT_KEY);
+                renderLinkBrowser();
+              },
+            },
+            'Sign in again',
+          ),
+          h('button', { class: 'btn block', style: 'margin-top:10px', onclick: () => location.reload() }, 'Try again'),
+        ),
+      ),
+    );
+  }
   mount(
     h(
       'main',
@@ -2229,7 +2334,8 @@ function settingsView() {
           {
             class: 'btn',
             onclick: async () => {
-              if (!confirm(`Sign out of ${client.circle.name} in this browser? Its keys will be deleted and you’ll need a new invite to come back.`)) return;
+              const again = client.isLinkedBrowser ? 'You can sign in again by scanning a code with your phone.' : 'You’ll need a new invite to come back.';
+              if (!confirm(`Sign out of ${client.circle.name} in this browser? Its keys here will be deleted. ${again}`)) return;
               stopSharing();
               await client.signOut();
               location.reload();
@@ -2237,7 +2343,9 @@ function settingsView() {
           },
           'Sign out of this browser',
         ),
-        me?.role !== 'owner'
+        client.isLinkedBrowser
+          ? null
+          : me?.role !== 'owner'
           ? h(
               'button',
               {
@@ -2298,6 +2406,7 @@ function circlesSection() {
       ),
     ),
     h('p', { class: 'muted small' }, 'Each circle is separate: its own people, map, chat and encryption key. To join another circle, open its invite link in this browser.'),
+    h('button', { class: 'btn small', onclick: () => renderLinkBrowser() }, 'Add a circle from your phone'),
     info.recovery
       ? h(
           'p',
