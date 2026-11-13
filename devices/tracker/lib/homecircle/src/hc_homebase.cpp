@@ -144,7 +144,8 @@ HomeBase::Tracker& HomeBase::adopt(uint32_t node) {
 
 bool HomeBase::load() {
   trackers_.clear();
-  if (!base_.load()) return false;
+  // The trackers load even if its own account doesn't: joining again keeps them.
+  bool joined = base_.load();
   std::string raw;
   JsonDocument d;
   if (store_.get("trackers", raw) && !deserializeJson(d, raw)) {
@@ -162,7 +163,7 @@ bool HomeBase::load() {
       if (!t.dev->load()) trackers_.pop_back();  // its account is gone: drop it
     }
   }
-  return true;
+  return joined;
 }
 
 void HomeBase::saveTrackers() {
@@ -187,6 +188,15 @@ Status HomeBase::setup(const std::string& invite, const std::string& name) {
   if (s == Status::Ok) {
     std::vector<Device::Direct> none;
     base_.fetchDirect(none);  // start reading messages from now
+    // Joined again (a new member, say after its account was lost): the trackers it
+    // kept name this new home base as their keeper, and get its settings again.
+    for (auto& t : trackers_) {
+      t->keeperSet = false;
+      t->configSet.clear();
+      t->configState.clear();
+    }
+    nextKeeper_ = 0;
+    saveTrackers();
   }
   return s;
 }

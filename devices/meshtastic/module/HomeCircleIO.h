@@ -34,13 +34,59 @@ inline void feedWatchdog()
 }
 
 // One file per key under /prefs/hc (a Meshtastic factory reset deletes /prefs).
+// The circle account and the trackers' accounts. A write never leaves a file
+// half written: it goes to KEY.new first, the old file becomes KEY.bak, then
+// KEY.new is renamed into place. A restart at any point leaves at least one
+// whole copy, and reading falls back to KEY.new, then KEY.bak. (A plain write
+// truncates first: a restart in between once left the home base's account
+// empty, and it had to join its circle again.)
 class FsStore : public hc::Store
 {
   public:
     bool get(const char *key, std::string &out) override
     {
         concurrency::LockGuard g(spiLock);
-        File f = FSCom.open(path(key).c_str(), FILE_O_READ);
+        std::string p = path(key);
+        return readAll(p, out) || readAll(p + ".new", out) || readAll(p + ".bak", out);
+    }
+    bool put(const char *key, const std::string &value) override
+    {
+        concurrency::LockGuard g(spiLock);
+        FSCom.mkdir("/prefs");
+        FSCom.mkdir("/prefs/hc");
+        std::string p = path(key), fresh = p + ".new", old = p + ".bak";
+        File f = FSCom.open(fresh.c_str(), FILE_O_WRITE);
+        if (!f)
+            return false;
+        bool ok = f.write((const uint8_t *)value.data(), value.size()) == value.size();
+        f.close();
+        if (!ok) {
+            FSCom.remove(fresh.c_str());
+            return false;
+        }
+        std::string current;
+        if (readAll(p, current)) {
+            FSCom.remove(old.c_str());
+            FSCom.rename(p.c_str(), old.c_str());
+        } else {
+            FSCom.remove(p.c_str()); // an empty one: nothing to keep
+        }
+        return FSCom.rename(fresh.c_str(), p.c_str());
+    }
+    void remove(const char *key) override
+    {
+        concurrency::LockGuard g(spiLock);
+        std::string p = path(key);
+        FSCom.remove(p.c_str());
+        FSCom.remove((p + ".new").c_str());
+        FSCom.remove((p + ".bak").c_str());
+    }
+
+  private:
+    static std::string path(const char *key) { return std::string("/prefs/hc/") + key; }
+    static bool readAll(const std::string &p, std::string &out)
+    {
+        File f = FSCom.open(p.c_str(), FILE_O_READ);
         if (!f)
             return false;
         out.clear();
@@ -54,26 +100,6 @@ class FsStore : public hc::Store
         f.close();
         return !out.empty();
     }
-    bool put(const char *key, const std::string &value) override
-    {
-        concurrency::LockGuard g(spiLock);
-        FSCom.mkdir("/prefs");
-        FSCom.mkdir("/prefs/hc");
-        File f = FSCom.open(path(key).c_str(), FILE_O_WRITE);
-        if (!f)
-            return false;
-        bool ok = f.write((const uint8_t *)value.data(), value.size()) == value.size();
-        f.close();
-        return ok;
-    }
-    void remove(const char *key) override
-    {
-        concurrency::LockGuard g(spiLock);
-        FSCom.remove(path(key).c_str());
-    }
-
-  private:
-    static std::string path(const char *key) { return std::string("/prefs/hc/") + key; }
 };
 
 #if HAS_WIFI
