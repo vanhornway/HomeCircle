@@ -98,6 +98,14 @@ export const meshtastic = {
       placeholder: TRACKER_DEFAULTS.batteryMinutes,
       help: '0 for never. 0 or 5 to 720; 30 if empty.',
     },
+    {
+      id: 'publicSos',
+      section: 'trackers',
+      label: 'Also send an SOS on the public Meshtastic channel',
+      optional: true,
+      placeholder: 'off',
+      help: '“on”: a tracker’s SOS also goes out as plain text with where it is, so any Meshtastic user nearby sees it. Anyone on that channel can read it. Off if empty.',
+    },
     ...PRESSES.map((p) => ({
       id: `press${p.n}`,
       section: 'trackers',
@@ -120,6 +128,7 @@ export const meshtastic = {
       movingMinutes: minutes('While moving, send its position every', values.movingMinutes, 1, 60),
       stillMinutes: minutes('Otherwise, every', values.stillMinutes, 5, 720),
       batteryMinutes: values.batteryMinutes === '0' ? '0' : minutes('Report its battery every', values.batteryMinutes, 5, 720),
+      publicSos: /^(on|yes|true|1)$/i.test(String(values.publicSos ?? '').trim()) ? 'on' : '',
     };
     for (const p of PRESSES) out[`press${p.n}`] = pressText(values[`press${p.n}`]);
     return out;

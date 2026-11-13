@@ -1061,6 +1061,19 @@ Status Device::registerKeeper(const std::string& keeper) {
   return call("PUT", "/members/me/keeper", body, nullptr);
 }
 
+Status Device::registerBeacons(const std::vector<std::pair<std::string, std::string>>& nodes) {
+  JsonDocument req;
+  JsonArray a = req["nodes"].to<JsonArray>();
+  for (auto& n : nodes) {
+    JsonObject o = a.add<JsonObject>();
+    o["node"] = n.first;
+    o["member"] = n.second;
+  }
+  std::string body;
+  serializeJson(req, body);
+  return call("PUT", "/keeper/beacons", body, nullptr);
+}
+
 Status Device::keeperPending(std::vector<Pending>& out) {
   out.clear();
   JsonDocument res;
@@ -1072,6 +1085,10 @@ Status Device::keeperPending(std::vector<Pending>& out) {
     p.member = i["member"] | "";
     p.from = i["from"] | "";
     p.seq = i["seq"] | 0L;
+    p.lat = i["lat"] | 0.0;
+    p.lng = i["lng"] | 0.0;
+    p.at = i["at"] | (int64_t)0;
+    p.gateway = i["gateway"] | "";
     out.push_back(p);
   }
   return Status::Ok;

@@ -12,7 +12,7 @@ Running it again changes nothing.
 import os
 import sys
 
-MODULES = (("HOMECIRCLE", "HomeCircleModule"), ("HOMECIRCLE_HOMEBASE", "HomeBaseModule"))
+MODULES = (("HOMECIRCLE", "HomeCircleModule"), ("HOMECIRCLE_HOMEBASE", "HomeBaseModule"), ("HOMECIRCLE_SOS", "HomeCircleSosModule"))
 ANCHOR = "    adminModule = new AdminModule();"
 
 path = sys.argv[1]

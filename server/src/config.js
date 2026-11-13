@@ -32,6 +32,11 @@ export function loadConfig() {
     // Never more than a year: older messages are always deleted from the server.
     maxRetentionDays: Math.min(365, Math.max(1, int('MESSAGE_RETENTION_DAYS', 365) || 365)),
     locationRequestCooldown: int('LOCATION_REQUEST_COOLDOWN_SECONDS', 60),
+    // Public beacons from Meshtastic trackers (off per tracker unless an admin
+    // turns it on): the public MQTT server to listen on, and the region's topic.
+    // "off" turns the feature off for the whole server.
+    meshPublicMqtt: process.env.MESH_PUBLIC_MQTT ?? 'mqtt://meshdev:large4cats@mqtt.meshtastic.org:1883',
+    meshPublicTopic: process.env.MESH_PUBLIC_TOPIC || 'msh/US/#',
     inviteMaxHours: int('INVITE_MAX_HOURS', 168),
     push: process.env.PUSH_PROVIDER || 'expo',
     expoPushUrl: process.env.EXPO_PUSH_URL || 'https://exp.host/--/api/v2/push/send',

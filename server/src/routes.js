@@ -22,6 +22,7 @@ import { MAX_FILE_BYTES } from './files.js';
 import { PLUGINS, mountPlugins } from './plugins/index.js';
 import { IceServers } from './ice.js';
 import { MESH_LOCATION, meshHeader, meshRef, meshTagOk } from './mesh.js';
+import { PublicBeacons } from './beacons.js';
 import { allFeatures, cleanFeatures, hasFeature, resolveFeatures } from '../../packages/core/src/features.js';
 
 const MAX_MEMBERS = 50;
@@ -785,6 +786,39 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     store.setKeeper(me.id, null);
     return { ok: true };
   });
+  // Public beacons: the home base names its trackers whose beacon is on; this
+  // server listens for their positions on the public Meshtastic MQTT server
+  // (beacons.js) and queues each for the home base like a request.
+  const beaconOwners = new Map(); // node number -> { keeper, member }
+  const beacons = new PublicBeacons({
+    url: config.meshPublicMqtt,
+    topic: config.meshPublicTopic,
+    log,
+    onBeacon: (node, b) => {
+      const owner = beaconOwners.get(node);
+      const member = owner && store.member(owner.circleId, owner.member);
+      if (member && !member.removed && member.keeperId === owner.keeper) relayToKeeper(member, { type: 'beacon', lat: b.lat, lng: b.lng, at: b.at, gateway: b.gateway });
+    },
+  });
+  r.beacons = beacons;
+  r.add('PUT', '/keeper/beacons', ({ me, body }) => {
+    requireFeature(me, 'meshtastic', 'Meshtastic trackers');
+    const list = Array.isArray(body.nodes) ? body.nodes.slice(0, 20) : [];
+    const nodes = [];
+    for (const [n, o] of beaconOwners) if (o.keeper === me.id) beaconOwners.delete(n);
+    for (const x of list) {
+      const m = typeof x?.node === 'string' && /^![0-9a-f]{8}$/.test(x.node) ? x.node : null;
+      const member = m && typeof x.member === 'string' ? store.member(me.circleId, x.member) : null;
+      // Only trackers this home base keeps.
+      if (!member || member.removed || member.keeperId !== me.id) continue;
+      const num = parseInt(m.slice(1), 16) >>> 0;
+      beaconOwners.set(num, { keeper: me.id, member: member.id, circleId: me.circleId });
+      nodes.push(num);
+    }
+    beacons.set(me.id, nodes);
+    return { ok: true, watching: nodes.length };
+  });
+
   // The home base collects what's waiting for its trackers (and clears it).
   r.add('GET', '/keeper/pending', ({ me }) => {
     requireFeature(me, 'meshtastic', 'Meshtastic trackers');

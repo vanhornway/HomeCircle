@@ -160,6 +160,7 @@ bool HomeBase::load() {
       t.keeperSet = o["keeper"] | false;
       t.configSet = o["config"] | "";
       if (!t.configSet.empty()) t.configState = "set";
+      t.cfgSet = o["cfg"] | "";
       if (!t.dev->load()) trackers_.pop_back();  // its account is gone: drop it
     }
   }
@@ -177,6 +178,7 @@ void HomeBase::saveTrackers() {
     if (!t->carriedBy.empty()) o["carriedBy"] = t->carriedBy;
     if (t->keeperSet) o["keeper"] = true;
     if (!t->configSet.empty()) o["config"] = t->configSet;
+    if (!t->cfgSet.empty()) o["cfg"] = t->cfgSet;
   }
   std::string raw;
   serializeJson(d, raw);
@@ -268,6 +270,16 @@ void HomeBase::onText(uint32_t node, const std::string& text) {
   Tracker* t = byNode(node);
   if (!t) return;
   std::string l = lower(text);
+  // The HomeCircle tracker firmware confirms its extra settings: "#cfg-ok psos=… beacon=… prec=…".
+  if (l.rfind("#cfg-ok ", 0) == 0) {
+    std::string got = trim(text.substr(8));
+    if (got == t->cfgSending || got == cfgFor(*t)) {
+      t->cfgSet = got;
+      saveTrackers();
+      log = t->name + " has its public SOS and beacon settings";
+    }
+    return;
+  }
   // The HomeCircle tracker firmware counts button presses and says "#press N".
   if (l.rfind("#press ", 0) == 0) {
     int n = atoi(l.c_str() + 7);
@@ -281,6 +293,11 @@ void HomeBase::onText(uint32_t node, const std::string& text) {
   }
   bool alert = l.find('\a') != std::string::npos;
   for (auto& w : sosWords_) alert = alert || l.find(w) != std::string::npos;
+  // Its SOS (and each time it's sent again) got here: say so, at most every 20 s.
+  if (alert && now_() - t->sosAckAt > 20 * 1000) {
+    radio_.sosAck(node);
+    t->sosAckAt = now_();
+  }
   bool safe = l == "safe" || l == "ok" || l == "i'm ok" || l == "im ok" || l.find("i'm safe") != std::string::npos;
   if (alert && !t->dev->sosActive()) {
     t->dev->sos(true, false);
@@ -491,6 +508,18 @@ void HomeBase::handle(const Pending& p) {
   int64_t now = now_();
   std::string who = base_.nameOf(p.from);
   if (who.empty()) who = "Someone";
+  if (p.type == "beacon") {
+    // Its public beacon, heard by a gateway somewhere and read by the server.
+    if (t->beaconMin <= 0 || std::fabs(p.lat) > 90 || std::fabs(p.lng) > 180) return;
+    Fix f;
+    f.lat = p.lat;
+    f.lng = p.lng;
+    f.accuracy = 3000;  // rounded on purpose
+    onHeard(t->node, -1, 0, 0, true, Source::Beacon, "public mesh");
+    onPosition(t->node, f, p.at > 0 && p.at <= now + MIN ? p.at : now);
+    log = t->name + ": public beacon";
+    return;
+  }
   if (p.type == "locate") {
     bool waiting = false;
     for (auto& l : t->locateFrom) waiting = waiting || l.first == p.from;
@@ -584,6 +613,14 @@ void HomeBase::tick() {
   // (A server from before keepers says no: try again in a while, not every tick.)
   if (now >= nextKeeper_) {
     nextKeeper_ = now + PLACES_EVERY;
+    // The trackers whose public beacon is on: the server listens for them.
+    std::vector<std::pair<std::string, std::string>> watch;
+    std::string key;
+    for (auto& t : trackers_)
+      if (t->beaconMin > 0) watch.push_back({nodeId(t->node), t->dev->memberId()}), key += nodeId(t->node);
+    if (!watch.empty() || !beaconsSent_.empty()) {
+      if (base_.registerBeacons(watch) == Status::Ok) beaconsSent_ = key.empty() ? "" : key;
+    }
     for (auto& t : trackers_) {
       if (t->keeperSet || !t->dev->joined()) continue;
       if (t->dev->registerKeeper(base_.memberId()) == Status::Ok) {
@@ -607,6 +644,7 @@ void HomeBase::tick() {
     if (t->dev->joined()) {
       upload(*t);
       pushConfig(*t, now);
+      pushCfg(*t, now);
       introduce(*t, now);
       // A Locate it didn't answer: say so, with how old its last position is.
       if (!t->locateFrom.empty() && now - t->locateFrom.front().second >= LOCATE_WAIT) {
@@ -665,6 +703,7 @@ void HomeBase::readPlugin() {
   stillMin_ = mins("stillMinutes", 5, 720, 15, false);
   batteryMin_ = mins("batteryMinutes", 5, 720, 30, true);
   for (int n = 1; n <= 5; n++) press_[n] = v[("press" + std::to_string(n)).c_str()] | "";
+  publicSos_ = std::string(v["publicSos"] | "") == "on";
   std::string words = v["sosWords"] | "";
   std::vector<std::string> list;
   for (size_t at = 0; at <= words.size();) {
@@ -691,6 +730,7 @@ void HomeBase::readCustoms(bool alsoWhat) {
       JsonObjectConst tr = body["tracker"];
       JsonObjectConst c = tr["custom"];
       if (!c.isNull()) serializeJson(c, t->custom);
+      t->beaconMin = tr["beacon"] | 0;
       if (!alsoWhat || tr.isNull()) continue;
       std::string kind = kindOf(tr["mode"] | "");
       if (!kind.empty() && kind != t->kind) t->kind = kind, changed = true;
@@ -736,6 +776,27 @@ std::string HomeBase::pressText(const Tracker& t, int n) const {
     if (!trim(own).empty()) return own;
   }
   return trim(press_[n]).empty() ? PRESS_DEFAULTS[n] : press_[n];
+}
+
+// The HomeCircle tracker firmware's own settings (the T1000-E with HomeCircle):
+// whether an SOS also goes out on the public channel, and its public beacon.
+// About 3 km precision: the public broker drops precise positions.
+std::string HomeBase::cfgFor(const Tracker& t) const {
+  int beacon = t.beaconMin == 15 || t.beaconMin == 30 || t.beaconMin == 60 ? t.beaconMin * 60 : 0;
+  return std::string("psos=") + (publicSos_ ? "1" : "0") + " beacon=" + std::to_string(beacon) + " prec=13";
+}
+
+void HomeBase::pushCfg(Tracker& t, int64_t now) {
+  std::string want = cfgFor(t);
+  if (want == t.cfgSet) return;
+  // A tracker that never had any of this needs nothing sent for the defaults
+  // (and a stock tracker never answers: don't keep asking it).
+  if (t.cfgSet.empty() && want == "psos=0 beacon=0 prec=13") return;
+  if (t.cfgSending == want && now - t.cfgSentAt < CONFIG_RETRY) return;
+  radio_.trackerCfg(t.node, want);
+  t.cfgSending = want;
+  t.cfgSentAt = now;
+  log = "sending " + t.name + " its public SOS and beacon settings";
 }
 
 // Settings go on a tracker when HomeCircle's change, not over and over: a

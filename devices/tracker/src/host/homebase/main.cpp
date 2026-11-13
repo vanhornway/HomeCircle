@@ -61,6 +61,10 @@ struct FakeRadio : hc::Radio {
     return true;
   }
   std::string mqttHost() override { return mqtt.on ? mqtt.host : ""; }
+  // "#sos-ack" and "#cfg" for HomeCircle trackers (printed at the next tick).
+  std::vector<std::string> sent;
+  void sosAck(uint32_t node) override { sent.push_back("sos-ack " + hc::nodeId(node)); }
+  void trackerCfg(uint32_t node, const std::string& cfg) override { sent.push_back("cfg " + hc::nodeId(node) + " " + cfg); }
   // The home base's own GPS, set by "selfgps"; its sky, fed by "nmea".
   hc::SelfGnss self;
   hc::GnssSky skyView;
@@ -239,6 +243,8 @@ int main(int argc, char** argv) {
       radio.introduced.clear();
       for (auto& c : radio.configs) printf("configure %s %d %d %d h%d\n", hc::nodeId(c.first).c_str(), c.second.movingS, c.second.stillS, c.second.batteryS, c.second.hopLimit);
       radio.configs.clear();
+      for (auto& x : radio.sent) printf("%s\n", x.c_str());
+      radio.sent.clear();
       if (radio.mqttChanged) {
         printf("mqtt %s %s %d %s %zu\n", radio.mqtt.on ? "on" : "off", radio.mqtt.host.c_str(), radio.mqtt.port, radio.mqtt.user.c_str(), radio.mqtt.pass.size());
         radio.mqttChanged = false;

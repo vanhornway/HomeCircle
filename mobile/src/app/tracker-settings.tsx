@@ -53,6 +53,9 @@ export default function TrackerSettings() {
   const people = client.peopleList().filter((p) => p.kind !== 'agent');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Public: this tracker's beacon (minutes, 0 off), and the circle's public SOS.
+  const [beacon, setBeacon] = useState<number>(tracker?.beacon ?? 0);
+  const [publicSos, setPublicSos] = useState(false);
 
   useEffect(() => {
     if (!client.isAdmin) return;
@@ -69,6 +72,7 @@ export default function TrackerSettings() {
         };
         setPlugin(raw);
         setCircle(c);
+        setPublicSos(raw.publicSos === 'on');
         const custom = tracker?.custom ?? null;
         setOwn(!!custom);
         setValues({
@@ -122,6 +126,7 @@ export default function TrackerSettings() {
           movingMinutes: values.moving === TRACKER_INTERVALS.moving ? '' : String(values.moving),
           stillMinutes: values.still === TRACKER_INTERVALS.still ? '' : String(values.still),
           batteryMinutes: values.battery === TRACKER_INTERVALS.battery ? '' : String(values.battery),
+          publicSos: publicSos ? 'on' : '',
           ...Object.fromEntries(TRACKER_PRESSES.map((p) => [`press${p.n}`, text(p.n)])),
         });
       } else {
@@ -141,7 +146,7 @@ export default function TrackerSettings() {
           };
         }
         const who = mode === 'carried' ? carriedBy : '';
-        await client.setMemberRecord(member, { tracker: { ...tracker!, custom, mode, carriedBy: who || null } });
+        await client.setMemberRecord(member, { tracker: { ...tracker!, custom, mode, carriedBy: who || null, beacon: beacon as 0 | 15 | 30 | 60 } });
         // The home base keeps who has it too (it asks this tracker when their phone goes quiet).
         if (home && who !== (tracker!.carriedBy ?? '')) {
           const person = who ? client.members.get(who)?.name : null;
@@ -213,6 +218,52 @@ export default function TrackerSettings() {
               <Pills options={BATTERY} value={nearest(values.battery, BATTERY)} onChange={(battery) => set({ battery })} disabled={!editing} />
             </GroupBody>
           </SettingsGroup>
+
+          {member ? (
+            <SettingsGroup
+              title="Public beacon"
+              footer={
+                beacon
+                  ? `Anyone on the public Meshtastic channel (and its maps) can see roughly where ${name} is, to about 3 km.`
+                  : 'Off: its position stays on your private channel.'
+              }
+              how={[
+                'Your private channel reaches HomeCircle only through your home base and your own gateways. The public Meshtastic channel has gateways almost everywhere there are Meshtastic users.',
+                'With the beacon on, the tracker also sends a rounded position (about 3 km) on the public channel now and then. Gateways pass it to the public Meshtastic server, and your home base picks it up there, so the tracker shows on your map “via public mesh” far from home.',
+                'The cost: that rounded position is public. Turn it on for a trip, off when you’re back. It needs the HomeCircle firmware on the tracker (the T1000-E build).',
+              ]}
+              howTitle="What the public beacon does"
+            >
+              <GroupBody>
+                <Pills
+                  options={[
+                    { value: 0, label: 'Off' },
+                    { value: 15, label: 'Every 15 min' },
+                    { value: 30, label: 'Every 30 min' },
+                    { value: 60, label: 'Every hour' },
+                  ]}
+                  value={beacon}
+                  onChange={setBeacon}
+                />
+              </GroupBody>
+            </SettingsGroup>
+          ) : (
+            <SettingsGroup
+              title="SOS"
+              footer={
+                publicSos
+                  ? 'A tracker’s SOS also goes out as plain text with where it is on the public Meshtastic channel. Anyone on it can read it.'
+                  : 'An SOS goes only to your circle, on your private channel.'
+              }
+            >
+              <ToggleRow
+                title="Also send an SOS on the public channel"
+                detail="So any Meshtastic user nearby sees it, when your home base and gateways are out of reach"
+                value={publicSos}
+                onChange={setPublicSos}
+              />
+            </SettingsGroup>
+          )}
 
           <SettingsGroup title="Button presses" how={PRESS_HELP} howTitle="The tracker’s button" footer="What each number of presses sends to the circle, from the tracker. Empty uses the message shown.">
             <GroupBody gap={4}>

@@ -289,7 +289,7 @@ test('Meshtastic trackers: every tracker’s settings and what each number of pr
   const s0 = await mom.api.pluginSettings('meshtastic');
   assert.deepEqual(
     s0.fields.filter((f) => f.section === 'trackers').map((f) => f.id),
-    ['movingMinutes', 'stillMinutes', 'batteryMinutes', 'press1', 'press2', 'press3', 'press4', 'press5'],
+    ['movingMinutes', 'stillMinutes', 'batteryMinutes', 'publicSos', 'press1', 'press2', 'press3', 'press4', 'press5'],
   );
   assert.equal(s0.fields.find((f) => f.id === 'press5').placeholder, '🆘 I need help');
   await assert.rejects(() => mom.api.putPluginSettings('meshtastic', { movingMinutes: '0' }), (e) => e.status === 400 && /1 to 60/.test(e.message));

@@ -53,6 +53,7 @@ export function createApp(config) {
   const agentHost = config.agent ? new AgentHost({ dataDir: config.dataDir, log, brainOptions: config.agentBrainOptions }) : null;
   const files = createFiles({ dataDir: config.dataDir, store });
   const router = buildRoutes({ config, store, hub, push, log, agentHost, files, calls });
+  const beacons = router.beacons;
   const serveStatic = config.webClient ? createStatic(config) : null;
 
   const server = createServer(async (req, res) => {
@@ -139,6 +140,7 @@ export function createApp(config) {
     await agentHost?.stop();
     return new Promise((resolve) => {
       clearInterval(pruneTimer);
+      beacons?.close();
       hub.close();
       push.close();
       server.close(() => {
@@ -149,7 +151,7 @@ export function createApp(config) {
     });
   };
 
-  return { server, store, hub, push, config, close, agentHost };
+  return { server, store, hub, push, config, close, agentHost, beacons };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {

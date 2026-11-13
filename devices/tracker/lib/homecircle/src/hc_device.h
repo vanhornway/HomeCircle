@@ -58,10 +58,14 @@ struct Place {
 
 /** A request for a tracker that the server passed to its home base. */
 struct Pending {
-  std::string type;    // locate, chirp, message
+  std::string type;    // locate, chirp, message, beacon
   std::string member;  // the tracker
   std::string from;    // who asked
   long seq = 0;        // a message's seq
+  // A public beacon the server heard (type "beacon"): where, when, and the gateway.
+  double lat = 0, lng = 0;
+  int64_t at = 0;
+  std::string gateway;
 };
 
 /** How to report, from the admin's member record (defaults until one exists). */
@@ -184,6 +188,8 @@ class Device {
   Status registerKeeper(const std::string& keeper);
   /** A home base: collect requests waiting for its trackers. */
   Status keeperPending(std::vector<Pending>& out);
+  /** The trackers whose public beacon the server should listen for: node id and member. */
+  Status registerBeacons(const std::vector<std::pair<std::string, std::string>>& nodes);
   /** Every other member's latest location, opened and verified. */
   Status memberLocations(std::vector<MemberLoc>& out);
   /** The id of the member with this name (case doesn't matter); empty if none or several. */

@@ -28,7 +28,7 @@ const setupToken = 'homebase-e2e-setup-code';
 const dir = mkdtempSync(join(tmpdir(), 'hc-homebase-'));
 
 const server = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', join(repo, 'server/src/index.js')], {
-  env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), DATA_DIR: join(dir, 'data'), SETUP_TOKEN: setupToken, PUSH_PROVIDER: 'none', LOAD_TEST: 'true', TRUST_PROXY: 'true', LOCATION_REQUEST_COOLDOWN_SECONDS: '1' },
+  env: { ...process.env, HOST: '127.0.0.1', PORT: String(port), DATA_DIR: join(dir, 'data'), SETUP_TOKEN: setupToken, PUSH_PROVIDER: 'none', LOAD_TEST: 'true', TRUST_PROXY: 'true', LOCATION_REQUEST_COOLDOWN_SECONDS: '1', MESH_PUBLIC_MQTT: 'off' },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let serverLog = '';
@@ -602,6 +602,37 @@ try {
   await maya.fetchLocations();
   assert.equal(maya.locations.get(car.id)?.ts ?? 0, carBefore, 'someone who neither carries it nor is an admin can’t move it');
   pass('the phone bridge: a position from the carrier’s (or an admin’s) phone shows “via <name>’s phone”, and isn’t a chat message');
+
+  // SOS delivery: the home base answers each SOS it gets with "#sos-ack" (at most every 20 s).
+  await radio(`text ${TRACKER} \u0007🆘 SOS`);
+  let acks = await radio('tick');
+  assert.ok(acks.includes(`sos-ack ${TRACKER}`), `it tells the tracker its SOS got here: ${acks.join(' | ')}`);
+  await radio(`text ${TRACKER} \u0007🆘 SOS`);
+  acks = await radio('tick');
+  assert.ok(!acks.includes(`sos-ack ${TRACKER}`), 'not again within 20 s');
+  await radio(`text ${TRACKER} OK, I'm safe`);
+  await radio('advance 21');
+  await radio('tick');
+
+  // The public beacon and public SOS: sent to a HomeCircle tracker as "#cfg" until it confirms.
+  await maya.setMemberRecord(tracker.id, { tracker: { ...maya.memberRecord(tracker.id).tracker, beacon: 30 } });
+  const s0 = await maya.api.pluginSettings('meshtastic');
+  const vals = Object.fromEntries(s0.fields.map((f) => [f.id, typeof s0.values[f.id] === 'string' ? s0.values[f.id] : '']));
+  await maya.api.putPluginSettings('meshtastic', { ...vals, publicSos: 'on' });
+  let cfgLine = null;
+  for (let i = 0; i < 14 && !cfgLine; i++) {
+    await radio('advance 61');
+    cfgLine = (await radio('tick')).find((l) => l.startsWith(`cfg ${TRACKER} `));
+  }
+  assert.equal(cfgLine, `cfg ${TRACKER} psos=1 beacon=1800 prec=13`);
+  await radio(`text ${TRACKER} #cfg-ok psos=1 beacon=1800 prec=13`);
+  let again = null;
+  for (let i = 0; i < 12 && !again; i++) {
+    await radio('advance 61');
+    again = (await radio('tick')).find((l) => l.startsWith(`cfg ${TRACKER} `));
+  }
+  assert.equal(again ?? null, null, 'confirmed: not sent again');
+  pass('SOS delivery: “#sos-ack” back to the tracker; public SOS and beacon go to it as “#cfg” until it confirms');
 
   answer = await ask('remove Honda CR-V');
   assert.match(answer, /Removed Honda CR-V/);

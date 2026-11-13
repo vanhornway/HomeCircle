@@ -155,11 +155,11 @@ test('member records: admins write them, phones accept only an admin’s signatu
 test('tracker settings: an admin sets how often a tracker reports; bad values fall back', async () => {
   await umair.setMemberRecord(id(ali), { tracker: { mode: 'carried', moving: 3, still: 30, quiet: { from: '23:00', to: '06:00' }, sos: false } });
   await syncRecords();
-  assert.deepEqual(ali.memberRecord(id(ali)).tracker, { mode: 'carried', moving: 3, still: 30, quiet: { from: '23:00', to: '06:00' }, sos: false, node: null, carriedBy: null, custom: null });
+  assert.deepEqual(ali.memberRecord(id(ali)).tracker, { mode: 'carried', moving: 3, still: 30, quiet: { from: '23:00', to: '06:00' }, sos: false, node: null, carriedBy: null, custom: null, beacon: 0 });
   // A Meshtastic tracker's own settings keep only valid values, and its own press messages on one line.
   await umair.setMemberRecord(id(ali), { tracker: { mode: 'boat', moving: 0, still: 99999, quiet: { from: '25:00', to: '06:00' }, custom: { moving: 0, still: 60, battery: 3, presses: { 3: ' Gate B,\nplease ', 6: 'no', 2: '' } } } });
   await syncRecords();
-  assert.deepEqual(ali.memberRecord(id(ali)).tracker, { mode: 'car', moving: 2, still: 60, quiet: null, sos: true, node: null, carriedBy: null, custom: { moving: null, still: 60, battery: null, presses: { 3: 'Gate B, please' } } });
+  assert.deepEqual(ali.memberRecord(id(ali)).tracker, { mode: 'car', moving: 2, still: 60, quiet: null, sos: true, node: null, carriedBy: null, custom: { moving: null, still: 60, battery: null, presses: { 3: 'Gate B, please' } }, beacon: 0 });
   // Other settings don't touch it, and a record without one has none.
   await umair.setMemberRecord(id(ali), { lang: 'ur' });
   await syncRecords();

@@ -125,6 +125,13 @@ class Radio {
   virtual uint32_t selfNode() { return 0; }
   /** Keep a node as a favorite: Meshtastic never drops it from its list (its key and route stay). */
   virtual void favorite(uint32_t node) {}
+  /**
+   * Tell a tracker its SOS got here ("#sos-ack !node" on the private channel,
+   * so it also goes out through the internet bridge): it beeps "delivered".
+   */
+  virtual void sosAck(uint32_t node) {}
+  /** Send a HomeCircle tracker its extra settings ("#cfg !node …"): public SOS and beacon. */
+  virtual void trackerCfg(uint32_t node, const std::string& cfg) {}
   /** Turn the internet bridge on or off; the node restarts to connect. False if it can't. */
   virtual bool setMqtt(const MqttSettings& m) { return false; }
   /** The broker it's set to ("" when off). */
@@ -262,6 +269,10 @@ class HomeBase {
       std::string gateway;
     } lastRx;  // the last packet heard from it
     Source fixSrc = Source::Radio;  // how its pending position came
+    int beaconMin = 0;              // its public beacon: minutes between positions; 0 off
+    std::string cfgSet, cfgSending;  // the extra settings it confirmed, and the ones on their way
+    int64_t cfgSentAt = 0;
+    int64_t sosAckAt = 0;           // when its SOS was last acknowledged
     std::string fixGateway;
     struct Heard {
       int64_t at = 0;
@@ -292,6 +303,10 @@ class HomeBase {
   // Every tracker's settings (the plugin's), unless one has its own.
   int movingMin_ = 2, stillMin_ = 15, batteryMin_ = 30;
   std::string press_[6];  // the message for 1 to 5 presses; "" for the default
+  bool publicSos_ = false;  // the circle's: SOS also as plain text on the public channel
+  std::string beaconsSent_;  // the beacon watch list the server has ("" none yet)
+  std::string cfgFor(const Tracker& t) const;  // "psos=0 beacon=0 prec=13"
+  void pushCfg(Tracker& t, int64_t now);
   void readPlugin();
   /** Each tracker's own settings, from its member record. */
   void readCustoms(bool alsoWhat = true);

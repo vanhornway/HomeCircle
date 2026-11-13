@@ -73,6 +73,8 @@ export interface TrackerSettings {
   carriedBy: string | null;
   /** A Meshtastic tracker's own settings, where an admin chose them; null follows the circle's. */
   custom: TrackerCustom | null;
+  /** Public beacon: minutes between rounded positions on the public Meshtastic channel; 0 off (the default). */
+  beacon?: 0 | 15 | 30 | 60;
 }
 
 /** One Meshtastic tracker's own settings: only what differs from the circle's (null fields follow the circle). */

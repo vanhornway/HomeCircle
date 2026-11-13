@@ -3408,6 +3408,9 @@ function cleanTracker(t) {
     // A Meshtastic tracker's own settings, where an admin chose them for it;
     // null means it follows the circle's (the Meshtastic plugin's settings).
     custom: cleanTrackerCustom(t.custom),
+    // Its public beacon: every this many minutes, a rounded position on the
+    // public Meshtastic channel (0: off, the default), so gateways anywhere pass it on.
+    beacon: [15, 30, 60].includes(t.beacon) ? t.beacon : 0,
   };
 }
 

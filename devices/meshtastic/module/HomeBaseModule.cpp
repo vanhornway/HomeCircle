@@ -205,6 +205,16 @@ struct MeshRadio : hc::Radio {
         if (homeBaseModule)
             homeBaseModule->textNode(node, text);
     }
+    void sosAck(uint32_t node) override
+    {
+        if (homeBaseModule)
+            homeBaseModule->broadcastPrivate("#sos-ack " + hc::nodeId(node));
+    }
+    void trackerCfg(uint32_t node, const std::string &cfg) override
+    {
+        if (homeBaseModule)
+            homeBaseModule->broadcastPrivate("#cfg " + hc::nodeId(node) + " " + cfg);
+    }
     void traceroute(uint32_t node) override
     {
         if (homeBaseModule)
@@ -953,6 +963,24 @@ void HomeBaseModule::textNode(uint32_t node, const std::string &text)
     LOG_INFO("HomeCircle home base: sent %08x a text (%u bytes)", (unsigned)node, (unsigned)len);
 }
 
+void HomeBaseModule::broadcastPrivate(const std::string &text)
+{
+    int idx = channelIndex();
+    if (idx < 0)
+        return;
+    meshtastic_MeshPacket *p = allocDataPacket();
+    p->decoded.portnum = meshtastic_PortNum_PRIVATE_APP;
+    p->to = NODENUM_BROADCAST;
+    p->channel = idx;
+    size_t len = std::min(text.size(), sizeof(p->decoded.payload.bytes));
+    memcpy(p->decoded.payload.bytes, text.data(), len);
+    p->decoded.payload.size = len;
+    p->want_ack = false;
+    p->priority = meshtastic_MeshPacket_Priority_ALERT;
+    service->sendToMesh(p);
+    LOG_INFO("HomeCircle home base: sent %s", text.c_str());
+}
+
 // A traceroute to a node: each relay adds itself on the way there and back
 // (Meshtastic's TraceRouteModule); the answer comes to handleReceived.
 void HomeBaseModule::traceNode(uint32_t node)
@@ -999,8 +1027,10 @@ ProcessMessage HomeBaseModule::handleReceived(const meshtastic_MeshPacket &mp)
     case meshtastic_PortNum_PRIVATE_APP:
         // A HomeCircle tracker's button ("#press N", sent as data so other trackers don't beep),
         // or a HomeCircle-firmware tracker's sealed packet.
-        if (pl.size > 7 && memcmp(pl.bytes, "#press ", 7) == 0)
+        if ((pl.size > 7 && memcmp(pl.bytes, "#press ", 7) == 0) || (pl.size > 8 && memcmp(pl.bytes, "#cfg-ok ", 8) == 0))
             hb.onText(mp.from, std::string((const char *)pl.bytes, pl.size));
+        else if (pl.size > 0 && pl.bytes[0] == '#')
+            break; // our own "#sos-ack"/"#cfg" coming back through the mesh
         else
             hb.onMeshPacket(hc::Bytes(pl.bytes, pl.bytes + pl.size));
         break;
