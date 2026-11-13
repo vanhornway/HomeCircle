@@ -206,6 +206,8 @@ class HomeBase {
   void onNoFix(uint32_t node);
   /** A packet from a tracker: how many hops it took, the last relay (0: none or unknown), and the signal. */
   void onHeard(uint32_t node, int hops, uint32_t relay, float snr, bool position = true, Source src = Source::Radio, const std::string& gateway = "");
+  /** A phone passed on its tracker's position (the phone bridge): from whoever carries it, or an admin. */
+  void onPhoneFix(const Device::Direct& d);
   bool isTracker(uint32_t node) const;
   size_t trackerCount() const { return trackers_.size(); }
 

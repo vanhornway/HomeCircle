@@ -776,6 +776,8 @@ export class CircleClient {
     firstFetch?: { mode: 'tail' | 'forward' | 'gap'; count: number; ms: number };
   };
   /** Group chat, or a direct message when `to` is set. */
+  /** The phone bridge: pass the carried tracker's position to the home base (sealed, silent, not shown in chats). */
+  sendTrackerFix(homeBaseId: string, fix: { node: string; lat: number; lng: number; at?: number; battery?: number | null }): Promise<void>;
   /** Pass the same `id` to try a message again: the server keeps one copy, and one it already has counts as sent. */
   sendChat(text: string, opts?: { to?: string | null; id?: string }): Promise<void>;
   /** Messages of the group (peer null) or of a direct chat. */

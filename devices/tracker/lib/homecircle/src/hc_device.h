@@ -140,6 +140,10 @@ class Device {
     std::string from, fromName, text;
     std::string checkin;  // "request" for "Where are you? Check in"
     bool fromAdmin = false;
+    // A phone passing on its tracker's position (the phone bridge): no text, not shown in chats.
+    std::string fixNode;  // "!9e58f8c9"; empty if none
+    Fix fix;
+    int64_t fixAt = 0;
   };
   struct MemberLoc {
     std::string memberId, name;

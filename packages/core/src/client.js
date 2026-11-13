@@ -1156,6 +1156,8 @@ export class CircleClient {
     // From this phone's cache: opened (and checked) on an earlier launch.
     const msg = m.opened ? (kinds.includes(m.opened.kind) ? m.opened : null) : this._open(m.env, m.from, kinds, to, m.id);
     if (msg === REPLAYED) return false;
+    // A phone passing its tracker's position to the home base (the phone bridge): not a chat message.
+    if (msg?.body?.trackerFix) return false;
     this._remember(m, msg, { quiet: bulk });
     if (msg?.kind === 'reaction') {
       // A read receipt: "I've read this conversation up to here".
@@ -2600,6 +2602,17 @@ export class CircleClient {
     this._addMessage({ seq: res.seq, id, from: this.account.memberId, to, createdAt: res.createdAt, env });
     this.lastSeq = seenUpTo;
     this.emit('messages', this.messages);
+  }
+
+  /**
+   * The phone bridge: pass the position of the tracker this person carries
+   * (read over Bluetooth) to the home base, sealed to it and silent. The home
+   * base posts it as the tracker's, "via <name>'s phone". Not shown in chats.
+   */
+  sendTrackerFix(homeBaseId, { node, lat, lng, at, battery = null }) {
+    if (!/^![0-9a-f]{8}$/.test(node) || !Number.isFinite(lat) || !Number.isFinite(lng)) return Promise.reject(new Error('Not a tracker position'));
+    const fix = { node, lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, at: Number.isFinite(at) ? at : Date.now(), ...(Number.isInteger(battery) ? { battery } : {}) };
+    return this._post('chat', { trackerFix: fix }, { to: homeBaseId, silent: true });
   }
 
   /**

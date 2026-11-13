@@ -791,7 +791,15 @@ Status Device::fetchDirect(std::vector<Direct>& out) {
     d.text = msg["body"]["text"] | "";
     d.checkin = msg["body"]["checkin"] | "";
     d.fromAdmin = isAdmin(from);
-    if (!d.text.empty()) out.push_back(d);
+    JsonObjectConst tf = msg["body"]["trackerFix"];
+    if (!tf.isNull()) {
+      d.fixNode = tf["node"] | "";
+      d.fix.lat = tf["lat"] | 0.0;
+      d.fix.lng = tf["lng"] | 0.0;
+      d.fix.battery = tf["battery"] | -1;
+      d.fixAt = tf["at"] | (int64_t)0;
+    }
+    if (!d.text.empty() || !d.fixNode.empty()) out.push_back(d);
   }
   save();
   return Status::Ok;

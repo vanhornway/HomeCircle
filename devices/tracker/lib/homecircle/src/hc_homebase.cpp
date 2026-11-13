@@ -625,7 +625,10 @@ void HomeBase::tick() {
     nextDirect_ = now + DIRECT_EVERY;
     std::vector<Device::Direct> in;
     if (base_.fetchDirect(in) == Status::Ok)
-      for (auto& d : in) command(d);
+      for (auto& d : in) {
+        if (!d.fixNode.empty()) onPhoneFix(d);
+        else command(d);
+      }
   }
   if (now >= nextWatch_) {
     nextWatch_ = now + WATCH_EVERY;
@@ -802,6 +805,21 @@ void HomeBase::onConfigured(uint32_t node, ConfigResult r) {
     // base's key: say so, so the app shows how to add it (and try less often).
     if (++t->configFails >= 2) t->configState = "needs-key";
   }
+}
+
+void HomeBase::onPhoneFix(const Device::Direct& d) {
+  uint32_t node;
+  if (!parseNodeId(d.fixNode, node)) return;
+  Tracker* t = byNode(node);
+  if (!t) return;
+  // Only the phone of whoever carries it (or an admin's) speaks for a tracker.
+  if (d.from != t->carriedBy && !d.fromAdmin) return;
+  if (std::fabs(d.fix.lat) > 90 || std::fabs(d.fix.lng) > 180 || (d.fix.lat == 0 && d.fix.lng == 0)) return;
+  int64_t at = d.fixAt > 0 && d.fixAt <= now_() + MIN ? d.fixAt : now_();
+  std::string first = d.fromName.substr(0, d.fromName.find(' '));
+  onHeard(node, -1, 0, 0, true, Source::Phone, (first.empty() ? std::string("a") : first + "'s") + " phone");
+  onPosition(node, d.fix, at);
+  log = t->name + ": position from " + d.fromName + "'s phone";
 }
 
 bool HomeBase::takeUpdate(Update& out) {

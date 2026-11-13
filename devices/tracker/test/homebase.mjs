@@ -579,6 +579,30 @@ try {
   assert.match(await ask('mqtt off'), /Turning the internet bridge off/);
   pass('the internet bridge: an admin sets it (the password stays out of replies); positions a gateway heard show as via internet');
 
+  // The phone bridge: a phone passes its tracker's position on, sealed and silent.
+  await maya.sendTrackerFix(hbId, { node: TRACKER, lat: 37.7, lng: -122.2, at: Date.now() + ahead - 5000, battery: 64 });
+  assert.ok(!maya.conversation(hbId).some((m) => m.body?.trackerFix), 'it isn’t a chat message');
+  await radio('advance 21');
+  await radio('tick');
+  await radio('advance 31');
+  await radio('tick');
+  await maya.fetchLocations();
+  const viaPhone = maya.locations.get(tracker.id);
+  assert.equal(viaPhone?.lat, 37.7);
+  assert.equal(viaPhone?.mesh?.src, 'phone');
+  assert.match(viaPhone?.mesh?.gateway ?? '', /^Maya's phone$/);
+  // The car isn't Leo's to move: he neither carries it nor is an admin.
+  await leo.refresh();
+  const carBefore = maya.locations.get(car.id)?.ts ?? 0;
+  await leo.sendTrackerFix(hbId, { node: '!0badcafe', lat: 1, lng: 1 });
+  await radio('advance 21');
+  await radio('tick');
+  await radio('advance 31');
+  await radio('tick');
+  await maya.fetchLocations();
+  assert.equal(maya.locations.get(car.id)?.ts ?? 0, carBefore, 'someone who neither carries it nor is an admin can’t move it');
+  pass('the phone bridge: a position from the carrier’s (or an admin’s) phone shows “via <name>’s phone”, and isn’t a chat message');
+
   answer = await ask('remove Honda CR-V');
   assert.match(answer, /Removed Honda CR-V/);
   await maya.refresh();
