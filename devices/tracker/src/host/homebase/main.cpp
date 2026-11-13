@@ -182,6 +182,16 @@ int main(int argc, char** argv) {
         }
         hb.onRoute(node, back, snr);
       }
+    } else if (cmd == "rx") {
+      // rx !id HOPS !relay SNR: a tracker's packet, and how it got here
+      uint32_t node, relay = 0;
+      std::string args = rest(line, 1);
+      char relayId[16] = {0};
+      int hops = -1;
+      float snr = 0;
+      sscanf(rest(line, 2).c_str(), "%d %15s %f", &hops, relayId, &snr);
+      hc::parseNodeId(relayId, relay);
+      if (hc::parseNodeId(args.substr(0, args.find(' ')), node)) hb.onHeard(node, hops, relay, snr);
     } else if (cmd == "nofix") {
       uint32_t node;
       if (hc::parseNodeId(rest(line, 1), node)) hb.onNoFix(node);
@@ -208,7 +218,7 @@ int main(int argc, char** argv) {
       for (auto& c : radio.contacts) printf("contact %u bytes\n", (unsigned)c.size());
       radio.contacts.clear();
       radio.introduced.clear();
-      for (auto& c : radio.configs) printf("configure %s %d %d %d\n", hc::nodeId(c.first).c_str(), c.second.movingS, c.second.stillS, c.second.batteryS);
+      for (auto& c : radio.configs) printf("configure %s %d %d %d h%d\n", hc::nodeId(c.first).c_str(), c.second.movingS, c.second.stillS, c.second.batteryS, c.second.hopLimit);
       radio.configs.clear();
       if (!hb.log.empty()) printf("log: %s\n", hb.log.c_str());
     } else {

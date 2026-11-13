@@ -61,6 +61,10 @@ export interface MapPath {
   points: [number, number][];
   /** Traced a while ago: drawn fainter. */
   old?: boolean;
+  /** 'trail': the positions a tracker was heard at on a trip, in order (solid, a dot at each); a path is dashed. */
+  kind?: 'path' | 'trail';
+  /** A dot where the path starts (a position heard on a trip). */
+  start?: boolean;
 }
 
 interface Props {
@@ -99,7 +103,7 @@ function buildHtml(tileUrl: string, attribution: string, dark: boolean) {
 <style>${LEAFLET_CSS}
 html,body,#map{height:100%;margin:0;background:${dark ? '#1a201e' : '#ece7df'}}
 .m{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font:700 15px -apple-system,Roboto,sans-serif;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3);box-sizing:border-box}
-.m.s{filter:grayscale(.6);opacity:.85}
+.m.s{filter:grayscale(.6);opacity:.85}.m.t.s{opacity:.5;border-style:dashed}
 .m.t{border-radius:12px;font-size:20px}
 .m{position:relative}
 .m .b{position:absolute;right:-7px;top:-7px;width:20px;height:20px;border-radius:50%;background:#fff;font-size:12px;line-height:20px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.3)}
@@ -212,9 +216,14 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
       pathLayer.clearLayers();
       list.forEach(function(p){
         if (!p.points || p.points.length < 2) return;
-        L.polyline(p.points, {color:'#5b6b73', weight:3, opacity:p.old ? .25 : .55, dashArray:'2 7', lineCap:'round', interactive:false}).addTo(pathLayer);
-        p.points.slice(1, -1).forEach(function(pt){
-          L.circleMarker(pt, {radius:3, color:'#5b6b73', weight:1, opacity:p.old ? .3 : .6, fillOpacity:p.old ? .15 : .35, interactive:false}).addTo(pathLayer);
+        var trail = p.kind === 'trail';
+        L.polyline(p.points, trail
+          ? {color:'#5b6b73', weight:2, opacity:.35, lineCap:'round', interactive:false}
+          : {color:'#5b6b73', weight:3, opacity:p.old ? .25 : .55, dashArray:'2 7', lineCap:'round', interactive:false}).addTo(pathLayer);
+        // Dots: every position heard on a trail; the relays on a path (and where it started, for a trip's path).
+        var dots = trail ? p.points : p.points.slice(1, -1).concat(p.start ? [p.points[0]] : []);
+        dots.forEach(function(pt){
+          L.circleMarker(pt, {radius:trail ? 4 : 3, color:'#5b6b73', weight:1, opacity:p.old ? .35 : .6, fillOpacity:trail ? .5 : p.old ? .15 : .35, interactive:false}).addTo(pathLayer);
         });
       });
     },

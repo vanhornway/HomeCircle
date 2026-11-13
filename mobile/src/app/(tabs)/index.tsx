@@ -22,7 +22,7 @@ import { initials, useAllCircles, useCircle } from '../../lib/useCircle';
 import { chirpWithChoice } from '../../lib/chirp';
 import { canLocate, everyoneCoolingDown, isAsking, memberState, locatePerson, locateState, lowBattery, refreshEveryone, settingWarning, statusLine, useLocateVersion } from '../../lib/people';
 import { DEFAULT_SETTINGS, getSettings } from '../../lib/storage';
-import { carriedFallback, circleCount, homeBaseOf, trackerEmoji, trackerList, trackerOf } from '../../lib/trackers';
+import { carriedFallback, circleCount, homeBaseOf, TRACKER_STALE_MS, trackerEmoji, trackerList, trackerOf } from '../../lib/trackers';
 import { edgeChips, groups, openingFrame } from '../../lib/mapFrame';
 import { usePlaceNames } from '../../lib/weather';
 import { useTheme } from '../../theme';
@@ -127,7 +127,7 @@ export default function MapTab() {
         lat: loc.lat,
         lng: loc.lng,
         accuracy: loc.accuracy || 0,
-        stale: now - loc.ts > STALE_MS,
+        stale: now - loc.ts > (tracker && !via ? TRACKER_STALE_MS : STALE_MS),
         badge: via ? '📡' : tracker ? undefined : { saver: '🔋', settings: '⚠️', 'last-gasp': '🪫' }[memberState(client, m, now) as string],
         approximate: loc.approximate,
         shape: tracker ? 'tracker' : undefined,
@@ -150,7 +150,23 @@ export default function MapTab() {
           return [{ id: tr.id, points: [[loc.lat, loc.lng], ...relays, [homeLoc.lat, homeLoc.lng]], old: !loc.mesh?.at || now - loc.mesh.at > 6 * 3600_000 }];
         })
       : [];
-  const pathsAvailable = !!homeLoc && trackersHere.some((tr) => !!client.locations.get(tr.id)?.mesh?.path);
+  // The trip: where the home base heard each tracker in the last 3 hours (a trail), and how
+  // each of those got home (faint: through its last relay, if that relay said where it is).
+  if (showPaths && homeLoc && sharing && home) {
+    for (const st of home.status.trackers) {
+      const tr = trackersHere.find((x) => x.tracker.node === st.node);
+      if (!tr) continue;
+      const heard = st.log.filter((e) => now - e.at < 3 * 3600_000);
+      if (heard.length >= 2) radioPaths.push({ id: `${tr.id}-trail`, kind: 'trail', points: heard.map((e) => [e.lat, e.lng] as [number, number]) });
+      const current = client.locations.get(tr.id);
+      for (const e of heard) {
+        if (current && Math.abs(current.ts - e.at) < 1000) continue; // drawn above, with its traced path
+        const via: [number, number][] = e.relay?.lat != null && e.relay.lng != null ? [[e.relay.lat, e.relay.lng]] : [];
+        radioPaths.push({ id: `${tr.id}-${e.at}`, points: [[e.lat, e.lng], ...via, [homeLoc.lat, homeLoc.lng]], old: true, start: true });
+      }
+    }
+  }
+  const pathsAvailable = !!homeLoc && (trackersHere.some((tr) => !!client.locations.get(tr.id)?.mesh?.path) || !!home?.status.trackers.some((s) => s.log.length));
   // The drawer: people first, then trackers, and a count that tells them apart (read before the memo below).
   const drawerMembers = [...members.filter((m) => !client.isDevice(m.id)), ...members.filter((m) => client.isDevice(m.id))];
   const countLine = circleCount(client).replace(/ people| person/, '');

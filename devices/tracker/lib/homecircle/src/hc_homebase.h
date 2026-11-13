@@ -52,7 +52,10 @@ struct TrackerConfig {
   int movingS = 120;   // at most this often while moving (smart position)
   int stillS = 900;    // otherwise, every this many seconds
   int batteryS = 1800; // battery reports; 0: none
-  std::string key() const { return std::to_string(movingS) + "/" + std::to_string(stillS) + "/" + std::to_string(batteryS); }
+  int hopLimit = 7;    // how many relays its packets may take to reach home (Meshtastic's most)
+  std::string key() const {
+    return std::to_string(movingS) + "/" + std::to_string(stillS) + "/" + std::to_string(batteryS) + "/h" + std::to_string(hopLimit);
+  }
 };
 
 /** How putting settings on a tracker went. */
@@ -163,6 +166,8 @@ class HomeBase {
   void onConfigured(uint32_t node, ConfigResult r);
   /** A tracker answered a position request with no position: it has no GPS fix. */
   void onNoFix(uint32_t node);
+  /** A packet from a tracker: how many hops it took, the last relay (0: none or unknown), and the signal. */
+  void onHeard(uint32_t node, int hops, uint32_t relay, float snr);
   bool isTracker(uint32_t node) const;
   size_t trackerCount() const { return trackers_.size(); }
 
@@ -205,6 +210,20 @@ class HomeBase {
     std::vector<int> presses;  // button presses to act on: 2 to 5
     std::vector<std::pair<std::string, int64_t>> locateFrom;  // who tapped Locate, and when: answered in their chat with it
     int64_t introducedAt = 0;  // when it was last sent this node's key
+    struct Rx {
+      int64_t at = 0;
+      int hops = -1;
+      uint32_t relay = 0;
+      float snr = 0;
+    } lastRx;  // the last packet heard from it
+    struct Heard {
+      int64_t at = 0;
+      double lat = 0, lng = 0;
+      int hops = -1;
+      uint32_t relay = 0;
+      float snr = 0;
+    };
+    std::vector<Heard> log;  // each position heard lately, with how it got here (for the trip on the map)
   };
 
   Http& http_;

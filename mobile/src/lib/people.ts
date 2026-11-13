@@ -7,6 +7,7 @@ import { formatFeet } from './units';
 import { timeAgo } from './useCircle';
 import { errorText } from './circle';
 import { showSheet } from './sheet';
+import { trackerOf, trackerStatusLine } from './trackers';
 
 const STALE_MS = 30 * 60_000;
 const COOLDOWN_MS = 60_000;
@@ -62,6 +63,13 @@ export function settingWarning(client: CircleClient, m: Member, now = Date.now()
 
 /** One line about someone; `{ warnings: false }` leaves out what settingWarning shows as a tag. */
 export function statusLine(client: CircleClient, m: Member, now = Date.now(), { warnings = true }: { warnings?: boolean } = {}): string {
+  // A Meshtastic tracker: when it was last heard over radio, not a phone's states.
+  if (trackerOf(client, m.id)) {
+    return trackerStatusLine(client, m.id, now, (loc) => {
+      const place = placeAt(loc, client.places);
+      return place ? `At ${place.name}` : '';
+    });
+  }
   const paused = client.paused.get(m.id);
   if (paused) return [`Paused${paused.reason ? `: ${paused.reason}` : ''}`, timeAgo(paused.since)].join(' · ');
   const loc = client.locations.get(m.id);

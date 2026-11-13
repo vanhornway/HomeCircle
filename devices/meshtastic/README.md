@@ -177,6 +177,8 @@ encrypted to the tracker's key):
 - A battery report every K minutes (30), so the app shows its battery.
 - The buzzer on for the alert bell, so Chirp and Ask to check in beep.
 - Meshtastic's 3-press "GPS off" turned off.
+- Up to 7 hops (Meshtastic's most, up from 3), so a tracker miles from home
+  still reaches it through other people's nodes on the public mesh.
 
 It sends them once, when they change in the app. A change made on the tracker
 itself, in the Meshtastic app, stays until the app's settings change again.
@@ -245,6 +247,19 @@ tracker's own settings. The HomeCircle build takes over Meshtastic's own
     or someone carrying it, and who), rename it, change who carries it, or
     remove it.
   - Underneath, it sends the same commands you could type to Home base.
+- **Out of reach:** while a tracker is somewhere the mesh doesn't carry it
+  home, the home base hears nothing. Its pin then fades (after 20 minutes)
+  and its line says "Last heard over radio 1 h ago, at Home". If the person
+  who has it is elsewhere now, by their phone, it adds "probably with
+  them". The Meshtastic app on your phone can still show the tracker's
+  position, because it talks to the tracker over Bluetooth, not over the
+  mesh.
+- **The trip:** with "📡 Paths" on, the map shows where the home base heard
+  each tracker in the last 3 hours: a thin line through those spots, with a
+  faint dashed line from each one home through its last relay, where the
+  relay's position is known. Trackers shows how many times it was heard and
+  through how many relays. Where the trail stops is where the mesh stopped
+  carrying it.
 - **On the map:** a tracker is a rounded square with 🚗 or 🎒. When someone's
   phone has been quiet for 30 minutes and the tracker they carry has reported
   since, their own pin moves to the tracker's position, marked 📡. That

@@ -212,7 +212,8 @@ struct ConfigJob {
     int checks = 0; // read-backs of its position settings after sending them
     uint8_t passkey[8];
     bool havePass = false, sent = false;
-    bool haveDevice = false, havePosition = false, haveTelemetry = false, haveAlerts = false;
+    bool haveDevice = false, havePosition = false, haveTelemetry = false, haveAlerts = false, haveLora = false;
+    meshtastic_Config_LoRaConfig lora;
     meshtastic_Config_DeviceConfig device;
     meshtastic_Config_PositionConfig position;
     meshtastic_ModuleConfig_TelemetryConfig telemetry;
@@ -296,6 +297,10 @@ void askSettings(uint32_t node, ConfigJob &job)
         m.get_config_request = meshtastic_AdminMessage_ConfigType_POSITION_CONFIG;
         job.ids.push_back(sendAdmin(node, m, true, false));
     }
+    if (!job.haveLora) {
+        m.get_config_request = meshtastic_AdminMessage_ConfigType_LORA_CONFIG;
+        job.ids.push_back(sendAdmin(node, m, true, false));
+    }
     m = meshtastic_AdminMessage_init_zero;
     m.which_payload_variant = meshtastic_AdminMessage_get_module_config_request_tag;
     if (!job.haveTelemetry) {
@@ -346,6 +351,15 @@ void sendConfig(uint32_t node, ConfigJob &job)
     m.which_payload_variant = meshtastic_AdminMessage_set_config_tag;
     m.set_config.which_payload_variant = meshtastic_Config_position_tag;
     m.set_config.payload_variant.position = job.position;
+    withKey(m);
+    job.ids.push_back(sendAdmin(node, m, false, false));
+
+    // More relays allowed on the way home: a tracker far from home still reaches it.
+    job.lora.hop_limit = job.want.hopLimit;
+    m = meshtastic_AdminMessage_init_zero;
+    m.which_payload_variant = meshtastic_AdminMessage_set_config_tag;
+    m.set_config.which_payload_variant = meshtastic_Config_lora_tag;
+    m.set_config.payload_variant.lora = job.lora;
     withKey(m);
     job.ids.push_back(sendAdmin(node, m, false, false));
 
@@ -413,6 +427,9 @@ void configAnswer(const meshtastic_MeshPacket &mp)
         } else if (r.get_config_response.which_payload_variant == meshtastic_Config_position_tag) {
             job.position = r.get_config_response.payload_variant.position;
             job.havePosition = true;
+        } else if (r.get_config_response.which_payload_variant == meshtastic_Config_lora_tag) {
+            job.lora = r.get_config_response.payload_variant.lora;
+            job.haveLora = true;
         }
     } else if (r.which_payload_variant == meshtastic_AdminMessage_get_module_config_response_tag) {
         if (r.get_module_config_response.which_payload_variant == meshtastic_ModuleConfig_telemetry_tag) {
@@ -423,7 +440,7 @@ void configAnswer(const meshtastic_MeshPacket &mp)
             job.haveAlerts = true;
         }
     }
-    if (job.havePass && job.haveDevice && job.havePosition && job.haveTelemetry && job.haveAlerts)
+    if (job.havePass && job.haveDevice && job.havePosition && job.haveTelemetry && job.haveAlerts && job.haveLora)
         sendConfig(mp.from, job);
 }
 
@@ -659,6 +676,23 @@ std::string HomeBaseModule::channelLink()
 
 std::map<uint32_t, uint32_t> positionAsks; // node -> our latest position request's id
 
+// A packet names its last relay by the low byte of its node number only: the
+// node we know with that byte that was heard most lately (0 if none).
+uint32_t relayNode(uint8_t low, uint32_t from)
+{
+    if (!low)
+        return 0;
+    uint32_t best = 0, bestHeard = 0;
+    for (size_t i = 0; i < nodeDB->getNumMeshNodes(); i++) {
+        meshtastic_NodeInfoLite *n = nodeDB->getMeshNodeByIndex(i);
+        if (!n || n->num == from || n->num == nodeDB->getNodeNum() || (n->num & 0xff) != low)
+            continue;
+        if (n->last_heard >= bestHeard)
+            best = n->num, bestHeard = n->last_heard;
+    }
+    return best;
+}
+
 void HomeBaseModule::askPosition(uint32_t node)
 {
     meshtastic_MeshPacket *p = allocDataPacket();
@@ -740,6 +774,8 @@ ProcessMessage HomeBaseModule::handleReceived(const meshtastic_MeshPacket &mp)
             hb.onMeshPacket(hc::Bytes(pl.bytes, pl.bytes + pl.size));
         break;
     case meshtastic_PortNum_POSITION_APP:
+        if (hb.isTracker(mp.from))
+            hb.onHeard(mp.from, mp.hop_start ? (int)mp.hop_start - (int)mp.hop_limit : -1, relayNode(mp.relay_node, mp.from), mp.rx_snr);
         lastPoll = 0; // the node database has it now: pass it on soon
         break;
     case meshtastic_PortNum_ADMIN_APP:

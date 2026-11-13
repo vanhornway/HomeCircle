@@ -87,6 +87,17 @@ export interface TrackerCustom {
   presses: Partial<Record<'1' | '2' | '3' | '4' | '5', string>> | null;
 }
 
+/** One position a home base heard from a tracker, and how it got home. */
+export interface TrackerHeard {
+  at: number;
+  lat: number;
+  lng: number;
+  hops: number | null;
+  snr: number | null;
+  /** The last node that relayed it (null when heard directly), and where that node is if known. */
+  relay: { id: string; name: string | null; lat: number | null; lng: number | null } | null;
+}
+
 /** What a home base's radio knows about a node it hears. */
 export interface MeshNodeRadio {
   /** When it was last heard. */
@@ -126,7 +137,15 @@ export interface HomeBaseStatus {
   gps: { fix: boolean; sats: number | null; hdop: number | null } | null;
   heard: ({ node: string; name: string | null } & MeshNodeRadio)[];
   /** Its trackers: `at` is their last position on the map; `radio` what the radio last heard from them; `settings` whether HomeCircle's settings are on the tracker. */
-  trackers: { node: string; member: string; at: number | null; radio: MeshNodeRadio | null; settings: 'set' | 'sending' | 'needs-key' | null }[];
+  trackers: {
+    node: string;
+    member: string;
+    at: number | null;
+    radio: MeshNodeRadio | null;
+    settings: 'set' | 'sending' | 'needs-key' | null;
+    /** Positions the home base heard lately (oldest first), each with its hops and last relay. */
+    log: TrackerHeard[];
+  }[];
   /** Its Meshtastic node id ("!69852494"). */
   node: string | null;
   /** Its Meshtastic public key (base64): a tracker with it as an admin key takes settings from the home base. */

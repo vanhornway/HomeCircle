@@ -287,6 +287,23 @@ try {
   );
   pass('the path from the tracker to the home base (tracker → meshunit1 → meshunit2 → Home base) reaches the app');
 
+  // Out on a trip: each position heard is logged with how it got home (hops, the last relay), for the map.
+  await radio(`rx ${TRACKER} 2 !11111111 -3.5`);
+  await radio(`position ${TRACKER} 37.6612 -122.0901 66`);
+  await radio('advance 31');
+  await radio('tick');
+  await radio('advance 61');
+  await radio('tick');
+  await maya.fetchRecords();
+  const trip = maya.memberRecord(hbId).homeBase.trackers.find((x) => x.node === TRACKER).log;
+  const last = trip.at(-1);
+  assert.deepEqual(
+    { lat: last.lat, lng: last.lng, hops: last.hops, snr: last.snr, relay: last.relay },
+    { lat: 37.6612, lng: -122.0901, hops: 2, snr: -3.5, relay: { id: '!11111111', name: 'meshunit1', lat: 37.643, lng: -122.077 } },
+  );
+  assert.ok(trip.length >= 2, 'earlier positions stay in the log too');
+  pass('each position heard on a trip is logged with its hops and last relay, for the trail on the map');
+
   await maya.chirp(tracker.id);
   await radio('advance 9');
   out = await radio('tick');
@@ -354,7 +371,7 @@ try {
   await maya.setMemberRecord(tracker.id, { tracker: { ...maya.memberRecord(tracker.id).tracker, custom: { still: 60, presses: { 3: 'Gate B, please' } } } });
   await radio('advance 601'); // the plugin and each tracker's own settings are read every 10 minutes
   out = await radio('tick');
-  assert.ok(out.includes(`configure ${TRACKER} 120 3600 1800`), `its own position interval goes onto the tracker: ${out.join(' | ')}`);
+  assert.ok(out.includes(`configure ${TRACKER} 120 3600 1800 h7`), `its own position interval goes onto the tracker, and up to 7 hops home: ${out.join(' | ')}`);
   since = maya.messages.length;
   await radio(`text ${TRACKER} #press 3`);
   await radio('tick');

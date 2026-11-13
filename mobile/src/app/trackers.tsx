@@ -13,7 +13,7 @@ import { GroupBody, SettingsGroup, SettingsPage, SettingsRow } from '../componen
 import { errorText } from '../lib/circle';
 import { radioLine } from '../lib/people';
 import { confirm, notice, showSheet } from '../lib/sheet';
-import { homeBaseHealth, homeBaseOf, homeBaseOnline, PRESS_HELP, radioFacts, tellHomeBase, trackerEmoji, trackerList, TRACKER_KINDS, trackerSettingsLine, useNow } from '../lib/trackers';
+import { homeBaseHealth, homeBaseOf, homeBaseOnline, PRESS_HELP, radioFacts, tellHomeBase, trackerEmoji, trackerList, TRACKER_KINDS, trackerSettingsLine, tripLine, useNow } from '../lib/trackers';
 import { KeyHelp } from '../components/TrackerKeyHelp';
 import { timeAgo, useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
@@ -113,6 +113,7 @@ export default function Trackers() {
             loc ? `last position ${timeAgo(loc.ts)}` : 'no position yet',
             path && loc?.mesh?.hops != null ? (loc.mesh.hops === 0 ? 'heard directly' : `${loc.mesh.hops} hop${loc.mesh.hops === 1 ? '' : 's'}`) : null,
             radioFacts(home?.status.trackers.find((s) => s.node === x.tracker.node)?.radio),
+            tripLine(home?.status.trackers.find((s) => s.node === x.tracker.node)?.log ?? [], now),
             x.tracker.custom ? 'its own settings' : null,
             admin ? trackerSettingsLine(home?.status.trackers.find((s) => s.node === x.tracker.node)?.settings) : null,
           ]

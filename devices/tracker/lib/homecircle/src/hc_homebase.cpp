@@ -35,6 +35,7 @@ const int64_t PATH_FOR = 6 * 60 * MIN;     // a path older than this isn't shown
 const int64_t STATUS_EVERY = 1 * MIN;      // its own status for the app's Trackers screen (it has mains or solar power)
 const int64_t RECORD_REREAD = 10 * MIN;    // between full reads of its member record when writing the status
 const int64_t OFF_RECHECK = 1 * MIN;       // while the plugin is off: how often to look whether it's back on
+const size_t LOG_KEEP = 10;               // positions heard per tracker, kept for the trip on the map
 const int64_t LOCATE_WAIT = 3 * MIN;        // a Locate the tracker hasn't answered: say so in the chat
 const int64_t INTRODUCE_EVERY = 12 * 60 * MIN;  // send each tracker this node's key again (it may have forgotten)
 const int64_t CONFIG_RETRY = 10 * MIN;     // a tracker that didn't confirm its settings: try again
@@ -347,6 +348,16 @@ void HomeBase::upload(Tracker& t) {
     t.sentFixAt = t.fixAt;
     t.sentAt = now;
     log = "sent " + t.name + "'s position";
+    Tracker::Heard h;
+    h.at = t.fixAt;
+    h.lat = t.fix.lat;
+    h.lng = t.fix.lng;
+    bool fresh = t.lastRx.at && now - t.lastRx.at < 2 * MIN;
+    h.hops = fresh ? t.lastRx.hops : radio_.hopsAway(t.node);
+    h.relay = fresh ? t.lastRx.relay : 0;
+    h.snr = fresh ? t.lastRx.snr : 0;
+    t.log.push_back(h);
+    if (t.log.size() > LOG_KEEP) t.log.erase(t.log.begin());
     if (asked && !t.locateFrom.empty()) {
       char where[160];
       snprintf(where, sizeof where, "https://www.openstreetmap.org/?mlat=%.6f&mlon=%.6f#map=17/%.6f/%.6f", t.fix.lat, t.fix.lng, t.fix.lat, t.fix.lng);
@@ -726,6 +737,15 @@ void HomeBase::onNoFix(uint32_t node) {
   log = t->name + " has no GPS fix";
 }
 
+void HomeBase::onHeard(uint32_t node, int hops, uint32_t relay, float snr) {
+  Tracker* t = byNode(node);
+  if (!t) return;
+  t->lastRx.at = now_();
+  t->lastRx.hops = hops;
+  t->lastRx.relay = hops > 0 ? relay : 0;
+  t->lastRx.snr = snr;
+}
+
 void HomeBase::onConfigured(uint32_t node, ConfigResult r) {
   Tracker* t = byNode(node);
   if (!t) return;
@@ -805,6 +825,29 @@ void HomeBase::publishStatus() {
         radioFacts(r, n);
       }
     if (!t->configState.empty()) o["settings"] = t->configState;
+    // What the home base heard on its way: where, how many hops, through which relay.
+    if (!t->log.empty()) {
+      JsonArray lg = o["log"].to<JsonArray>();
+      for (auto& h : t->log) {
+        JsonObject e = lg.add<JsonObject>();
+        e["at"] = h.at;
+        e["lat"] = std::round(h.lat * 10000) / 10000;
+        e["lng"] = std::round(h.lng * 10000) / 10000;
+        if (h.hops >= 0) e["hops"] = h.hops;
+        if (h.snr != 0) e["snr"] = tenth(h.snr);
+        if (h.relay) {
+          JsonObject r = e["relay"].to<JsonObject>();
+          r["id"] = nodeId(h.relay);
+          std::string rn = radio_.nodeName(h.relay);
+          if (!rn.empty()) r["name"] = rn;
+          double rlat, rlng;
+          if (radio_.nodePosition(h.relay, rlat, rlng)) {
+            r["lat"] = std::round(rlat * 1000) / 1000;
+            r["lng"] = std::round(rlng * 1000) / 1000;
+          }
+        }
+      }
+    }
   }
   std::string key = radio_.publicKey();
   if (!key.empty()) h["key"] = key;

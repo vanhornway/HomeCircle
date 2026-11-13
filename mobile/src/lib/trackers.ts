@@ -3,7 +3,7 @@
 // `tracker.node` set, signed by the home base. The home base is the member
 // whose record about itself carries `homeBase` (its status).
 import { useEffect, useState } from 'react';
-import type { CircleClient, HomeBaseStatus, MemberLocation, MeshNodeRadio, TrackerMode, TrackerSettings } from '@homecircle/core';
+import { distanceM, type CircleClient, type HomeBaseStatus, type MemberLocation, type MeshNodeRadio, type TrackerHeard, type TrackerMode, type TrackerSettings } from '@homecircle/core';
 
 /** The time now, updated every half minute: "heard 5 min ago" and the quiet-phone fallback stay current without reading the clock during render. */
 export function useNow(everyMs = 30_000): number {
@@ -17,6 +17,43 @@ export function useNow(everyMs = 30_000): number {
 
 /** A phone that hasn't reported for this long is quiet: its person shows at their tracker (unless the home base says otherwise). */
 export const QUIET_MS = 30 * 60_000;
+/**
+ * A tracker's position older than this isn't "where it is" any more: one on
+ * the move reports every few minutes, and one sitting still every 15. Its pin
+ * fades and its line says when it was last heard.
+ */
+export const TRACKER_STALE_MS = 20 * 60_000;
+
+/**
+ * A tracker's line: "At Home · 5 min ago · over radio" while current;
+ * "Last heard over radio 1 h ago, at Home" when not, and "probably with
+ * Umair" when the person who has it is somewhere else now (their phone says so).
+ */
+export function trackerStatusLine(client: CircleClient, memberId: string, now: number, where: (loc: MemberLocation) => string): string {
+  const loc = client.locations.get(memberId);
+  if (!loc) return 'Not heard over radio yet';
+  const at = where(loc); // "At Home", or "" when it isn't at a place
+  if (now - loc.ts <= TRACKER_STALE_MS) return [at, ago(now - loc.ts), 'over radio'].filter(Boolean).join(' · ');
+  const bits = [`Last heard over radio ${ago(now - loc.ts)}${at ? `, ${at.charAt(0).toLowerCase()}${at.slice(1)}` : ''}`];
+  const t = trackerOf(client, memberId);
+  const carrier = t?.mode === 'carried' && t.carriedBy ? client.members.get(t.carriedBy) : null;
+  const phone = carrier ? client.locations.get(carrier.id) : null;
+  if (carrier && phone && phone.ts > loc.ts && now - phone.ts <= TRACKER_STALE_MS && distanceM(phone, loc) > 300) bits.push(`probably with ${carrier.name}`);
+  return bits.join(' · ');
+}
+
+/** "heard 6 times in 3 h, last through 2 relays (meshunit1)": what the home base heard of a tracker lately. */
+export function tripLine(log: TrackerHeard[], now: number): string | null {
+  const heard = log.filter((e) => now - e.at < 3 * 3600_000);
+  if (!heard.length) return null;
+  const last = heard[heard.length - 1];
+  const how =
+    last.hops == null ? '' : last.hops === 0 ? ', last heard directly' : `, last through ${last.hops} relay${last.hops === 1 ? '' : 's'}${last.relay?.name ? ` (${last.relay.name})` : ''}`;
+  return `heard ${heard.length === 1 ? 'once' : `${heard.length} times`} in 3 h${how}`;
+}
+
+const ago = (ms: number) => (ms < 60_000 ? 'just now' : ms < 3600_000 ? `${Math.round(ms / 60_000)} min ago` : ms < 48 * 3600_000 ? `${Math.round(ms / 3600_000)} h ago` : `${Math.round(ms / 86400_000)} days ago`);
+
 /** A home base that hasn't checked in for this long is shown as offline (older home bases report every 5 minutes). */
 export const HOME_BASE_OFFLINE_MS = 15 * 60_000;
 
