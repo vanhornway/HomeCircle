@@ -2,6 +2,24 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.28.0
+
+- Trackers on a trip: each tracker's trail from the last 3 hours shows on
+  the map, with how each position got home through relays. Trackers allow 7
+  hops, so they're heard from farther away.
+- Away, honestly: a tracker the home base no longer hears comes off the map
+  and shows as away. When it's heard again from somewhere else, the home
+  base asks where it is and the pin moves there. A tracker heard directly,
+  without a new position (indoors, no GPS fix), shows as in range, not away.
+- Old pins fade: a tracker's position older than 20 minutes is drawn faded.
+- Meshtastic off means off: with the plugin off, its trackers and home base
+  leave the map, the chats and the circle count. Turn it on to bring them back.
+- One home base: the app follows the home base that reported last. Remove
+  old ones (left behind when it joined again) from the Trackers screen.
+- Home base: its account files are written safely, rejoining keeps your
+  trackers, and the setup page keeps the Wi-Fi it already has. Reflash it with
+  `devices/meshtastic` (`heltec-v4-homebase`) for these and the 7 hops.
+
 ## 0.27.0
 
 - Messages over the mesh: with no internet, a message goes through the
