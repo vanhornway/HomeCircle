@@ -572,6 +572,9 @@ void sendConfig(uint32_t node, ConfigJob &job)
 
     // More relays allowed on the way home: a tracker far from home still reaches it.
     job.lora.hop_limit = job.want.hopLimit;
+    // OK for gateways to pass its packets on over the internet bridge (MQTT):
+    // a gateway on a public broker skips other nodes' packets without it.
+    job.lora.config_ok_to_mqtt = job.want.okToMqtt;
     m = meshtastic_AdminMessage_init_zero;
     m.which_payload_variant = meshtastic_AdminMessage_set_config_tag;
     m.set_config.which_payload_variant = meshtastic_Config_lora_tag;

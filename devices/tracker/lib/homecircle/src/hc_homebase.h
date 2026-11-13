@@ -70,8 +70,9 @@ struct TrackerConfig {
   int stillS = 900;    // otherwise, every this many seconds
   int batteryS = 1800; // battery reports; 0: none
   int hopLimit = 7;    // how many relays its packets may take to reach home (Meshtastic's most)
+  bool okToMqtt = true;  // gateways may pass its packets on over the internet bridge
   std::string key() const {
-    return std::to_string(movingS) + "/" + std::to_string(stillS) + "/" + std::to_string(batteryS) + "/h" + std::to_string(hopLimit);
+    return std::to_string(movingS) + "/" + std::to_string(stillS) + "/" + std::to_string(batteryS) + "/h" + std::to_string(hopLimit) + (okToMqtt ? "/mq" : "");
   }
 };
 

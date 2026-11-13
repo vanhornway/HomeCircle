@@ -127,6 +127,9 @@ export default function Trackers() {
             href="/internet-bridge"
           />
         ) : null}
+        {home && admin && home.status.self?.mqtt != null ? (
+          <SettingsRow icon="pulse" title="Set up a gateway" detail="A spare Meshtastic node elsewhere passes your trackers on over the internet" href="/gateway-setup" />
+        ) : null}
         {home && health ? (
           <GroupBody>
             <P muted>{health}</P>
