@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, AppState, FlatList, Pressable, Text, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { needsAttention, setupChecklist } from '../../lib/health';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Place } from '@homecircle/core';
@@ -46,7 +46,24 @@ export default function MapTab() {
   const anySharing = !circles.length || circles.some((c) => c.feature('locationSharing'));
   const server = useServerState();
   const [tiles, setTiles] = useState(DEFAULT_SETTINGS);
-  const [focus, setFocus] = useState<{ lat: number; lng: number; key: number } | null>(null);
+  const [focus, setFocus] = useState<{ lat: number; lng: number; zoom?: number; key: number } | null>(null);
+  // Opened from a tracker's message in the chat: mark where it was and fly there.
+  const params = useLocalSearchParams<{ spotLat?: string; spotLng?: string; spotAt?: string; spotName?: string; spotFor?: string }>();
+  const [spot, setSpot] = useState<{ lat: number; lng: number; label: string } | null>(null);
+  const [spotFor, setSpotFor] = useState<string | undefined>(undefined);
+  if (params.spotFor !== spotFor) {
+    setSpotFor(params.spotFor);
+    const lat = Number(params.spotLat);
+    const lng = Number(params.spotLng);
+    if (params.spotFor && Number.isFinite(lat) && Number.isFinite(lng)) {
+      const at = Number(params.spotAt);
+      const when = Number.isFinite(at) ? new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+      setSpot({ lat, lng, label: [params.spotName, when].filter(Boolean).join(' · ') });
+      setFocus((f) => ({ lat, lng, zoom: 16, key: (f?.key ?? 0) + 1 }));
+    }
+  }
+  // Leaving the map clears it.
+  useFocusEffect(useCallback(() => () => setSpot(null), []));
   const [fitTo, setFitTo] = useState<{ points: { lat: number; lng: number }[]; key: number } | null>(null);
   const [sheet, setSheet] = useState<string | null>(null);
   // What covers the map: the bar on top, and the person sheet (0 when closed).
@@ -214,6 +231,7 @@ export default function MapTab() {
   // A person tapped: fly them to the middle of the map above the sheet.
   const lastFocus = useRef<{ id: string; at: number; bottom: number } | null>(null);
   const focusOn = (id: string) => {
+    setSpot(null);
     setSelected(id);
     const loc = pinAt(id);
     lastFocus.current = { id, at: Date.now(), bottom: Math.max(sheetH || sheetLast, drawerH) };
@@ -276,6 +294,7 @@ export default function MapTab() {
           frame={frame}
           inset={inset}
           focus={focus}
+          spot={spot}
           fitTo={fitTo}
           dark={t.dark}
           onMemberPress={(id) => {

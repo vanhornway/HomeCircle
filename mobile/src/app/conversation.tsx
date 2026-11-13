@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, AppState, FlatList, Keyboard, KeyboardAvoidingView, Modal, Pressable, Text, TextInput, View, type TextInputInstance } from 'react-native';
+import { ActivityIndicator, AppState, FlatList, Keyboard, KeyboardAvoidingView, Linking, Modal, Pressable, Text, TextInput, View, type TextInputInstance } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CALLBACK_REPLIES, QUICK_REACTIONS, isEmojiOnly, type CallbackReply, type CircleClient, type Message } from '@homecircle/core';
 import { Avatar, Button, Icon } from '../components/ui';
 import { HeaderBar } from '../components/Header';
 import { shareNow } from '../lib/location';
-import { circleCount } from '../lib/trackers';
+import { circleCount, googleMapsUrl, messageSpot, trackerOf } from '../lib/trackers';
 import { myTracker, sendOverMesh, unreachable, useMeshOutbox } from '../lib/meshOutbox';
 import { meshRadioText } from '../lib/meshRadio';
 import { ServerBanner } from '../components/ServerBanner';
@@ -27,7 +27,7 @@ import { CreatePoll } from '../components/CreatePoll';
 import { askedText, helperQuestion, isHelperStatusLine, parseHelperReply, type HelperReply } from '../lib/helperChat';
 import { LinkedText } from '../components/LinkedText';
 import { pickDocument, pickPhoto } from '../lib/upload';
-import { clientForCircle, errorText, useCircles } from '../lib/circle';
+import { clientForCircle, errorText, setActiveCircle, useCircles } from '../lib/circle';
 import { initials } from '../lib/useCircle';
 import { setVisibleConversation } from '../lib/notify';
 import { conversationKey, markRead } from '../lib/unread';
@@ -414,6 +414,14 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
       Keyboard.dismiss();
       setReactingTo(m);
     };
+    // A tracker's message (a button press, an SOS, a Locate answer): tap it to see where it was.
+    const spot = !mine && trackerOf(client, m.from) ? messageSpot(client, m.from, m.ts) : null;
+    const showSpot = spot
+      ? async () => {
+          if (client.accountKey) await setActiveCircle(client.accountKey).catch(() => {});
+          router.navigate({ pathname: '/', params: { spotLat: String(spot.lat), spotLng: String(spot.lng), spotAt: String(spot.at), spotName: name, spotFor: m.id } });
+        }
+      : undefined;
     // A reminder from the helper: the same highlighted card as a call-back request.
     const reminderId = who?.kind === 'agent' && typeof m.body?.reminder?.id === 'string' ? (m.body.reminder.id as string) : null;
     return (
@@ -435,9 +443,10 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
           />
         ) : bubbleText || !reply?.kept ? (
           <Pressable accessibilityRole="button"
+            onPress={showSpot}
             onLongPress={longPress}
             delayLongPress={300}
-            accessibilityHint="Long-press to react"
+            accessibilityHint={showSpot ? 'Opens the map where it was. Long-press to react' : 'Long-press to react'}
             style={({ pressed }) => ({
               backgroundColor: big ? 'transparent' : mine ? t.brand : t.surface,
               borderRadius: 18,
@@ -456,6 +465,16 @@ function Conversation({ client, peer }: { client: CircleClient; peer: string | n
             )}
             {undoable && !reply?.kept ? <UndoLink undone={undone} onPress={() => undo(m)} fs={fs} /> : null}
           </Pressable>
+        ) : null}
+        {spot ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 14, marginTop: 4, marginLeft: 6 }}>
+            <Pressable accessibilityRole="link" hitSlop={8} onPress={showSpot} style={{ minHeight: 32, justifyContent: 'center' }}>
+              <Text style={{ color: t.brand, fontSize: fs(14), fontWeight: '700' }}>📍 {spot.exact ? 'On the map' : 'Last known spot'}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="link" hitSlop={8} onPress={() => Linking.openURL(googleMapsUrl(spot.lat, spot.lng)).catch(() => {})} style={{ minHeight: 32, justifyContent: 'center' }}>
+              <Text style={{ color: t.brand, fontSize: fs(14), fontWeight: '700' }}>Google Maps</Text>
+            </Pressable>
+          </View>
         ) : null}
         {reply?.kept ? (
           <KeptChip kept={reply.kept} undoable={undoable} undone={undone} onUndo={() => undo(m)} onLongPress={longPress} fs={fs} style={bubbleText ? { marginTop: 6 } : null} />

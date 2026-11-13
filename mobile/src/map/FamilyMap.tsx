@@ -80,6 +80,8 @@ interface Props {
   frame?: { lat: number; lng: number }[];
   /** Fits and fly-tos keep what they show clear of these. */
   inset?: MapInset;
+  /** A spot to mark, with a label: where a tracker was when it sent a message. */
+  spot?: { lat: number; lng: number; label: string } | null;
   /** Change `key` to fly to the same spot again. */
   focus?: { lat: number; lng: number; zoom?: number; key: number } | null;
   /** Change `key` to fly to fit these points again. */
@@ -109,6 +111,10 @@ html,body,#map{height:100%;margin:0;background:${dark ? '#1a201e' : '#ece7df'}}
 .m .b{position:absolute;right:-7px;top:-7px;width:20px;height:20px;border-radius:50%;background:#fff;font-size:12px;line-height:20px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.3)}
 .pl{position:absolute;left:0;top:0;transform:translate(-50%,24px);background:#fff;color:#1d2422;border-radius:8px;padding:3px 9px;font:600 12px -apple-system,Roboto,sans-serif;border:1px solid #e2ddd4;white-space:nowrap}
 .pl.hide{visibility:hidden;pointer-events:none}
+.sp{position:absolute;left:0;top:0;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center;pointer-events:none}
+.sp b{background:#c2410c;color:#fff;border-radius:10px;padding:4px 10px;font:700 12px -apple-system,Roboto,sans-serif;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.sp i{width:2px;height:12px;background:#c2410c}
+.sp u{width:12px;height:12px;border-radius:6px;background:#c2410c;border:2px solid #fff;margin-top:-1px;box-shadow:0 0 0 6px rgba(194,65,12,.18)}
 ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}' : ''}
 </style></head><body><div id="map"></div>
 <script>${safeScript(LEAFLET_JS)}</script>
@@ -138,7 +144,7 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
   window.addEventListener('online', retryMissing);
   // Place names sit under people's pins, so a tap on someone at Home is theirs.
   map.createPane('placeNames').style.zIndex = 550;
-  var people = {}, placeLayer = L.layerGroup().addTo(map), pickLayer = L.layerGroup().addTo(map), pathLayer = L.layerGroup().addTo(map);
+  var people = {}, placeLayer = L.layerGroup().addTo(map), pickLayer = L.layerGroup().addTo(map), pathLayer = L.layerGroup().addTo(map), spotLayer = L.layerGroup().addTo(map);
   var pick = false, pad = {t:0, r:0, b:0, l:0};
   function post(m){ window.ReactNativeWebView.postMessage(JSON.stringify(m)); }
   // Where the map is, and everyone on it in pixels (for chips at the edge).
@@ -227,6 +233,12 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
         });
       });
     },
+    // Where a tracker was when it sent a message: a pin with a label, above everything else.
+    spot: function(s){
+      spotLayer.clearLayers();
+      if (!s) return;
+      L.marker([s.lat,s.lng], {interactive:false, keyboard:false, zIndexOffset:2000, icon:L.divIcon({className:'', iconSize:[0,0], html:'<div class="sp"><b>'+esc(s.label)+'</b><i></i><u></u></div>'})}).addTo(spotLayer);
+    },
     places: function(list, tap){
       placeLayer.clearLayers();
       list.forEach(function(p){
@@ -267,6 +279,7 @@ export function FamilyMap({
   members = [],
   places = [],
   paths = [],
+  spot = null,
   frame,
   inset,
   focus,
@@ -293,6 +306,8 @@ export function FamilyMap({
   useEffect(() => void run(`hc.members(${JSON.stringify(members)})`), [run, members]);
   const pathsJs = JSON.stringify(paths);
   useEffect(() => void run(`hc.paths(${pathsJs})`), [run, pathsJs]);
+  const spotJs = JSON.stringify(spot);
+  useEffect(() => void run(`hc.spot(${spotJs})`), [run, spotJs]);
   const tappable = !!onPlacePress;
   useEffect(() => void run(`hc.places(${JSON.stringify(places)},${tappable})`), [run, places, tappable]);
   useEffect(() => void run(`hc.pickMode(${pickMode})`), [run, pickMode]);

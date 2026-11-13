@@ -255,3 +255,34 @@ export function carriedFallback(
 export function tellHomeBase(client: CircleClient, homeBaseId: string, command: string): Promise<void> {
   return client.sendChat(command, { to: homeBaseId });
 }
+
+/**
+ * Where a tracker was when it sent a message (a button press, an SOS, a Locate answer):
+ * the position heard closest after it (the firmware sends one with the press), from its
+ * current location or what the home base heard lately. `exact` is false when the best we
+ * have is from before the message.
+ */
+export function messageSpot(
+  client: CircleClient,
+  trackerId: string,
+  ts: number,
+): { lat: number; lng: number; at: number; exact: boolean } | null {
+  const t = trackerOf(client, trackerId);
+  if (!t) return null;
+  const seen: { lat: number; lng: number; at: number }[] = [];
+  const loc = client.locations.get(trackerId);
+  if (loc) seen.push({ lat: loc.lat, lng: loc.lng, at: loc.ts });
+  const st = homeBaseOf(client)?.status.trackers.find((x) => x.node === t.node);
+  for (const e of st?.log ?? []) seen.push({ lat: e.lat, lng: e.lng, at: e.at });
+  // Heard with the message, or in the 15 minutes after: where it was.
+  const after = seen.filter((s) => s.at >= ts - 2 * 60_000 && s.at <= ts + 15 * 60_000).sort((a, b) => Math.abs(a.at - ts) - Math.abs(b.at - ts))[0];
+  if (after) return { ...after, exact: true };
+  // Otherwise its last position before the message, if it's from the same day.
+  const before = seen.filter((s) => s.at < ts && ts - s.at < 12 * 3600_000).sort((a, b) => b.at - a.at)[0];
+  return before ? { ...before, exact: false } : null;
+}
+
+/** A Google Maps link for a spot. */
+export function googleMapsUrl(lat: number, lng: number): string {
+  return `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
+}
