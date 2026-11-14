@@ -28,11 +28,14 @@ export const F = {
   position: { broadcastSecs: 1, smart: 2, smartMinInterval: 11, gpsMode: 13 },
   lora: { region: 7, hopLimit: 8, channelNum: 11, okToMqtt: 105 },
   network: { wifiEnabled: 1, ssid: 3, psk: 4 },
-  security: { adminKey: 3 },
+  security: { adminKey: 3, isManaged: 4 },
   mqtt: { enabled: 1, address: 2, username: 3, password: 4, encryption: 5, tls: 7, root: 8, proxy: 9, mapReport: 10 },
 } as const;
 
 export const ROLE = { disabled: 0, primary: 1, secondary: 2 } as const;
+
+const MANAGED =
+  'This node is in Meshtastic’s managed mode, so it ignores settings from a phone (and from the Meshtastic app). Only its admin, over the radio, can turn managed mode off.';
 
 let manager: BleManager | null = null;
 const ble = () => (manager ??= new BleManager());
@@ -216,10 +219,13 @@ export class MeshNode {
     }
     if (!snap.myNode) throw new Error('The node didn’t send its settings. Try again, close to it.');
     this.myNode = snap.myNode;
+    this.managed = num(snap.config.get(F.config.security) ?? [], F.security.isManaged) === 1;
     return snap;
   }
 
   myNode = 0;
+  /** Meshtastic's managed mode: it takes settings only from its admin key (your home base), not from a phone. */
+  managed = false;
 
   /** An admin message to the node itself (trusted: it comes from its own phone connection). */
   async admin(fields: PbField[]) {
@@ -232,7 +238,8 @@ export class MeshNode {
 
   /**
    * Change settings in one go (the node saves once, and restarts if a change
-   * needs it): its name, channels, settings sections and modules.
+   * needs it): its name, channels, settings sections and modules. A node in
+   * Meshtastic's managed mode ignores its phone, so that's said up front.
    */
   async configure(c: {
     owner?: { longName: string; shortName: string };
@@ -240,6 +247,7 @@ export class MeshNode {
     config?: [number, PbField[]][];
     module?: [number, PbField[]][];
   }) {
+    if (this.managed) throw new Error(MANAGED);
     await this.admin([u(F.admin.beginEdit, true)]);
     if (c.owner) await this.admin([msg(F.admin.setOwner, [{ n: F.user.longName, wire: 2, b: new TextEncoder().encode(c.owner.longName) }, { n: F.user.shortName, wire: 2, b: new TextEncoder().encode(c.owner.shortName) }])]);
     for (const ch of c.channels ?? []) await this.admin([msg(F.admin.setChannel, [u(F.channel.index, ch.index), msg(F.channel.settings, ch.settings), u(F.channel.role, ch.role)])]);
