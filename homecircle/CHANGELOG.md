@@ -2,6 +2,39 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.29.0
+
+- Trackers wherever they are: a tracker stays on the map at its last
+  position, faded when it's old, and is Away by where it is (outside Home),
+  like a person. Its line says how its position got here: in range of home,
+  through relays, through your phone, over the internet, or the public mesh.
+- Your phone passes your tracker's position on: pair it (Trackers → This
+  phone → Pair your tracker) and turn on "Pass on its position". It shows on
+  the map wherever your phone has internet.
+- Left it behind: when you and your tracker are apart, both lines say so,
+  and your phone tells you once.
+- From a tracker's sheet: Find it (an arrow and the distance), Details
+  (signal, battery, last positions), mute its messages for a while, and
+  trace its path now.
+- Tap a tracker's message in the chat to see where it was, on the map or in
+  Google Maps.
+- SOS from a tracker: it repeats until the home base confirms, then plays a
+  "delivered" tune; "I'm safe" repeats until confirmed too; an admin (or whoever
+  carries it) can end it from the app. An SOS can also go out as plain text on
+  the public Meshtastic channel (off unless turned on).
+- Public beacon (per tracker, off by default): a rounded position on the
+  public Meshtastic channel, picked up through the public Meshtastic server.
+- Messages between the mesh and the chat: what a tracker's paired Meshtastic
+  app sends reaches the circle's chat, and direct messages reach the tracker.
+- Set up a tracker over Bluetooth from HomeCircle, no Meshtastic app needed.
+- Internet bridge and gateways (optional): spare Meshtastic nodes elsewhere
+  pass your trackers on through an MQTT broker.
+- The home base updates itself over Wi-Fi (Settings → Home base), is pinned to
+  your home address, and says in the chat if a tracker can't post.
+- Sign in to the web app by scanning a QR code with your phone (Settings →
+  Sign in on a computer).
+- Messages sent over the mesh and the internet are never stored twice.
+
 ## 0.28.0
 
 - Trackers on a trip: each tracker's trail from the last 3 hours shows on
