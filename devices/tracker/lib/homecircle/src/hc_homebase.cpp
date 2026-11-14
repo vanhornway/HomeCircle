@@ -353,6 +353,22 @@ void HomeBase::forwardMesh() {
   if (r.status > 0 && r.status != 429 && r.status < 500) meshQueue_.erase(meshQueue_.begin(), meshQueue_.begin() + n);
 }
 
+// A tracker whose posts keep failing for a reason that won't fix itself (its
+// account never got the circle's new key, or was removed): after 10 minutes,
+// tell the circle how to fix it, at most every 6 hours. Network trouble
+// (no answer) doesn't count: that passes.
+void HomeBase::postFailed(Tracker& t, Status s) {
+  bool stuck = s == Status::Removed || t.dev->error().find("new key") != std::string::npos;
+  if (!stuck) return;
+  int64_t now = now_();
+  if (!t.stuckSince) t.stuckSince = now;
+  if (now - t.stuckSince < 10 * MIN || (t.stuckToldAt && now - t.stuckToldAt < 6 * 60 * MIN)) return;
+  t.stuckToldAt = now;
+  std::string why = s == Status::Removed ? "it was removed from the circle" : "its account here never got the circle's new key";
+  base_.sendGroup("\xE2\x9A\xA0\xEF\xB8\x8F " + t.name + " can't post its position or button presses: " + why +
+                  ". An admin can fix it: remove " + t.name + " (Trackers), then send me \"add " + nodeId(t.node) + " " + t.name + "\".");
+}
+
 void HomeBase::upload(Tracker& t) {
   if (t.sosChanged) {
     if (t.dev->flushSos() == Status::Ok) t.sosChanged = false;
@@ -360,9 +376,17 @@ void HomeBase::upload(Tracker& t) {
   if (!t.presses.empty()) {
     int n = t.presses.front();
     // 3 presses (come pick me up) and SOS alert even when the chat is muted.
-    if (t.dev->sendGroup(pressText(t, n), n == 3 || n == 5) == Status::Ok) {
+    Status ps = t.dev->sendGroup(pressText(t, n), n == 3 || n == 5);
+    if (ps == Status::Ok) {
       t.presses.erase(t.presses.begin());
       log = t.name + ": " + std::to_string(n) + " presses";
+    } else {
+      if (now_() - t.failLoggedAt > MIN) {
+        // Kept to try again; say why, so a tracker whose account has a problem shows in the log.
+        t.failLoggedAt = now_();
+        log = t.name + ": couldn't post its " + std::to_string(n) + " presses (" + statusName(ps) + ": " + t.dev->error() + ")";
+      }
+      postFailed(t, ps);
     }
   }
   if (t.okPressed) {
@@ -396,7 +420,13 @@ void HomeBase::upload(Tracker& t) {
   JsonDocument extra;
   meshInfo(t, extra);
   Status s = t.dev->shareLocation(t.fix, trigger, 15, 15, "meshtastic", true, t.fixAt, extra.as<JsonVariantConst>());
+  if (s != Status::Ok && now - t.failLoggedAt > MIN) {
+    t.failLoggedAt = now;
+    log = t.name + ": couldn't post its position (" + std::string(statusName(s)) + ": " + t.dev->error() + ")";
+  }
+  if (s != Status::Ok) postFailed(t, s);
   if (s == Status::Ok) {
+    t.stuckSince = 0;
     t.pending = false;
     t.pathDirty = false;
     t.sentFix = t.fix;
@@ -666,6 +696,12 @@ void HomeBase::tick() {
       for (auto& p : items) handle(p);
     } else {
       nextPending_ = now + PLACES_EVERY;  // a server without keepers yet: ask again later
+    }
+  }
+  for (auto& t : trackers_) {
+    if (!t->dev->joined() && now - t->failLoggedAt > 10 * MIN) {
+      t->failLoggedAt = now;
+      log = t->name + " has no account in the circle here: it can't post (add it again)";
     }
   }
   for (auto& t : trackers_)

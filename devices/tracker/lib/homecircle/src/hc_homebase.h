@@ -277,7 +277,10 @@ class HomeBase {
     std::string cfgSet, cfgSending;  // the extra settings it confirmed, and the ones on their way
     int64_t cfgSentAt = 0;
     int64_t sosAckAt = 0;           // when its SOS was last acknowledged
-    int64_t sosEndedAt = 0;         // when its SOS was ended from the app (its repeats after that don't start it again)
+    int64_t sosEndedAt = 0;
+    int64_t failLoggedAt = 0;       // when a failed post for it was last logged (once a minute)
+    int64_t stuckSince = 0;         // its posts have failed since (0: they go through)
+    int64_t stuckToldAt = 0;        // when the circle was last told it can't post         // when its SOS was ended from the app (its repeats after that don't start it again)
     int64_t pingedAt = 0;           // when it was last asked where it is because its position was old
     std::vector<std::string> said;  // texts it sent (from its Meshtastic app), for the circle's chat
     std::string fixGateway;
@@ -313,6 +316,7 @@ class HomeBase {
   // Every tracker's settings (the plugin's), unless one has its own.
   int movingMin_ = 2, stillMin_ = 15, batteryMin_ = 30;
   std::string press_[6];  // the message for 1 to 5 presses; "" for the default
+  void postFailed(Tracker& t, Status s);
   bool publicSos_ = false;  // the circle's: SOS also as plain text on the public channel
   std::string beaconsSent_;  // the beacon watch list the server has ("" none yet)
   std::string cfgFor(const Tracker& t) const;  // "psos=0 beacon=0 prec=13"
