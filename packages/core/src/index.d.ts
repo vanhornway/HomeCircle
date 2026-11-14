@@ -100,6 +100,8 @@ export interface TrackerHeard {
   relay: { id: string; name: string | null; lat: number | null; lng: number | null } | null;
   /** How it reached the home base: its radio, a gateway over the internet, a phone, or a public beacon. */
   src: 'radio' | 'internet' | 'phone' | 'beacon';
+  /** Its battery then, percent, if its telemetry said. */
+  battery: number | null;
 }
 
 /** What a home base's radio knows about a node it hears. */

@@ -3366,6 +3366,7 @@ function cleanHomeBase(h) {
                 relay: r ? { id: r.id, name: text(r.name) || null, ...(ll(r) ?? { lat: null, lng: null }) } : null,
                 // How it reached the home base: its radio, a gateway over the internet, a phone, a public beacon.
                 src: ['radio', 'internet', 'phone', 'beacon'].includes(e.src) ? e.src : 'radio',
+                battery: Number.isInteger(e.bat) && e.bat >= 0 && e.bat <= 100 ? e.bat : null,
               };
             }).slice(-30),
           }

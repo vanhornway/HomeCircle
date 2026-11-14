@@ -285,6 +285,7 @@ class HomeBase {
       uint32_t relay = 0;
       float snr = 0;
       Source src = Source::Radio;
+      int battery = -1;  // percent, if its telemetry said
     };
     std::vector<Heard> log;  // each position heard lately, with how it got here (for the trip on the map)
   };

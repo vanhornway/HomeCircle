@@ -13,7 +13,8 @@ import { spotName, type Anchor } from '../lib/visitsCore';
 import { MemberAvatar } from './MemberAvatar';
 import { cadenceLine, canLocate, locatePerson, locateState, openDirections, radioLine, statusLine, useLocateVersion } from '../lib/people';
 import { useTheme } from '../theme';
-import { carriedFallback, homeBaseOf, radioFacts, TRACKER_KINDS, trackerEmoji, trackerOf, useNow } from '../lib/trackers';
+import { carriedFallback, homeBaseOf, radioFacts, tellHomeBase, TRACKER_KINDS, trackerEmoji, trackerOf, useNow } from '../lib/trackers';
+import { mutedUntil, setMute, tomorrowMorning, useMutesVersion } from '../lib/mutes';
 import { timeAgo } from '../lib/useCircle';
 import { showSheet } from '../lib/sheet';
 
@@ -50,6 +51,7 @@ export function PersonSheet({
   const t = useTheme();
   useLocateVersion();
   const now = useNow();
+  useMutesVersion(); // re-render when a tracker is muted or unmuted
   const [alerting, setAlerting] = useState(false);
   const [choosingCall, setChoosingCall] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -217,6 +219,35 @@ export function PersonSheet({
                         row('checkin', checking ? 'Sending…' : 'Ask to check in', tracker ? 'It beeps; 1 press or an “OK” from it answers' : 'Ask “where are you?”', askCheckIn, checking)}
                       {client.feature('placeAlerts') && row('bell', 'Alert me when they arrive or leave', 'At a place you pick', () => setAlerting(true))}
                       {client.feature('chirps') && row('bird', 'Chirp', tracker ? 'Makes the tracker beep, to find it' : 'A sound they’ll know is you', go(() => chirpWithChoice(client, m.id)))}
+                      {tracker && loc ? row('navigate', 'Find it', 'An arrow and the distance from you, to walk to it', go(() => router.push({ pathname: '/find-tracker', params: { member: m.id } }))) : null}
+                      {tracker ? row('pulse', 'Details', 'Signal, battery and its last positions', go(() => router.push({ pathname: '/tracker-details', params: { member: m.id } }))) : null}
+                      {tracker
+                        ? (() => {
+                            const until = mutedUntil(m.id, now);
+                            return row(
+                              'bell',
+                              until ? 'Unmute its messages' : 'Mute its messages',
+                              until ? `Muted until ${new Date(until).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })} · an SOS still alerts` : 'Its presses and messages, on this phone · an SOS still alerts',
+                              () =>
+                                until
+                                  ? void setMute(m.id, null)
+                                  : showSheet(`Mute ${m.name}?`, 'Its messages still show in the chat, without a notification. An SOS always alerts.', [
+                                      { text: 'For 1 hour', onPress: () => void setMute(m.id, now + 3600_000) },
+                                      { text: 'For 8 hours', onPress: () => void setMute(m.id, now + 8 * 3600_000) },
+                                      { text: 'Until tomorrow morning', onPress: () => void setMute(m.id, tomorrowMorning(now)) },
+                                      { text: 'Cancel', style: 'cancel' },
+                                    ]),
+                            );
+                          })()
+                        : null}
+                      {tracker && client.isAdmin && homeBaseOf(client)
+                        ? row('refresh', 'Trace its path now', 'The relays between it and home, on the map in a minute or two', () =>
+                            void tellHomeBase(client, homeBaseOf(client)!.id, `trace ${tracker.node}`).then(
+                              () => showSheet('Asked the home base', 'It traces the path now; the map shows it when the tracker answers.'),
+                              (e) => showSheet('Couldn’t send it', errorText(e)),
+                            ),
+                          )
+                        : null}
                       {tracker && client.isAdmin
                         ? row('settings', 'Tracker settings', 'What it is, who has it, how often it reports', go(() => router.push({ pathname: '/tracker-settings', params: { member: m.id } })))
                         : null}

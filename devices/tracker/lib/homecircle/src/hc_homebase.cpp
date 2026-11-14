@@ -406,6 +406,7 @@ void HomeBase::upload(Tracker& t) {
     h.snr = fresh ? t.lastRx.snr : 0;
     h.src = t.fixSrc;
     if (h.src != Source::Radio) h.hops = -1;
+    h.battery = t.fix.battery;
     t.log.push_back(h);
     if (t.log.size() > LOG_KEEP) t.log.erase(t.log.begin());
     if (asked && !t.locateFrom.empty()) {
@@ -1004,6 +1005,7 @@ void HomeBase::publishStatus() {
         if (h.hops >= 0) e["hops"] = h.hops;
         if (h.snr != 0) e["snr"] = tenth(h.snr);
         if (h.src != Source::Radio) e["src"] = sourceName(h.src);
+        if (h.battery >= 0 && h.battery <= 100) e["bat"] = h.battery;
         if (h.relay) {
           JsonObject r = e["relay"].to<JsonObject>();
           r["id"] = nodeId(h.relay);
@@ -1186,6 +1188,15 @@ void HomeBase::command(const Device::Direct& d) {
         reply = radio_.setMqtt(m) ? "Internet bridge set to " + m.host + ". I'll restart to connect (about 30 s); then trackers heard by any of your gateways show up here."
                                   : "I couldn't change the internet bridge.";
       }
+    }
+  } else if (verb == "trace" && !rest.empty()) {
+    // trace <name or !id>: the relays between it and here now (the path on the map updates).
+    Tracker* t = find(rest);
+    if (!t) {
+      reply = "I don't have a tracker called " + rest + ".";
+    } else {
+      radio_.traceroute(t->node);
+      reply = "Tracing " + t->name + "'s path now. The map shows it in a minute or two, if it answers.";
     }
   } else if (verb == "version" || verb == "firmware") {
     reply = std::string("Home base firmware ") + HC_FW_VERSION + ".";

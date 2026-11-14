@@ -19,6 +19,7 @@ import { isDoNotDisturbOn } from '../../modules/hc-attention/src/HcAttentionModu
 import { companionAlerts } from '../companion/alerts';
 import { countText, planNotifications } from './notifyPlan';
 import { diag } from './diagnostics';
+import { loadMutes, mutedUntil } from './mutes';
 
 const LAST_NOTIFIED_KEY = 'homecircle.lastNotifiedSeq';
 export const MESSAGES_CHANNEL = 'messages';
@@ -197,10 +198,13 @@ export async function notifyNewMessages(client: CircleClient, messages: Message[
   // Left and came straight back: no alert for the return, and the "left" one comes down.
   const returned = quickReturns(client.messages);
   if (showPreviews) await dismissQuickReturns(client, messages.filter((m) => m.seq > last && m.from !== me && returned.has(m.id))).catch(() => {});
+  // A tracker muted on this phone (an SOS still alerts, above).
+  await loadMutes();
   const fresh = messages.filter(
     (m) =>
       m.seq > last &&
       m.from !== me &&
+      !mutedUntil(m.from) &&
       !returned.has(m.id) &&
       sosOf(m) !== 'start' &&
       !callbackAsk(m) &&

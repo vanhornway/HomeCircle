@@ -657,6 +657,13 @@ try {
   assert.ok(!(await radio('tick')).includes(`request ${TRACKER}`), 'not again for 15 minutes');
   pass('messages both ways between the mesh and the chat; a tracker whose position is old gets asked where it is');
 
+  // "trace": the path now, on request (the app's "Trace its path now").
+  answer = await ask(`trace ${TRACKER}`);
+  assert.match(answer, /Tracing .+'s path now/, answer);
+  assert.ok(askTick.includes(`trace ${TRACKER}`), `it starts a traceroute: ${askTick.join(' | ')}`);
+  assert.match(await ask('trace nobody'), /I don't have a tracker called nobody/);
+  pass('“trace” traces a tracker’s path on request');
+
   answer = await ask('remove Honda CR-V');
   assert.match(answer, /Removed Honda CR-V/);
   await maya.refresh();
