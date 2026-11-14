@@ -200,6 +200,8 @@ class HomeBase {
   // From the radio.
   void onPosition(uint32_t node, const Fix& fix, int64_t fixTimeMs);
   void onText(uint32_t node, const std::string& text);
+  /** A text on the private channel from a node that isn't one of the trackers (someone's Meshtastic app): into the circle's chat. */
+  void onChannelText(uint32_t node, const std::string& name, const std::string& text);
   void onMeshPacket(const Bytes& packet);
   /**
    * A traceroute's answer: the relays the reply passed through on its way
@@ -273,6 +275,8 @@ class HomeBase {
     std::string cfgSet, cfgSending;  // the extra settings it confirmed, and the ones on their way
     int64_t cfgSentAt = 0;
     int64_t sosAckAt = 0;           // when its SOS was last acknowledged
+    int64_t pingedAt = 0;           // when it was last asked where it is because its position was old
+    std::vector<std::string> said;  // texts it sent (from its Meshtastic app), for the circle's chat
     std::string fixGateway;
     struct Heard {
       int64_t at = 0;
@@ -292,6 +296,8 @@ class HomeBase {
   Device base_;
   std::vector<std::unique_ptr<Tracker>> trackers_;
   std::vector<std::string> meshQueue_;
+  std::vector<std::string> chatOut_;  // texts from the mesh, for the circle's chat
+  int64_t nextPing_ = 0;              // asking away trackers where they are
   int64_t nextDirect_ = 0, nextWatch_ = 0;
   int64_t selfSharedAt_ = 0, selfFixSent_ = 0;
   int64_t nextPending_ = 0, nextPlaces_ = 0, nextKeeper_ = 0, nextStatus_ = 0;

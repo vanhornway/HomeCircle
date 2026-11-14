@@ -201,6 +201,14 @@ int main(int argc, char** argv) {
       uint32_t node;
       std::string args = rest(line, 1);
       if (hc::parseNodeId(args.substr(0, args.find(' ')), node)) hb.onHeard(node, atoi(rest(line, 2).c_str()), 0, 0, false);
+    } else if (cmd == "chantext") {
+      // chantext !id Name|text: a text on the private channel from a node that isn't a tracker
+      uint32_t node;
+      std::string args = rest(line, 1);
+      std::string after = rest(line, 2);
+      size_t bar = after.find('|');
+      if (hc::parseNodeId(args.substr(0, args.find(' ')), node) && bar != std::string::npos)
+        hb.onChannelText(node, after.substr(0, bar), after.substr(bar + 1));
     } else if (cmd == "net") {
       // net !id: a tracker's position packet that came over the internet bridge (a gateway heard it)
       uint32_t node;

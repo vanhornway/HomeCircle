@@ -35,6 +35,7 @@ const int64_t PATH_FOR = 6 * 60 * MIN;     // a path older than this isn't shown
 const int64_t STATUS_EVERY = 1 * MIN;      // its own status for the app's Trackers screen (it has mains or solar power)
 const int64_t RECORD_REREAD = 10 * MIN;    // between full reads of its member record when writing the status
 const int64_t OFF_RECHECK = 1 * MIN;       // while the plugin is off: how often to look whether it's back on
+const int64_t PING_EVERY = 15 * MIN;       // a tracker whose position is old: ask it where it is this often
 const int64_t STALE_FIX = 20 * MIN;        // a tracker's position older than this isn't where it is (the app's "Away")
 const size_t LOG_KEEP = 30;               // positions heard per tracker, kept for the trip on the map
 const int64_t LOCATE_WAIT = 3 * MIN;        // a Locate the tracker hasn't answered: say so in the chat
@@ -308,7 +309,18 @@ void HomeBase::onText(uint32_t node, const std::string& text) {
     t->sosChanged = true;
   } else if (safe && !t->checkins.empty()) {
     t->okPressed = true;  // answered in tick(): "I'm OK" to whoever asked
+  } else if (!alert && !safe && !trim(text).empty() && text[0] != '#') {
+    // Anything else it says (typed in the Meshtastic app on the phone it's paired with): the circle's chat.
+    t->said.push_back(trim(text).substr(0, 500));
+    if (t->said.size() > 10) t->said.erase(t->said.begin());
   }
+}
+
+void HomeBase::onChannelText(uint32_t node, const std::string& name, const std::string& text) {
+  if (byNode(node) || trim(text).empty() || text[0] == '#') return;
+  std::string who = name.empty() ? nodeId(node) : name;
+  chatOut_.push_back("\xF0\x9F\x93\xA1 " + who + " (Meshtastic): " + trim(text).substr(0, 500));
+  if (chatOut_.size() > 20) chatOut_.erase(chatOut_.begin());
 }
 
 void HomeBase::onMeshPacket(const Bytes& packet) {
@@ -540,7 +552,15 @@ void HomeBase::handle(const Pending& p) {
     std::vector<Device::Direct> in;
     if (t->dev->fetchDirect(in) != Status::Ok) return;
     for (auto& d : in) {
-      if (d.checkin != "request") continue;
+      if (d.checkin != "request") {
+        // Any other direct message to the tracker: over the radio to it (the Meshtastic app
+        // paired with it shows it; a tracker with a screen too).
+        if (d.text.empty()) continue;
+        std::string first = d.fromName.substr(0, d.fromName.find(' '));
+        radio_.alert(t->node, (first.empty() ? std::string("") : first + ": ") + d.text.substr(0, 180));
+        log = d.fromName + "'s message passed to " + t->name;
+        continue;
+      }
       introduce(*t, now);
       radio_.alert(t->node, "\aCheck in, please: " + d.fromName + " asked. Reply OK.");
       radio_.requestPosition(t->node);
@@ -671,6 +691,23 @@ void HomeBase::tick() {
   if (now >= nextWatch_) {
     nextWatch_ = now + WATCH_EVERY;
     watch();
+  }
+  // Texts from the mesh: a tracker's as itself, anyone else's on the private channel from the home base.
+  for (auto& t : trackers_) {
+    while (!t->said.empty() && t->dev->sendGroup(t->said.front()) == Status::Ok) t->said.erase(t->said.begin());
+  }
+  while (!chatOut_.empty() && base_.sendGroup(chatOut_.front()) == Status::Ok) chatOut_.erase(chatOut_.begin());
+  // Away (its position is old): ask it where it is every 15 minutes. By radio, and through
+  // the internet bridge to a gateway that can reach it.
+  if (now >= nextPing_) {
+    nextPing_ = now + MIN;
+    for (auto& t : trackers_) {
+      bool stale = !t->sentFixAt || now - t->sentFixAt > STALE_FIX;
+      if (!stale || now - t->pingedAt < PING_EVERY || now - t->askedAt < PING_EVERY) continue;
+      radio_.requestPosition(t->node);
+      t->pingedAt = now;
+      log = t->name + "'s position is old: asked where it is";
+    }
   }
   if (now - selfSharedAt_ >= SELF_EVERY) shareSelf(false);
   if (now >= nextStatus_) {

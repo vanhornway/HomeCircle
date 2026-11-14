@@ -1021,9 +1021,19 @@ ProcessMessage HomeBaseModule::handleReceived(const meshtastic_MeshPacket &mp)
     if (mp.decoded.portnum != meshtastic_PortNum_POSITION_APP && hb.isTracker(mp.from))
         hb.onHeard(mp.from, hops, relayNode(mp.relay_node, mp.from), mp.rx_snr, false, src);
     switch (mp.decoded.portnum) {
-    case meshtastic_PortNum_TEXT_MESSAGE_APP:
-        hb.onText(mp.from, std::string((const char *)pl.bytes, pl.size));
+    case meshtastic_PortNum_TEXT_MESSAGE_APP: {
+        // Only the private channel reaches the circle's chat (an SOS counts from any channel).
+        std::string text((const char *)pl.bytes, pl.size);
+        bool priv = (int)mp.channel == channelIndex();
+        if (hb.isTracker(mp.from)) {
+            if (priv || text.find('\a') != std::string::npos)
+                hb.onText(mp.from, text);
+        } else if (priv) {
+            meshtastic_NodeInfoLite *n = nodeDB->getMeshNode(mp.from);
+            hb.onChannelText(mp.from, n && n->has_user ? n->user.long_name : "", text);
+        }
         break;
+    }
     case meshtastic_PortNum_PRIVATE_APP:
         // A HomeCircle tracker's button ("#press N", sent as data so other trackers don't beep),
         // or a HomeCircle-firmware tracker's sealed packet.

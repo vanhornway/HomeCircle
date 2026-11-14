@@ -634,6 +634,29 @@ try {
   assert.equal(again ?? null, null, 'confirmed: not sent again');
   pass('SOS delivery: “#sos-ack” back to the tracker; public SOS and beacon go to it as “#cfg” until it confirms');
 
+  // Messages both ways: text from the mesh reaches the chat; a direct message reaches the tracker.
+  const beforeChat = maya.messages.length;
+  await radio(`text ${TRACKER} Running late, at the gas station`);
+  await radio(`chantext !0c0ffee9 Cousin Ali|Hello from the trail`);
+  await radio('advance 21');
+  await radio('tick');
+  await maya._fetchMessages();
+  const fresh = maya.messages.slice(beforeChat).map((m) => [m.from, m.body?.text]);
+  assert.ok(fresh.some(([who, text]) => who === tracker.id && text === 'Running late, at the gas station'), `a tracker's text, as the tracker: ${JSON.stringify(fresh)}`);
+  assert.ok(fresh.some(([who, text]) => who === hbId && /Cousin Ali \(Meshtastic\): Hello from the trail/.test(text)), `anyone else's on the private channel, from the home base: ${JSON.stringify(fresh)}`);
+  await maya.sendChat('Dinner at 7', { to: tracker.id });
+  await radio('advance 21');
+  const relayed = await radio('tick');
+  assert.ok(relayed.some((l) => l === `alert ${TRACKER} Maya: Dinner at 7`), `a direct message goes to the tracker over the radio: ${relayed.join(' | ')}`);
+
+  // Away: its position is old, so the home base asks it where it is (every 15 minutes).
+  await radio('advance 1300');
+  const pinged = await radio('tick');
+  assert.ok(pinged.includes(`request ${TRACKER}`), `asked where it is: ${pinged.join(' | ')}`);
+  await radio('advance 120');
+  assert.ok(!(await radio('tick')).includes(`request ${TRACKER}`), 'not again for 15 minutes');
+  pass('messages both ways between the mesh and the chat; a tracker whose position is old gets asked where it is');
+
   answer = await ask('remove Honda CR-V');
   assert.match(answer, /Removed Honda CR-V/);
   await maya.refresh();
