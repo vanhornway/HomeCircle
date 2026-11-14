@@ -130,6 +130,8 @@ class Radio {
    * so it also goes out through the internet bridge): it beeps "delivered".
    */
   virtual void sosAck(uint32_t node) {}
+  /** Other notes for a HomeCircle tracker: "safe-ack" (it can stop saying it's safe), "sos-off" (its SOS was ended from the app). */
+  virtual void trackerNote(uint32_t node, const std::string& what) {}
   /** Send a HomeCircle tracker its extra settings ("#cfg !node …"): public SOS and beacon. */
   virtual void trackerCfg(uint32_t node, const std::string& cfg) {}
   /** Turn the internet bridge on or off; the node restarts to connect. False if it can't. */
@@ -275,6 +277,7 @@ class HomeBase {
     std::string cfgSet, cfgSending;  // the extra settings it confirmed, and the ones on their way
     int64_t cfgSentAt = 0;
     int64_t sosAckAt = 0;           // when its SOS was last acknowledged
+    int64_t sosEndedAt = 0;         // when its SOS was ended from the app (its repeats after that don't start it again)
     int64_t pingedAt = 0;           // when it was last asked where it is because its position was old
     std::vector<std::string> said;  // texts it sent (from its Meshtastic app), for the circle's chat
     std::string fixGateway;

@@ -61,6 +61,11 @@ const char *CFG_PATH = "/prefs/hcsos";
 bool sosOn = false;
 bool delivered = false;
 int repeats = 0;
+// "OK, I'm safe" goes again every 30 s (10 times at most) until the home base answers "#safe-ack".
+bool safePending = false;
+int safeRepeats = 0;
+const uint32_t SAFE_REPEAT_MS = 30 * 1000;
+const int SAFE_REPEATS = 10;
 uint32_t lastPressAt = 0;
 int presses = 0;
 
@@ -265,6 +270,18 @@ class ButtonWork : public concurrency::OSThread
             }
             return 1000;
         }
+        if (safePending) {
+            if (now - sentAt >= SAFE_REPEAT_MS) {
+                sentAt = now;
+                if (++safeRepeats > SAFE_REPEATS) {
+                    safePending = false;
+                } else {
+                    sendText(SAFE_TEXT, false);
+                    LOG_INFO("HomeCircle button: safe sent again (%d)", safeRepeats);
+                }
+            }
+            return 1000;
+        }
         if (cfg.beaconS)
             return 30 * 1000;
         return disable();
@@ -306,6 +323,10 @@ void toggleSos()
     } else {
         delivered = false;
         sendText(SAFE_TEXT, false);
+        safePending = true; // again until the home base says it has it
+        safeRepeats = 0;
+        work->sentAt = millis();
+        work->soon(1000);
         playBeep(); // a short beep: safe
         LOG_INFO("HomeCircle button: safe");
     }
@@ -335,6 +356,21 @@ ProcessMessage HomeCircleSosModule::handleReceived(const meshtastic_MeshPacket &
             play4ClickUp(); // rising: the circle has it
             LOG_INFO("HomeCircle tracker: SOS delivered");
         }
+        return ProcessMessage::STOP;
+    }
+    if (text == std::string("#safe-ack ") + me) {
+        safePending = false;
+        return ProcessMessage::STOP;
+    }
+    // Ended from the app (someone in the circle, or its admin): stop sending the SOS.
+    if (text == std::string("#sos-off ") + me) {
+        if (sosOn) {
+            sosOn = false;
+            delivered = false;
+            playBeep();
+            LOG_INFO("HomeCircle tracker: SOS ended from the app");
+        }
+        safePending = false;
         return ProcessMessage::STOP;
     }
     std::string prefix = std::string("#cfg ") + me + " ";

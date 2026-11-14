@@ -64,6 +64,7 @@ struct FakeRadio : hc::Radio {
   // "#sos-ack" and "#cfg" for HomeCircle trackers (printed at the next tick).
   std::vector<std::string> sent;
   void sosAck(uint32_t node) override { sent.push_back("sos-ack " + hc::nodeId(node)); }
+  void trackerNote(uint32_t node, const std::string& what) override { sent.push_back(what + " " + hc::nodeId(node)); }
   void trackerCfg(uint32_t node, const std::string& cfg) override { sent.push_back("cfg " + hc::nodeId(node) + " " + cfg); }
   // The home base's own GPS, set by "selfgps"; its sky, fed by "nmea".
   hc::SelfGnss self;

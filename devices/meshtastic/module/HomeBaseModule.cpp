@@ -210,6 +210,11 @@ struct MeshRadio : hc::Radio {
         if (homeBaseModule)
             homeBaseModule->broadcastPrivate("#sos-ack " + hc::nodeId(node));
     }
+    void trackerNote(uint32_t node, const std::string &what) override
+    {
+        if (homeBaseModule)
+            homeBaseModule->broadcastPrivate("#" + what + " " + hc::nodeId(node));
+    }
     void trackerCfg(uint32_t node, const std::string &cfg) override
     {
         if (homeBaseModule)

@@ -612,6 +612,29 @@ try {
   assert.ok(!acks.includes(`sos-ack ${TRACKER}`), 'not again within 20 s');
   await radio(`text ${TRACKER} OK, I'm safe`);
   await radio('advance 21');
+  acks = await radio('tick');
+  assert.ok(acks.includes(`safe-ack ${TRACKER}`), `its "I'm safe" is acknowledged, so it stops repeating it: ${acks.join(' | ')}`);
+
+  // Ended from the app: "safe <tracker>" (an admin, or whoever carries it).
+  await radio(`text ${TRACKER} \u0007🆘 SOS`);
+  await radio('tick');
+  answer = await ask(`safe ${TRACKER}`);
+  assert.match(answer, /Ended .+'s SOS\. I've told it to stop\./, answer);
+  assert.ok(askTick.includes(`sos-off ${TRACKER}`), `the tracker is told to stop: ${askTick.join(' | ')}`);
+  await radio('advance 5');
+  await radio('tick');
+  await maya._fetchMessages();
+  assert.ok(!maya.activeSos().some((s) => s.memberId === tracker.id), 'the circle sees it ended');
+  assert.match(await ask(`safe ${TRACKER}`), /has no SOS on/);
+  // It hadn't heard yet and sends its SOS again: told again, not started again.
+  await radio(`text ${TRACKER} \u0007🆘 SOS`);
+  const again2 = await radio('tick');
+  assert.ok(again2.includes(`sos-off ${TRACKER}`), `told to stop again: ${again2.join(' | ')}`);
+  await radio('advance 5');
+  await radio('tick');
+  await maya._fetchMessages();
+  assert.ok(!maya.activeSos().some((s) => s.memberId === tracker.id), 'and the SOS stays ended');
+  await radio('advance 601');
   await radio('tick');
 
   // The public beacon and public SOS: sent to a HomeCircle tracker as "#cfg" until it confirms.

@@ -11,7 +11,8 @@ import { stopAlarm, useAlarmRinging } from '../lib/sosAlarm';
 import { formatFeet } from '../lib/units';
 import { timeAgo, useAllCircles } from '../lib/useCircle';
 import { useTheme } from '../theme';
-import { showSheet } from '../lib/sheet';
+import { confirm, showSheet } from '../lib/sheet';
+import { homeBaseOf, tellHomeBase, trackerOf } from '../lib/trackers';
 
 const COUNTDOWN = 5;
 // Countdowns already run (by when they were asked for). The SOS screen can be
@@ -215,6 +216,28 @@ function TheirSos({ circleId, memberId }: { circleId: string; memberId: string }
             Linking.openURL(`tel:${EMERGENCY_NUMBER}`);
           }}
         />
+        {/* A tracker has no phone to say it's safe: an admin, or whoever carries it, ends it here. */}
+        {(() => {
+          const tracker = trackerOf(client, memberId);
+          const home = homeBaseOf(client);
+          const me = client.account?.memberId;
+          if (!tracker || !home || !(client.isAdmin || tracker.carriedBy === me)) return null;
+          return (
+            <Button
+              title="End this SOS (they’re safe)"
+              onPress={async () => {
+                if (!(await confirm(`End ${name}’s SOS?`, 'Only if you know they’re safe. The tracker is told to stop sending it.', 'End it'))) return;
+                stopAlarm();
+                try {
+                  await tellHomeBase(client, home.id, `safe ${tracker.node}`);
+                  showSheet('Sent to the home base', 'It ends the SOS for the circle in a few seconds and tells the tracker to stop.');
+                } catch (e) {
+                  showSheet('Couldn’t send it', errorText(e));
+                }
+              }}
+            />
+          );
+        })()}
       </ScrollView>
     </SafeAreaView>
   );

@@ -294,12 +294,19 @@ void HomeBase::onText(uint32_t node, const std::string& text) {
   }
   bool alert = l.find('\a') != std::string::npos;
   for (auto& w : sosWords_) alert = alert || l.find(w) != std::string::npos;
+  // Ended from the app a moment ago, and it hasn't heard yet: tell it again rather than start it again.
+  if (alert && t->sosEndedAt && now_() - t->sosEndedAt < 10 * MIN) {
+    radio_.trackerNote(node, "sos-off");
+    return;
+  }
   // Its SOS (and each time it's sent again) got here: say so, at most every 20 s.
   if (alert && now_() - t->sosAckAt > 20 * 1000) {
     radio_.sosAck(node);
     t->sosAckAt = now_();
   }
   bool safe = l == "safe" || l == "ok" || l == "i'm ok" || l == "im ok" || l.find("i'm safe") != std::string::npos;
+  // Its "I'm safe" got here: it can stop sending it (each time, it may not have heard the last one).
+  if (safe && !alert) radio_.trackerNote(node, "safe-ack");
   if (alert && !t->dev->sosActive()) {
     t->dev->sos(true, false);
     t->sosChanged = true;
@@ -1188,6 +1195,23 @@ void HomeBase::command(const Device::Direct& d) {
         reply = radio_.setMqtt(m) ? "Internet bridge set to " + m.host + ". I'll restart to connect (about 30 s); then trackers heard by any of your gateways show up here."
                                   : "I couldn't change the internet bridge.";
       }
+    }
+  } else if (verb == "safe" && !rest.empty()) {
+    // safe <tracker>: end its SOS from the app (whoever carries it, or an admin).
+    Tracker* t = find(rest);
+    if (!t) {
+      reply = "I don't have a tracker called " + rest + ".";
+    } else if (!d.fromAdmin && d.from != t->carriedBy) {
+      reply = "Only an admin, or whoever carries " + t->name + ", can end its SOS.";
+    } else {
+      bool was = t->dev->sosActive();
+      if (was) {
+        t->dev->sos(false, false);
+        t->sosChanged = true;
+      }
+      radio_.trackerNote(t->node, "sos-off");  // and it stops sending it
+      t->sosEndedAt = now_();
+      reply = was ? "Ended " + t->name + "'s SOS. I've told it to stop." : t->name + " has no SOS on. I've told it to stop, in case it's still sending one.";
     }
   } else if (verb == "trace" && !rest.empty()) {
     // trace <name or !id>: the relays between it and here now (the path on the map updates).
