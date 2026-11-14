@@ -59,7 +59,14 @@ export function trackerStatusLine(client: CircleClient, memberId: string, now: n
   const at = where(loc); // "At Home", or "" when it isn't at a place
   const away = trackerAway(client, memberId, now);
   const place = at || (away ? 'Away' : '');
-  if (now - loc.ts <= TRACKER_STALE_MS) return [place, ago(now - loc.ts), trackerVia(loc)].filter(Boolean).join(' · ');
+  if (now - loc.ts <= TRACKER_STALE_MS) {
+    // Out without the person who carries it (their phone is somewhere else): say so.
+    const t0 = trackerOf(client, memberId);
+    const carrier = t0?.mode === 'carried' && t0.carriedBy ? client.members.get(t0.carriedBy) : null;
+    const sep = carrier ? separation(client, carrier.id, now) : null;
+    const apart = sep ? `⚠️ not with ${carrier!.name} (${distanceText(sep.meters)} from their phone)` : '';
+    return [place, ago(now - loc.ts), trackerVia(loc), apart].filter(Boolean).join(' · ');
+  }
   // In range of home, just no new position (no GPS fix indoors, say).
   if (heardNearby(client, memberId, now)) {
     const heard = trackerLastHeard(client, memberId) ?? loc.ts;
@@ -94,6 +101,38 @@ export function trackerAway(client: CircleClient, memberId: string, _now: number
   if (!loc || !home) return false;
   return distanceM(loc, home) > home.radius + Math.min(loc.accuracy ?? 0, 200);
 }
+
+/**
+ * A person and the tracker they carry, apart: both have a fresh position (in
+ * the last 20 minutes) and they're more than 500 m apart, beyond both
+ * positions' accuracy. Which one is at Home says who left what behind.
+ */
+export function separation(
+  client: CircleClient,
+  personId: string,
+  now: number,
+): { trackerId: string; trackerName: string; meters: number; phoneAtHome: boolean; trackerAtHome: boolean } | null {
+  const t = trackerList(client).find((x) => x.tracker.mode === 'carried' && x.tracker.carriedBy === personId);
+  if (!t) return null;
+  const phone = client.locations.get(personId);
+  const tracker = client.locations.get(t.id);
+  if (!phone || !tracker || phone.approximate || now - phone.ts > TRACKER_STALE_MS || now - tracker.ts > TRACKER_STALE_MS) return null;
+  const meters = distanceM(phone, tracker);
+  if (meters <= 500 + Math.min(phone.accuracy ?? 0, 300) + Math.min(tracker.accuracy ?? 0, 3000)) return null;
+  const home = homePlace(client);
+  const atHome = (l: { lat: number; lng: number }) => !!home && distanceM(l, home) <= home.radius + 100;
+  return { trackerId: t.id, trackerName: t.name, meters, phoneAtHome: atHome(phone), trackerAtHome: atHome(tracker) };
+}
+
+/** What a person's line says when they and their tracker are apart. */
+export function separationText(s: NonNullable<ReturnType<typeof separation>>): string {
+  if (s.trackerAtHome && !s.phoneAtHome) return `⚠️ left ${s.trackerName} at home`;
+  if (s.phoneAtHome && !s.trackerAtHome) return `⚠️ ${s.trackerName} is out without this phone`;
+  return `⚠️ ${distanceText(s.meters)} from ${s.trackerName}`;
+}
+
+/** "2.3 km" / "650 m". */
+export const distanceText = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(m >= 10_000 ? 0 : 1)} km` : `${Math.round(m / 50) * 50} m`);
 
 /** The home base heard this tracker directly (no relays) in the last 20 minutes. */
 export function heardNearby(client: CircleClient, memberId: string, now: number): boolean {

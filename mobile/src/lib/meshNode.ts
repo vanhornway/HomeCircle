@@ -106,6 +106,12 @@ export async function scanNodes(ms = 8000, onFound?: (n: FoundNode) => void): Pr
   return [...found.values()];
 }
 
+/** A device this phone has seen before, by its Bluetooth address (a paired tracker): no scan needed. */
+export async function knownDevice(id: string): Promise<Device | null> {
+  const list = await ble().devices([id]).catch(() => [] as Device[]);
+  return list[0] ?? null;
+}
+
 /** A tracker by its node id ("!9e58f8c9"): already connected to this phone, or nearby. */
 export async function findNode(node: string, ms = 15000): Promise<Device | null> {
   const held = (await ble().connectedDevices([SERVICE]).catch(() => [] as Device[])).find((d) => nameMatches(d.name || d.localName, node));

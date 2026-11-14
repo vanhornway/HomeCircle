@@ -7,7 +7,7 @@ import { formatFeet } from './units';
 import { timeAgo } from './useCircle';
 import { errorText } from './circle';
 import { showSheet } from './sheet';
-import { trackerOf, trackerStatusLine } from './trackers';
+import { separation, separationText, trackerOf, trackerStatusLine } from './trackers';
 
 const STALE_MS = 30 * 60_000;
 const COOLDOWN_MS = 60_000;
@@ -86,6 +86,9 @@ export function statusLine(client: CircleClient, m: Member, now = Date.now(), { 
   if (loc.battery != null) bits.push(`${lowBattery(loc) ? '🪫 ' : ''}${Math.round(loc.battery * 100)}%${loc.charging ? ' ⚡' : ''}`);
   if (warnings && state === 'settings') bits.push(loc.perm === 'foreground' ? 'Location set to While Using' : 'Precise location off');
   if (warnings && state === 'saver') bits.push('Battery saver on');
+  // Their tracker is somewhere else: left behind, or taken without the phone.
+  const sep = separation(client, m.id, now);
+  if (sep) bits.push(separationText(sep));
   return bits.join(' · ');
 }
 

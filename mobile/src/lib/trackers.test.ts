@@ -85,3 +85,27 @@ test('firmware versions', async () => {
   assert.equal(compareVersions('0.30.0-test', '0.29.0'), 1);
   assert.equal(compareVersions('1.0', '0.99.9'), 1);
 });
+
+test('a person and their tracker apart: who left what behind', async () => {
+  const { separation, separationText } = await import('./trackers.ts');
+  const home = { id: 'home', name: 'Home', lat: 30.1, lng: -97.9, radius: 150, homeBase: true };
+  const make = (phone: { lat: number; lng: number }, tag: { lat: number; lng: number }, age = 2 * MIN) =>
+    ({
+      memberRecord: (id: string) => (id === 'ut2' ? { tracker: { node: '!9e58f8c9', mode: 'carried', carriedBy: 'umair' } } : null),
+      memberList: () => [{ id: 'umair', name: 'Umair' }, { id: 'ut2', name: 'UT2' }],
+      locations: new Map([
+        ['umair', { ...phone, ts: NOW - age, accuracy: 20 }],
+        ['ut2', { ...tag, ts: NOW - age, accuracy: 10 }],
+      ]),
+      places: new Map([['home', home]]),
+      homeBasePlace: () => home,
+      members: new Map(),
+    }) as unknown as CircleClient;
+  const away = { lat: 30.2, lng: -97.8 };
+  const atHome = { lat: 30.1, lng: -97.9 };
+  assert.equal(separation(make(atHome, atHome), 'umair', NOW), null, 'together');
+  assert.equal(separationText(separation(make(away, atHome), 'umair', NOW)!), '⚠️ left UT2 at home');
+  assert.equal(separationText(separation(make(atHome, away), 'umair', NOW)!), '⚠️ UT2 is out without this phone');
+  assert.match(separationText(separation(make(away, { lat: 30.25, lng: -97.75 }), 'umair', NOW)!), /^⚠️ \d+(\.\d)? km from UT2$/);
+  assert.equal(separation(make(away, atHome, 40 * MIN), 'umair', NOW), null, 'old positions say nothing');
+});

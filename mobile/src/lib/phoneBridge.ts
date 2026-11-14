@@ -10,15 +10,20 @@
 // tracker at the same time, the two take turns reading; best with the
 // Meshtastic app closed.
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import type { CircleClient } from '@homecircle/core';
-import { blePermitted, findNode, MeshNode } from './meshNode';
+import type { Device } from 'react-native-ble-plx';
+import { blePermitted, findNode, knownDevice, MeshNode } from './meshNode';
 import { myTracker } from './meshOutbox';
-import { homeBaseOf } from './trackers';
+import { MESSAGES_CHANNEL, ensureNotificationChannels } from './notify';
+import { loadPaired, markNear } from './pairedTracker';
+import { distanceText, homeBaseOf, separation } from './trackers';
 
 const KEY = 'homecircle.phoneBridge';
 const EVERY_MS = 10 * 60_000;
 
-type State = { on: boolean; lastTry: number; lastSent: Record<string, number> };
+type State = { on: boolean; lastTry: number; lastSent: Record<string, number>; apartToldAt?: number };
 let cached: State | null = null;
 
 async function load(): Promise<State> {
@@ -46,6 +51,32 @@ export async function setPhoneBridge(on: boolean) {
 }
 
 /**
+ * You and your tracker are apart (both positions fresh, over 500 m) and this
+ * phone isn't the one left at home: say so here once (at most every 6 hours),
+ * so you can go back for it.
+ */
+export async function checkSeparation(clients: CircleClient[]) {
+  const st = await load();
+  if (Date.now() - (st.apartToldAt ?? 0) < 6 * 3600_000) return;
+  for (const c of clients) {
+    if (!c.account || !c.feature('meshtastic')) continue;
+    const sep = separation(c, c.account.memberId, Date.now());
+    if (!sep || sep.phoneAtHome) continue;
+    await save({ apartToldAt: Date.now() });
+    await ensureNotificationChannels();
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: sep.trackerAtHome ? `${sep.trackerName} is still at home` : `You’re ${distanceText(sep.meters)} from ${sep.trackerName}`,
+        body: sep.trackerAtHome ? 'You left with your phone but not your tracker.' : 'Did you leave your tracker somewhere? Open HomeCircle to see where it is.',
+        data: { t: 'separated' },
+      },
+      trigger: Platform.OS === 'android' ? { channelId: MESSAGES_CHANNEL } : null,
+    });
+    return;
+  }
+}
+
+/**
  * Pass on the carried tracker's position, if the bridge is on and it's due
  * (or `force`). Returns what happened, for the settings screen.
  */
@@ -59,12 +90,19 @@ export async function bridgeTick(clients: CircleClient[], { force = false } = {}
   const home = homeBaseOf(c)!;
   await save({ lastTry: Date.now() });
   if (!(await blePermitted())) return 'HomeCircle needs Nearby devices (Bluetooth) for this.';
-  const device = await findNode(tracker.node, 12_000);
+  // The paired tracker: straight to it by its Bluetooth address; otherwise look for it.
+  const paired = await loadPaired();
+  let device: Device | null = null;
+  if (paired?.node === tracker.node) {
+    device = await knownDevice(paired.deviceId);
+  }
+  device ??= await findNode(tracker.node, 12_000);
   if (!device) return `${tracker.name} isn’t in Bluetooth range.`;
   const node = await MeshNode.open(device);
   try {
     const snap = await node.download();
     const me = snap.nodes.get(snap.myNode);
+    await markNear(me?.battery != null && me.battery <= 100 ? me.battery : null);
     if (me?.lat == null || me.lng == null) return `${tracker.name} has no GPS fix yet.`;
     const at = me.time ? me.time * 1000 : Date.now();
     if ((st.lastSent[tracker.node] ?? 0) >= at && !force) return `${tracker.name} hasn’t moved on since the last one.`;

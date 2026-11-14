@@ -19,7 +19,7 @@ import { syncSkinFromRecords } from '../skins/sync';
 import { flushOutbox as flushHerRequests } from '../companion/outbox';
 import { checkInactivityInBackground } from '../lib/inactivity';
 import { handleCallPush } from '../lib/calls';
-import { bridgeTick } from '../lib/phoneBridge';
+import { bridgeTick, checkSeparation } from '../lib/phoneBridge';
 
 type Delivery = { lagS?: number; prio?: 'high' | 'normal'; sent?: 'high' | 'normal' };
 
@@ -65,6 +65,7 @@ TaskManager.defineTask<{ locations: Location.LocationObject[] }>(LOCATION_TASK, 
     await applyPolicy().catch(() => {});
     // The phone bridge, if it's on: pass the carried tracker's position on (every 10 minutes at most).
     await bridgeTick(await loadedClients()).catch((e) => diag('error', { where: 'phone-bridge', msg: String((e as Error)?.message ?? e).slice(0, 100) }));
+    await checkSeparation(await loadedClients()).catch(() => {});
   } catch (e) {
     log('location upload failed', e);
     diag('error', { where: 'movement', msg: String((e as Error)?.message ?? e).slice(0, 100) });
@@ -115,8 +116,9 @@ TaskManager.defineTask(HEARTBEAT_TASK, async () => {
     else await checkInactivityInBackground(await loadedClients()).catch(() => {});
     // Still for 10 minutes: stop asking for location until the phone moves.
     await maybeEnterStillMode().catch(() => false);
-    // The phone bridge, if it's on (also while the phone is still).
+    // The phone bridge, if it's on (also while the phone is still); and you and your tracker apart.
     await bridgeTick(await loadedClients()).catch(() => '');
+    await checkSeparation(await loadedClients()).catch(() => {});
     // A newer app? At most every 4 hours; says so once per version.
     await checkForUpdateInBackground().catch(() => {});
     return BackgroundTask.BackgroundTaskResult.Success;
