@@ -1,6 +1,19 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.29.0',
+    date: '2026-11-14',
+    title: 'Trackers wherever they are',
+    items: [
+      'See your trackers on the map wherever they are, with how each position reached you.',
+      'Pair your tracker with your phone, and your phone passes its position on when you’re away.',
+      'Know when you’ve left your tracker behind, or it’s out without your phone.',
+      'Find it: an arrow and the distance to a tracker, to walk to lost keys, a bag or a pet.',
+      'A tracker’s SOS confirms it got through, and can be ended from the app.',
+      'Sign in to the web app by scanning a code with your phone.',
+    ],
+  },
+  {
     version: '0.28.0',
     date: '2026-11-13',
     title: 'Trackers on a trip',
