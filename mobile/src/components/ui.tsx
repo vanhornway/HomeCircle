@@ -267,6 +267,7 @@ const ICONS: Record<string, string> = {
   sparkle: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Zm7 12 .8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15Z',
   checkcircle: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm-4-9 3 3 5-6',
   pulse: 'M3 12h4l2.5-6 4 12 2.5-6H21',
+  route: 'M6 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm12-12a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM8 18h7.5a3.5 3.5 0 0 0 0-7h-7a3.5 3.5 0 0 1 0-7H16',
   textsize: 'M3 19 8 6l5 13M4.8 15h6.4M15 19l2.8-7 2.8 7m-4.8-2h4',
   server: 'M4 4h16v6H4V4Zm0 10h16v6H4v-6Zm3-7h.01M7 17h.01',
   laptop: 'M5 5h14v10H5V5Zm-3 13h20l-1.5 2h-17L2 18Z',

@@ -25,6 +25,7 @@ import { DEFAULT_SETTINGS, getSettings } from '../../lib/storage';
 import { carriedFallback, circleCount, homeBaseOf, TRACKER_STALE_MS, trackerEmoji, trackerList, trackerOf } from '../../lib/trackers';
 import { edgeChips, groups, openingFrame } from '../../lib/mapFrame';
 import { usePlaceNames } from '../../lib/weather';
+import { distanceText, journeyWhen, pathMeters, useJourneyPaths } from '../../lib/journeys';
 import { useTheme } from '../../theme';
 
 const STALE_MS = 2 * 3600_000;
@@ -48,7 +49,7 @@ export default function MapTab() {
   const [tiles, setTiles] = useState(DEFAULT_SETTINGS);
   const [focus, setFocus] = useState<{ lat: number; lng: number; zoom?: number; key: number } | null>(null);
   // Opened from a tracker's message in the chat: mark where it was and fly there.
-  const params = useLocalSearchParams<{ spotLat?: string; spotLng?: string; spotAt?: string; spotName?: string; spotFor?: string }>();
+  const params = useLocalSearchParams<{ spotLat?: string; spotLng?: string; spotAt?: string; spotName?: string; spotFor?: string; journey?: string }>();
   const [spot, setSpot] = useState<{ lat: number; lng: number; label: string } | null>(null);
   const [spotFor, setSpotFor] = useState<string | undefined>(undefined);
   if (params.spotFor !== spotFor) {
@@ -62,9 +63,32 @@ export default function MapTab() {
       setFocus((f) => ({ lat, lng, zoom: 16, key: (f?.key ?? 0) + 1 }));
     }
   }
-  // Leaving the map clears it.
-  useFocusEffect(useCallback(() => () => setSpot(null), []));
   const [fitTo, setFitTo] = useState<{ points: { lat: number; lng: number }[]; key: number } | null>(null);
+  // Opened from Journeys: draw that one, and fit the map to it once its way is in.
+  const [shownJourney, setShownJourney] = useState<string | null>(null);
+  const [journeyParam, setJourneyParam] = useState<string | undefined>(undefined);
+  if (params.journey !== journeyParam) {
+    setJourneyParam(params.journey);
+    setShownJourney(params.journey || null);
+  }
+  const journeyPaths = useJourneyPaths(client, shownJourney);
+  const shown = shownJourney ? journeyPaths.get(shownJourney) : undefined;
+  const [fitted, setFitted] = useState<string | null>(null);
+  if (shown && fitted !== shown.journey.id && shown.points.length) {
+    setFitted(shown.journey.id);
+    setFitTo((f) => ({ points: shown.points.map((p) => ({ lat: p.lat, lng: p.lng })), key: (f?.key ?? 0) + 1 }));
+  }
+  // Leaving the map clears them.
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        setSpot(null);
+        setShownJourney(null);
+        setFitted(null);
+      },
+      [],
+    ),
+  );
   const [sheet, setSheet] = useState<string | null>(null);
   // What covers the map: the bar on top, and the person sheet (0 when closed).
   const [topH, setTopH] = useState(0);
@@ -182,6 +206,14 @@ export default function MapTab() {
         const via: [number, number][] = e.relay?.lat != null && e.relay.lng != null ? [[e.relay.lat, e.relay.lng]] : [];
         radioPaths.push({ id: `${tr.id}-${e.at}`, points: [[e.lat, e.lng], ...via, [homeLoc.lat, homeLoc.lng]], old: true, start: true });
       }
+    }
+  }
+  // Journeys: every tracker on the move, and the one opened from Journeys.
+  if (sharing) {
+    for (const { journey, points } of journeyPaths.values()) {
+      if (journey.endedAt && journey.id !== shownJourney) continue;
+      if (points.length < 2) continue;
+      radioPaths.push({ id: `journey-${journey.id}`, kind: 'journey', color: client.members.get(journey.memberId)?.color, old: !!journey.endedAt, points: points.map((p) => [p.lat, p.lng] as [number, number]) });
     }
   }
   const pathsAvailable = !!homeLoc && (trackersHere.some((tr) => !!client.locations.get(tr.id)?.mesh?.path) || !!home?.status.trackers.some((s) => s.log.length));
@@ -393,6 +425,38 @@ export default function MapTab() {
           <ServerBanner style={{ marginTop: 10 }} />
           <RejoinBanner style={{ marginTop: 10 }} />
           <UpdateBanner style={{ marginTop: 10 }} />
+          {shown ? (
+            <View
+              style={{
+                marginTop: 10,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                alignSelf: 'flex-start',
+                maxWidth: '100%',
+                backgroundColor: t.surface,
+                borderRadius: 16,
+                paddingLeft: 12,
+                paddingVertical: 4,
+                shadowColor: '#000',
+                shadowOpacity: 0.12,
+                shadowRadius: 8,
+                elevation: 3,
+              }}
+            >
+              <View style={{ flexShrink: 1, paddingVertical: 4 }}>
+                <Text style={{ color: t.text, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
+                  {client.members.get(shown.journey.memberId)?.name ?? 'Tracker'}’s journey · {distanceText(pathMeters(shown.points))}
+                </Text>
+                <Text style={{ color: t.muted, fontSize: 13 }} numberOfLines={1}>
+                  {journeyWhen(shown.journey, now)}
+                </Text>
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Stop showing this journey" onPress={() => setShownJourney(null)} hitSlop={8} style={{ padding: 10 }}>
+                <Text style={{ color: t.muted, fontSize: 18, fontWeight: '700' }}>✕</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </SafeAreaView>
       </View>
       {/* Radio paths on or off: bottom left, above the drawer (only when there are some to show). */}

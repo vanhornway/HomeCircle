@@ -34,7 +34,7 @@ import {
 import { isValidReaction } from './emoji.js';
 import { MESH_TEXT_MAX, openMesh, sealMeshMessage } from './mesh.js';
 import { utf8Encode } from './encoding.js';
-import { quickReturns } from './places.js';
+import { distanceM, quickReturns } from './places.js';
 import { FREE_RE, PLAN_ANSWERS, TRAVEL_RE, busyDays, cleanBusy, cleanPlan, travelStats, tripsFrom } from './schedule.js';
 import { allFeatures, cleanFeatures, defaultFeatures, hasFeature, resolveFeatures } from './features.js';
 
@@ -131,6 +131,9 @@ export class CircleClient {
     this.locations = new Map();
     // memberId -> { since, reason } for members who paused sharing with this circle
     this.paused = new Map();
+    // memberId -> its open journey ({ id, startedAt, startedBy, points }): on the move.
+    this.journeys = new Map();
+    this._journeyChecks = new Map();
     this.messages = [];
     this.seenMessageIds = new Set();
     // Envelope nonces already taken in: the same envelope stored again under
@@ -782,6 +785,10 @@ export class CircleClient {
     }
     this._decodeMembers(st);
     this._decodeCircle(st);
+    if (Array.isArray(st.journeys)) {
+      this.journeys = new Map(st.journeys.filter((j) => j && typeof j.memberId === 'string').map((j) => [j.memberId, j]));
+      this.emit('journeys', this.journeys);
+    }
     if (this.isAdmin) await this._cardAgent(st).catch(this.onError);
 
     const mine = st.members.find((m) => m.id === this.account.memberId);
@@ -1096,7 +1103,102 @@ export class CircleClient {
     for (const l of locations) this._decodeLocation(l.memberId, l.env, l.updatedAt);
     this._pinHomeBases();
     this.emit('locations', this.locations);
+    for (const memberId of this.journeys.keys()) this._journeyCheck(memberId);
     return this.locations;
+  }
+
+  // --- journeys ----------------------------------------------------------
+  // "On the move": while a tracker's journey is open the server keeps each
+  // position it posts (sealed: it can't read them). Phones open them to draw
+  // the way it went, and end the journey once it has been away and is back
+  // inside Home. Any phone in the circle may notice that first; it ends the
+  // journey at the time it got home, so noticing late changes nothing.
+
+  /** The place a journey comes home to: where the home base is pinned, else a place called Home. */
+  journeyHome() {
+    const pinned = this.homeBasePlace();
+    if (pinned) return pinned;
+    for (const p of this.places.values()) if (/^home$/i.test(String(p.name ?? '').trim())) return p;
+    return null;
+  }
+
+  _atHome(p, home) {
+    return distanceM(p, home) <= home.radius + Math.min(p.accuracy ?? 0, 200);
+  }
+
+  /** A position kept on a journey, opened; null if it can't be read. */
+  _journeyPoint(memberId, env, at) {
+    const msg = this._open(env, memberId, ['location']);
+    const b = msg?.body;
+    if (!b || typeof b.lat !== 'number' || typeof b.lng !== 'number') return null;
+    return { lat: b.lat, lng: b.lng, accuracy: num(b.accuracy), battery: num(b.battery), speed: num(b.speed), ts: msg.ts || at, at };
+  }
+
+  /** Start keeping a tracker's way (or your own). */
+  async startJourney(memberId) {
+    const { journey } = await this.api.startJourney(memberId);
+    this._journeyChanged(journey);
+    return journey;
+  }
+
+  /** End a journey now (or at `at`, when it got home). */
+  async endJourney(id, opts = {}) {
+    const { journey } = await this.api.endJourney(id, opts);
+    this._journeyChanged(journey);
+    return journey;
+  }
+
+  async deleteJourney(id) {
+    await this.api.deleteJourney(id);
+    for (const [m, j] of this.journeys) if (j.id === id) this.journeys.delete(m);
+    this.emit('journeys', this.journeys);
+  }
+
+  /** A member's journeys, newest first (the open one too). */
+  async journeyList(memberId) {
+    const { journeys } = await this.api.journeys(memberId);
+    return journeys;
+  }
+
+  /** A journey and the way it went: its positions in order, opened here. */
+  async journeyPath(id) {
+    const { journey, points } = await this.api.journeyPoints(id);
+    const path = points.map((p) => this._journeyPoint(journey.memberId, p.env, p.at)).filter(Boolean);
+    path.sort((a, b) => a.ts - b.ts);
+    return { journey, points: path };
+  }
+
+  _journeyChanged(j) {
+    if (!j?.memberId) return;
+    const cur = this.journeys.get(j.memberId);
+    if (j.deleted || j.endedAt) {
+      if (cur && cur.id === j.id) this.journeys.delete(j.memberId);
+    } else {
+      this.journeys.set(j.memberId, j);
+    }
+    this.emit('journeys', this.journeys);
+  }
+
+  /** Back home after being away: end its journey at the time it got there. */
+  _journeyCheck(memberId) {
+    const j = this.journeys.get(memberId);
+    const loc = this.locations.get(memberId);
+    const home = this.journeyHome();
+    if (!j || !loc || !home || loc.ts <= j.startedAt || !this._atHome(loc, home)) return;
+    if (this._journeyChecks.get(j.id) === loc.ts) return; // this position was checked already
+    this._journeyChecks.set(j.id, loc.ts);
+    (async () => {
+      const { points } = await this.journeyPath(j.id);
+      let away = -1;
+      points.forEach((p, i) => {
+        if (!this._atHome(p, home)) away = i;
+      });
+      if (away < 0) return; // it hasn't left home yet
+      const back = points.slice(away + 1).find((p) => this._atHome(p, home));
+      await this.endJourney(j.id, { at: back?.at ?? loc.receivedAt ?? Date.now(), reason: 'home' });
+    })().catch((e) => {
+      if (!(e instanceof ApiError && e.status === 404)) this.onError(e);
+    });
   }
 
   /** Upload this device's location, encrypted. */
@@ -3169,8 +3271,12 @@ export class CircleClient {
         const wasPaused = this.paused.has(e.memberId);
         const loc = this._decodeLocation(e.memberId, e.env, e.updatedAt);
         if (loc || wasPaused !== this.paused.has(e.memberId)) this.emit('locations', this.locations);
+        if (loc) this._journeyCheck(e.memberId);
         break;
       }
+      case 'journey':
+        this._journeyChanged(e.journey);
+        break;
       case 'message': {
         const m = this._addMessage(e.message);
         this._saveCacheSoon(1500);

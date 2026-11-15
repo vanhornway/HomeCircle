@@ -61,8 +61,13 @@ export interface MapPath {
   points: [number, number][];
   /** Traced a while ago: drawn fainter. */
   old?: boolean;
-  /** 'trail': the positions a tracker was heard at on a trip, in order (solid, a dot at each); a path is dashed. */
-  kind?: 'path' | 'trail';
+  /**
+   * 'trail': the positions a tracker was heard at on a trip, in order (solid, a dot at each); a path is dashed.
+   * 'journey': the way a tracker went while on the move: bold, in its colour, from a start dot.
+   */
+  kind?: 'path' | 'trail' | 'journey';
+  /** A journey's colour. */
+  color?: string;
   /** A dot where the path starts (a position heard on a trip). */
   start?: boolean;
 }
@@ -222,6 +227,13 @@ ${dark ? '.leaflet-tile-pane{filter:brightness(.75) contrast(1.1) saturate(.8)}'
       pathLayer.clearLayers();
       list.forEach(function(p){
         if (!p.points || p.points.length < 2) return;
+        if (p.kind === 'journey') {
+          var c = /^#[0-9a-fA-F]{3,8}$/.test(p.color || '') ? p.color : '#2f7d6d';
+          L.polyline(p.points, {color:'#fff', weight:8, opacity:.7, lineCap:'round', lineJoin:'round', interactive:false}).addTo(pathLayer);
+          L.polyline(p.points, {color:c, weight:5, opacity:p.old ? .55 : .9, lineCap:'round', lineJoin:'round', interactive:false}).addTo(pathLayer);
+          L.circleMarker(p.points[0], {radius:6, color:'#fff', weight:2, fillColor:c, fillOpacity:1, interactive:false}).addTo(pathLayer);
+          return;
+        }
         var trail = p.kind === 'trail';
         L.polyline(p.points, trail
           ? {color:'#5b6b73', weight:2, opacity:.35, lineCap:'round', interactive:false}

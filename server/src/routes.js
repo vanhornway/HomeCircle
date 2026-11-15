@@ -528,6 +528,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
       me: me.id,
       serverAdmin: me.serverAdmin,
       ...(demo ? { demo: demo.stateFor(me.circleId) } : {}),
+      journeys: store.openJourneys(me.circleId),
       members: store.members(me.circleId).map((m) => ({
         id: m.id,
         role: m.role,
@@ -890,6 +891,7 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
         if (h.type === MESH_LOCATION) {
           store.putLocation(m.id, env, now);
           hub.broadcast(m.circleId, { type: 'location', memberId: m.id, env, updatedAt: now }, m.id);
+          journeyPoint(m, env, now);
           return 'ok';
         }
         // A direct message names its recipient by their ref (the server can't read the rest).
@@ -932,7 +934,93 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     if (isDemoVisitor(me)) return { ok: true, updatedAt: now };
     store.putLocation(me.id, env, now);
     hub.broadcast(me.circleId, { type: 'location', memberId: me.id, env, updatedAt: now }, me.id);
+    journeyPoint(me, env, now);
     return { ok: true, updatedAt: now };
+  });
+
+  // --- journeys ------------------------------------------------------------
+  // "On the move": while a tracker's journey is open, every position it posts
+  // is kept too, sealed as it came (this server can't read where it was). The
+  // apps open them to draw the way it went, and end the journey once it's back
+  // inside Home (the server can't tell). A journey is for a tracker (a member
+  // a home base keeps), or for yourself.
+
+  const JOURNEY_MAX_POINTS = 2000; // about a day at one every 30 s
+  const JOURNEY_MAX_MS = 3 * 24 * 3600_000; // a journey nobody ended stops after 3 days
+  const JOURNEY_GAP_MS = config.journeyGapMs ?? 10_000; // positions closer together than this aren't kept
+  const JOURNEYS_KEPT = 10; // per tracker, the newest
+  const JOURNEY_KEEP_MS = 90 * 24 * 3600_000;
+
+  const journeyEnded = (circleId, j) => {
+    hub.broadcast(circleId, { type: 'journey', journey: j });
+    store.pruneJourneys(j.memberId, JOURNEYS_KEPT, Date.now() - JOURNEY_KEEP_MS);
+  };
+  function journeyPoint(m, env, now) {
+    const j = store.openJourney(m.id);
+    if (!j) return;
+    if (now - j.startedAt > JOURNEY_MAX_MS || j.points >= JOURNEY_MAX_POINTS) {
+      const ended = store.endJourney(j.id, { at: now, by: null, reason: j.points >= JOURNEY_MAX_POINTS ? 'full' : 'time' });
+      if (ended) journeyEnded(m.circleId, ended);
+      return;
+    }
+    store.addJourneyPoint(j.id, env, now, JOURNEY_GAP_MS);
+  }
+  const journeyFor = (me, memberId) => {
+    const m = typeof memberId === 'string' ? store.member(me.circleId, memberId) : null;
+    if (!m || m.removed || m.kind === 'agent') fail(404, 'not_found', 'No such member in this circle');
+    if (m.id !== me.id && !m.keeperId) fail(403, 'forbidden', 'A journey is for a tracker, or for yourself');
+    return m;
+  };
+  const myJourney = (me, id) => {
+    const j = typeof id === 'string' && store.journeyCircle(id) === me.circleId ? store.journey(id) : null;
+    if (!j) fail(404, 'not_found', 'No such journey');
+    return j;
+  };
+
+  r.add('POST', '/journeys', ({ me, body }) => {
+    const m = journeyFor(me, body?.memberId);
+    const open = store.openJourney(m.id);
+    if (open) return { journey: open };
+    const now = Date.now();
+    const j = store.startJourney({ id: randomBytes(12).toString('base64url'), circleId: me.circleId, memberId: m.id, by: me.id, now });
+    // Where it is now is where it starts.
+    const loc = store.locations(me.circleId).find((l) => l.memberId === m.id);
+    if (loc) store.addJourneyPoint(j.id, loc.env, now, 0);
+    const journey = store.journey(j.id);
+    hub.broadcast(me.circleId, { type: 'journey', journey });
+    return { journey };
+  });
+
+  r.add('POST', '/journeys/:id/end', ({ me, params, body }) => {
+    const j = myJourney(me, params.id);
+    journeyFor(me, j.memberId);
+    if (j.endedAt) return { journey: j };
+    const now = Date.now();
+    // Back home: it ended when it got there, which a phone may only notice later.
+    const at = Number.isFinite(body?.at) ? Math.max(j.startedAt, Math.min(now, Math.round(body.at))) : now;
+    const reason = body?.reason === 'home' ? 'home' : 'manual';
+    const ended = store.endJourney(j.id, { at, by: me.id, reason }) ?? store.journey(j.id);
+    journeyEnded(me.circleId, ended);
+    return { journey: ended };
+  });
+
+  r.add('GET', '/journeys', ({ me, query }) => {
+    const m = store.member(me.circleId, query.get('member') || '');
+    if (!m) fail(404, 'not_found', 'No such member in this circle');
+    return { journeys: store.journeysOf(m.id, JOURNEYS_KEPT + 1) };
+  });
+
+  r.add('GET', '/journeys/:id/points', ({ me, params }) => {
+    const j = myJourney(me, params.id);
+    return { journey: j, points: store.journeyPoints(j.id) };
+  });
+
+  r.add('DELETE', '/journeys/:id', ({ me, params }) => {
+    const j = myJourney(me, params.id);
+    if (j.memberId !== me.id && j.startedBy !== me.id && !isAdmin(me)) fail(403, 'forbidden', 'Only an admin, or whoever started it, deletes a journey');
+    store.deleteJourney(j.id);
+    hub.broadcast(me.circleId, { type: 'journey', journey: { ...j, deleted: true } });
+    return { ok: true };
   });
 
   // Stop sharing with this circle: its members no longer see where you were.

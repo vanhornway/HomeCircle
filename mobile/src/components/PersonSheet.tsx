@@ -17,6 +17,7 @@ import { carriedFallback, homeBaseOf, radioFacts, tellHomeBase, TRACKER_KINDS, t
 import { mutedUntil, setMute, tomorrowMorning, useMutesVersion } from '../lib/mutes';
 import { timeAgo } from '../lib/useCircle';
 import { showSheet } from '../lib/sheet';
+import { onTheMoveLine } from '../lib/journeys';
 
 const clockOf = (mins: number) => new Date(2000, 0, 1, 0, mins).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
@@ -221,6 +222,17 @@ export function PersonSheet({
                       {client.feature('chirps') && row('bird', 'Chirp', tracker ? 'Makes the tracker beep, to find it' : 'A sound they’ll know is you', go(() => chirpWithChoice(client, m.id)))}
                       {tracker && loc ? row('navigate', 'Find it', 'An arrow and the distance from you, to walk to it', go(() => router.push({ pathname: '/find-tracker', params: { member: m.id } }))) : null}
                       {tracker ? row('pulse', 'Details', 'Signal, battery and its last positions', go(() => router.push({ pathname: '/tracker-details', params: { member: m.id } }))) : null}
+                      {tracker
+                        ? (() => {
+                            // On the move: the way it goes is kept until it's back home.
+                            const j = client.journeys.get(m.id);
+                            const fail = (e: unknown) => showSheet('Couldn’t do that', errorText(e));
+                            return j
+                              ? row('route', 'End the journey', onTheMoveLine(j), () => void client.endJourney(j.id).catch(fail))
+                              : row('route', 'On the move', 'Keep the way it goes, until it’s back home', () => void client.startJourney(m.id).catch(fail));
+                          })()
+                        : null}
+                      {tracker ? row('map', 'Journeys', 'The ways it went, on the map', go(() => router.push({ pathname: '/journeys', params: { member: m.id } }))) : null}
                       {tracker
                         ? (() => {
                             const until = mutedUntil(m.id, now);

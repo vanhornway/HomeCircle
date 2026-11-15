@@ -148,6 +148,28 @@ CREATE TABLE IF NOT EXISTS sessions (
   last_seen_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS sessions_member ON sessions (member_id);
+-- Journeys (0.30): while a tracker is "on the move", each position it posts is
+-- kept too (sealed, as posted: the server can't read them), so the app can
+-- draw the way it went. A journey ends when it's back home, or by hand.
+CREATE TABLE IF NOT EXISTS journeys (
+  id TEXT PRIMARY KEY,
+  circle_id TEXT NOT NULL,
+  member_id TEXT NOT NULL,
+  started_by TEXT NOT NULL,
+  started_at INTEGER NOT NULL,
+  ended_at INTEGER,
+  ended_by TEXT,
+  end_reason TEXT,
+  points INTEGER NOT NULL DEFAULT 0,
+  last_point_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS journeys_member ON journeys (member_id, started_at);
+CREATE TABLE IF NOT EXISTS journey_points (
+  journey_id TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  env TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS journey_points_journey ON journey_points (journey_id, at);
 `;
 
 export function openDb(dataDir) {
@@ -363,6 +385,7 @@ export class Store {
   deleteCircle(id) {
     const members = this.q('SELECT id FROM members WHERE circle_id = ?').all(id).map((r) => r.id);
     for (const m of members) {
+      this.deleteJourneysOf(m);
       this.q('DELETE FROM locations WHERE member_id = ?').run(m);
       this.q('DELETE FROM frequent_places WHERE member_id = ?').run(m);
       this.q('DELETE FROM busy_times WHERE member_id = ?').run(m);
@@ -471,6 +494,7 @@ export class Store {
     this.q('UPDATE members SET removed_at = ?, token_hash = NULL, push_token = NULL WHERE id = ?').run(now, id);
     this.q('DELETE FROM sessions WHERE member_id = ?').run(id);
     this.q('DELETE FROM locations WHERE member_id = ?').run(id);
+    this.deleteJourneysOf(id);
     this.q('DELETE FROM frequent_places WHERE member_id = ?').run(id);
     this.q('DELETE FROM busy_times WHERE member_id = ?').run(id);
     this.q('DELETE FROM chirps WHERE to_id = ? OR from_id = ?').run(id, id);
@@ -528,6 +552,74 @@ export class Store {
     return this.q('SELECT * FROM key_envelopes WHERE member_id = ? AND epoch > ? ORDER BY epoch')
       .all(memberId, since)
       .map((r) => ({ epoch: r.epoch, from: r.from_id, ...parse(r.env) }));
+  }
+
+  // journeys
+  _journey(r) {
+    return r
+      ? {
+          id: r.id,
+          memberId: r.member_id,
+          startedBy: r.started_by,
+          startedAt: r.started_at,
+          endedAt: r.ended_at ?? null,
+          endedBy: r.ended_by ?? null,
+          endReason: r.end_reason ?? null,
+          points: r.points,
+        }
+      : null;
+  }
+  journey(id) {
+    return this._journey(this.q('SELECT * FROM journeys WHERE id = ?').get(id));
+  }
+  journeyCircle(id) {
+    return this.q('SELECT circle_id FROM journeys WHERE id = ?').get(id)?.circle_id ?? null;
+  }
+  openJourney(memberId) {
+    return this._journey(this.q('SELECT * FROM journeys WHERE member_id = ? AND ended_at IS NULL').get(memberId));
+  }
+  openJourneys(circleId) {
+    return this.q('SELECT * FROM journeys WHERE circle_id = ? AND ended_at IS NULL').all(circleId).map((r) => this._journey(r));
+  }
+  journeysOf(memberId, limit) {
+    return this.q('SELECT * FROM journeys WHERE member_id = ? ORDER BY started_at DESC LIMIT ?').all(memberId, limit).map((r) => this._journey(r));
+  }
+  startJourney({ id, circleId, memberId, by, now }) {
+    this.q('INSERT INTO journeys (id, circle_id, member_id, started_by, started_at) VALUES (?, ?, ?, ?, ?)').run(id, circleId, memberId, by, now);
+    return this.journey(id);
+  }
+  /** Keeps a position on an open journey; false if it came too soon after the last. */
+  addJourneyPoint(journeyId, env, at, minGapMs) {
+    const r = this.q('SELECT last_point_at FROM journeys WHERE id = ? AND ended_at IS NULL').get(journeyId);
+    if (!r || (r.last_point_at != null && at - r.last_point_at < minGapMs)) return false;
+    this.q('INSERT INTO journey_points (journey_id, at, env) VALUES (?, ?, ?)').run(journeyId, at, JSON.stringify(env));
+    this.q('UPDATE journeys SET points = points + 1, last_point_at = ? WHERE id = ?').run(at, journeyId);
+    return true;
+  }
+  /** Ends a journey at `at`: positions kept after it go. */
+  endJourney(id, { at, by, reason }) {
+    const changed = this.q('UPDATE journeys SET ended_at = ?, ended_by = ?, end_reason = ? WHERE id = ? AND ended_at IS NULL').run(at, by, reason, id).changes;
+    if (!changed) return null;
+    const gone = this.q('DELETE FROM journey_points WHERE journey_id = ? AND at > ?').run(id, at).changes;
+    if (gone) this.q('UPDATE journeys SET points = MAX(0, points - ?) WHERE id = ?').run(gone, id);
+    return this.journey(id);
+  }
+  journeyPoints(id) {
+    return this.q('SELECT at, env FROM journey_points WHERE journey_id = ? ORDER BY at').all(id).map((r) => ({ at: r.at, env: parse(r.env) }));
+  }
+  deleteJourney(id) {
+    this.q('DELETE FROM journey_points WHERE journey_id = ?').run(id);
+    return this.q('DELETE FROM journeys WHERE id = ?').run(id).changes > 0;
+  }
+  deleteJourneysOf(memberId) {
+    for (const r of this.q('SELECT id FROM journeys WHERE member_id = ?').all(memberId)) this.deleteJourney(r.id);
+  }
+  /** Keeps a member's newest `keep` journeys, and none older than `before`. */
+  pruneJourneys(memberId, keep, before) {
+    const old = this.q('SELECT id, started_at FROM journeys WHERE member_id = ? AND ended_at IS NOT NULL ORDER BY started_at DESC').all(memberId);
+    old.forEach((r, i) => {
+      if (i >= keep || r.started_at < before) this.deleteJourney(r.id);
+    });
   }
 
   // locations (scoped through the member's circle)

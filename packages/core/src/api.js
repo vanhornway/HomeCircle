@@ -101,6 +101,12 @@ export class Api {
   answerLink = (id, body) => this.req('POST', `/link/${encodeURIComponent(id)}`, body);
   sessions = () => this.req('GET', '/sessions');
   deleteSession = (id) => this.req('DELETE', `/sessions/${encodeURIComponent(id)}`);
+  // Journeys: a tracker's way, kept while it's on the move.
+  startJourney = (memberId) => this.req('POST', '/journeys', { memberId });
+  endJourney = (id, body = {}) => this.req('POST', `/journeys/${encodeURIComponent(id)}/end`, body);
+  journeys = (memberId) => this.req('GET', `/journeys?member=${encodeURIComponent(memberId)}`);
+  journeyPoints = (id) => this.req('GET', `/journeys/${encodeURIComponent(id)}/points`);
+  deleteJourney = (id) => this.req('DELETE', `/journeys/${encodeURIComponent(id)}`);
   demoStart = (body) => this.req('POST', '/demo/start', body);
   /** Server admins only: create another circle on this server. */
   createCircle = (body) => this.req('POST', '/circles', body);

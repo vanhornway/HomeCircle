@@ -243,6 +243,32 @@ export interface FrequentPlace {
   lastAt: number | null;
 }
 
+/** A tracker's way while it was on the move (or yours). */
+export interface Journey {
+  id: string;
+  memberId: string;
+  startedBy: string;
+  startedAt: number;
+  endedAt: number | null;
+  /** null when it ended by itself (full, or too long). */
+  endedBy: string | null;
+  endReason: 'home' | 'manual' | 'full' | 'time' | null;
+  points: number;
+}
+
+/** A position kept on a journey. */
+export interface JourneyPoint {
+  lat: number;
+  lng: number;
+  accuracy: number | null;
+  battery: number | null;
+  speed: number | null;
+  /** When it was taken. */
+  ts: number;
+  /** When the server got it. */
+  at: number;
+}
+
 export interface MemberLocation {
   lat: number;
   lng: number;
@@ -660,6 +686,8 @@ export class CircleClient {
   locations: Map<string, MemberLocation>;
   /** Members who paused sharing with this circle: since when, and their optional reason. */
   paused: Map<string, { since: number; reason: string | null }>;
+  /** memberId -> its open journey: it's on the move. */
+  journeys: Map<string, Journey>;
   messages: Message[];
   /** Highest message sequence number received. */
   lastSeq: number;
@@ -680,6 +708,7 @@ export class CircleClient {
 
   on(event: 'members', fn: (m: Member[]) => void): () => void;
   on(event: 'locations', fn: (l: Map<string, MemberLocation>) => void): () => void;
+  on(event: 'journeys', fn: (j: Map<string, Journey>) => void): () => void;
   on(event: 'messages', fn: (m: Message[]) => void): () => void;
   on(event: 'newMessage', fn: (m: Message) => void): () => void;
   on(event: 'places', fn: (p: Map<string, Place>) => void): () => void;
@@ -948,6 +977,17 @@ export class CircleClient {
   homeBasePlace(): Place | null;
   /** Pin the home base to a place (null: back to its GPS). */
   pinHomeBase(placeId: string | null): Promise<void>;
+  /** The place a journey comes home to: where the home base is pinned, else a place called Home. */
+  journeyHome(): Place | null;
+  /** Start keeping a tracker's way (or your own) until it's back home. */
+  startJourney(memberId: string): Promise<Journey>;
+  /** End a journey now (or at `at`). */
+  endJourney(id: string, opts?: { at?: number; reason?: 'home' | 'manual' }): Promise<Journey>;
+  deleteJourney(id: string): Promise<void>;
+  /** A member's journeys, newest first. */
+  journeyList(memberId: string): Promise<Journey[]>;
+  /** A journey and its positions in order, opened on this phone. */
+  journeyPath(id: string): Promise<{ journey: Journey; points: JourneyPoint[] }>;
   createInvite(opts?: { hours?: number; companion?: CompanionInvite | null }): Promise<Invite>;
   setName(name: string): Promise<void>;
   setCircleName(name: string): Promise<void>;
