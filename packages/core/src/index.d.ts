@@ -28,6 +28,8 @@ export interface Member {
   current: boolean;
   keyChanged: boolean;
   safetyNumber: string;
+  /** Not a person: Home Assistant, joined through the bridge. */
+  device?: 'homeassistant' | null;
   /** 'agent' for the circle's agent (it's never in memberList()). */
   kind?: 'person' | 'agent';
   /** Their chirp sound (one of CHIRP_SOUNDS), or null if they haven't picked one. */
@@ -737,7 +739,8 @@ export class CircleClient {
   createCircle(opts: { serverUrl: string; setupToken?: string; admin?: CircleClient; name: string; circleName: string; features?: Features }): Promise<void>;
   previewInvite(link: string): Promise<InvitePreview>;
   /** Join with an invite link; an Elderly Companion invite already carries her name. */
-  joinWithInvite(link: string, opts?: { name?: string }): Promise<void>;
+  /** `device`: a member that isn't a person (the Home Assistant bridge). */
+  joinWithInvite(link: string, opts?: { name?: string; device?: 'homeassistant' }): Promise<void>;
   /** Join once a member approved the request: 'joined'. Otherwise its status. */
   finishRejoin(pending: PendingRejoin): Promise<'joined' | 'pending' | 'denied' | 'expired'>;
   rejoinRequests(): Promise<RejoinRequest[]>;

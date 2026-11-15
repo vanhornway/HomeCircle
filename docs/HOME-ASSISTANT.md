@@ -114,6 +114,23 @@ covers everyday use.
   `http://<home-assistant-ip>:8080`. Phones need the Tailscale address to
   work away from home.
 
+## Trackers and the family chat in Home Assistant
+
+The **HomeCircle Bridge** app (in the same repository) connects Home
+Assistant to a circle, wherever its server runs, including on Render. It
+joins as a member called **Home Assistant** with its own keys, so nothing is
+decrypted on the server:
+
+- each Meshtastic tracker becomes a device here, with a `device_tracker` and a
+  battery sensor;
+- automations post to the chat by firing the event `homecircle_send`
+  (`message`, and `to` for a direct message);
+- every new message fires `homecircle_message`, for automations.
+
+Install it from **Settings → Apps → Install app → HomeCircle Bridge**, paste an
+invite link from the app into its **invite_link** option, and start it. Its
+Documentation tab has examples.
+
 ## Troubleshooting
 
 | The log says | Do this |

@@ -1,0 +1,27 @@
+name: HomeCircle Bridge
+version: "0.30.0"
+slug: homecircle_bridge
+description: Connect Home Assistant to your HomeCircle circle, wherever it runs. Trackers become devices here, and automations post to the family chat.
+url: https://github.com/vanhornway/HomeCircle
+arch:
+  - aarch64
+  - amd64
+  - armv7
+init: false
+startup: application
+boot: auto
+# Home Assistant's API through the Supervisor: to add trackers as devices,
+# fire homecircle_message and listen for homecircle_send.
+homeassistant_api: true
+options:
+  invite_link: ""
+  name: Home Assistant
+  trackers: true
+  chat: true
+schema:
+  invite_link: password?
+  name: str
+  trackers: bool
+  chat: bool
+# The bridge's keys for the circle are in /data: they're in your backups.
+backup: hot

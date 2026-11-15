@@ -35,6 +35,9 @@ import { isValidReaction } from './emoji.js';
 import { MESH_TEXT_MAX, openMesh, sealMeshMessage } from './mesh.js';
 import { utf8Encode } from './encoding.js';
 import { distanceM, quickReturns } from './places.js';
+
+/** Members that aren't people and say so in their profile. */
+const DEVICES = ['homeassistant'];
 import { FREE_RE, PLAN_ANSWERS, TRAVEL_RE, busyDays, cleanBusy, cleanPlan, travelStats, tripsFrom } from './schedule.js';
 import { allFeatures, cleanFeatures, defaultFeatures, hasFeature, resolveFeatures } from './features.js';
 
@@ -516,6 +519,8 @@ export class CircleClient {
       ...(GENDERS.includes(a.profile.g) ? { g: a.profile.g } : {}),
       ...(cleanPhone(a.profile.phone) ? { phone: cleanPhone(a.profile.phone) } : {}),
       ...(cleanPhotoRef(a.profile.photo) ? { photo: a.profile.photo } : {}),
+      // A member that isn't a person says so itself: Home Assistant (the bridge).
+      ...(DEVICES.includes(a.profile.device) ? { device: a.profile.device } : {}),
       boxPub: a.identity.boxPub,
       signPub: a.identity.signPub,
     };
@@ -730,7 +735,7 @@ export class CircleClient {
    * Join with an invite link. An Elderly Companion invite carries the name
    * the family gave her, so `name` can be left out.
    */
-  async joinWithInvite(link, { name } = {}) {
+  async joinWithInvite(link, { name, device } = {}) {
     const preview = await this.previewInvite(link);
     const { serverUrl, inviteId, inviteAuth, payload } = preview;
     name = cleanName(name) || preview.companion?.name || '';
@@ -744,7 +749,7 @@ export class CircleClient {
       identity,
       epoch: payload.epoch,
       keyring: { [payload.epoch]: payload.circleKey },
-      profile: { name: cleanName(name), color: randomColor() },
+      profile: { name: cleanName(name), color: randomColor(), ...(DEVICES.includes(device) ? { device } : {}) },
       known: {},
     };
     try {
@@ -897,6 +902,7 @@ export class CircleClient {
           view.g = GENDERS.includes(p.body.g) ? p.body.g : null;
           view.phone = cleanPhone(p.body.phone);
           view.photo = cleanPhotoRef(p.body.photo);
+          view.device = DEVICES.includes(p.body.device) ? p.body.device : null;
           view.verified = true;
           view.current = m.profile.epoch === st.epoch;
           known[m.id] = { signPub: m.signPub, boxPub: m.boxPub, name: view.name };
@@ -949,7 +955,7 @@ export class CircleClient {
    */
   isDevice(memberId) {
     const r = this.memberRecord(memberId);
-    return !!(r?.tracker || r?.homeBase);
+    return !!(r?.tracker || r?.homeBase || this.members.get(memberId)?.device);
   }
 
   /**
