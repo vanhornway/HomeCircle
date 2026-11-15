@@ -2,6 +2,28 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.30.0
+
+- Journeys: mark a tracker "on the move" and the way it goes is kept until
+  it's back home, then drawn on the map. A tracker on the move shows its way
+  live; past journeys are under Journeys on its sheet (the last 10, for 90
+  days). The server keeps the positions sealed, as it does everything else.
+- Tracker distances in miles or kilometres: Settings → Display, or tap the
+  distance on Find it.
+- Trackers report their own GPS: the home base turns Meshtastic's fixed
+  position off on every tracker (one left on showed the tracker at home
+  wherever it was).
+- After the circle's key changes, the home base gives its trackers the new
+  key itself, so a tracker no longer gets stuck until it's added again.
+- New Home Assistant app, HomeCircle Bridge: connects Home Assistant to a
+  circle wherever its server runs. Trackers become devices in Home
+  Assistant, automations post to the family chat (event homecircle_send),
+  and new messages fire homecircle_message.
+- The demo family has a home base and three trackers.
+- Security: sign-in tokens renew every 30 days; plugin calls never follow
+  redirects or reach cloud metadata addresses; the public beacon reader
+  copes with any malformed packet; dependency checks in every build.
+
 ## 0.29.0
 
 - Trackers wherever they are: a tracker stays on the map at its last
