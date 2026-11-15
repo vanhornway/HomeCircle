@@ -8,6 +8,7 @@ import { RejoinBanner } from '../../components/RejoinBanner';
 import { Chips } from '../../components/FamilyNames';
 import { GroupBody, SettingsGroup, SettingsRow } from '../../components/SettingsKit';
 import { setChatScale, useChatScale } from '../../lib/chatZoom';
+import { setDistanceUnit, useDistanceUnit } from '../../lib/distanceUnit';
 import { CHAT_SCALE_STEPS, percentLabel } from '../../lib/chatZoomCore';
 import { needsAttention, setupChecklist } from '../../lib/health';
 import { FEATURES } from '@homecircle/core';
@@ -39,6 +40,7 @@ export default function SettingsTab() {
   const build = buildNumber();
   const [checked, setChecked] = useState<'checking' | 'latest' | null>(null);
   const zoom = useChatScale();
+  const unit = useDistanceUnit();
   // How many things on this phone keep it from sharing reliably (Setup check fixes them).
   const [toFix, setToFix] = useState(0);
   useFocusEffect(
@@ -112,6 +114,17 @@ export default function SettingsTab() {
             value={CHAT_SCALE_STEPS.some((v) => v === zoom) ? String(zoom) : null}
             onPick={(v) => setChatScale(Number(v))}
           />
+          {client.feature('meshtastic') ? (
+            <Chips
+              label="Tracker distances"
+              options={[
+                { value: 'mi', label: 'Miles' },
+                { value: 'km', label: 'Kilometres' },
+              ]}
+              value={unit}
+              onPick={(v) => setDistanceUnit(v === 'km' ? 'km' : 'mi')}
+            />
+          ) : null}
         </GroupBody>
       </SettingsGroup>
 

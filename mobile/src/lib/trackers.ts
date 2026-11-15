@@ -3,6 +3,8 @@
 // `tracker.node` set, signed by the home base. The home base is the member
 // whose record about itself carries `homeBase` (its status).
 import { useEffect, useState } from 'react';
+// .ts, so its unit tests run with plain Node.
+import { formatDistance } from './units.ts';
 import { distanceM, type CircleClient, type HomeBaseStatus, type MemberLocation, type MeshNodeRadio, type Place, type TrackerHeard, type TrackerMode, type TrackerSettings } from '@homecircle/core';
 
 /** The time now, updated every half minute: "heard 5 min ago" and the quiet-phone fallback stay current without reading the clock during render. */
@@ -131,8 +133,8 @@ export function separationText(s: NonNullable<ReturnType<typeof separation>>): s
   return `⚠️ ${distanceText(s.meters)} from ${s.trackerName}`;
 }
 
-/** "2.3 km" / "650 m". */
-export const distanceText = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(m >= 10_000 ? 0 : 1)} km` : `${Math.round(m / 50) * 50} m`);
+/** "1.4 mi" / "450 ft", or "2.3 km" / "650 m": as this phone chose (Settings → Display). */
+export const distanceText = (m: number) => formatDistance(m);
 
 /** The home base heard this tracker directly (no relays) in the last 20 minutes. */
 export function heardNearby(client: CircleClient, memberId: string, now: number): boolean {

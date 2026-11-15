@@ -86,6 +86,15 @@ test('firmware versions', async () => {
   assert.equal(compareVersions('1.0', '0.99.9'), 1);
 });
 
+test('distances: miles and feet, or kilometres and metres', async () => {
+  const { formatDistance } = await import('./units.ts');
+  assert.equal(formatDistance(3700, 'mi'), '2.3 mi');
+  assert.equal(formatDistance(137, 'mi'), '450 ft');
+  assert.equal(formatDistance(3700, 'km'), '3.7 km');
+  assert.equal(formatDistance(653, 'km'), '650 m');
+  assert.equal(formatDistance(25_000, 'km'), '25 km');
+});
+
 test('a person and their tracker apart: who left what behind', async () => {
   const { separation, separationText } = await import('./trackers.ts');
   const home = { id: 'home', name: 'Home', lat: 30.1, lng: -97.9, radius: 150, homeBase: true };
@@ -106,6 +115,12 @@ test('a person and their tracker apart: who left what behind', async () => {
   assert.equal(separation(make(atHome, atHome), 'umair', NOW), null, 'together');
   assert.equal(separationText(separation(make(away, atHome), 'umair', NOW)!), '⚠️ left UT2 at home');
   assert.equal(separationText(separation(make(atHome, away), 'umair', NOW)!), '⚠️ UT2 is out without this phone');
-  assert.match(separationText(separation(make(away, { lat: 30.25, lng: -97.75 }), 'umair', NOW)!), /^⚠️ \d+(\.\d)? km from UT2$/);
+  // In miles unless this phone chose kilometres.
+  const { setUnitValue } = await import('./units.ts');
+  const apart = make(away, { lat: 30.25, lng: -97.75 });
+  assert.match(separationText(separation(apart, 'umair', NOW)!), /^⚠️ \d+(\.\d)? mi from UT2$/);
+  setUnitValue('km');
+  assert.match(separationText(separation(apart, 'umair', NOW)!), /^⚠️ \d+(\.\d)? km from UT2$/);
+  setUnitValue('mi');
   assert.equal(separation(make(away, atHome, 40 * MIN), 'umair', NOW), null, 'old positions say nothing');
 });

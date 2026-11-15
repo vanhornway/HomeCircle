@@ -26,6 +26,7 @@ import { carriedFallback, circleCount, homeBaseOf, TRACKER_STALE_MS, trackerEmoj
 import { edgeChips, groups, openingFrame } from '../../lib/mapFrame';
 import { usePlaceNames } from '../../lib/weather';
 import { distanceText, journeyWhen, pathMeters, useJourneyPaths } from '../../lib/journeys';
+import { toggleDistanceUnit, useDistanceUnit } from '../../lib/distanceUnit';
 import { useTheme } from '../../theme';
 
 const STALE_MS = 2 * 3600_000;
@@ -72,6 +73,7 @@ export default function MapTab() {
     setShownJourney(params.journey || null);
   }
   const journeyPaths = useJourneyPaths(client, shownJourney);
+  const unit = useDistanceUnit();
   const shown = shownJourney ? journeyPaths.get(shownJourney) : undefined;
   const [fitted, setFitted] = useState<string | null>(null);
   if (shown && fitted !== shown.journey.id && shown.points.length) {
@@ -444,14 +446,19 @@ export default function MapTab() {
                 elevation: 3,
               }}
             >
-              <View style={{ flexShrink: 1, paddingVertical: 4 }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityHint={unit === 'mi' ? 'Shows the distance in kilometres' : 'Shows the distance in miles'}
+                onPress={toggleDistanceUnit}
+                style={{ flexShrink: 1, paddingVertical: 4 }}
+              >
                 <Text style={{ color: t.text, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
                   {client.members.get(shown.journey.memberId)?.name ?? 'Tracker'}’s journey · {distanceText(pathMeters(shown.points))}
                 </Text>
                 <Text style={{ color: t.muted, fontSize: 13 }} numberOfLines={1}>
                   {journeyWhen(shown.journey, now)}
                 </Text>
-              </View>
+              </Pressable>
               <Pressable accessibilityRole="button" accessibilityLabel="Stop showing this journey" onPress={() => setShownJourney(null)} hitSlop={8} style={{ padding: 10 }}>
                 <Text style={{ color: t.muted, fontSize: 18, fontWeight: '700' }}>✕</Text>
               </Pressable>

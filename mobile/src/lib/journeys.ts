@@ -3,6 +3,7 @@
 // What the app says about one, and the ways to draw on the map.
 import { useEffect, useState } from 'react';
 import { distanceM, type CircleClient, type Journey, type JourneyPoint } from '@homecircle/core';
+import { formatDistance } from './units';
 
 const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 const day = (ms: number, now: number) => {
@@ -20,10 +21,7 @@ export function pathMeters(points: { lat: number; lng: number }[]): number {
   return m;
 }
 
-export function distanceText(m: number): string {
-  if (m < 1000) return `${Math.round(m / 10) * 10} m`;
-  return `${(m / 1000).toFixed(m < 10_000 ? 1 : 0)} km`;
-}
+export const distanceText = (m: number) => formatDistance(m);
 
 export function durationText(ms: number): string {
   const mins = Math.max(1, Math.round(ms / 60_000));
