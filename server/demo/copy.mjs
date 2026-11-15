@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import WebSocket from 'ws';
 import { CircleClient } from '../../packages/core/src/index.js';
-import { CIRCLE_NAME, FEATURES, HELPER, OWNER, PEOPLE, PLACES, TIME_ZONE, TRIPS, routeKey } from './family.mjs';
+import { CIRCLE_NAME, FEATURES, HELPER, HOME_BASE, OWNER, PEOPLE, PLACES, PRESSES, PRESS_TEXT, TIME_ZONE, TRACKERS, TRIPS, routeKey } from './family.mjs';
 import { CHAT, DINNER_POLL, FALLBACK, HISTORY, OLD_POLL, REPLIES } from './script.mjs';
 import { LISTS, RECIPES, notes, reminders } from './content.mjs';
 
@@ -61,6 +61,8 @@ export class Copy {
     this.budgetUsd = budgetUsd;
     this.log = log;
     this.people = {};
+    this.trackers = {};
+    this.homeBase = null;
     this.placeIds = {};
     this.circleId = null;
     this.visitorId = null;
@@ -114,6 +116,7 @@ export class Copy {
     }
     const nani = Object.values(this.people).find((p) => p.spec.elder);
     await owner.markElder(nani.client.account.memberId, { page: 'care' });
+    await this._buildTrackers();
     await this._history();
     // The helper answers on the live connection; the owner only needs one while building.
     owner.connect();
@@ -125,6 +128,129 @@ export class Copy {
     }
     const { link } = await owner.createInvite({ hours: 48 });
     return link;
+  }
+
+  // --- trackers ----------------------------------------------------------
+  // A home base and its Meshtastic trackers, simulated: each tracker is a
+  // member the home base keeps, as a real one is, and posts where its person
+  // is, as having come over the radio. No hardware, no radio.
+
+  async _buildTrackers() {
+    const owner = this.owner;
+    const hb = this._client();
+    await hb.joinWithInvite((await owner.createInvite({ hours: 1 })).link, { name: HOME_BASE.name });
+    this.homeBase = hb;
+    for (const [key, spec] of Object.entries(TRACKERS)) {
+      const c = this._client();
+      await c.joinWithInvite((await owner.createInvite({ hours: 1 })).link, { name: spec.name });
+      await c.api.req('PUT', '/members/me/keeper', { keeper: hb.account.memberId });
+      const p = this.people[spec.follows];
+      this.trackers[key] = { key, spec, client: c, battery: spec.battery, lat: p.lat, lng: p.lng, nextShare: 0, journey: null };
+    }
+    await owner.refresh();
+    for (const t of Object.values(this.trackers)) {
+      const carriedBy = t.spec.mode === 'carried' ? this.people[t.spec.follows].client.account.memberId : null;
+      await owner.setMemberRecord(t.client.account.memberId, {
+        tracker: { mode: t.spec.mode, moving: 2, still: 15, quiet: null, sos: false, node: t.spec.node, carriedBy, custom: null },
+      });
+    }
+    await this._homeBaseStatus();
+    await owner.pinHomeBase(this.placeIds.home);
+    for (const t of Object.values(this.trackers)) {
+      await t.client.refresh();
+      await this._shareTracker(t);
+    }
+  }
+
+  /** What a home base says about itself and its trackers (in the member record about it). */
+  async _homeBaseStatus() {
+    const now = Date.now();
+    const trackers = Object.values(this.trackers).map((t, i) => ({
+      node: t.spec.node,
+      member: t.client.account.memberId,
+      at: t.sharedAt ?? null,
+      radio: { at: now - 40_000 * (i + 1), hops: i === 1 ? 0 : 1, snr: [4.5, 9.25, -6.75][i] ?? 2, battery: Math.round(t.battery * 100) },
+      settings: 'set',
+      log: [],
+    }));
+    await this.owner.setMemberRecord(this.homeBase.account.memberId, {
+      homeBase: {
+        at: now,
+        every: 60,
+        self: { battery: null, volts: 5.1, plugged: true, wifi: -57, up: 3 * 86400, heap: 142, ch: 6, tx: 1 },
+        gps: { fix: true, sats: 9, hdop: 1.1 },
+        fw: '0.29.0',
+        heard: [],
+        trackers,
+        node: HOME_BASE.node,
+      },
+    });
+  }
+
+  /** A tracker where its person is (a car parks a few metres off), as it came over the radio. */
+  _shareTracker(t) {
+    const p = this.people[t.spec.follows];
+    const off = t.spec.mode === 'car' && !p.trip ? 0.00012 : 0;
+    t.lat = p.lat + off;
+    t.lng = p.lng + off;
+    t.sharedAt = Date.now();
+    const c = t.client;
+    const body = {
+      lat: t.lat,
+      lng: t.lng,
+      accuracy: 5,
+      battery: t.battery,
+      charging: false,
+      trigger: 'update',
+      app: 'meshtastic',
+      via: 'radio',
+      mesh: { hops: t.spec.mode === 'car' ? 0 : 1, src: 'radio' },
+      skin: 'tracker',
+      tz: TIME_ZONE,
+    };
+    return c.api.putLocation(c._seal('location', body));
+  }
+
+  _tickTrackers(now) {
+    for (const t of Object.values(this.trackers)) {
+      const p = this.people[t.spec.follows];
+      if (now < t.nextShare) continue;
+      // Every few seconds of the hour on the road, every few minutes standing still.
+      t.nextShare = now + ((p.trip ? MOVING_EVERY * 2 : STILL_EVERY) * 1000) / Math.max(1, this.scale / (p.trip ? 2 : 1));
+      t.battery = Math.max(0.05, t.battery - 0.002);
+      this._shareTracker(t).catch((e) => this.log(`tracker: ${e.message}`));
+    }
+    if (now - (this.statusAt ?? 0) > 60_000) {
+      this.statusAt = now;
+      this._homeBaseStatus().catch((e) => this.log(`home base: ${e.message}`));
+    }
+  }
+
+  /** The car leaves Home: it's on the move until it's back. */
+  _carJourney(trip) {
+    for (const t of Object.values(this.trackers)) {
+      if (!t.spec.journeys || !trip.who.includes(t.spec.follows)) continue;
+      if (trip.from === 'home' && !t.journey) {
+        t.journey = 'starting';
+        this.owner
+          .startJourney(t.client.account.memberId)
+          .then((j) => (t.journey = j.id))
+          .catch((e) => {
+            t.journey = null;
+            this.log(`journey: ${e.message}`);
+          });
+      } else if (trip.to === 'home' && t.journey && t.journey !== 'starting') {
+        // A phone in the circle ends it once it sees the car home; an older app won't, so the director does too.
+        const id = t.journey;
+        t.journey = null;
+        setTimeout(() => this.owner.endJourney(id, { reason: 'home' }).catch(() => {}), ((trip.mins * 60_000) / this.scale) + 5000);
+      }
+    }
+  }
+
+  _press(key, n) {
+    const t = this.trackers[key];
+    return t ? t.client.sendChat(PRESS_TEXT[n]) : null;
   }
 
   async _history() {
@@ -193,7 +319,7 @@ export class Copy {
     this.visitorId = visitorId;
     await this.owner.refresh();
     this.visitorName = this.owner.members.get(visitorId)?.name || 'friend';
-    this.script = [...CHAT].sort((a, b) => a[0] - b[0]);
+    this.script = [...CHAT, ...PRESSES.map(([at, key, n]) => [at, 'press', key, n])].sort((a, b) => a[0] - b[0]);
     this.trips = [...TRIPS].sort((a, b) => a.at - b.at);
     this.startedAt = Date.now();
     this.running = true;
@@ -203,6 +329,10 @@ export class Copy {
       // Fresh on the map as the visitor arrives.
       this._share(p).catch(() => {});
       await sleep(30);
+    }
+    for (const t of Object.values(this.trackers)) {
+      t.conn = t.client.api.connect({ onEvent: () => {} });
+      t.nextShare = 0;
     }
     this.timer = setInterval(() => this._tick().catch((e) => this.log(`tick: ${e.message}`)), 1000);
   }
@@ -214,6 +344,10 @@ export class Copy {
       p.conn?.close();
       p.conn = null;
       p.client.disconnect();
+    }
+    for (const t of Object.values(this.trackers)) {
+      t.conn?.close();
+      t.conn = null;
     }
   }
 
@@ -236,9 +370,11 @@ export class Copy {
         this._share(p).catch(() => {});
       }
     }
+    this._tickTrackers(now);
   }
 
   _depart(trip) {
+    this._carJourney(trip);
     for (const key of trip.who) {
       const p = this.people[key];
       const from = p.placeKey;
@@ -304,6 +440,10 @@ export class Copy {
   }
 
   _act([, action, who, ...args]) {
+    if (action === 'press') {
+      if (this.running) Promise.resolve(this._press(who, args[0])).catch((e) => this.log(`press: ${e.message}`));
+      return;
+    }
     const run = async () => {
       if (!this.running) return;
       const p = who ? this.people[who] : null;

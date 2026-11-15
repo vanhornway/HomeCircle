@@ -74,8 +74,13 @@ test('a visitor joins a full family, the day happens, and leaving makes room for
   const me = new CircleClient({ storage: memory(), WebSocketImpl: WebSocket, onError: () => {} });
   await me.joinWithInvite(link, { name: 'Sam' });
 
-  // Twenty people and the helper, and places.
-  assert.equal(me.memberList().filter((m) => m.kind !== 'agent').length, 21);
+  // Twenty people and the helper, a home base with three trackers, and places.
+  await me.fetchRecords();
+  assert.equal(me.peopleList().length, 21);
+  assert.deepEqual(me.deviceList().map((m) => m.name).sort(), ['Family car', 'Home base', 'Leo’s backpack', 'Nani’s tracker']);
+  const car = me.memberList().find((m) => m.name === 'Family car');
+  assert.equal(me.memberRecord(car.id)?.tracker?.mode, 'car');
+  assert.ok(me.memberRecord(me.memberList().find((m) => m.name === 'Home base').id)?.homeBase?.trackers.length === 3, 'the home base reports its trackers');
   assert.ok(me.agent, 'the helper is there');
   await me.fetchPlaces();
   assert.equal(me.places.size, 15);
@@ -113,6 +118,11 @@ test('a visitor joins a full family, the day happens, and leaving makes room for
   // The day: a welcome, messages and movement arrive.
   await waitFor(() => me.conversation(me.memberList().find((m) => m.name === 'Maya').id).some((m) => m.body?.text?.includes('Sam')));
   await waitFor(() => me.messages.some((m) => m.kind === 'event' && m.body?.type === 'place' && m.body.action === 'left'));
+  // The car leaves Home with Omar: it's on the move, its way kept; the backpack says Leo's OK.
+  await waitFor(() => me.journeys.has(car.id));
+  const backpack = me.memberList().find((m) => m.name === 'Leo’s backpack');
+  await waitFor(() => me.messages.some((m) => m.from === backpack.id && m.body?.text === '✅ I’m OK'));
+  assert.ok((await me.journeyPath(me.journeys.get(car.id).id)).points.length >= 1, 'the car’s way, opened by the visitor');
 
   // Say something: someone answers.
   await me.sendChat('Hello everyone');

@@ -33,7 +33,28 @@ export const FEATURES = {
   prayer: false,
   whatsapp: false,
   homeAssistant: false,
+  // Meshtastic trackers, made up like everyone else: a home base pinned to
+  // Home, and trackers that follow their people around.
+  meshtastic: true,
 };
+
+// The home base and its trackers. `follows`: whose day it goes along with.
+// A car tracker is "on the move" while its driver drives it away from Home:
+// its journey shows on the map until it's back.
+export const HOME_BASE = { name: 'Home base', node: '!d3a0beef' };
+export const TRACKERS = {
+  backpack: { name: 'Leo’s backpack', node: '!d3a00001', mode: 'carried', follows: 'leo', battery: 0.82 },
+  car: { name: 'Family car', node: '!d3a00002', mode: 'car', follows: 'omar', battery: 0.97, journeys: true },
+  naniTag: { name: 'Nani’s tracker', node: '!d3a00003', mode: 'carried', follows: 'nani', battery: 0.58 },
+};
+// Button presses on a tracker, as the home base posts them: [minute, tracker, presses].
+export const PRESSES = [
+  [5.5, 'backpack', 1],
+  [25, 'naniTag', 4],
+  [41, 'backpack', 3],
+  [47, 'backpack', 2],
+];
+export const PRESS_TEXT = ['', '✅ I’m OK', '📍 Here’s where I am', '🚗 Please come pick me up', '🏠 I’m on my way home', '🆘 I need help'];
 
 export const PLACES = {
   home: { name: 'Home', lat: 37.530377, lng: -121.946057, icon: 'home' },
