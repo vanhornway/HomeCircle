@@ -79,6 +79,7 @@ export default function TrackerSetup() {
       if (trackerList(client).some((x) => x.tracker.node === id)) throw new Error(`${n.name} is already one of your trackers.`);
       const lora = snap.config.get(F.config.lora) ?? [];
       const security = snap.config.get(F.config.security) ?? [];
+      const position = snap.config.get(F.config.position) ?? [];
       const fromLink = (f: number) => link.lora?.filter((x) => x.n === f) ?? [];
       // The home base's key as an admin key, next to any it has (at most 3).
       const keys = all(security, F.security.adminKey).filter((k) => k.b && k.b.length === 32 && !k.b.every((b, i) => b === key[i]));
@@ -91,6 +92,8 @@ export default function TrackerSetup() {
         config: [
           [F.config.lora, patch(lora, [...fromLink(1), ...fromLink(2), ...fromLink(F.lora.region), ...fromLink(F.lora.channelNum), u(F.lora.hopLimit, 7), u(F.lora.okToMqtt, true)])],
           [F.config.security, patch(security, adminKeys)],
+          // Its own GPS, on, and never a fixed position (or it reports the same place wherever it goes).
+          [F.config.position, patch(position, [u(F.position.fixed, false), u(F.position.gpsMode, 1)])],
         ],
       });
       setBusy('Adding it to the circle…');

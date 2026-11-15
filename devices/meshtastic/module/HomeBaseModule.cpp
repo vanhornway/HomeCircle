@@ -555,6 +555,9 @@ void sendConfig(uint32_t node, ConfigJob &job)
     // What HomeCircle manages; everything else stays as it was on the tracker.
     job.device.disable_triple_click = true; // 3 presses mean "come pick me up", not "GPS off"
     job.position.gps_mode = meshtastic_Config_PositionConfig_GpsMode_ENABLED;
+    // Its own GPS, always: a fixed position (set in the Meshtastic app) makes it
+    // report the same place wherever it is, so it looks at home while it's away.
+    job.position.fixed_position = false;
     job.position.position_broadcast_smart_enabled = true;
     job.position.broadcast_smart_minimum_interval_secs = job.want.movingS;
     if (!job.position.broadcast_smart_minimum_distance)
@@ -575,6 +578,13 @@ void sendConfig(uint32_t node, ConfigJob &job)
     m.which_payload_variant = meshtastic_AdminMessage_set_config_tag;
     m.set_config.which_payload_variant = meshtastic_Config_device_tag;
     m.set_config.payload_variant.device = job.device;
+    withKey(m);
+    job.ids.push_back(sendAdmin(node, m, false, false));
+
+    // And forget the fixed position it may have kept (its last GPS fix takes over).
+    m = meshtastic_AdminMessage_init_zero;
+    m.which_payload_variant = meshtastic_AdminMessage_remove_fixed_position_tag;
+    m.remove_fixed_position = true;
     withKey(m);
     job.ids.push_back(sendAdmin(node, m, false, false));
 
@@ -642,7 +652,7 @@ void configAnswer(const meshtastic_MeshPacket &mp)
             r.get_config_response.which_payload_variant == meshtastic_Config_position_tag) {
             const meshtastic_Config_PositionConfig &pos = r.get_config_response.payload_variant.position;
             if (pos.position_broadcast_secs == (uint32_t)job.want.stillS &&
-                pos.broadcast_smart_minimum_interval_secs == (uint32_t)job.want.movingS) {
+                pos.broadcast_smart_minimum_interval_secs == (uint32_t)job.want.movingS && !pos.fixed_position) {
                 LOG_INFO("HomeCircle home base: %08x has its settings (read back)", (unsigned)mp.from);
                 configJobs.erase(it);
                 hb.onConfigured(mp.from, hc::ConfigResult::Set);

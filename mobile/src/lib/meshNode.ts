@@ -25,7 +25,7 @@ export const F = {
   user: { id: 1, longName: 2, shortName: 3 },
   channel: { index: 1, settings: 2, role: 3 },
   channelSettings: { psk: 2, name: 3, uplink: 5, downlink: 6, moduleSettings: 7 },
-  position: { broadcastSecs: 1, smart: 2, smartMinInterval: 11, gpsMode: 13 },
+  position: { broadcastSecs: 1, smart: 2, fixed: 3, smartMinInterval: 11, gpsMode: 13 },
   lora: { region: 7, hopLimit: 8, channelNum: 11, okToMqtt: 105 },
   network: { wifiEnabled: 1, ssid: 3, psk: 4 },
   security: { adminKey: 3, isManaged: 4 },
