@@ -1,6 +1,16 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.31.0',
+    date: '2026-11-15',
+    title: 'One home base, several circles',
+    items: [
+      'Use one home base in up to 3 circles, like your family and your parents’.',
+      'Put a tracker in more than one circle: each gets its positions, button presses and SOS.',
+      'An SOS ended in one circle ends in all of them.',
+    ],
+  },
+  {
     version: '0.30.0',
     date: '2026-11-14',
     title: 'Journeys',
