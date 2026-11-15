@@ -327,6 +327,26 @@ Wi-Fi itself (`MESH_NODE`, deploy/README.md). Any computer at home can run
 HomeCircle-firmware trackers' sealed packets. Stock trackers need the home
 base above.
 
+## One home base in several circles
+
+A home base can serve up to 3 circles (say, your family and your parents').
+In the app: Trackers → **Use it in another circle**, or send it
+`join <invite link from the other circle>` yourself. It becomes a member of
+that circle too, with its own account and trackers there.
+
+- **A tracker can be in more than one circle:** add it in each (`add !id Name`
+  in that circle). Every circle it's in gets its positions, button presses
+  and SOS. An SOS ended in one circle ends in all of them.
+- **Its settings come from the circle that added it first** (how often it
+  reports, its beacon and public SOS, its button messages). The others show
+  a note saying so.
+- Requests to a tracker go out once, however many circles ask at the same
+  moment.
+- Admins of any of its circles can update the home base and change its own
+  settings.
+- `circles` lists the circles it's in; `leave`, sent in one of them, takes it
+  and its trackers there out of that circle.
+
 ## Not done yet
 
 - **Not tested on real hardware or on air.** Both firmwares build against

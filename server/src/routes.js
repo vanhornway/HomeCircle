@@ -810,15 +810,18 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
   // Public beacons: the home base names its trackers whose beacon is on; this
   // server listens for their positions on the public Meshtastic MQTT server
   // (beacons.js) and queues each for the home base like a request.
-  const beaconOwners = new Map(); // node number -> { keeper, member }
+  // node number -> [{ keeper, member, circleId }]: a home base in several circles
+  // keeps the same tracker in each, and each gets its beacons.
+  const beaconOwners = new Map();
   const beacons = new PublicBeacons({
     url: config.meshPublicMqtt,
     topic: config.meshPublicTopic,
     log,
     onBeacon: (node, b) => {
-      const owner = beaconOwners.get(node);
-      const member = owner && store.member(owner.circleId, owner.member);
-      if (member && !member.removed && member.keeperId === owner.keeper) relayToKeeper(member, { type: 'beacon', lat: b.lat, lng: b.lng, at: b.at, gateway: b.gateway });
+      for (const owner of beaconOwners.get(node) ?? []) {
+        const member = store.member(owner.circleId, owner.member);
+        if (member && !member.removed && member.keeperId === owner.keeper) relayToKeeper(member, { type: 'beacon', lat: b.lat, lng: b.lng, at: b.at, gateway: b.gateway });
+      }
     },
   });
   r.beacons = beacons;
@@ -826,14 +829,18 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     requireFeature(me, 'meshtastic', 'Meshtastic trackers');
     const list = Array.isArray(body.nodes) ? body.nodes.slice(0, 20) : [];
     const nodes = [];
-    for (const [n, o] of beaconOwners) if (o.keeper === me.id) beaconOwners.delete(n);
+    for (const [n, list] of beaconOwners) {
+      const rest = list.filter((o) => o.keeper !== me.id);
+      if (rest.length) beaconOwners.set(n, rest);
+      else beaconOwners.delete(n);
+    }
     for (const x of list) {
       const m = typeof x?.node === 'string' && /^![0-9a-f]{8}$/.test(x.node) ? x.node : null;
       const member = m && typeof x.member === 'string' ? store.member(me.circleId, x.member) : null;
       // Only trackers this home base keeps.
       if (!member || member.removed || member.keeperId !== me.id) continue;
       const num = parseInt(m.slice(1), 16) >>> 0;
-      beaconOwners.set(num, { keeper: me.id, member: member.id, circleId: me.circleId });
+      beaconOwners.set(num, [...(beaconOwners.get(num) ?? []), { keeper: me.id, member: member.id, circleId: me.circleId }]);
       nodes.push(num);
     }
     beacons.set(me.id, nodes);

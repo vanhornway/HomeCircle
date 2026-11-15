@@ -18,6 +18,7 @@
 // No Meshtastic code here: the node supplies a Radio. The same code runs on
 // the board and in the host tests.
 #pragma once
+#include <functional>
 #include <map>
 #include <memory>
 
@@ -223,6 +224,27 @@ class HomeBase {
   bool isTracker(uint32_t node) const;
   size_t trackerCount() const { return trackers_.size(); }
 
+  // --- one home base in several circles (HomeBases runs one of these per circle) ---
+
+  /** A tracker's position that a phone in another of its circles passed on. */
+  void sharedFix(uint32_t node, const Fix& fix, int64_t at, const std::string& gateway);
+  /** Its SOS was ended from the app in another of its circles: it ends here too. */
+  void sosEndedElsewhere(uint32_t node);
+  /** When this circle added the tracker (0: before that was kept); -1 if it isn't one here. */
+  int64_t addedAt(uint32_t node) const;
+  /** Leave this circle: its trackers' accounts here, then its own. */
+  void leaveCircle();
+  /** A direct message to someone, if they're in this circle. */
+  bool tell(const std::string& memberId, const std::string& text);
+  /** A phone here passed on a tracker's position: for its other circles. */
+  std::function<void(uint32_t node, const Fix& fix, int64_t at, const std::string& gateway)> phoneFixShared;
+  /** A tracker's SOS was ended here from the app: for its other circles. */
+  std::function<void(uint32_t node)> sosEnded;
+  /** "join", "leave", "circles" (admins): HomeBases answers. */
+  std::function<std::string(const std::string& verb, const std::string& rest, const Device::Direct& d)> circlesCommand;
+  /** False when another circle sets this tracker's settings (the circle that added it first). */
+  std::function<bool(uint32_t node)> settingsHere;
+
   /** What it did last, for the node's log. */
   std::string log;
 
@@ -232,6 +254,7 @@ class HomeBase {
   int64_t reportedAt_ = 0;
   struct Tracker {
     uint32_t node = 0;
+    int64_t added = 0;  // when this circle added it (0: before that was kept)
     std::string name, kind = "carried", carriedBy;  // kind: carried, car, pet, luggage, keys or other
     std::unique_ptr<PrefixStore> store;
     std::unique_ptr<Device> dev;

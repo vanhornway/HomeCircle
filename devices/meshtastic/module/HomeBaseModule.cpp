@@ -30,7 +30,7 @@
 #endif
 // clang-format off
 #include "HomeCircleIO.h"
-#include "homecircle/hc_homebase.h"
+#include "homecircle/hc_homebases.h"
 // clang-format on
 #include <Arduino.h>
 #include <DNSServer.h>
@@ -266,7 +266,8 @@ struct MeshRadio : hc::Radio {
 hcio::FsStore store;
 hcio::WifiHttp http;
 MeshRadio radio;
-hc::HomeBase hb(http, store, hcio::nowMs, radio);
+// One home base, in up to 3 circles (hc_homebases.h).
+hc::HomeBases hb(http, store, hcio::nowMs, radio);
 
 // --- updates over Wi-Fi ---------------------------------------------------------------
 //

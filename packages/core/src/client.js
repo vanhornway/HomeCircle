@@ -3520,6 +3520,8 @@ function cleanHomeBase(h) {
             // Its settings on the tracker itself: 'set' (as HomeCircle says), 'sending',
             // or 'needs-key' (the tracker doesn't trust the home base's key yet).
             settings: ['set', 'sending', 'needs-key'].includes(t.settings) ? t.settings : null,
+            // In several circles: another one (the circle that added it first) sets how it reports.
+            elsewhere: t.elsewhere === true,
             // Positions the home base heard lately, with how each got home: the trip on the map.
             log: list(t.log, (e) => {
               const ll = (o) => (Number.isFinite(o?.lat) && Math.abs(o.lat) <= 90 && Number.isFinite(o?.lng) && Math.abs(o.lng) <= 180 ? { lat: o.lat, lng: o.lng } : null);

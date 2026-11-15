@@ -149,3 +149,29 @@ test('a home base names its trackers with a beacon on; their beacons wait for it
   await hb.api.req('PUT', '/keeper/beacons', { nodes: [] });
   assert.equal(app.beacons.watching, 0);
 });
+
+test('a home base in two circles keeps the same tracker in each: each circle gets its beacon', async () => {
+  const circle = async (name) => {
+    const admin = client();
+    const hb = client();
+    const tag = client();
+    await admin.createCircle({ features: { ...allFeatures(), meshtastic: true }, serverUrl: url, setupToken: SETUP, name: 'Admin', circleName: name });
+    for (const [c, n] of [[hb, 'Home base'], [tag, 'UT1']]) await c.joinWithInvite((await admin.createInvite()).link, { name: n });
+    await tag.api.req('PUT', '/members/me/keeper', { keeper: hb.account.memberId });
+    await hb.api.req('PUT', '/keeper/beacons', { nodes: [{ node: '!28d59f33', member: tag.account.memberId }] });
+    return { hb, tag };
+  };
+  const family = await circle('Family');
+  const extended = await circle('Extended family');
+  app.beacons.onBeacon(0x28d59f33, { lat: 37.5, lng: -121.9, at: 1794600000000, gateway: null });
+  for (const c of [family, extended]) {
+    const { pending } = await c.hb.api.req('GET', '/keeper/pending');
+    assert.deepEqual(pending.map((p) => [p.type, p.member]), [['beacon', c.tag.account.memberId]]);
+  }
+  // One circle stops watching: the other still does.
+  await family.hb.api.req('PUT', '/keeper/beacons', { nodes: [] });
+  app.beacons.onBeacon(0x28d59f33, { lat: 37.6, lng: -121.9, at: 1794600060000, gateway: null });
+  assert.equal((await family.hb.api.req('GET', '/keeper/pending')).pending.length, 0);
+  assert.equal((await extended.hb.api.req('GET', '/keeper/pending')).pending.length, 1);
+  await extended.hb.api.req('PUT', '/keeper/beacons', { nodes: [] });
+});

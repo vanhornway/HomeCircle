@@ -16,6 +16,7 @@ import { confirm, notice, showSheet } from '../lib/sheet';
 import { homeBaseHealth, homeBaseOf, homeBaseOnline, PRESS_HELP, oldHomeBases, radioFacts, tellHomeBase, trackerEmoji, trackerList, TRACKER_KINDS, trackerSettingsLine, tripLine, useNow } from '../lib/trackers';
 import { KeyHelp } from '../components/TrackerKeyHelp';
 import { HomeBaseUpdateRow } from '../components/HomeBaseUpdate';
+import { HomeBaseCircles } from '../components/HomeBaseCircles';
 import { PhoneBridgeGroup } from '../components/PhoneBridgeGroup';
 import { timeAgo, useCircle } from '../lib/useCircle';
 import { useTheme } from '../theme';
@@ -114,6 +115,7 @@ export default function Trackers() {
           />
         ) : null}
         <HomeBaseUpdateRow client={client} />
+        <HomeBaseCircles client={client} />
         {home && admin ? (
           <SettingsRow
             icon="server"

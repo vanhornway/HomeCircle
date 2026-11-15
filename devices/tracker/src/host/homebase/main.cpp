@@ -21,7 +21,7 @@
 #include <iostream>
 #include <map>
 
-#include <hc_homebase.h>
+#include <hc_homebases.h>
 
 #include "../common.h"
 
@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
   host::CurlHttp http;
   host::FileStore store(argv[2]);
   FakeRadio radio;
-  hc::HomeBase hb(http, store, host::nowMs, radio);
+  hc::HomeBases hb(http, store, host::nowMs, radio);
   hb.load();
 
   std::string line;
@@ -126,6 +126,10 @@ int main(int argc, char** argv) {
     if (cmd == "setup") {
       hc::Status s = hb.setup(rest(line, 1));
       printf("%s %s\n", hc::statusName(s), s == hc::Status::Ok ? hb.base().memberId().c_str() : hb.base().error().c_str());
+    } else if (cmd == "reload") {
+      // As after a restart: load what's saved again.
+      bool joined = hb.load();
+      printf("%s %u\n", joined ? "ok" : "no", (unsigned)hb.circleCount());
     } else if (cmd == "whoami") {
       printf("%s\n", hb.base().memberId().c_str());
     } else if (cmd == "heard" || cmd == "position" || cmd == "text") {

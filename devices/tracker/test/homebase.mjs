@@ -710,6 +710,89 @@ try {
   assert.ok(loc && Math.abs(loc.lat - 37.6201) < 1e-4, `the tracker posts with the new key: ${JSON.stringify(loc)} | ${keyTick.join(' | ')}`);
   pass('a new admin changes the key before the tracker knew them: the home base gives its trackers the key');
 
+  // One home base in two circles: the grandparents' circle joins it, and adds Leo's tracker too.
+  const nana = client();
+  await nana.createCircle({ serverUrl, setupToken, name: 'Nana', circleName: 'Grandparents' });
+  await nana.setFeatures({ ...nana.features, sos: true, meshtastic: true });
+  answer = await ask(`join ${(await nana.createInvite({ hours: 1 })).link}`);
+  assert.match(answer, /Joined Grandparents as its home base/, answer);
+  await nana.refresh();
+  const hb2 = nana.memberList().find((m) => m.name === 'Home base');
+  assert.ok(hb2 && hb2.id !== hbId, 'a member of its own there');
+  await nana.setRole(hb2.id, 'admin');
+  assert.match(await ask('circles'), /Family \(here\)[\s\S]*Grandparents/);
+  const askNana = async (text) => {
+    const before = nana.messages.length;
+    await nana.sendChat(text, { to: hb2.id });
+    await radio('advance 21');
+    await radio('tick');
+    for (let i = 0; i < 50; i++) {
+      await nana._fetchMessages();
+      const reply = nana.messages.slice(before).find((m) => m.from === hb2.id);
+      if (reply) return reply.body.text;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error(`no answer to "${text}" in Grandparents`);
+  };
+  assert.match(await askNana(`add ${TRACKER} Leo's tracker`), /Added Leo's tracker/);
+  await nana.refresh();
+  const tracker2 = nana.memberList().find((m) => m.name === "Leo's tracker");
+  assert.ok(tracker2 && tracker2.id !== tracker.id, 'its own member in that circle');
+  pass('“join” makes it the home base in another circle too; that circle adds the same tracker');
+
+  // Its position reaches both circles; settings stay with the circle that added it first.
+  await radio('advance 61');
+  await radio(`position ${TRACKER} 37.6301 -122.0502 71`);
+  const bothTick = await radio('tick');
+  await maya.fetchLocations();
+  await nana.fetchLocations();
+  assert.ok(Math.abs((maya.locations.get(tracker.id)?.lat ?? 0) - 37.6301) < 1e-4, 'in Family');
+  assert.ok(Math.abs((nana.locations.get(tracker2.id)?.lat ?? 0) - 37.6301) < 1e-4, 'in Grandparents');
+  assert.ok(!bothTick.some((l) => l.startsWith('request ') && bothTick.filter((x) => x === l).length > 1), `nothing asked twice: ${bothTick.join(' | ')}`);
+  await radio('advance 61');
+  await radio('tick');
+  await nana.fetchRecords();
+  await maya.fetchRecords();
+  assert.equal(nana.memberRecord(hb2.id)?.homeBase?.trackers.find((t) => t.node === TRACKER)?.elsewhere, true, 'Grandparents sees that Family sets it');
+  assert.equal(maya.memberRecord(hbId)?.homeBase?.trackers.find((t) => t.node === TRACKER)?.elsewhere, false);
+  pass('a tracker in two circles: its positions reach both; its settings come from the circle that added it first');
+
+  // Presses and SOS go to both; ending the SOS in one ends it in both.
+  await radio('advance 700'); // past the earlier "ended from the app" window
+  const pressFrom = [maya.messages.length, nana.messages.length];
+  await radio(`text ${TRACKER} #press 2`);
+  await radio('tick');
+  await maya._fetchMessages();
+  await nana._fetchMessages();
+  assert.ok(maya.messages.slice(pressFrom[0]).some((m) => m.from === tracker.id), 'the press in Family');
+  assert.ok(nana.messages.slice(pressFrom[1]).some((m) => m.from === tracker2.id), 'the press in Grandparents');
+  await radio(`text ${TRACKER} \u0007🆘 SOS`);
+  const sosTick = await radio('tick');
+  assert.equal(sosTick.filter((l) => l === `sos-ack ${TRACKER}`).length, 1, `the tracker is told once: ${sosTick.join(' | ')}`);
+  await maya._fetchMessages();
+  await nana._fetchMessages();
+  assert.ok(maya.activeSos().some((s) => s.memberId === tracker.id), 'SOS in Family');
+  assert.ok(nana.activeSos().some((s) => s.memberId === tracker2.id), 'SOS in Grandparents');
+  assert.match(await askNana("safe Leo's tracker"), /Ended .+'s SOS/);
+  await radio('advance 5');
+  await radio('tick');
+  await maya._fetchMessages();
+  await nana._fetchMessages();
+  assert.ok(!nana.activeSos().some((s) => s.memberId === tracker2.id), 'ended in Grandparents');
+  assert.ok(!maya.activeSos().some((s) => s.memberId === tracker.id), 'and in Family');
+  pass('presses and SOS go to every circle the tracker is in; an SOS ended in one ends in all');
+
+  // After a restart it's still in both; "leave" takes it (and its trackers there) out of one.
+  assert.deepEqual(await radio('reload'), ['ok 2']);
+  assert.match(await askNana('leave'), /Leaving Grandparents/);
+  await radio('tick');
+  await nana.refresh();
+  assert.ok(!nana.memberList().some((m) => m.id === hb2.id || m.id === tracker2.id), 'gone from Grandparents');
+  assert.match(await ask('circles'), /Family \(here\)/);
+  assert.doesNotMatch(await ask('circles'), /Grandparents/);
+  assert.match(await ask('leave'), /only circle I'm in/);
+  pass('it stays in its circles after a restart; “leave” takes it and its trackers out of one');
+
   answer = await ask('remove Honda CR-V');
   assert.match(answer, /Removed Honda CR-V/);
   await maya.refresh();

@@ -155,6 +155,8 @@ export interface HomeBaseStatus {
     at: number | null;
     radio: MeshNodeRadio | null;
     settings: 'set' | 'sending' | 'needs-key' | null;
+    /** The home base is in several circles and another one (the first to add it) sets this tracker's settings. */
+    elsewhere: boolean;
     /** Positions the home base heard lately (oldest first), each with its hops and last relay. */
     log: TrackerHeard[];
   }[];

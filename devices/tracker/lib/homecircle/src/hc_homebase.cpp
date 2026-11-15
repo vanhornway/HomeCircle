@@ -25,7 +25,10 @@ const char* const HELP =
     "• remove Name\n"
     "• channel: the link that puts a tracker on our private channel\n"
     "• gps: where I am, and the satellites I can see\n"
-    "• status";
+    "• status\n"
+    "• join <invite link from another circle>: be its home base too (up to 3 circles)\n"
+    "• circles: the circles I'm in\n"
+    "• leave: stop being this circle's home base";
 const int64_t SELF_EVERY = 10 * MIN;  // the home base's own pin, from its GPS (skipped when unchanged)
 const int64_t PENDING_EVERY = 8 * 1000;  // collect Locate, chirps and check-ins for trackers
 const int64_t PLACES_EVERY = 10 * MIN;   // the circle's places, for arrived and left
@@ -158,6 +161,7 @@ bool HomeBase::load() {
       t.kind = kindOf(o["kind"] | "carried");
       if (t.kind.empty()) t.kind = "carried";
       t.carriedBy = o["carriedBy"] | "";
+      t.added = o["added"] | (int64_t)0;
       t.keeperSet = o["keeper"] | false;
       t.configSet = o["config"] | "";
       if (!t.configSet.empty()) t.configState = "set";
@@ -177,6 +181,7 @@ void HomeBase::saveTrackers() {
     o["name"] = t->name;
     o["kind"] = t->kind;
     if (!t->carriedBy.empty()) o["carriedBy"] = t->carriedBy;
+    if (t->added) o["added"] = t->added;
     if (t->keeperSet) o["keeper"] = true;
     if (!t->configSet.empty()) o["config"] = t->configSet;
     if (!t->cfgSet.empty()) o["cfg"] = t->cfgSet;
@@ -978,9 +983,48 @@ void HomeBase::onPhoneFix(const Device::Direct& d) {
   if (std::fabs(d.fix.lat) > 90 || std::fabs(d.fix.lng) > 180 || (d.fix.lat == 0 && d.fix.lng == 0)) return;
   int64_t at = d.fixAt > 0 && d.fixAt <= now_() + MIN ? d.fixAt : now_();
   std::string first = d.fromName.substr(0, d.fromName.find(' '));
-  onHeard(node, -1, 0, 0, true, Source::Phone, (first.empty() ? std::string("a") : first + "'s") + " phone");
+  std::string gateway = (first.empty() ? std::string("a") : first + "'s") + " phone";
+  onHeard(node, -1, 0, 0, true, Source::Phone, gateway);
   onPosition(node, d.fix, at);
   log = t->name + ": position from " + d.fromName + "'s phone";
+  if (phoneFixShared) phoneFixShared(node, d.fix, at, gateway);
+}
+
+// --- one home base in several circles -------------------------------------------------
+
+void HomeBase::sharedFix(uint32_t node, const Fix& fix, int64_t at, const std::string& gateway) {
+  if (!byNode(node)) return;
+  onHeard(node, -1, 0, 0, true, Source::Phone, gateway);
+  onPosition(node, fix, at);
+}
+
+void HomeBase::sosEndedElsewhere(uint32_t node) {
+  Tracker* t = byNode(node);
+  if (!t) return;
+  if (t->dev->sosActive()) {
+    t->dev->sos(false, false);
+    t->sosChanged = true;
+    log = t->name + "'s SOS was ended in another circle";
+  }
+  t->sosEndedAt = now_();
+}
+
+int64_t HomeBase::addedAt(uint32_t node) const {
+  for (auto& t : trackers_)
+    if (t->node == node) return t->added;
+  return -1;
+}
+
+void HomeBase::leaveCircle() {
+  for (auto& t : trackers_)
+    if (t->dev->joined()) t->dev->leave();
+  trackers_.clear();
+  store_.remove("trackers");
+  base_.leave();
+}
+
+bool HomeBase::tell(const std::string& memberId, const std::string& text) {
+  return !memberId.empty() && base_.sendDirect(memberId, text) == Status::Ok;
 }
 
 bool HomeBase::takeUpdate(Update& out) {
@@ -1055,7 +1099,9 @@ void HomeBase::publishStatus() {
         JsonObject r = o["radio"].to<JsonObject>();
         radioFacts(r, n);
       }
-    if (!t->configState.empty()) o["settings"] = t->configState;
+    // Another of its circles (the one that added it first) sets how it reports.
+    if (settingsHere && !settingsHere(t->node)) o["elsewhere"] = true;
+    else if (!t->configState.empty()) o["settings"] = t->configState;
     // What the home base heard on its way: where, how many hops, through which relay.
     if (!t->log.empty()) {
       JsonArray lg = o["log"].to<JsonArray>();
@@ -1207,12 +1253,17 @@ void HomeBase::command(const Device::Direct& d) {
   std::string verb = l.substr(0, sp);
   std::string rest = sp == std::string::npos ? "" : trim(text.substr(sp + 1));
   std::string reply;
-  bool changes = verb == "add" || verb == "rename" || verb == "remove" || verb == "link" || verb == "unlink" || verb == "update";
+  bool changes = verb == "add" || verb == "rename" || verb == "remove" || verb == "link" || verb == "unlink" || verb == "update" ||
+                 verb == "join" || verb == "leave" || verb == "circles";
   // Roles and names change (someone made this home base an admin, someone joined): look first.
   if (changes || verb == "status") base_.refresh();
 
   if (changes && !d.fromAdmin) {
-    reply = verb == "update" ? "Only the circle's admins can update the home base." : "Only the circle's admins can change trackers.";
+    reply = verb == "update"                                       ? "Only the circle's admins can update the home base."
+            : verb == "join" || verb == "leave" || verb == "circles" ? "Only the circle's admins can choose the circles I'm in."
+                                                                     : "Only the circle's admins can change trackers.";
+  } else if ((verb == "join" || verb == "leave" || verb == "circles") && circlesCommand) {
+    reply = circlesCommand(verb, rest, d);
   } else if (verb == "mqtt" || verb == "bridge") {
     // mqtt: how it is; mqtt off; mqtt <host[:port]> <user> <password> (admins).
     std::string host = radio_.mqttHost();
@@ -1266,6 +1317,7 @@ void HomeBase::command(const Device::Direct& d) {
       }
       radio_.trackerNote(t->node, "sos-off");  // and it stops sending it
       t->sosEndedAt = now_();
+      if (sosEnded) sosEnded(t->node);  // in its other circles too
       reply = was ? "Ended " + t->name + "'s SOS. I've told it to stop." : t->name + " has no SOS on. I've told it to stop, in case it's still sending one.";
     }
   } else if (verb == "trace" && !rest.empty()) {
@@ -1348,6 +1400,7 @@ void HomeBase::command(const Device::Direct& d) {
         Tracker& t = adopt(node);
         t.name = name;
         t.kind = kind;
+        t.added = now_();
         st = t.dev->join(link, name);
         if (st == Status::Ok) {
           if (t.dev->registerKeeper(base_.memberId()) == Status::Ok) {

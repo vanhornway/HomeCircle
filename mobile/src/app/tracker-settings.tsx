@@ -162,8 +162,16 @@ export default function TrackerSettings() {
     }
   };
 
+  // The home base is in several circles and another one added this tracker first: that one sets how it reports.
+  const elsewhere = !!tracker?.node && !!home?.status.trackers.find((x) => x.node === tracker.node)?.elsewhere;
+
   return (
     <SettingsPage title={name ? `${name}` : 'Tracker settings'}>
+      {elsewhere ? (
+        <GroupBody>
+          <P muted>{`${home?.name ?? 'The home base'} is also in another circle that added ${name ?? 'this tracker'} first: that circle sets how often it reports, its beacon and its button messages. What it is and who has it are this circle’s own.`}</P>
+        </GroupBody>
+      ) : null}
       {member && tracker ? (
         <SettingsGroup title="What it is" footer={mode === 'carried' ? 'When their phone goes quiet, the map shows them where this tracker is.' : undefined}>
           <GroupBody gap={12}>
