@@ -101,6 +101,7 @@ export class Api {
   answerLink = (id, body) => this.req('POST', `/link/${encodeURIComponent(id)}`, body);
   sessions = () => this.req('GET', '/sessions');
   deleteSession = (id) => this.req('DELETE', `/sessions/${encodeURIComponent(id)}`);
+  renewToken = () => this.req('POST', '/me/token');
   // Journeys: a tracker's way, kept while it's on the move.
   startJourney = (memberId) => this.req('POST', '/journeys', { memberId });
   endJourney = (id, body = {}) => this.req('POST', `/journeys/${encodeURIComponent(id)}/end`, body);

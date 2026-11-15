@@ -25,35 +25,35 @@ function fields(buf) {
     let v = 0n;
     let shift = 0n;
     for (;;) {
-      if (at >= buf.length) throw new Error('truncated');
+      if (at >= buf.length || shift > 63n) throw new Error('truncated');
       const b = buf[at++];
       v |= BigInt(b & 127) << shift;
       if (!(b & 128)) return v;
       shift += 7n;
     }
   };
+  // A field must fit in what's left: a cut-off packet isn't read as a shorter one.
+  const take = (len) => {
+    if (len > buf.length - at) throw new Error('truncated');
+    const b = buf.subarray(at, at + len);
+    at += len;
+    return b;
+  };
   while (at < buf.length) {
     const key = Number(varint());
     const n = key >> 3;
     const wire = key & 7;
     if (wire === 0) out.push({ n, v: varint() });
-    else if (wire === 2) {
-      const len = Number(varint());
-      out.push({ n, b: buf.subarray(at, at + len) });
-      at += len;
-    } else if (wire === 5) {
-      out.push({ n, b: buf.subarray(at, at + 4) });
-      at += 4;
-    } else if (wire === 1) {
-      out.push({ n, b: buf.subarray(at, at + 8) });
-      at += 8;
-    } else throw new Error(`wire ${wire}`);
+    else if (wire === 2) out.push({ n, b: take(Number(varint())) });
+    else if (wire === 5) out.push({ n, b: take(4) });
+    else if (wire === 1) out.push({ n, b: take(8) });
+    else throw new Error(`wire ${wire}`);
   }
   return out;
 }
 const get = (fs, n) => fs.find((f) => f.n === n);
-const u32 = (f) => (f?.b ? f.b.readUInt32LE(0) : f?.v != null ? Number(BigInt.asUintN(32, f.v)) : null);
-const i32 = (f) => (f?.b ? f.b.readInt32LE(0) : null);
+const u32 = (f) => (f?.b?.length === 4 ? f.b.readUInt32LE(0) : f?.v != null ? Number(BigInt.asUintN(32, f.v)) : null);
+const i32 = (f) => (f?.b?.length === 4 ? f.b.readInt32LE(0) : null);
 
 /**
  * A ServiceEnvelope from the public MQTT server: the position in it, if it's
@@ -61,6 +61,15 @@ const i32 = (f) => (f?.b ? f.b.readInt32LE(0) : null);
  * opened with the default key; others' channels simply don't open.
  */
 export function decodeBeacon(payload, watch) {
+  // Anything from the public server is untrusted: whatever it is, null or a sane beacon.
+  try {
+    return readBeacon(payload, watch);
+  } catch {
+    return null;
+  }
+}
+
+function readBeacon(payload, watch) {
   let env;
   try {
     env = fields(payload);
@@ -105,7 +114,7 @@ export function decodeBeacon(payload, watch) {
   }
   const lat = i32(get(pos, 1));
   const lng = i32(get(pos, 2));
-  if (lat == null || lng == null || (!lat && !lng)) return null;
+  if (lat == null || lng == null || (!lat && !lng) || Math.abs(lat) > 90e7 || Math.abs(lng) > 180e7) return null;
   const time = u32(get(pos, 4));
   const gw = get(env, 3)?.b?.toString('utf8') ?? null;
   return { from, lat: lat / 1e7, lng: lng / 1e7, at: time ? time * 1000 : Date.now(), gateway: gw && /^![0-9a-f]{8}$/.test(gw) ? gw : null };

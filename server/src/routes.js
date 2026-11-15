@@ -1004,6 +1004,17 @@ export function buildRoutes({ config, store, hub, push, log, agentHost = null, f
     return { journey: ended };
   });
 
+  // A phone (or a linked browser) renews its token now and then (every 30
+  // days): one copied off a device stops working. The one it used works until
+  // the new one is first used, so losing the answer can't lock it out.
+  r.add('POST', '/me/token', ({ me, ctx }) => {
+    const auth = ctx.req.headers.authorization || '';
+    const used = sha256(auth.slice(7).trim());
+    const { token, tokenHash } = newToken();
+    store.renewToken(me, used, tokenHash);
+    return { token };
+  }, { agent: true });
+
   r.add('GET', '/journeys', ({ me, query }) => {
     const m = store.member(me.circleId, query.get('member') || '');
     if (!m) fail(404, 'not_found', 'No such member in this circle');

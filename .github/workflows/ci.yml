@@ -21,6 +21,9 @@ jobs:
         working-directory: packages/core
       - run: npm ci
         working-directory: server
+      # A known high or critical hole in what the server ships fails the build.
+      - run: npm audit --omit=dev --audit-level=high
+        working-directory: server
       - run: npm test
         working-directory: server
 

@@ -1,11 +1,12 @@
 # HomeCircle server — one image for Render, Railway, Fly.io, DigitalOcean,
 # Hetzner, any VPS, and Raspberry Pi (linux/amd64, linux/arm64, linux/arm/v7).
-FROM node:22-alpine AS deps
+# Pinned by digest (the same image every build); bump it with the Node security releases.
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS deps
 WORKDIR /app/server
 COPY server/package.json server/package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
-FROM node:22-alpine
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a
 ENV NODE_ENV=production \
     PORT=8080 \
     DATA_DIR=/data

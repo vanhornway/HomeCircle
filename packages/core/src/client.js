@@ -36,6 +36,8 @@ import { MESH_TEXT_MAX, openMesh, sealMeshMessage } from './mesh.js';
 import { utf8Encode } from './encoding.js';
 import { distanceM, quickReturns } from './places.js';
 
+const TOKEN_RENEW_MS = 30 * 24 * 3600_000;
+
 /** Members that aren't people and say so in their profile. */
 const DEVICES = ['homeassistant'];
 import { FREE_RE, PLAN_ANSWERS, TRAVEL_RE, busyDays, cleanBusy, cleanPlan, travelStats, tripsFrom } from './schedule.js';
@@ -804,6 +806,8 @@ export class CircleClient {
     this.emit('members', this.memberList());
     this.emit('circle', this.circle);
 
+    await this._renewToken().catch(this.onError);
+
     if (st.rotationNeeded && this.isAdmin && !this._holdRotation(st)) {
       try {
         await this.rotateKey();
@@ -812,6 +816,31 @@ export class CircleClient {
       }
     }
     return st;
+  }
+
+  /**
+   * Every 30 days, a new token for this device: one copied off it stops
+   * working. The old one works until the new one is used, so if the answer is
+   * lost (the app closed), nothing breaks. A server from before says 404.
+   */
+  async _renewToken(now = Date.now()) {
+    const a = this.account;
+    if (!a?.token) return;
+    if (!a.tokenAt) {
+      a.tokenAt = now;
+      return this._save();
+    }
+    if (now - a.tokenAt < TOKEN_RENEW_MS) return;
+    a.tokenAt = now;
+    try {
+      const { token } = await this.api.renewToken();
+      a.token = token;
+      this.api.token = token;
+    } catch (e) {
+      if (!(e instanceof ApiError && (e.status === 404 || e.status === 405))) throw e;
+    } finally {
+      await this._save();
+    }
   }
 
   /**

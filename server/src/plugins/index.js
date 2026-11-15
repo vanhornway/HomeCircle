@@ -8,6 +8,8 @@
 // Assistant address and token, an optional key). They're kept on this server,
 // per circle; secrets are never sent back to a phone. A plugin with an
 // address in its settings may call that address too, and nothing else new.
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { fail } from '../http.js';
 import { air } from './air.js';
 import { homeAssistant } from './homeassistant.js';
@@ -20,6 +22,27 @@ export const PLUGINS = [weather, air, prayer, homeAssistant, meshtastic];
 const MAX_BYTES = 1024 * 1024;
 const TIMEOUT_MS = 10_000;
 
+// Addresses a plugin never calls, whatever an admin typed: link-local ones,
+// where cloud hosts answer with the server's own credentials (169.254.169.254
+// and the like), and "any address". A home network and this machine stay
+// allowed: Home Assistant is usually there.
+const METADATA_HOSTS = new Set(['metadata.google.internal', 'metadata', 'instance-data', 'instance-data.ec2.internal']);
+export function forbiddenAddress(ip) {
+  const v4 = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+  if (isIP(v4) === 4) {
+    const [a, b] = v4.split('.').map(Number);
+    return a === 0 || (a === 169 && b === 254) || v4 === '100.100.100.200';
+  }
+  const v6 = ip.toLowerCase();
+  return v6 === '::' || /^fe[89ab]/.test(v6) || v6.startsWith('fd00:ec2::');
+}
+async function checkAddress(u) {
+  const host = u.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (METADATA_HOSTS.has(host)) throw new Error(`may not call ${host}`);
+  const addrs = isIP(host) ? [{ address: host }] : await lookup(host, { all: true }).catch(() => []);
+  if (addrs.some((a) => forbiddenAddress(a.address))) throw new Error(`may not call ${host}`);
+}
+
 async function call(fetchImpl, u, { method = 'GET', headers = {}, body } = {}) {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), TIMEOUT_MS);
@@ -27,6 +50,8 @@ async function call(fetchImpl, u, { method = 'GET', headers = {}, body } = {}) {
     const res = await fetchImpl(u.toString(), {
       method,
       signal: abort.signal,
+      // A redirect could lead anywhere: the address given is the only one called.
+      redirect: 'manual',
       headers: { 'User-Agent': 'HomeCircle (self-hosted family server)', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...headers },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -62,9 +87,10 @@ export function hostFetch(plugin, fetchImpl = fetch) {
 /** A fetch to the address an admin gave (http or https), and only there. Answers { status, ok, json }. */
 export function addressFetch(base, fetchImpl = fetch) {
   const origin = new URL(base).origin;
-  return (url, opts) => {
+  return async (url, opts) => {
     const u = new URL(url, base);
     if (u.origin !== origin) throw new Error(`may not call ${u.host}`);
+    await checkAddress(u);
     return call(fetchImpl, u, opts);
   };
 }

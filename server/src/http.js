@@ -20,6 +20,7 @@ export function sendJson(res, status, data, headers = {}) {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
     'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
     ...headers,
   });
   res.end(body);

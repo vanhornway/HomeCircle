@@ -224,6 +224,12 @@ function migrateToMultiCircle(db) {
   // A Meshtastic tracker's keeper (0.25): the home base that holds its keys and
   // acts for it. Locate, chirps and direct messages for it go to the keeper.
   add('members', 'keeper_id', 'TEXT');
+  // Renewed tokens (0.30): the token before the newest keeps working until the
+  // newest is first used, so a phone that renews and loses the answer isn't locked out.
+  add('members', 'prev_token_hash', 'TEXT');
+  add('sessions', 'prev_token_hash', 'TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS members_prev_token ON members (prev_token_hash)');
+  db.exec('CREATE INDEX IF NOT EXISTS sessions_prev_token ON sessions (prev_token_hash)');
   // Which features a circle has (0.13): circles from before keep everything on.
   if (!cols('circles').includes('features')) {
     db.exec('ALTER TABLE circles ADD COLUMN features TEXT');
@@ -405,11 +411,27 @@ export class Store {
   }
   /** The member a token signs in as: their phone's own token, or a linked browser's (with `sessionId`). */
   memberByToken(tokenHash) {
+    // Its newest token: the one before it stops working now.
     const phone = memberRow(this.q('SELECT * FROM members WHERE token_hash = ? AND removed_at IS NULL').get(tokenHash));
-    if (phone) return phone;
+    if (phone) {
+      this.q('UPDATE members SET prev_token_hash = NULL WHERE id = ? AND prev_token_hash IS NOT NULL').run(phone.id);
+      return phone;
+    }
     const r = this.q('SELECT m.*, s.id AS session_id FROM sessions s JOIN members m ON m.id = s.member_id WHERE s.token_hash = ? AND m.removed_at IS NULL').get(tokenHash);
-    const m = memberRow(r);
-    return m && { ...m, sessionId: r.session_id };
+    if (r) {
+      this.q('UPDATE sessions SET prev_token_hash = NULL WHERE id = ? AND prev_token_hash IS NOT NULL').run(r.session_id);
+      return { ...memberRow(r), sessionId: r.session_id };
+    }
+    // The token before its newest, until the newest is used.
+    const old = memberRow(this.q('SELECT * FROM members WHERE prev_token_hash = ? AND removed_at IS NULL').get(tokenHash));
+    if (old) return old;
+    const s = this.q('SELECT m.*, s.id AS session_id FROM sessions s JOIN members m ON m.id = s.member_id WHERE s.prev_token_hash = ? AND m.removed_at IS NULL').get(tokenHash);
+    return s ? { ...memberRow(s), sessionId: s.session_id } : null;
+  }
+  /** A new token for the phone (or browser) that asked; the one it used keeps working until the new one is used. */
+  renewToken(me, usedHash, newHash) {
+    if (me.sessionId) this.q('UPDATE sessions SET token_hash = ?, prev_token_hash = ? WHERE id = ?').run(newHash, usedHash, me.sessionId);
+    else this.q('UPDATE members SET token_hash = ?, prev_token_hash = ? WHERE id = ?').run(newHash, usedHash, me.id);
   }
 
   // linked browsers
@@ -491,7 +513,7 @@ export class Store {
     this.q('UPDATE members SET role = ? WHERE id = ?').run(role, id);
   }
   removeMember(id, now) {
-    this.q('UPDATE members SET removed_at = ?, token_hash = NULL, push_token = NULL WHERE id = ?').run(now, id);
+    this.q('UPDATE members SET removed_at = ?, token_hash = NULL, prev_token_hash = NULL, push_token = NULL WHERE id = ?').run(now, id);
     this.q('DELETE FROM sessions WHERE member_id = ?').run(id);
     this.q('DELETE FROM locations WHERE member_id = ?').run(id);
     this.deleteJourneysOf(id);

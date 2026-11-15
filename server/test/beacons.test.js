@@ -55,6 +55,38 @@ test('a beacon from a watched tracker opens with the default key; anything else 
   assert.equal(decodeBeacon(envelope({ from: UT2, lat: 2, lng: 3, time: 5, encrypt: false }), watch).lat, 2, 'or sent in the clear');
 });
 
+test('fuzz: whatever the public server sends, the decoder answers null or a sane beacon, quickly', () => {
+  const UT2 = 0x9e58f8c9;
+  const watch = new Map([[UT2, new Set(['hb'])]]);
+  const good = envelope({ from: UT2, lat: 37.53, lng: -121.95, time: 1794600000 });
+  // A small, seeded generator: the same cases every run.
+  let seed = 0x2545f491;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 2 ** 32);
+  const started = Date.now();
+  for (let i = 0; i < 20_000; i++) {
+    let buf;
+    if (i % 3 === 0) {
+      buf = Buffer.alloc(Math.floor(rnd() * 300));
+      for (let j = 0; j < buf.length; j++) buf[j] = Math.floor(rnd() * 256);
+    } else {
+      // A real envelope with a few bytes changed, cut short or grown.
+      buf = Buffer.from(good);
+      for (let k = 0; k < 1 + Math.floor(rnd() * 4); k++) buf[Math.floor(rnd() * buf.length)] = Math.floor(rnd() * 256);
+      if (i % 3 === 1) buf = buf.subarray(0, Math.floor(rnd() * buf.length));
+      else buf = Buffer.concat([buf, Buffer.from([0xff, 0xff, 0xff, 0xff, 0x0f])]);
+    }
+    const b = decodeBeacon(buf, watch);
+    if (b === null) continue;
+    assert.equal(b.from, UT2);
+    assert.ok(Number.isFinite(b.lat) && Math.abs(b.lat) <= 90 && Number.isFinite(b.lng) && Math.abs(b.lng) <= 180, JSON.stringify(b));
+    assert.ok(b.gateway === null || /^![0-9a-f]{8}$/.test(b.gateway));
+  }
+  // A huge length or deep nesting in the input can't make it slow.
+  assert.equal(decodeBeacon(Buffer.from([0x0a, 0xff, 0xff, 0xff, 0xff, 0x0f, 1, 2, 3]), watch), null);
+  assert.equal(decodeBeacon(Buffer.alloc(1 << 20, 0x0a), watch), null);
+  assert.ok(Date.now() - started < 5000, `took ${Date.now() - started} ms`);
+});
+
 // --- the route ------------------------------------------------------------------------
 const SETUP = 'test-setup-beacons';
 let app;
