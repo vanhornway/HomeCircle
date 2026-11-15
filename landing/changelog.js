@@ -1,6 +1,19 @@
 // What's new in each version, newest first. Add an entry with every release.
 window.HOMECIRCLE_CHANGELOG = [
   {
+    version: '0.30.0',
+    date: '2026-11-14',
+    title: 'Journeys',
+    items: [
+      'Mark a tracker “on the move” and see the way it went, until it’s back home.',
+      'Tracker distances in miles or kilometres.',
+      'Trackers always report their own GPS position.',
+      'Home Assistant joins your circle: trackers show up there, and automations can post to the family chat.',
+      'The demo family now has trackers, so you can try them before you buy any.',
+      'Sign-ins renew on their own, for extra safety.',
+    ],
+  },
+  {
     version: '0.29.0',
     date: '2026-11-14',
     title: 'Trackers wherever they are',
