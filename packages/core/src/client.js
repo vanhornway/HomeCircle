@@ -228,6 +228,11 @@ export class CircleClient {
     return role === 'owner' || role === 'admin';
   }
 
+  /** On a demo server: { endsAt }, when this copy of the demo family goes away. Null anywhere else. */
+  get demo() {
+    return this.account?.demo ?? null;
+  }
+
   get serverUrl() {
     return this.account?.server;
   }
@@ -399,6 +404,7 @@ export class CircleClient {
       signSecret: a.identity.signSecret,
       body,
       id,
+      ...(this.sealTime ? { ts: this.sealTime() } : {}),
     });
   }
 
@@ -690,6 +696,14 @@ export class CircleClient {
     return this.api.denyRejoin(id);
   }
 
+  /**
+   * Ask a demo server for a copy of its demo family: { link, expiresAt, minutes, unusedMinutes }.
+   * `device` is a random id this phone keeps, counted against the starts a device gets.
+   */
+  static async startDemo(serverUrl, { device, fetchImpl } = {}) {
+    return new Api(normalizeServerUrl(serverUrl), { fetchImpl }).demoStart({ device });
+  }
+
   /** Decrypts the invite so the UI can show "Join <circle> invited by <name>?" */
   async previewInvite(link) {
     const { serverUrl, inviteId, secret } = parseInviteLink(link);
@@ -758,6 +772,7 @@ export class CircleClient {
     const st = await this.api.state();
     this.state = st;
     this._cacheDirty = true;
+    if (st.demo) this.account.demo = { endsAt: Date.now() + st.demo.secondsLeft * 1000 };
     for (const m of st.members) if ((m.deliveredSeq ?? 0) > (this.delivered.get(m.id) ?? 0)) this.delivered.set(m.id, m.deliveredSeq);
     if (st.epoch > this.account.epoch || !this.account.keyring[st.epoch]) {
       // Recognize members we can already verify first: a new key is only
@@ -2975,8 +2990,13 @@ export class CircleClient {
   }
 
   async leave() {
-    await this.api.removeMember(this.account.memberId);
-    await this.signOut('left');
+    this._leaving = true;
+    try {
+      await this.api.removeMember(this.account.memberId);
+      await this.signOut('left');
+    } finally {
+      this._leaving = false;
+    }
   }
 
   /** Owner only: delete this circle and everything in it, for everyone. */
@@ -3110,7 +3130,8 @@ export class CircleClient {
    * otherwise the app is told ('unrecognized') and the person decides.
    */
   async _checkMembership() {
-    if (!this.account) return; // already signed out by a "removed" message
+    // Already signed out by a "removed" message, or on the way out by choice.
+    if (!this.account || this._leaving) return;
     if (this.connection) this.connection.close();
     this.connection = null;
     try {
@@ -3119,6 +3140,7 @@ export class CircleClient {
     } catch (e) {
       if (!this.account) return;
       if (e instanceof ApiError && e.status === 401) {
+        if (this.demo) return this.demoEnded();
         this.status = 'unauthorized';
         this.emit('status', 'unauthorized');
         this.emit('unrecognized');
@@ -3128,6 +3150,11 @@ export class CircleClient {
         }, 15000);
       }
     }
+  }
+
+  /** A demo copy this device was away for has ended. There's nothing to come back to. */
+  demoEnded() {
+    return this._handleRemoved('demo_ended');
   }
 
   /** The server said, in so many words, that this device is out: 'removed' or 'circle_deleted'. */

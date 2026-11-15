@@ -55,7 +55,8 @@ export async function flushOutbox(): Promise<number> {
 export async function sharingClients(): Promise<CircleClient[]> {
   const settings = await getSettings();
   if (!settings.sharing) return [];
-  return (await loadedClients()).filter((c) => !settings.pausedCircles.includes(c.circleId!) && c.feature('locationSharing'));
+  // A demo family never gets this phone's real location.
+  return (await loadedClients()).filter((c) => !c.demo && !settings.pausedCircles.includes(c.circleId!) && c.feature('locationSharing'));
 }
 
 /**

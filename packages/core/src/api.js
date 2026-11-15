@@ -101,6 +101,7 @@ export class Api {
   answerLink = (id, body) => this.req('POST', `/link/${encodeURIComponent(id)}`, body);
   sessions = () => this.req('GET', '/sessions');
   deleteSession = (id) => this.req('DELETE', `/sessions/${encodeURIComponent(id)}`);
+  demoStart = (body) => this.req('POST', '/demo/start', body);
   /** Server admins only: create another circle on this server. */
   createCircle = (body) => this.req('POST', '/circles', body);
   deleteCircle = () => this.req('DELETE', '/circle');

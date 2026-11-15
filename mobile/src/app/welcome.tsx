@@ -26,6 +26,7 @@ export default function Welcome() {
       <P muted style={{ marginTop: 10, textAlign: 'center', fontSize: 14 }}>
         Someone in your family sends you an invite.
       </P>
+      <Button title="Try a demo family" onPress={() => router.push('/demo')} style={{ marginTop: 8 }} />
       <HowThisWorks title="How HomeCircle keeps you private" style={{ alignSelf: 'center', marginTop: 4 }}>
         {POINTS.map(([title, body]) => (
           <View key={title}>

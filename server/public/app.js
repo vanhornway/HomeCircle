@@ -486,8 +486,7 @@ async function renderJoin(link) {
     toast(`This browser is already in ${preview.circleName || 'that circle'}`);
     return switchCircle(already.accountKey);
   }
-  const parsed = link.match(/#([\w-]+)\.([\w-]+)$/);
-  const appLink = `homecircle://join?server=${encodeURIComponent(SERVER)}&i=${parsed[1]}&s=${parsed[2]}`;
+  const appLink = appJoinLink(link);
   const err = h('p', { class: 'error', role: 'alert' });
   const name = h('input', { class: 'input', id: 'name', required: true, maxlength: '40', autocomplete: 'given-name', placeholder: 'Your name' });
   const btn = h('button', { class: 'btn block', type: 'submit', disabled: true }, 'Join in this browser');
@@ -533,7 +532,181 @@ async function renderJoin(link) {
   );
 }
 
+// --- demo server -----------------------------------------------------------
+
+/** An invite link as the deep link that opens it in the app. */
+function appJoinLink(link) {
+  const parsed = link.match(/#([\w-]+)\.([\w-]+)$/);
+  return `homecircle://join?server=${encodeURIComponent(SERVER)}&i=${parsed[1]}&s=${parsed[2]}`;
+}
+
+const DEMO_DEVICE_KEY = 'homecircle.demoDevice';
+function demoDevice() {
+  let id = local.get(DEMO_DEVICE_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    local.set(DEMO_DEVICE_KEY, id);
+  }
+  return id;
+}
+
+/** On a demo server, the front page: a name, and straight in. */
+function renderDemoStart() {
+  const name = h('input', { class: 'input', placeholder: 'Your first name', autocomplete: 'given-name', maxlength: 40, 'aria-label': 'Your first name' });
+  const btn = h('button', { class: 'btn primary block', type: 'submit' }, 'Try a demo family');
+  const error = h('p', { class: 'error', role: 'alert' });
+  // For a phone with the app: a fresh one-time link each time, so a code left
+  // on the screen goes back to the button once its link has lapsed.
+  const qrBox = h('div', { class: 'demo-qr' });
+  const qrButton = () =>
+    h(
+      'button',
+      {
+        class: 'btn block',
+        type: 'button',
+        onclick: async (e) => {
+          e.target.disabled = true;
+          error.textContent = '';
+          try {
+            const { link, unusedMinutes } = await CircleClient.startDemo(SERVER, { device: demoDevice() });
+            qrBox.replaceChildren(
+              qrImage(link),
+              h('p', { class: 'muted small' }, `In the HomeCircle app, open Settings → Your circles → Join a circle, then scan this. It works once, for ${unusedMinutes} minutes. Your other circles aren’t touched.`),
+              h('div', { class: 'link-box' }, h('input', { class: 'input mono', readonly: true, value: link, 'aria-label': 'Invite link', onfocus: (ev) => ev.target.select() }), copyButton(link)),
+            );
+            setTimeout(() => qrBox.replaceChildren(qrButton()), unusedMinutes * 60_000);
+          } catch (err) {
+            error.textContent = errorText(err);
+            e.target.disabled = false;
+          }
+        },
+      },
+      'Show a QR code for your phone',
+    );
+  qrBox.append(qrButton());
+  mount(
+    h(
+      'main',
+      { class: 'onboard' },
+      h(
+        'div',
+        { class: 'card' },
+        brandRow(),
+        h('h1', {}, 'Meet a family for an hour'),
+        h('p', { class: 'muted' }, `Twenty made-up people go through a whole day in ${info.demo.minutes} minutes: school runs, commutes, groceries, dinner at Nani’s. This copy is yours alone. It’s deleted when the hour is up or when you leave.`),
+        h(
+          'form',
+          {
+            onsubmit: async (e) => {
+              e.preventDefault();
+              if (!name.value.trim()) return name.focus();
+              btn.disabled = true;
+              error.textContent = '';
+              try {
+                const { link } = await CircleClient.startDemo(SERVER, { device: demoDevice() });
+                const joiner = newCircleClient();
+                await joiner.joinWithInvite(link, { name: name.value });
+                openNewCircle(joiner);
+              } catch (err) {
+                error.textContent = errorText(err);
+                btn.disabled = false;
+              }
+            },
+          },
+          name,
+          btn,
+        ),
+        error,
+        qrBox,
+        lockNote('Your own location isn’t used. Nothing here touches any real circle.'),
+      ),
+    ),
+  );
+}
+
+/**
+ * Where the site's QR code lands. A copy is only claimed on the tap, so the
+ * code itself never expires and a passer-by doesn't hold one up.
+ */
+function renderDemoPhone() {
+  let appLink = null;
+  const hint = h('p', { class: 'muted small', role: 'status' });
+  const error = h('p', { class: 'error', role: 'alert' });
+  const btn = h(
+    'button',
+    {
+      class: 'btn primary block',
+      type: 'button',
+      onclick: async () => {
+        btn.disabled = true;
+        error.textContent = '';
+        try {
+          if (!appLink) {
+            const { link, unusedMinutes } = await CircleClient.startDemo(SERVER, { device: demoDevice() });
+            appLink = appJoinLink(link);
+            setTimeout(() => (appLink = null), unusedMinutes * 60_000);
+          }
+          location.href = appLink;
+          hint.textContent = 'Nothing opened? Tap it again, or get the app below.';
+        } catch (err) {
+          error.textContent = errorText(err);
+        }
+        btn.disabled = false;
+      },
+    },
+    'Open in the HomeCircle app',
+  );
+  mount(
+    h(
+      'main',
+      { class: 'onboard' },
+      h(
+        'div',
+        { class: 'card' },
+        brandRow(),
+        h('h1', {}, 'Meet a family for an hour'),
+        h('p', { class: 'muted' }, `Twenty made-up people go through a whole day in ${info.demo.minutes} minutes, in the real app. You join as yourself. Your copy is deleted when the hour is up or when you leave.`),
+        btn,
+        error,
+        hint,
+        h('p', { class: 'muted small' }, 'Don’t have the app yet? ', h('a', { href: 'https://homecircle.umair.us/#app' }, 'Get it here'), '. Or ', h('a', { href: '/' }, 'try it in this browser'), '.'),
+        lockNote('Your own location isn’t used. Your own circles aren’t touched.'),
+      ),
+    ),
+  );
+}
+
+function renderDemoEnded() {
+  mount(
+    h(
+      'main',
+      { class: 'onboard' },
+      h(
+        'div',
+        { class: 'card' },
+        brandRow(),
+        h('h1', {}, 'Demo ended. Start again?'),
+        h('p', { class: 'muted' }, 'That family and everything in it are gone. Start again for a fresh copy of the day.'),
+        h('button', { class: 'btn primary block', onclick: () => renderDemoStart() }, 'Start again'),
+      ),
+    ),
+  );
+}
+
+/** "Demo ends in N min" at the top of the side panel. */
+function demoBanner() {
+  const bar = h('div', { class: 'demo-bar', role: 'status' });
+  const show = () => {
+    const left = Math.max(0, Math.ceil(((client.demo?.endsAt ?? 0) - Date.now()) / 60_000));
+    bar.textContent = left > 1 ? `Demo ends in ${left} min` : 'Demo ends in a minute';
+  };
+  show();
+  setInterval(show, 15_000);
+  return bar;
+}
+
 function renderNoAccount() {
+  if (info.demo) return renderDemoStart();
   mount(
     h(
       'main',
@@ -1000,6 +1173,7 @@ async function startApp() {
         'aside',
         { class: 'side' },
         h('div', { class: 'side-head' }, h('img', { src: '/app/icon.svg', alt: '' }), title, status),
+        client.demo ? demoBanner() : null,
         h('nav', { class: 'tabs', role: 'tablist' }, tabs),
         panel,
       ),
@@ -1072,6 +1246,13 @@ async function startApp() {
   });
   client.on('rejoinRequests', loadRejoins);
   client.on('removed', () => {
+    // A demo copy only ever goes for one reason. Nothing else in this browser changes.
+    if (client.demo) {
+      circles = circles.filter((c) => c !== client);
+      saveCircles(circles[0]?.accountKey ?? ACCOUNT_KEY);
+      client = makeClient(ACCOUNT_KEY);
+      return renderDemoEnded();
+    }
     if (circles.length > 1) {
       toast(`You’re no longer in ${client.circle.name}`);
       return setTimeout(() => switchCircle(circles.find((c) => c !== client).accountKey), 1500);
@@ -1087,6 +1268,7 @@ async function startApp() {
   } catch (e) {
     // The server doesn't know this browser in that circle: removed, deleted,
     // or the server lost its data. Keep the keys until the person decides.
+    if (e.status === 401 && client.demo) return client.demoEnded();
     if (e.status === 401) return renderUnrecognized();
     toast(errorText(e));
   }
@@ -2140,16 +2322,18 @@ function settingsView() {
         h('div', { class: 'grow' }, nameInput),
         h('button', { class: 'btn', type: 'submit' }, 'Save'),
       ),
-      h(
-        'label',
-        { class: 'switch row' },
-        h('input', {
-          type: 'checkbox',
-          checked: sharingEnabled(),
-          onchange: (e) => (e.target.checked ? startSharing(true) : stopSharing()),
-        }),
-        h('span', {}, 'Share this browser’s location while it’s open'),
-      ),
+      client.demo
+        ? null
+        : h(
+            'label',
+            { class: 'switch row' },
+            h('input', {
+              type: 'checkbox',
+              checked: sharingEnabled(),
+              onchange: (e) => (e.target.checked ? startSharing(true) : stopSharing()),
+            }),
+            h('span', {}, 'Share this browser’s location while it’s open'),
+          ),
       h(
         'label',
         { class: 'switch row' },
@@ -2278,19 +2462,21 @@ function settingsView() {
   }
 
   // What this circle has: admins tick features on and off; others see the list.
+  // A demo lists only what its made-up family has.
   const features = client.features;
+  const shownFeatures = FEATURES.filter((f) => !client.demo || features[f.id]);
   sections.push(
     h(
       'div',
       { class: 'section' },
       h('h3', {}, 'Features'),
       h('p', { class: 'muted small' }, client.isAdmin ? 'Turn off what your circle doesn’t want; it disappears from everyone’s phone.' : 'Chosen by the circle’s admins.'),
-      FEATURE_GROUPS.map((group) =>
+      FEATURE_GROUPS.filter((group) => shownFeatures.some((f) => f.group === group)).map((group) =>
         h(
           'fieldset',
           { class: 'feature-group' },
           h('legend', {}, group),
-          FEATURES.filter((f) => f.group === group).map((f) => [
+          shownFeatures.filter((f) => f.group === group).map((f) => [
             h(
               'label',
               { class: 'feature-row', title: f.detail },
@@ -2351,7 +2537,7 @@ function settingsView() {
               {
                 class: 'btn danger',
                 onclick: async () => {
-                  if (!confirm(`Leave ${client.circle.name}? Your location will stop being shared and your data removed.`)) return;
+                  if (!confirm(client.demo ? 'Leave the demo? This copy of the family is deleted. You can start a new one any time.' : `Leave ${client.circle.name}? Your location will stop being shared and your data removed.`)) return;
                   stopSharing();
                   try {
                     await client.leave();
@@ -2361,7 +2547,7 @@ function settingsView() {
                   }
                 },
               },
-              'Leave circle',
+              client.demo ? 'Leave the demo' : 'Leave circle',
             )
           : h(
               'button',
@@ -2452,6 +2638,8 @@ let lastSent = 0;
 let lastSentPos = null;
 
 function sharingEnabled() {
+  // A demo family never gets your real location.
+  if (client.demo) return false;
   try {
     return localStorage.getItem(SHARE_KEY) === '1';
   } catch {
@@ -2548,6 +2736,7 @@ async function boot() {
 
   const invite = location.pathname.startsWith('/join') && location.hash.length > 1 ? `${SERVER}/join${location.hash}` : null;
   if (invite) return renderJoin(invite);
+  if (info.demo && location.hash === '#app') return renderDemoPhone();
   if (location.pathname === '/start') {
     if (!info.setup) return renderStart();
     return renderMessage('Already set up', 'This server already has a circle. Ask someone in it for an invite.');

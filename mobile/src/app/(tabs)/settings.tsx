@@ -68,7 +68,7 @@ export default function SettingsTab() {
           </Text>
           <Text style={{ color: t.muted, fontSize: 14 }} numberOfLines={1}>
             {me?.role && me.role !== 'member' ? `${me.role[0].toUpperCase()}${me.role.slice(1)} of ${circle}` : `In ${circle}`}
-            {settings.sharing ? ' · sharing your location' : ' · sharing paused'}
+            {client.demo ? ' · your location isn’t used' : settings.sharing ? ' · sharing your location' : ' · sharing paused'}
           </Text>
         </View>
         <Text style={{ color: t.muted, fontSize: 22 }}>›</Text>
@@ -79,7 +79,7 @@ export default function SettingsTab() {
         <SettingsRow
           icon="grid"
           title="Features"
-          detail={`${FEATURES.filter((f) => f.id in client.features && client.feature(f.id)).length} of ${FEATURES.filter((f) => f.id in client.features).length} on${client.isAdmin ? ' · choose what this circle has' : ''}`}
+          detail={`${FEATURES.filter((f) => f.id in client.features && client.feature(f.id)).length}${client.demo ? '' : ` of ${FEATURES.filter((f) => f.id in client.features).length}`} on${client.isAdmin ? ' · choose what this circle has' : ''}`}
           href="/settings/features"
         />
         <SettingsRow icon="home" title="Your circles" detail={clients.length > 1 ? `${plural(clients.length, 'circle')} · switch, and how much each sees` : 'How much your circle sees, or join another'} href="/settings/circles" />
