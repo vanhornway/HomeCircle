@@ -212,6 +212,16 @@ class Device {
   const std::string& server() const { return acct_.server; }
   const std::string& circleName() const { return acct_.circleName; }
   long epoch() const { return acct_.epoch; }
+  /** The circle keys this account holds, by epoch. */
+  const std::map<long, Bytes>& circleKeys() const { return acct_.keyring; }
+  const std::string& circleId() const { return acct_.circleId; }
+  /**
+   * Take circle keys that another account on this same device already
+   * verified (a home base, for the trackers it keeps: it holds their accounts
+   * too, so this changes no one's trust). Only for the same circle. Saves;
+   * returns how many keys were new.
+   */
+  int adoptKeys(const std::map<long, Bytes>& keys, const std::string& circleId);
 
  private:
   struct Known {

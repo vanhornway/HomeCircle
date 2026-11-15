@@ -447,6 +447,18 @@ Status Device::syncKeys(JsonArrayConst members) {
   return Status::Ok;
 }
 
+int Device::adoptKeys(const std::map<long, Bytes>& keys, const std::string& circleId) {
+  if (circleId.empty() || circleId != acct_.circleId) return 0;
+  int added = 0;
+  for (const auto& kv : keys) {
+    if (kv.second.size() != 32 || acct_.keyring.count(kv.first)) continue;
+    acct_.keyring[kv.first] = kv.second;
+    added++;
+  }
+  if (added) save();
+  return added;
+}
+
 Status Device::refresh() {
   JsonDocument st;
   Status s = call("GET", "/state", "", &st);

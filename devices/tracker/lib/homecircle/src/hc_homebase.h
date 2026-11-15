@@ -318,6 +318,7 @@ class HomeBase {
   int movingMin_ = 2, stillMin_ = 15, batteryMin_ = 30;
   std::string press_[6];  // the message for 1 to 5 presses; "" for the default
   void postFailed(Tracker& t, Status s);
+  void shareKeys();
   bool publicSos_ = false;  // the circle's: SOS also as plain text on the public channel
   std::string beaconsSent_;  // the beacon watch list the server has ("" none yet)
   std::string cfgFor(const Tracker& t) const;  // "psos=0 beacon=0 prec=13"

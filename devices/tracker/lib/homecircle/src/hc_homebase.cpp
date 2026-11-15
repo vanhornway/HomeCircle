@@ -360,6 +360,13 @@ void HomeBase::forwardMesh() {
 void HomeBase::postFailed(Tracker& t, Status s) {
   bool stuck = s == Status::Removed || t.dev->error().find("new key") != std::string::npos;
   if (!stuck) return;
+  // The circle's new key: this home base has it (from an admin it knows), and
+  // holds the tracker's account too, so it hands the key over itself.
+  if (s != Status::Removed && t.dev->adoptKeys(base_.circleKeys(), base_.circleId()) && t.dev->refresh() == Status::Ok) {
+    log = t.name + " got the circle's new key from the home base";
+    t.stuckSince = 0;
+    return;
+  }
   int64_t now = now_();
   if (!t.stuckSince) t.stuckSince = now;
   if (now - t.stuckSince < 10 * MIN || (t.stuckToldAt && now - t.stuckToldAt < 6 * 60 * MIN)) return;
@@ -367,6 +374,17 @@ void HomeBase::postFailed(Tracker& t, Status s) {
   std::string why = s == Status::Removed ? "it was removed from the circle" : "its account here never got the circle's new key";
   base_.sendGroup("\xE2\x9A\xA0\xEF\xB8\x8F " + t.name + " can't post its position or button presses: " + why +
                   ". An admin can fix it: remove " + t.name + " (Trackers), then send me \"add " + nodeId(t.node) + " " + t.name + "\".");
+}
+
+// After a key change, a tracker's account may never be sent the new key by an
+// admin it has verified (one that joined after it, say): it would be stuck.
+// The home base checks the key came from an admin it knows, then gives it to
+// the trackers it keeps.
+void HomeBase::shareKeys() {
+  for (auto& t : trackers_) {
+    if (!t->dev || t->dev->epoch() >= base_.epoch()) continue;
+    if (t->dev->adoptKeys(base_.circleKeys(), base_.circleId())) log = t->name + " got the circle's new key from the home base";
+  }
 }
 
 void HomeBase::upload(Tracker& t) {
@@ -642,6 +660,7 @@ void HomeBase::tick() {
   if (now >= nextPlaces_) {
     bool wasOn = enabled_;
     base_.refresh();  // features (place alerts, the plugin) and new members
+    shareKeys();
     readPlugin();
     // Off: look again every minute, so turning it on takes effect quickly.
     nextPlaces_ = now + (enabled_ ? PLACES_EVERY : OFF_RECHECK);

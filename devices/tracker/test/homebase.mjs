@@ -687,6 +687,29 @@ try {
   assert.match(await ask('trace nobody'), /I don't have a tracker called nobody/);
   pass('“trace” traces a tracker’s path on request');
 
+  // A new admin changes the circle's key before the tracker's account ever saw them:
+  // it would only take the key from an admin it verified, so the home base hands it over.
+  const sam = client();
+  await sam.joinWithInvite((await maya.createInvite({ hours: 1 })).link, { name: 'Sam' });
+  await maya.refresh();
+  await maya.setRole(sam.account.memberId, 'admin');
+  await ask('status'); // the home base's own account meets Sam
+  await sam.refresh();
+  const oldEpoch = sam.state.epoch;
+  await sam.rotateKey();
+  assert.equal(sam.state.epoch, oldEpoch + 1);
+  await ask('status'); // and takes the new key from Sam, an admin it knows
+  await maya.refresh();
+  await radio(`position ${TRACKER} 37.6201 -122.0402 70`);
+  await radio('advance 61');
+  const keyTick = await radio('tick');
+  await radio('advance 61');
+  await radio('tick');
+  await maya.fetchLocations();
+  loc = maya.locations.get(tracker.id);
+  assert.ok(loc && Math.abs(loc.lat - 37.6201) < 1e-4, `the tracker posts with the new key: ${JSON.stringify(loc)} | ${keyTick.join(' | ')}`);
+  pass('a new admin changes the key before the tracker knew them: the home base gives its trackers the key');
+
   answer = await ask('remove Honda CR-V');
   assert.match(answer, /Removed Honda CR-V/);
   await maya.refresh();
