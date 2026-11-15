@@ -2,6 +2,6 @@
 # instead of the server. Pinned to a server image commit at each release (as
 # the HomeCircle app is), so each bridge version gets exactly that code.
 build_from:
-  aarch64: ghcr.io/vanhornway/homecircle:latest
-  amd64: ghcr.io/vanhornway/homecircle:latest
-  armv7: ghcr.io/vanhornway/homecircle:latest
+  aarch64: ghcr.io/vanhornway/homecircle:49719b93180d9576e049de28e1206d5be7804d71
+  amd64: ghcr.io/vanhornway/homecircle:49719b93180d9576e049de28e1206d5be7804d71
+  armv7: ghcr.io/vanhornway/homecircle:49719b93180d9576e049de28e1206d5be7804d71
