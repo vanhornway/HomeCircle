@@ -2,6 +2,17 @@
 
 See the full list of changes on <https://homecircle.umair.us/#changelog>.
 
+## 0.31.0
+
+- One home base in up to 3 circles (your family and your parents', say):
+  Trackers → "Use it in another circle", or send it "join <invite link>".
+  The app makes it an admin there and turns Meshtastic trackers on.
+- A tracker can be in more than one circle: each gets its positions, button
+  presses and SOS. An SOS ended in one circle ends in all of them. Its
+  settings come from the circle that added it first; the others say so.
+- New home base commands: circles (the circles it's in) and leave.
+- A tracker's public beacon reaches every circle it's in.
+
 ## 0.30.0
 
 - Journeys: mark a tracker "on the move" and the way it goes is kept until
